@@ -49,6 +49,16 @@ public:
 
   bool GetModifierState(const nsAString& aKey)
   {
+    if (ShouldResistFingerprinting()) {
+      if (aKey.Equals(NS_LITERAL_STRING("Alt")) ||
+          aKey.Equals(NS_LITERAL_STRING("AltGraph"))) {
+        return AltKey();
+      }
+      if (aKey.Equals(NS_LITERAL_STRING("Shift"))) {
+        return ShiftKey();
+      }
+    }
+
     return GetModifierStateInternal(aKey);
   }
 
@@ -94,6 +104,8 @@ private:
   // value.  mInitializedWhichValue stores it.  I.e., this is invalid when
   // mInitializedByCtor is false.
   uint32_t mInitializedWhichValue;
+
+  bool ShouldResistFingerprinting();
 };
 
 } // namespace dom

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <time.h>
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
@@ -52,6 +53,7 @@ static uint32_t kResolutionUSec = 100000;
 static uint32_t sVideoFramesPerSec;
 static uint32_t sVideoDroppedRatio;
 static uint32_t sTargetVideoRes;
+nsDataHashtable<nsStringHashKey, FakeKeyboardCode>* nsRFPService::sFakeKeyboardCodes = nullptr;
 
 /* static */
 nsRFPService*
@@ -258,6 +260,9 @@ nsRFPService::Init()
     mInitialTZValue = nsCString(tzValue);
   }
 
+  // Creating the key code table for spoofing keyboard events.
+  CreateSpoofingKeyCodes();
+
   // Call UpdatePref() here to cache the value of 'privacy.resistFingerprinting'
   // and set the timezone.
   UpdatePref();
@@ -325,6 +330,79 @@ nsRFPService::StartShutdown()
       prefs->RemoveObserver(RESIST_FINGERPRINTING_PREF, this);
     }
   }
+}
+
+void
+nsRFPService::CreateSpoofingKeyCodes()
+{
+  if (sFakeKeyboardCodes) {
+    return;
+  }
+
+  static const FakeKeyboardCode keyCodeArray[] = {
+#define KEY(key_, _code, _keyCode) \
+    { NS_LITERAL_STRING(key_), NS_LITERAL_STRING(#_code), _keyCode, false },
+#define SHIFT(key_, _code, _keyCode) \
+    { NS_LITERAL_STRING(key_), NS_LITERAL_STRING(#_code), _keyCode, true },
+#include "KeyCodeConsensus.h"
+#undef SHIFT
+#undef KEY
+    { nsString() }
+  };
+
+  sFakeKeyboardCodes = new nsDataHashtable<nsStringHashKey, FakeKeyboardCode>(
+    ArrayLength(keyCodeArray)
+  );
+
+  // Subtract one from the length because of the trailing null
+  for (uint32_t i = 0; i < ArrayLength(keyCodeArray) - 1; ++i) {
+    MOZ_ASSERT(!sFakeKeyboardCodes->Lookup(keyCodeArray[i].mKey),
+               "Double-defining key code; fix your KeyCodeConsensus.h");
+    sFakeKeyboardCodes->Put(keyCodeArray[i].mKey, keyCodeArray[i]);
+  }
+}
+
+/* static */
+bool
+nsRFPService::GetSpoofedShiftKeyState(const nsAString& aKeyName, bool* aOut)
+{
+  FakeKeyboardCode keyCodeInfo;
+  bool exists = sFakeKeyboardCodes->Get(aKeyName, &keyCodeInfo);
+
+  if (exists) {
+    *aOut = keyCodeInfo.mShiftStates;
+  }
+
+  return exists;
+}
+
+/* static */
+bool
+nsRFPService::GetSpoofedCode(const nsAString& aKeyName, nsAString& aOut)
+{
+  FakeKeyboardCode keyCodeInfo;
+  bool exists = sFakeKeyboardCodes->Get(aKeyName, &keyCodeInfo);
+
+  if (exists) {
+    aOut.Truncate();
+    aOut.Assign(keyCodeInfo.mCode);
+  }
+
+  return exists;
+}
+
+/* static */
+bool
+nsRFPService::GetSpoofedKeyCode(const nsAString& aKeyName, uint32_t* aOut)
+{
+  FakeKeyboardCode keyCodeInfo;
+  bool exists = sFakeKeyboardCodes->Get(aKeyName, &keyCodeInfo);
+
+  if (exists) {
+    *aOut = keyCodeInfo.mKeyCode;
+  }
+
+  return exists;
 }
 
 NS_IMETHODIMP

@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/KeyboardEvent.h"
 #include "mozilla/TextEvents.h"
+#include "nsContentUtils.h"
 #include "prtime.h"
 
 namespace mozilla {
@@ -40,7 +41,25 @@ NS_INTERFACE_MAP_END_INHERITING(UIEvent)
 bool
 KeyboardEvent::AltKey()
 {
-  return mEvent->AsKeyboardEvent()->IsAlt();
+  bool altState = mEvent->AsKeyboardEvent()->IsAlt();
+
+  if (ShouldResistFingerprinting()) {
+    bool unused;
+    nsAutoString keyName;
+    GetKey(keyName);
+
+    // We will give a false for Alt key when there is a spoofing shift state.
+    // This is because the Alt key will be always false for regular US English
+    // QWERTY keyboard when shift key is present. But for other keyboard layout,
+    // it might not be. For example, the '@' key for German keyboard for MAC is
+    // Alt+L. For US English, it is Shift+2, so we need to give Alt a spoofed
+    // value as well.
+    bool exists = nsRFPService::GetSpoofedShiftKeyState(keyName, &unused);
+
+    altState = exists ? false : altState;
+  }
+
+  return altState;
 }
 
 NS_IMETHODIMP
@@ -68,7 +87,19 @@ KeyboardEvent::GetCtrlKey(bool* aIsDown)
 bool
 KeyboardEvent::ShiftKey()
 {
-  return mEvent->AsKeyboardEvent()->IsShift();
+  bool shiftState = mEvent->AsKeyboardEvent()->IsShift();
+
+  if (ShouldResistFingerprinting()) {
+    bool fakeShiftState = false;
+    nsAutoString keyName;
+
+    GetKey(keyName);
+    bool exists = nsRFPService::GetSpoofedShiftKeyState(keyName, &fakeShiftState);
+
+    shiftState = exists ? fakeShiftState : shiftState;
+  }
+
+  return shiftState;
 }
 
 NS_IMETHODIMP
@@ -133,7 +164,21 @@ KeyboardEvent::GetKey(nsAString& aKeyName)
 void
 KeyboardEvent::GetCode(nsAString& aCodeName)
 {
-  mEvent->AsKeyboardEvent()->GetDOMCodeName(aCodeName);
+  if (ShouldResistFingerprinting()) {
+    // Use a consensus code name corresponding to the
+    // key name.
+    nsAutoString keyName;
+    nsAutoString codeName;
+    GetKey(keyName);
+
+    bool exists = nsRFPService::GetSpoofedCode(keyName, codeName);
+
+    if (exists) {
+      aCodeName.Assign(codeName);
+    }
+  } else {
+    mEvent->AsKeyboardEvent()->GetDOMCodeName(aCodeName);
+  }
 }
 
 void KeyboardEvent::GetInitDict(KeyboardEventInit& aParam)
@@ -219,7 +264,22 @@ KeyboardEvent::KeyCode()
   }
 
   if (mEvent->HasKeyEventMessage()) {
-    return mEvent->AsKeyboardEvent()->mKeyCode;
+    uint32_t keyCode = mEvent->AsKeyboardEvent()->mKeyCode;
+    if (ShouldResistFingerprinting()) {
+      if (CharCode() != 0) {
+        return 0;
+      }
+
+      nsAutoString keyName;
+      GetKey(keyName);
+
+      // Find a consensus key code for the given key name.
+      bool exists = nsRFPService::GetSpoofedKeyCode(keyName, &keyCode);
+      if (!exists) {
+        keyCode = 0;
+      }
+    }
+    return keyCode;
   }
   return 0;
 }
@@ -242,7 +302,7 @@ KeyboardEvent::Which()
       //Special case for 4xp bug 62878.  Try to make value of which
       //more closely mirror the values that 4.x gave for RETURN and BACKSPACE
       {
-        uint32_t keyCode = mEvent->AsKeyboardEvent()->mKeyCode;
+        uint32_t keyCode = KeyCode();
         if (keyCode == NS_VK_RETURN || keyCode == NS_VK_BACK) {
           return keyCode;
         }
@@ -267,7 +327,30 @@ KeyboardEvent::GetLocation(uint32_t* aLocation)
 uint32_t
 KeyboardEvent::Location()
 {
-  return mEvent->AsKeyboardEvent()->mLocation;
+  uint32_t location = mEvent->AsKeyboardEvent()->mLocation;
+
+  if (ShouldResistFingerprinting()) {
+    // To resist fingerprinting, hide right modifier keys, as
+    // well as the numpad.
+    switch (location) {
+      case nsIDOMKeyEvent::DOM_KEY_LOCATION_STANDARD :
+        location = nsIDOMKeyEvent::DOM_KEY_LOCATION_STANDARD;
+        break;
+      case nsIDOMKeyEvent::DOM_KEY_LOCATION_LEFT :
+        location = nsIDOMKeyEvent::DOM_KEY_LOCATION_LEFT;
+        break;
+      case nsIDOMKeyEvent::DOM_KEY_LOCATION_RIGHT :
+        location = nsIDOMKeyEvent::DOM_KEY_LOCATION_LEFT;
+        break;
+      case nsIDOMKeyEvent::DOM_KEY_LOCATION_NUMPAD :
+        location = nsIDOMKeyEvent::DOM_KEY_LOCATION_STANDARD;
+        break;
+      default:
+        location = nsIDOMKeyEvent::DOM_KEY_LOCATION_STANDARD;
+    }
+  }
+
+  return location;
 }
 
 // static
@@ -363,6 +446,27 @@ KeyboardEvent::InitKeyboardEvent(const nsAString& aType,
   keyEvent->mLocation = aLocation;
   keyEvent->mKeyNameIndex = KEY_NAME_INDEX_USE_STRING;
   keyEvent->mKeyValue = aKey;
+}
+
+bool
+KeyboardEvent::ShouldResistFingerprinting()
+{
+  nsCOMPtr<nsIDocument> doc = do_QueryInterface(mOwner);
+
+  if (!doc) {
+    nsCOMPtr<nsINode> node = do_QueryInterface(mOwner);
+
+    if (node) {
+      doc = node->OwnerDoc();
+    } else {
+      nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(mOwner);
+      if (window) {
+        doc = window->GetExtantDoc();
+      }
+    }
+  }
+
+  return !!doc && nsContentUtils::ShouldResistFingerprinting(doc);
 }
 
 } // namespace dom

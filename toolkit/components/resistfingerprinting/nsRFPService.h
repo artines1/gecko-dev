@@ -9,6 +9,7 @@
 #include "mozilla/Atomics.h"
 #include "nsIObserver.h"
 
+#include "nsDataHashtable.h"
 #include "nsString.h"
 
 // Defines regarding spoofed values of Navigator object. These spoofed values
@@ -21,6 +22,13 @@
 #define LEGACY_BUILD_ID    "20100101"
 
 namespace mozilla {
+
+struct FakeKeyboardCode {
+  nsString mKey;
+  nsString mCode;
+  uint32_t mKeyCode;
+  bool     mShiftStates;
+};
 
 class nsRFPService final : public nsIObserver
 {
@@ -52,6 +60,11 @@ public:
   // This method generates the spoofed value of User Agent.
   static nsresult GetSpoofedUserAgent(nsACString &userAgent);
 
+  // Methods for getting spoofed key codes.
+  static bool GetSpoofedShiftKeyState(const nsAString& aKeyName, bool* aOut);
+  static bool GetSpoofedCode(const nsAString& aKeyName, nsAString& aOut);
+  static bool GetSpoofedKeyCode(const nsAString& aKeyName, uint32_t* aOut);
+
 private:
   nsresult Init();
 
@@ -62,7 +75,11 @@ private:
   void UpdatePref();
   void StartShutdown();
 
+  void CreateSpoofingKeyCodes();
+
   static Atomic<bool, ReleaseAcquire> sPrivacyResistFingerprinting;
+
+  static nsDataHashtable<nsStringHashKey, FakeKeyboardCode>* sFakeKeyboardCodes;
 
   nsCString mInitialTZValue;
 };

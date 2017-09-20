@@ -1,0 +1,1605 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1222285
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test for Bug 1222285</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/NativeKeyCodes.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  <script>
+
+    let {AppConstants} = SpecialPowers.Cu.import("resource://gre/modules/AppConstants.jsm", {});
+
+    /** Test for Bug 1222285 **/
+    SimpleTest.waitForExplicitFinish();
+    SimpleTest.waitForFocus(() => {
+      SpecialPowers.pushPrefEnv({"set":
+        [
+          ["privacy.resistFingerprinting", true]
+        ]
+      }, runTests);
+    }, window);
+
+    const nsIDOMKeyEvent = SpecialPowers.Ci.nsIDOMKeyEvent;
+    const SHOULD_DELIVER_KEYDOWN          = 0x1;
+    const SHOULD_DELIVER_KEYPRESS         = 0x2;
+    const SHOULD_DELIVER_KEYUP            = 0x4;
+    const SHOULD_DELIVER_ALL              = SHOULD_DELIVER_KEYDOWN  |
+                                            SHOULD_DELIVER_KEYPRESS |
+                                            SHOULD_DELIVER_KEYUP;
+
+    function verifyKeyboardEvent(aEvent, aResult) {
+      is(aEvent.key, aResult.key, "KeyboardEvent.key is correctly spoofed.");
+      is(aEvent.code, aResult.code, "KeyboardEvent.code is correctly spoofed.");
+      is(aEvent.location, aResult.location, "KeyboardEvent.location is correctly spoofed.");
+      is(aEvent.altKey, aResult.altKey, "KeyboardEvent.altKey is correctly spoofed.");
+      is(aEvent.shiftKey, aResult.shiftKey, "KeyboardEvent.shiftKey is correctly spoofed.");
+
+      // If the charCode is not 0, this is a character. The keyCode will be remained as 0.
+      // Otherwise, we should check the keyCode.
+      if (aEvent.charCode != 0) {
+        is(aEvent.keyCode, 0, "KeyboardEvent.keyCode should be 0 for this case.");
+        is(aEvent.charCode, aResult.charCode, "KeyboardEvent.charCode is correctly spoofed.");
+      } else {
+        is(aEvent.keyCode, aResult.keyCode, "KeyboardEvent.keyCode is correctly spoofed.");
+        is(aEvent.charCode, 0, "KeyboardEvent.charCode should be 0 for this case.");
+      }
+
+      // Check getModifierState().
+      is(aEvent.getModifierState("Alt"), aResult.altKey,
+         "KeyboardEvent.getModifierState() reports a correctly spoofed value for 'Alt'.");
+      is(aEvent.getModifierState("AltGraph"), aResult.altKey,
+         "KeyboardEvent.getModifierState() reports a correctly spoofed value for 'AltGraph'.");
+      is(aEvent.getModifierState("Shift"), aResult.shiftKey,
+         `KeyboardEvent.getModifierState() reports a correctly spoofed value for 'Shift'.`);
+    }
+
+    async function testKeyEvent(aTestInput, aExpectedResult) {
+      let inputBox = document.getElementById("test");
+
+      // Focus to the input box first.
+      await new Promise(resolve => {
+        inputBox.onfocus = () => {
+          resolve();
+        };
+        inputBox.blur();
+        inputBox.focus();
+      });
+
+      await new Promise(resolve => {
+        info(`Test for ${aExpectedResult.code}\n`);
+        let deliveredKeyEvent = 0;
+
+        function keyEventHandler(aEvent) {
+          verifyKeyboardEvent(aEvent, aExpectedResult);
+
+          if (aEvent.type === "keydown") {
+            deliveredKeyEvent |= SHOULD_DELIVER_KEYDOWN;
+          } else if (aEvent.type === "keypress") {
+            deliveredKeyEvent |= SHOULD_DELIVER_KEYPRESS;
+          } else if (aEvent.type === "keyup") {
+            deliveredKeyEvent |= SHOULD_DELIVER_KEYUP;
+          }
+
+          if (deliveredKeyEvent === aExpectedResult.expectedKeyEvent) {
+            resolve();
+            inputBox.removeEventListener("keydown", keyEventHandler, true);
+            inputBox.removeEventListener("keypress", keyEventHandler, true);
+            inputBox.removeEventListener("keyup", keyEventHandler, true);
+          }
+        }
+
+        inputBox.addEventListener("keydown", keyEventHandler, true);
+        inputBox.addEventListener("keypress", keyEventHandler, true);
+        inputBox.addEventListener("keyup", keyEventHandler, true);
+
+        synthesizeNativeKey(aTestInput.layout, aTestInput.virtualKey, aTestInput.modifierKeys,
+                            aTestInput.char, aTestInput.unmodifiedChar);
+      });
+    }
+
+    async function runTestsForMAC() {
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_DownArrow,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowDown", code: "ArrowDown", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_DOWN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_LeftArrow,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowLeft", code: "ArrowLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_LEFT,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_RightArrow,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowRight", code: "ArrowRight", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_RIGHT,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_UpArrow,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowUp", code: "ArrowUp", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_UP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_CapsLock,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "CapsLock", code: "CapsLock", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CAPS_LOCK,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYDOWN });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_PC_ContextMenu,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ContextMenu", code: "ContextMenu", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CONTEXT_MENU,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Control,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Control", code: "ControlLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CONTROL,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      // The right control key should be spoofed to the left control key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_RightControl,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Control", code: "ControlLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CONTROL,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_End,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "End", code: "End", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_END,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Return,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Enter", code: "Enter", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_RETURN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Escape,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Escape", code: "Escape", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_ESCAPE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Help,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Help", code: "Help", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_HELP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Home,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Home", code: "Home", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_HOME,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      // The keyDown event for Meta key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Command,
+                           modifierKeys: {metaKey:1}, char: "", unmodifiedChar: "" },
+                         { key: "Meta", code: "OSLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_WIN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYDOWN });
+
+      // The KeyUp event for Meta key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Command,
+                           modifierKeys: {metaKey:0}, char: "", unmodifiedChar: "" },
+                         { key: "Meta", code: "OSLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_WIN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      // The keyDown event for right Meta key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_RightCommand,
+                           modifierKeys: {metaKey:1}, char: "", unmodifiedChar: "" },
+                         { key: "Meta", code: "OSLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_WIN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYDOWN });
+
+      // The KeyUp event for right Meta key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_RightCommand,
+                           modifierKeys: {metaKey:0}, char: "", unmodifiedChar: "" },
+                         { key: "Meta", code: "OSLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_WIN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_PageDown,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "PageDown", code: "PageDown", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PAGE_DOWN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_PageUp,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "PageUp", code: "PageUp", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PAGE_UP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_Space,
+                           modifierKeys: {}, char: " ", unmodifiedChar: " " },
+                         { key: " ", code: "Space", charCode: 32, keyCode: nsIDOMKeyEvent.DOM_VK_SPACE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Comma,
+                           modifierKeys: {}, char: ",", unmodifiedChar: "," },
+                         { key: ",", code: "Comma", charCode: 44, keyCode: nsIDOMKeyEvent.DOM_VK_COMMA,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Comma,
+                           modifierKeys: {shiftKey:1}, char: ";", unmodifiedChar: "," },
+                         { key: ";", code: "Semicolon", charCode: 59, keyCode: nsIDOMKeyEvent.DOM_VK_SEMICOLON,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Period,
+                           modifierKeys: {}, char: ".", unmodifiedChar: "." },
+                         { key: ".", code: "Period", charCode: 46, keyCode: nsIDOMKeyEvent.DOM_VK_PERIOD,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_7,
+                           modifierKeys: {shiftKey:1}, char: "/", unmodifiedChar: "7" },
+                         { key: "/", code: "Slash", charCode: 47, keyCode: nsIDOMKeyEvent.DOM_VK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Minus,
+                           modifierKeys: {shiftKey:1}, char: "?", unmodifiedChar: "ß" },
+                         { key: "?", code: "Slash", charCode: 63, keyCode: nsIDOMKeyEvent.DOM_VK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Period,
+                           modifierKeys: {shiftKey:1}, char: ":", unmodifiedChar: "." },
+                         { key: ":", code: "Semicolon", charCode: 58, keyCode: nsIDOMKeyEvent.DOM_VK_SEMICOLON,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Backslash,
+                           modifierKeys: {shiftKey:1}, char: "'", unmodifiedChar: "#" },
+                         { key: "'", code: "Quote", charCode: 39, keyCode: nsIDOMKeyEvent.DOM_VK_QUOTE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_2,
+                           modifierKeys: {shiftKey:1}, char: "\"", unmodifiedChar: "2" },
+                         { key: "\"", code: "Quote", charCode: 34, keyCode: nsIDOMKeyEvent.DOM_VK_QUOTE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Slash,
+                           modifierKeys: {}, char: "-", unmodifiedChar: "-" },
+                         { key: "-", code: "Minus", charCode: 45, keyCode: nsIDOMKeyEvent.DOM_VK_HYPHEN_MINUS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Slash,
+                           modifierKeys: {shiftKey:1}, char: "_", unmodifiedChar: "-" },
+                         { key: "_", code: "Minus", charCode: 95, keyCode: nsIDOMKeyEvent.DOM_VK_HYPHEN_MINUS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_0,
+                           modifierKeys: {shiftKey:1}, char: "=", unmodifiedChar: "0" },
+                         { key: "=", code: "Equal", charCode: 61, keyCode: nsIDOMKeyEvent.DOM_VK_EQUALS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_RightBracket,
+                           modifierKeys: {}, char: "+", unmodifiedChar: "+" },
+                         { key: "+", code: "Equal", charCode: 43, keyCode: nsIDOMKeyEvent.DOM_VK_EQUALS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_A,
+                           modifierKeys: {}, char: "a", unmodifiedChar: "a" },
+                         { key: "a", code: "KeyA", charCode: 97, keyCode: nsIDOMKeyEvent.DOM_VK_A,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_A,
+                           modifierKeys: {shiftKey:1}, char: "A", unmodifiedChar: "a" },
+                         { key: "A", code: "KeyA", charCode: 65, keyCode: nsIDOMKeyEvent.DOM_VK_A,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_B,
+                           modifierKeys: {}, char: "b", unmodifiedChar: "b" },
+                         { key: "b", code: "KeyB", charCode: 98, keyCode: nsIDOMKeyEvent.DOM_VK_B,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_B,
+                           modifierKeys: {shiftKey:1}, char: "B", unmodifiedChar: "b" },
+                         { key: "B", code: "KeyB", charCode: 66, keyCode: nsIDOMKeyEvent.DOM_VK_B,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_C,
+                           modifierKeys: {}, char: "c", unmodifiedChar: "c" },
+                         { key: "c", code: "KeyC", charCode: 99, keyCode: nsIDOMKeyEvent.DOM_VK_C,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_C,
+                           modifierKeys: {shiftKey:1}, char: "C", unmodifiedChar: "c" },
+                         { key: "C", code: "KeyC", charCode: 67, keyCode: nsIDOMKeyEvent.DOM_VK_C,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_D,
+                           modifierKeys: {}, char: "d", unmodifiedChar: "d" },
+                         { key: "d", code: "KeyD", charCode: 100, keyCode: nsIDOMKeyEvent.DOM_VK_D,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_D,
+                           modifierKeys: {shiftKey:1}, char: "D", unmodifiedChar: "d" },
+                         { key: "D", code: "KeyD", charCode: 68, keyCode: nsIDOMKeyEvent.DOM_VK_D,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_E,
+                           modifierKeys: {}, char: "e", unmodifiedChar: "e" },
+                         { key: "e", code: "KeyE", charCode: 101, keyCode: nsIDOMKeyEvent.DOM_VK_E,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_E,
+                           modifierKeys: {shiftKey:1}, char: "E", unmodifiedChar: "e" },
+                         { key: "E", code: "KeyE", charCode: 69, keyCode: nsIDOMKeyEvent.DOM_VK_E,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_F,
+                           modifierKeys: {}, char: "f", unmodifiedChar: "f" },
+                         { key: "f", code: "KeyF", charCode: 102, keyCode: nsIDOMKeyEvent.DOM_VK_F,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_F,
+                           modifierKeys: {shiftKey:1}, char: "F", unmodifiedChar: "f" },
+                         { key: "F", code: "KeyF", charCode: 70, keyCode: nsIDOMKeyEvent.DOM_VK_F,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_G,
+                           modifierKeys: {}, char: "g", unmodifiedChar: "g" },
+                         { key: "g", code: "KeyG", charCode: 103, keyCode: nsIDOMKeyEvent.DOM_VK_G,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_G,
+                           modifierKeys: {shiftKey:1}, char: "G", unmodifiedChar: "g" },
+                         { key: "G", code: "KeyG", charCode: 71, keyCode: nsIDOMKeyEvent.DOM_VK_G,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_H,
+                           modifierKeys: {}, char: "h", unmodifiedChar: "h" },
+                         { key: "h", code: "KeyH", charCode: 104, keyCode: nsIDOMKeyEvent.DOM_VK_H,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_H,
+                           modifierKeys: {shiftKey:1}, char: "H", unmodifiedChar: "h" },
+                         { key: "H", code: "KeyH", charCode: 72, keyCode: nsIDOMKeyEvent.DOM_VK_H,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_I,
+                           modifierKeys: {}, char: "i", unmodifiedChar: "i" },
+                         { key: "i", code: "KeyI", charCode: 105, keyCode: nsIDOMKeyEvent.DOM_VK_I,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_I,
+                           modifierKeys: {shiftKey:1}, char: "I", unmodifiedChar: "i" },
+                         { key: "I", code: "KeyI", charCode: 73, keyCode: nsIDOMKeyEvent.DOM_VK_I,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_J,
+                           modifierKeys: {}, char: "j", unmodifiedChar: "j" },
+                         { key: "j", code: "KeyJ", charCode: 106, keyCode: nsIDOMKeyEvent.DOM_VK_J,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_J,
+                           modifierKeys: {shiftKey:1}, char: "J", unmodifiedChar: "j" },
+                         { key: "J", code: "KeyJ", charCode: 74, keyCode: nsIDOMKeyEvent.DOM_VK_J,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_K,
+                           modifierKeys: {}, char: "k", unmodifiedChar: "k" },
+                         { key: "k", code: "KeyK", charCode: 107, keyCode: nsIDOMKeyEvent.DOM_VK_K,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_K,
+                           modifierKeys: {shiftKey:1}, char: "K", unmodifiedChar: "k" },
+                         { key: "K", code: "KeyK", charCode: 75, keyCode: nsIDOMKeyEvent.DOM_VK_K,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_L,
+                           modifierKeys: {}, char: "l", unmodifiedChar: "l" },
+                         { key: "l", code: "KeyL", charCode: 108, keyCode: nsIDOMKeyEvent.DOM_VK_L,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_L,
+                           modifierKeys: {shiftKey:1}, char: "L", unmodifiedChar: "l" },
+                         { key: "L", code: "KeyL", charCode: 76, keyCode: nsIDOMKeyEvent.DOM_VK_L,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_M,
+                           modifierKeys: {}, char: "m", unmodifiedChar: "m" },
+                         { key: "m", code: "KeyM", charCode: 109, keyCode: nsIDOMKeyEvent.DOM_VK_M,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_M,
+                           modifierKeys: {shiftKey:1}, char: "M", unmodifiedChar: "m" },
+                         { key: "M", code: "KeyM", charCode: 77, keyCode: nsIDOMKeyEvent.DOM_VK_M,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_N,
+                           modifierKeys: {}, char: "n", unmodifiedChar: "n" },
+                         { key: "n", code: "KeyN", charCode: 110, keyCode: nsIDOMKeyEvent.DOM_VK_N,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_N,
+                           modifierKeys: {shiftKey:1}, char: "N", unmodifiedChar: "n" },
+                         { key: "N", code: "KeyN", charCode: 78, keyCode: nsIDOMKeyEvent.DOM_VK_N,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_O,
+                           modifierKeys: {}, char: "o", unmodifiedChar: "o" },
+                         { key: "o", code: "KeyO", charCode: 111, keyCode: nsIDOMKeyEvent.DOM_VK_O,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_O,
+                           modifierKeys: {shiftKey:1}, char: "O", unmodifiedChar: "o" },
+                         { key: "O", code: "KeyO", charCode: 79, keyCode: nsIDOMKeyEvent.DOM_VK_O,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_P,
+                           modifierKeys: {}, char: "p", unmodifiedChar: "p" },
+                         { key: "p", code: "KeyP", charCode: 112, keyCode: nsIDOMKeyEvent.DOM_VK_P,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_P,
+                           modifierKeys: {shiftKey:1}, char: "P", unmodifiedChar: "p" },
+                         { key: "P", code: "KeyP", charCode: 80, keyCode: nsIDOMKeyEvent.DOM_VK_P,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Q,
+                           modifierKeys: {}, char: "q", unmodifiedChar: "q" },
+                         { key: "q", code: "KeyQ", charCode: 113, keyCode: nsIDOMKeyEvent.DOM_VK_Q,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Q,
+                           modifierKeys: {shiftKey:1}, char: "Q", unmodifiedChar: "q" },
+                         { key: "Q", code: "KeyQ", charCode: 81, keyCode: nsIDOMKeyEvent.DOM_VK_Q,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_R,
+                           modifierKeys: {}, char: "r", unmodifiedChar: "r" },
+                         { key: "r", code: "KeyR", charCode: 114, keyCode: nsIDOMKeyEvent.DOM_VK_R,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_R,
+                           modifierKeys: {shiftKey:1}, char: "R", unmodifiedChar: "r" },
+                         { key: "R", code: "KeyR", charCode: 82, keyCode: nsIDOMKeyEvent.DOM_VK_R,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_S,
+                           modifierKeys: {}, char: "s", unmodifiedChar: "s" },
+                         { key: "s", code: "KeyS", charCode: 115, keyCode: nsIDOMKeyEvent.DOM_VK_S,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_S,
+                           modifierKeys: {shiftKey:1}, char: "S", unmodifiedChar: "s" },
+                         { key: "S", code: "KeyS", charCode: 83, keyCode: nsIDOMKeyEvent.DOM_VK_S,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_T,
+                           modifierKeys: {}, char: "t", unmodifiedChar: "t" },
+                         { key: "t", code: "KeyT", charCode: 116, keyCode: nsIDOMKeyEvent.DOM_VK_T,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_T,
+                           modifierKeys: {shiftKey:1}, char: "T", unmodifiedChar: "t" },
+                         { key: "T", code: "KeyT", charCode: 84, keyCode: nsIDOMKeyEvent.DOM_VK_T,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_U,
+                           modifierKeys: {}, char: "u", unmodifiedChar: "u" },
+                         { key: "u", code: "KeyU", charCode: 117, keyCode: nsIDOMKeyEvent.DOM_VK_U,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_U,
+                           modifierKeys: {shiftKey:1}, char: "U", unmodifiedChar: "u" },
+                         { key: "U", code: "KeyU", charCode: 85, keyCode: nsIDOMKeyEvent.DOM_VK_U,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_V,
+                           modifierKeys: {}, char: "v", unmodifiedChar: "v" },
+                         { key: "v", code: "KeyV", charCode: 118, keyCode: nsIDOMKeyEvent.DOM_VK_V,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_V,
+                           modifierKeys: {shiftKey:1}, char: "V", unmodifiedChar: "v" },
+                         { key: "V", code: "KeyV", charCode: 86, keyCode: nsIDOMKeyEvent.DOM_VK_V,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_W,
+                           modifierKeys: {}, char: "w", unmodifiedChar: "w" },
+                         { key: "w", code: "KeyW", charCode: 119, keyCode: nsIDOMKeyEvent.DOM_VK_W,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_W,
+                           modifierKeys: {shiftKey:1}, char: "W", unmodifiedChar: "w" },
+                         { key: "W", code: "KeyW", charCode: 87, keyCode: nsIDOMKeyEvent.DOM_VK_W,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_X,
+                           modifierKeys: {}, char: "x", unmodifiedChar: "x" },
+                         { key: "x", code: "KeyX", charCode: 120, keyCode: nsIDOMKeyEvent.DOM_VK_X,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_X,
+                           modifierKeys: {shiftKey:1}, char: "X", unmodifiedChar: "x" },
+                         { key: "X", code: "KeyX", charCode: 88, keyCode: nsIDOMKeyEvent.DOM_VK_X,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Z,
+                           modifierKeys: {}, char: "y", unmodifiedChar: "y" },
+                         { key: "y", code: "KeyY", charCode: 121, keyCode: nsIDOMKeyEvent.DOM_VK_Y,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Z,
+                           modifierKeys: {shiftKey:1}, char: "Y", unmodifiedChar: "y" },
+                         { key: "Y", code: "KeyY", charCode: 89, keyCode: nsIDOMKeyEvent.DOM_VK_Y,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Y,
+                           modifierKeys: {}, char: "z", unmodifiedChar: "z" },
+                         { key: "z", code: "KeyZ", charCode: 122, keyCode: nsIDOMKeyEvent.DOM_VK_Z,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Y,
+                           modifierKeys: {shiftKey:1}, char: "Z", unmodifiedChar: "z" },
+                         { key: "Z", code: "KeyZ", charCode: 90, keyCode: nsIDOMKeyEvent.DOM_VK_Z,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_0,
+                           modifierKeys: {}, char: "0", unmodifiedChar: "0" },
+                         { key: "0", code: "Digit0", charCode: 48, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_1,
+                           modifierKeys: {}, char: "1", unmodifiedChar: "1" },
+                         { key: "1", code: "Digit1", charCode: 49, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_2,
+                           modifierKeys: {}, char: "2", unmodifiedChar: "2" },
+                         { key: "2", code: "Digit2", charCode: 50, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_3,
+                           modifierKeys: {}, char: "3", unmodifiedChar: "3" },
+                         { key: "3", code: "Digit3", charCode: 51, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_4,
+                           modifierKeys: {}, char: "4", unmodifiedChar: "4" },
+                         { key: "4", code: "Digit4", charCode: 52, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_5,
+                           modifierKeys: {}, char: "5", unmodifiedChar: "5" },
+                         { key: "5", code: "Digit5", charCode: 53, keyCode: nsIDOMKeyEvent.DOM_VK_5,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_6,
+                           modifierKeys: {}, char: "6", unmodifiedChar: "6" },
+                         { key: "6", code: "Digit6", charCode: 54, keyCode: nsIDOMKeyEvent.DOM_VK_6,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_7,
+                           modifierKeys: {}, char: "7", unmodifiedChar: "7" },
+                         { key: "7", code: "Digit7", charCode: 55, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_8,
+                           modifierKeys: {}, char: "8", unmodifiedChar: "8" },
+                         { key: "8", code: "Digit8", charCode: 56, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_9,
+                           modifierKeys: {}, char: "9", unmodifiedChar: "9" },
+                         { key: "9", code: "Digit9", charCode: 57, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_1,
+                           modifierKeys: {shiftKey:1}, char: "!", unmodifiedChar: "1" },
+                         { key: "!", code: "Digit1", charCode: 33, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Backslash,
+                           modifierKeys: {}, char: "#", unmodifiedChar: "#" },
+                         { key: "#", code: "Digit3", charCode: 35, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_4,
+                           modifierKeys: {shiftKey:1}, char: "$", unmodifiedChar: "4" },
+                         { key: "$", code: "Digit4", charCode: 36, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_5,
+                           modifierKeys: {shiftKey:1}, char: "%", unmodifiedChar: "5" },
+                         { key: "%", code: "Digit5", charCode: 37, keyCode: nsIDOMKeyEvent.DOM_VK_5, location:
+                           KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_6,
+                           modifierKeys: {shiftKey:1}, char: "&", unmodifiedChar: "6" },
+                         { key: "&", code: "Digit7", charCode: 38, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_RightBracket,
+                           modifierKeys: {shiftKey:1}, char: "*", unmodifiedChar: "+" },
+                         { key: "*", code: "Digit8", charCode: 42, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_8,
+                           modifierKeys: {shiftKey:1}, char: "(", unmodifiedChar: "8" },
+                         { key: "(", code: "Digit9", charCode: 40, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_9,
+                           modifierKeys: {shiftKey:1}, char: ")", unmodifiedChar: "9" },
+                         { key: ")", code: "Digit0", charCode: 41, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Grave,
+                           modifierKeys: {}, char: "<", unmodifiedChar: "<" },
+                         { key: "<", code: "Comma", charCode: 60, keyCode: nsIDOMKeyEvent.DOM_VK_COMMA,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Grave,
+                           modifierKeys: {shiftKey:1}, char: ">", unmodifiedChar: "<" },
+                         { key: ">", code: "Period", charCode: 62, keyCode: nsIDOMKeyEvent.DOM_VK_PERIOD,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_5,
+                           modifierKeys: {altKey:1}, char: "[", unmodifiedChar: "5" },
+                         { key: "[", code: "BracketLeft", charCode: 91, keyCode: nsIDOMKeyEvent.DOM_VK_OPEN_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_6,
+                           modifierKeys: {altKey:1}, char: "]", unmodifiedChar: "6" },
+                         { key: "]", code: "BracketRight", charCode: 93, keyCode: nsIDOMKeyEvent.DOM_VK_CLOSE_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_8,
+                           modifierKeys: {altKey:1}, char: "{", unmodifiedChar: "8" },
+                         { key: "{", code: "BracketLeft", charCode: 123, keyCode: nsIDOMKeyEvent.DOM_VK_OPEN_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_9,
+                           modifierKeys: {altKey:1}, char: "}", unmodifiedChar: "9" },
+                         { key: "}", code: "BracketRight", charCode: 125, keyCode: nsIDOMKeyEvent.DOM_VK_CLOSE_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_7,
+                           modifierKeys: {shiftKey:1}, char: "\\", unmodifiedChar: "7" },
+                         { key: "\\", code: "Backslash", charCode: 92, keyCode: nsIDOMKeyEvent.DOM_VK_BACK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_7,
+                           modifierKeys: {altKey:1}, char: "|", unmodifiedChar: "7" },
+                         { key: "|", code: "Backslash", charCode: 124, keyCode: nsIDOMKeyEvent.DOM_VK_BACK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_L,
+                           modifierKeys: {altKey:1}, char: "@", unmodifiedChar: "l" },
+                         { key: "@", code: "Digit2", charCode: 64, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      // Check that whether keypad events are correctly spoofed.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad0,
+                           modifierKeys: {}, char: "0", unmodifiedChar: "0" },
+                         { key: "0", code: "Digit0", charCode: 48, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad1,
+                           modifierKeys: {}, char: "1", unmodifiedChar: "1" },
+                         { key: "1", code: "Digit1", charCode: 49, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad2,
+                           modifierKeys: {}, char: "2", unmodifiedChar: "2" },
+                         { key: "2", code: "Digit2", charCode: 50, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad3,
+                           modifierKeys: {}, char: "3", unmodifiedChar: "3" },
+                         { key: "3", code: "Digit3", charCode: 51, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad4,
+                           modifierKeys: {}, char: "4", unmodifiedChar: "4" },
+                         { key: "4", code: "Digit4", charCode: 52, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad5,
+                           modifierKeys: {}, char: "5", unmodifiedChar: "5" },
+                         { key: "5", code: "Digit5", charCode: 53, keyCode: nsIDOMKeyEvent.DOM_VK_5,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad6,
+                           modifierKeys: {}, char: "6", unmodifiedChar: "6" },
+                         { key: "6", code: "Digit6", charCode: 54, keyCode: nsIDOMKeyEvent.DOM_VK_6,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad7,
+                           modifierKeys: {}, char: "7", unmodifiedChar: "7" },
+                         { key: "7", code: "Digit7", charCode: 55, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad8,
+                           modifierKeys: {}, char: "8", unmodifiedChar: "8" },
+                         { key: "8", code: "Digit8", charCode: 56, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Keypad9,
+                           modifierKeys: {}, char: "9", unmodifiedChar: "9" },
+                         { key: "9", code: "Digit9", charCode: 57, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+    }
+
+    async function runTestsForWindows() {
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_INSERT,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Insert", code: "Insert", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_INSER,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_PAUSE,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Pause", code: "Pause", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PAUSE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_SNAPSHOT,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "PrintScreen", code: "PrintScreen", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PRINTSCREEN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_DOWN,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowDown", code: "ArrowDown", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_DOWN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_LEFT,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowLeft", code: "ArrowLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_LEFT,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_RIGHT,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowRight", code: "ArrowRight", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_RIGHT,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_UP,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "ArrowUp", code: "ArrowUp", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_UP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_CAPITAL,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "CapsLock", code: "CapsLock", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CAPS_LOCK,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYDOWN });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_LCONTROL,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Control", code: "ControlLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CONTROL,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      // The right control key should be spoofed to the left control key.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_RCONTROL,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Control", code: "ControlLeft", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_CONTROL,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_LEFT, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_KEYUP });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_END,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "End", code: "End", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_END,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_RETURN,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Enter", code: "Enter", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_RETURN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_ESCAPE,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Escape", code: "Escape", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_ESCAPE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_HELP,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Help", code: "Help", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_HELP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_HOME,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "Home", code: "Home", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_HOME,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NEXT,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "PageDown", code: "PageDown", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PAGE_DOWN,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_PRIOR,
+                           modifierKeys: {}, char: "", unmodifiedChar: "" },
+                         { key: "PageUp", code: "PageUp", charCode: 0, keyCode: nsIDOMKeyEvent.DOM_VK_PAGE_UP,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_SPACE,
+                           modifierKeys: {}, char: " ", unmodifiedChar: " " },
+                         { key: " ", code: "Space", charCode: 32, keyCode: nsIDOMKeyEvent.DOM_VK_SPACE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_COMMA,
+                           modifierKeys: {}, char: ",", unmodifiedChar: "," },
+                         { key: ",", code: "Comma", charCode: 44, keyCode: nsIDOMKeyEvent.DOM_VK_COMMA,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_COMMA,
+                           modifierKeys: {shiftKey:1}, char: ";", unmodifiedChar: "," },
+                         { key: ";", code: "Semicolon", charCode: 59, keyCode: nsIDOMKeyEvent.DOM_VK_SEMICOLON,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_PERIOD,
+                           modifierKeys: {}, char: ".", unmodifiedChar: "." },
+                         { key: ".", code: "Period", charCode: 46, keyCode: nsIDOMKeyEvent.DOM_VK_PERIOD,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_7,
+                           modifierKeys: {shiftKey:1}, char: "/", unmodifiedChar: "7" },
+                         { key: "/", code: "Slash", charCode: 47, keyCode: nsIDOMKeyEvent.DOM_VK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_MINUS,
+                           modifierKeys: {shiftKey:1}, char: "?", unmodifiedChar: "ß" },
+                         { key: "?", code: "Slash", charCode: 63, keyCode: nsIDOMKeyEvent.DOM_VK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_PERIOD,
+                           modifierKeys: {shiftKey:1}, char: ":", unmodifiedChar: "." },
+                         { key: ":", code: "Semicolon", charCode: 58, keyCode: nsIDOMKeyEvent.DOM_VK_SEMICOLON,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_5,
+                           modifierKeys: {shiftKey:1}, char: "'", unmodifiedChar: "#" },
+                         { key: "'", code: "Quote", charCode: 39, keyCode: nsIDOMKeyEvent.DOM_VK_QUOTE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_2,
+                           modifierKeys: {shiftKey:1}, char: "\"", unmodifiedChar: "2" },
+                         { key: "\"", code: "Quote", charCode: 34, keyCode: nsIDOMKeyEvent.DOM_VK_QUOTE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_2,
+                           modifierKeys: {}, char: "-", unmodifiedChar: "-" },
+                         { key: "-", code: "Minus", charCode: 45, keyCode: nsIDOMKeyEvent.DOM_VK_HYPHEN_MINUS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_2,
+                           modifierKeys: {shiftKey:1}, char: "_", unmodifiedChar: "-" },
+                         { key: "_", code: "Minus", charCode: 95, keyCode: nsIDOMKeyEvent.DOM_VK_HYPHEN_MINUS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_0,
+                           modifierKeys: {shiftKey:1}, char: "=", unmodifiedChar: "0" },
+                         { key: "=", code: "Equal", charCode: 61, keyCode: nsIDOMKeyEvent.DOM_VK_EQUALS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_6,
+                           modifierKeys: {shiftKey:1}, char: "+", unmodifiedChar: "*" },
+                         { key: "+", code: "Equal", charCode: 43, keyCode: nsIDOMKeyEvent.DOM_VK_EQUALS,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_A,
+                           modifierKeys: {}, char: "a", unmodifiedChar: "a" },
+                         { key: "a", code: "KeyA", charCode: 97, keyCode: nsIDOMKeyEvent.DOM_VK_A,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_A,
+                           modifierKeys: {shiftKey:1}, char: "A", unmodifiedChar: "a" },
+                         { key: "A", code: "KeyA", charCode: 65, keyCode: nsIDOMKeyEvent.DOM_VK_A,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_B,
+                           modifierKeys: {}, char: "b", unmodifiedChar: "b" },
+                         { key: "b", code: "KeyB", charCode: 98, keyCode: nsIDOMKeyEvent.DOM_VK_B,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_B,
+                           modifierKeys: {shiftKey:1}, char: "B", unmodifiedChar: "b" },
+                         { key: "B", code: "KeyB", charCode: 66, keyCode: nsIDOMKeyEvent.DOM_VK_B,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_C,
+                           modifierKeys: {}, char: "c", unmodifiedChar: "c" },
+                         { key: "c", code: "KeyC", charCode: 99, keyCode: nsIDOMKeyEvent.DOM_VK_C,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_C,
+                           modifierKeys: {shiftKey:1}, char: "C", unmodifiedChar: "c" },
+                         { key: "C", code: "KeyC", charCode: 67, keyCode: nsIDOMKeyEvent.DOM_VK_C,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_D,
+                           modifierKeys: {}, char: "d", unmodifiedChar: "d" },
+                         { key: "d", code: "KeyD", charCode: 100, keyCode: nsIDOMKeyEvent.DOM_VK_D,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_D,
+                           modifierKeys: {shiftKey:1}, char: "D", unmodifiedChar: "d" },
+                         { key: "D", code: "KeyD", charCode: 68, keyCode: nsIDOMKeyEvent.DOM_VK_D,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_E,
+                           modifierKeys: {}, char: "e", unmodifiedChar: "e" },
+                         { key: "e", code: "KeyE", charCode: 101, keyCode: nsIDOMKeyEvent.DOM_VK_E,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_E,
+                           modifierKeys: {shiftKey:1}, char: "E", unmodifiedChar: "e" },
+                         { key: "E", code: "KeyE", charCode: 69, keyCode: nsIDOMKeyEvent.DOM_VK_E,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_F,
+                           modifierKeys: {}, char: "f", unmodifiedChar: "f" },
+                         { key: "f", code: "KeyF", charCode: 102, keyCode: nsIDOMKeyEvent.DOM_VK_F,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_F,
+                           modifierKeys: {shiftKey:1}, char: "F", unmodifiedChar: "f" },
+                         { key: "F", code: "KeyF", charCode: 70, keyCode: nsIDOMKeyEvent.DOM_VK_F,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_G,
+                           modifierKeys: {}, char: "g", unmodifiedChar: "g" },
+                         { key: "g", code: "KeyG", charCode: 103, keyCode: nsIDOMKeyEvent.DOM_VK_G,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_G,
+                           modifierKeys: {shiftKey:1}, char: "G", unmodifiedChar: "g" },
+                         { key: "G", code: "KeyG", charCode: 71, keyCode: nsIDOMKeyEvent.DOM_VK_G,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_H,
+                           modifierKeys: {}, char: "h", unmodifiedChar: "h" },
+                         { key: "h", code: "KeyH", charCode: 104, keyCode: nsIDOMKeyEvent.DOM_VK_H,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_H,
+                           modifierKeys: {shiftKey:1}, char: "H", unmodifiedChar: "h" },
+                         { key: "H", code: "KeyH", charCode: 72, keyCode: nsIDOMKeyEvent.DOM_VK_H,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_I,
+                           modifierKeys: {}, char: "i", unmodifiedChar: "i" },
+                         { key: "i", code: "KeyI", charCode: 105, keyCode: nsIDOMKeyEvent.DOM_VK_I,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_I,
+                           modifierKeys: {shiftKey:1}, char: "I", unmodifiedChar: "i" },
+                         { key: "I", code: "KeyI", charCode: 73, keyCode: nsIDOMKeyEvent.DOM_VK_I,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_J,
+                           modifierKeys: {}, char: "j", unmodifiedChar: "j" },
+                         { key: "j", code: "KeyJ", charCode: 106, keyCode: nsIDOMKeyEvent.DOM_VK_J,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_J,
+                           modifierKeys: {shiftKey:1}, char: "J", unmodifiedChar: "j" },
+                         { key: "J", code: "KeyJ", charCode: 74, keyCode: nsIDOMKeyEvent.DOM_VK_J,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_K,
+                           modifierKeys: {}, char: "k", unmodifiedChar: "k" },
+                         { key: "k", code: "KeyK", charCode: 107, keyCode: nsIDOMKeyEvent.DOM_VK_K,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_K,
+                           modifierKeys: {shiftKey:1}, char: "K", unmodifiedChar: "k" },
+                         { key: "K", code: "KeyK", charCode: 75, keyCode: nsIDOMKeyEvent.DOM_VK_K,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_L,
+                           modifierKeys: {}, char: "l", unmodifiedChar: "l" },
+                         { key: "l", code: "KeyL", charCode: 108, keyCode: nsIDOMKeyEvent.DOM_VK_L,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_L,
+                           modifierKeys: {shiftKey:1}, char: "L", unmodifiedChar: "l" },
+                         { key: "L", code: "KeyL", charCode: 76, keyCode: nsIDOMKeyEvent.DOM_VK_L,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_M,
+                           modifierKeys: {}, char: "m", unmodifiedChar: "m" },
+                         { key: "m", code: "KeyM", charCode: 109, keyCode: nsIDOMKeyEvent.DOM_VK_M,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_M,
+                           modifierKeys: {shiftKey:1}, char: "M", unmodifiedChar: "m" },
+                         { key: "M", code: "KeyM", charCode: 77, keyCode: nsIDOMKeyEvent.DOM_VK_M,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_N,
+                           modifierKeys: {}, char: "n", unmodifiedChar: "n" },
+                         { key: "n", code: "KeyN", charCode: 110, keyCode: nsIDOMKeyEvent.DOM_VK_N,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_N,
+                           modifierKeys: {shiftKey:1}, char: "N", unmodifiedChar: "n" },
+                         { key: "N", code: "KeyN", charCode: 78, keyCode: nsIDOMKeyEvent.DOM_VK_N,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_O,
+                           modifierKeys: {}, char: "o", unmodifiedChar: "o" },
+                         { key: "o", code: "KeyO", charCode: 111, keyCode: nsIDOMKeyEvent.DOM_VK_O,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_O,
+                           modifierKeys: {shiftKey:1}, char: "O", unmodifiedChar: "o" },
+                         { key: "O", code: "KeyO", charCode: 79, keyCode: nsIDOMKeyEvent.DOM_VK_O,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_P,
+                           modifierKeys: {}, char: "p", unmodifiedChar: "p" },
+                         { key: "p", code: "KeyP", charCode: 112, keyCode: nsIDOMKeyEvent.DOM_VK_P,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_P,
+                           modifierKeys: {shiftKey:1}, char: "P", unmodifiedChar: "p" },
+                         { key: "P", code: "KeyP", charCode: 80, keyCode: nsIDOMKeyEvent.DOM_VK_P,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Q,
+                           modifierKeys: {}, char: "q", unmodifiedChar: "q" },
+                         { key: "q", code: "KeyQ", charCode: 113, keyCode: nsIDOMKeyEvent.DOM_VK_Q,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Q,
+                           modifierKeys: {shiftKey:1}, char: "Q", unmodifiedChar: "q" },
+                         { key: "Q", code: "KeyQ", charCode: 81, keyCode: nsIDOMKeyEvent.DOM_VK_Q,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_R,
+                           modifierKeys: {}, char: "r", unmodifiedChar: "r" },
+                         { key: "r", code: "KeyR", charCode: 114, keyCode: nsIDOMKeyEvent.DOM_VK_R,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_R,
+                           modifierKeys: {shiftKey:1}, char: "R", unmodifiedChar: "r" },
+                         { key: "R", code: "KeyR", charCode: 82, keyCode: nsIDOMKeyEvent.DOM_VK_R,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_S,
+                           modifierKeys: {}, char: "s", unmodifiedChar: "s" },
+                         { key: "s", code: "KeyS", charCode: 115, keyCode: nsIDOMKeyEvent.DOM_VK_S,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_S,
+                           modifierKeys: {shiftKey:1}, char: "S", unmodifiedChar: "s" },
+                         { key: "S", code: "KeyS", charCode: 83, keyCode: nsIDOMKeyEvent.DOM_VK_S,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_T,
+                           modifierKeys: {}, char: "t", unmodifiedChar: "t" },
+                         { key: "t", code: "KeyT", charCode: 116, keyCode: nsIDOMKeyEvent.DOM_VK_T,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_T,
+                           modifierKeys: {shiftKey:1}, char: "T", unmodifiedChar: "t" },
+                         { key: "T", code: "KeyT", charCode: 84, keyCode: nsIDOMKeyEvent.DOM_VK_T,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_U,
+                           modifierKeys: {}, char: "u", unmodifiedChar: "u" },
+                         { key: "u", code: "KeyU", charCode: 117, keyCode: nsIDOMKeyEvent.DOM_VK_U,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_U,
+                           modifierKeys: {shiftKey:1}, char: "U", unmodifiedChar: "u" },
+                         { key: "U", code: "KeyU", charCode: 85, keyCode: nsIDOMKeyEvent.DOM_VK_U,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_V,
+                           modifierKeys: {}, char: "v", unmodifiedChar: "v" },
+                         { key: "v", code: "KeyV", charCode: 118, keyCode: nsIDOMKeyEvent.DOM_VK_V,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_V,
+                           modifierKeys: {shiftKey:1}, char: "V", unmodifiedChar: "v" },
+                         { key: "V", code: "KeyV", charCode: 86, keyCode: nsIDOMKeyEvent.DOM_VK_V,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_W,
+                           modifierKeys: {}, char: "w", unmodifiedChar: "w" },
+                         { key: "w", code: "KeyW", charCode: 119, keyCode: nsIDOMKeyEvent.DOM_VK_W,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_W,
+                           modifierKeys: {shiftKey:1}, char: "W", unmodifiedChar: "w" },
+                         { key: "W", code: "KeyW", charCode: 87, keyCode: nsIDOMKeyEvent.DOM_VK_W,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_X,
+                           modifierKeys: {}, char: "x", unmodifiedChar: "x" },
+                         { key: "x", code: "KeyX", charCode: 120, keyCode: nsIDOMKeyEvent.DOM_VK_X,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_X,
+                           modifierKeys: {shiftKey:1}, char: "X", unmodifiedChar: "x" },
+                         { key: "X", code: "KeyX", charCode: 88, keyCode: nsIDOMKeyEvent.DOM_VK_X,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Z,
+                           modifierKeys: {}, char: "y", unmodifiedChar: "y" },
+                         { key: "y", code: "KeyY", charCode: 121, keyCode: nsIDOMKeyEvent.DOM_VK_Y,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Z,
+                           modifierKeys: {shiftKey:1}, char: "Y", unmodifiedChar: "y" },
+                         { key: "Y", code: "KeyY", charCode: 89, keyCode: nsIDOMKeyEvent.DOM_VK_Y,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Y,
+                           modifierKeys: {}, char: "z", unmodifiedChar: "z" },
+                         { key: "z", code: "KeyZ", charCode: 122, keyCode: nsIDOMKeyEvent.DOM_VK_Z,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_Y,
+                           modifierKeys: {shiftKey:1}, char: "Z", unmodifiedChar: "z" },
+                         { key: "Z", code: "KeyZ", charCode: 90, keyCode: nsIDOMKeyEvent.DOM_VK_Z,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_0,
+                           modifierKeys: {}, char: "0", unmodifiedChar: "0" },
+                         { key: "0", code: "Digit0", charCode: 48, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_1,
+                           modifierKeys: {}, char: "1", unmodifiedChar: "1" },
+                         { key: "1", code: "Digit1", charCode: 49, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_2,
+                           modifierKeys: {}, char: "2", unmodifiedChar: "2" },
+                         { key: "2", code: "Digit2", charCode: 50, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_3,
+                           modifierKeys: {}, char: "3", unmodifiedChar: "3" },
+                         { key: "3", code: "Digit3", charCode: 51, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_4,
+                           modifierKeys: {}, char: "4", unmodifiedChar: "4" },
+                         { key: "4", code: "Digit4", charCode: 52, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_5,
+                           modifierKeys: {}, char: "5", unmodifiedChar: "5" },
+                         { key: "5", code: "Digit5", charCode: 53, keyCode: nsIDOMKeyEvent.DOM_VK_5,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_6,
+                           modifierKeys: {}, char: "6", unmodifiedChar: "6" },
+                         { key: "6", code: "Digit6", charCode: 54, keyCode: nsIDOMKeyEvent.DOM_VK_6,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_7,
+                           modifierKeys: {}, char: "7", unmodifiedChar: "7" },
+                         { key: "7", code: "Digit7", charCode: 55, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_8,
+                           modifierKeys: {}, char: "8", unmodifiedChar: "8" },
+                         { key: "8", code: "Digit8", charCode: 56, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_9,
+                           modifierKeys: {}, char: "9", unmodifiedChar: "9" },
+                         { key: "9", code: "Digit9", charCode: 57, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_1,
+                           modifierKeys: {shiftKey:1}, char: "!", unmodifiedChar: "1" },
+                         { key: "!", code: "Digit1", charCode: 33, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_5,
+                           modifierKeys: {}, char: "#", unmodifiedChar: "#" },
+                         { key: "#", code: "Digit3", charCode: 35, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_4,
+                           modifierKeys: {shiftKey:1}, char: "$", unmodifiedChar: "4" },
+                         { key: "$", code: "Digit4", charCode: 36, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_5,
+                           modifierKeys: {shiftKey:1}, char: "%", unmodifiedChar: "5" },
+                         { key: "%", code: "Digit5", charCode: 37, keyCode: nsIDOMKeyEvent.DOM_VK_5, location:
+                           KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_6,
+                           modifierKeys: {shiftKey:1}, char: "&", unmodifiedChar: "6" },
+                         { key: "&", code: "Digit7", charCode: 38, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_6,
+                           modifierKeys: {}, char: "*", unmodifiedChar: "*" },
+                         { key: "*", code: "Digit8", charCode: 42, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_6,
+                           modifierKeys: {altGrKey:1}, char: "~", unmodifiedChar: "*" },
+                         { key: "~", code: "Backquote", charCode: 126, keyCode: nsIDOMKeyEvent.DOM_VK_BACK_QUOTE,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL});
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_8,
+                           modifierKeys: {shiftKey:1}, char: "(", unmodifiedChar: "8" },
+                         { key: "(", code: "Digit9", charCode: 40, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_9,
+                           modifierKeys: {shiftKey:1}, char: ")", unmodifiedChar: "9" },
+                         { key: ")", code: "Digit0", charCode: 41, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_102,
+                           modifierKeys: {}, char: "<", unmodifiedChar: "<" },
+                         { key: "<", code: "Comma", charCode: 60, keyCode: nsIDOMKeyEvent.DOM_VK_COMMA,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_102,
+                           modifierKeys: {shiftKey:1}, char: ">", unmodifiedChar: "<" },
+                         { key: ">", code: "Period", charCode: 62, keyCode: nsIDOMKeyEvent.DOM_VK_PERIOD,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_8,
+                           modifierKeys: {altGrKey:1}, char: "[", unmodifiedChar: "8" },
+                         { key: "[", code: "BracketLeft", charCode: 91, keyCode: nsIDOMKeyEvent.DOM_VK_OPEN_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_9,
+                           modifierKeys: {altGrKey:1}, char: "]", unmodifiedChar: "9" },
+                         { key: "]", code: "BracketRight", charCode: 93, keyCode: nsIDOMKeyEvent.DOM_VK_CLOSE_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_7,
+                           modifierKeys: {altGrKey:1}, char: "{", unmodifiedChar: "7" },
+                         { key: "{", code: "BracketLeft", charCode: 123, keyCode: nsIDOMKeyEvent.DOM_VK_OPEN_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_0,
+                           modifierKeys: {altGrKey:1}, char: "}", unmodifiedChar: "0" },
+                         { key: "}", code: "BracketRight", charCode: 125, keyCode: nsIDOMKeyEvent.DOM_VK_CLOSE_BRACKET,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_4,
+                           modifierKeys: {altGrKey:1}, char: "\\", unmodifiedChar: "\u00df" },
+                         { key: "\\", code: "Backslash", charCode: 92, keyCode: nsIDOMKeyEvent.DOM_VK_BACK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_OEM_102,
+                           modifierKeys: {altGrKey:1}, char: "|", unmodifiedChar: "<" },
+                         { key: "|", code: "Backslash", charCode: 124, keyCode: nsIDOMKeyEvent.DOM_VK_BACK_SLASH,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: MAC_VK_ANSI_Q,
+                           modifierKeys: {altGrKey:1}, char: "@", unmodifiedChar: "q" },
+                         { key: "@", code: "Digit2", charCode: 64, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: true,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      // Check that whether numpad events are correctly spoofed.
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD0,
+                           modifierKeys: {}, char: "0", unmodifiedChar: "0" },
+                         { key: "0", code: "Digit0", charCode: 48, keyCode: nsIDOMKeyEvent.DOM_VK_0,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD1,
+                           modifierKeys: {}, char: "1", unmodifiedChar: "1" },
+                         { key: "1", code: "Digit1", charCode: 49, keyCode: nsIDOMKeyEvent.DOM_VK_1,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD2,
+                           modifierKeys: {}, char: "2", unmodifiedChar: "2" },
+                         { key: "2", code: "Digit2", charCode: 50, keyCode: nsIDOMKeyEvent.DOM_VK_2,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD3,
+                           modifierKeys: {}, char: "3", unmodifiedChar: "3" },
+                         { key: "3", code: "Digit3", charCode: 51, keyCode: nsIDOMKeyEvent.DOM_VK_3,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD4,
+                           modifierKeys: {}, char: "4", unmodifiedChar: "4" },
+                         { key: "4", code: "Digit4", charCode: 52, keyCode: nsIDOMKeyEvent.DOM_VK_4,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD5,
+                           modifierKeys: {}, char: "5", unmodifiedChar: "5" },
+                         { key: "5", code: "Digit5", charCode: 53, keyCode: nsIDOMKeyEvent.DOM_VK_5,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD6,
+                           modifierKeys: {}, char: "6", unmodifiedChar: "6" },
+                         { key: "6", code: "Digit6", charCode: 54, keyCode: nsIDOMKeyEvent.DOM_VK_6,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD7,
+                           modifierKeys: {}, char: "7", unmodifiedChar: "7" },
+                         { key: "7", code: "Digit7", charCode: 55, keyCode: nsIDOMKeyEvent.DOM_VK_7,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD8,
+                           modifierKeys: {}, char: "8", unmodifiedChar: "8" },
+                         { key: "8", code: "Digit8", charCode: 56, keyCode: nsIDOMKeyEvent.DOM_VK_8,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+
+      await testKeyEvent({ layout: KEYBOARD_LAYOUT_GERMAN, virtualKey: WIN_VK_NUMPAD9,
+                           modifierKeys: {}, char: "9", unmodifiedChar: "9" },
+                         { key: "9", code: "Digit9", charCode: 57, keyCode: nsIDOMKeyEvent.DOM_VK_9,
+                           location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD, altKey: false, shiftKey: false,
+                           expectedKeyEvent: SHOULD_DELIVER_ALL });
+    }
+
+    async function testSuppressModifierKeys() {
+      let inputBox = document.getElementById("test");
+
+      for (let eventType of ["keydown", "keyup"]) {
+        for (let modifierKey of ["Alt", "Shift"]) {
+          let event = await new Promise(resolve => {
+            inputBox.addEventListener(eventType, (aEvent) => {
+              resolve(aEvent)
+            }, {once: true});
+
+            // Generate a Alt or Shift key event.
+            synthesizeKey("VK_" + modifierKey.toUpperCase(),
+                          { type : eventType });
+            // Generate a dummy "x" key event that will only be handled if
+            // modifier key is successfully suppressed.
+            synthesizeKey("x", { type: eventType });
+          });
+
+          is(event.key, "x", "'x' should be seen and the modifier key should be suppressed");
+        }
+      }
+    }
+
+    async function runTests() {
+      if (AppConstants.platform === "macosx") {
+        await runTestsForMAC();
+      } else if (AppConstants.platform === "win") {
+        await runTestsForWindows();
+      } else {
+        ok(false, "This test case only supports MAC and Windows.")
+      }
+
+      await testSuppressModifierKeys();
+
+      SimpleTest.finish();
+    }
+
+  </script>
+</head>
+<body>
+  <input id="test"/>
+</body>
+</html>

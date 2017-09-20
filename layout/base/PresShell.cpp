@@ -8409,6 +8409,18 @@ PresShell::DispatchEventToDOM(WidgetEvent* aEvent,
     }
   }
   if (eventTarget) {
+    if (aEvent->mClass == eKeyboardEventClass &&
+        nsContentUtils::ShouldResistFingerprinting()) {
+      nsAutoString keyName;
+      aEvent->AsKeyboardEvent()->GetDOMKeyName(keyName);
+
+      if (keyName.Equals(NS_LITERAL_STRING("Shift")) ||
+          keyName.Equals(NS_LITERAL_STRING("Alt")) ||
+          keyName.Equals(NS_LITERAL_STRING("AltGraph"))) {
+        aEvent->mFlags.mOnlyChromeDispatch = true;
+      }
+    }
+
     if (aEvent->mClass == eCompositionEventClass) {
       IMEStateManager::DispatchCompositionEvent(eventTarget, mPresContext,
                                                 aEvent->AsCompositionEvent(),

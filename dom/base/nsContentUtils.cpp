@@ -317,7 +317,7 @@ bool nsContentUtils::sIsBytecodeCacheEnabled = false;
 int32_t nsContentUtils::sBytecodeCacheStrategy = 0;
 nsCString* nsContentUtils::sJSBytecodeMimeType = nullptr;
 
-int32_t nsContentUtils::sPrivacyMaxInnerWidth = 1000;
+int32_t nsContentUtils::sPrivacyMaxInnerWidth = 1280;
 int32_t nsContentUtils::sPrivacyMaxInnerHeight = 1000;
 
 nsContentUtils::UserInteractionObserver*
@@ -672,7 +672,7 @@ nsContentUtils::Init()
 
   Preferences::AddIntVarCache(&sPrivacyMaxInnerWidth,
                               "privacy.window.maxInnerWidth",
-                              1000);
+                              1280);
 
   Preferences::AddIntVarCache(&sPrivacyMaxInnerHeight,
                               "privacy.window.maxInnerHeight",
@@ -2265,12 +2265,12 @@ nsContentUtils::CalcRoundedWindowSizeForResistingFingerprinting(int32_t  aChrome
                                 aScreenHeight - aChromeHeight);
 #endif
 
-  // Ideally, we'd like to round window size to 1000x1000, but the
+  // Ideally, we'd like to round window size to 1280x1000, but the
   // screen space could be too small to accommodate this size in some
   // cases. If it happens, we would round the window size to the nearest
-  // 200x100.
-  availContentWidth = availContentWidth - (availContentWidth % 200);
-  availContentHeight = availContentHeight - (availContentHeight % 100);
+  // 128x100.
+  availContentWidth = availContentWidth - (availContentWidth % WINDOW_WIDTH_STEP);
+  availContentHeight = availContentHeight - (availContentHeight % WINDOW_HEIGHT_STEP);
 
   // If aIsOuter is true, we are setting the outer window. So we
   // have to consider the chrome UI.
@@ -2280,22 +2280,26 @@ nsContentUtils::CalcRoundedWindowSizeForResistingFingerprinting(int32_t  aChrome
 
   // if the original size is greater than the maximum available size, we set
   // it to the maximum size. And if the original value is less than the
-  // minimum rounded size, we set it to the minimum 200x100.
+  // minimum rounded size, we set it to the minimum 128x100.
   if (aInputWidth > (availContentWidth + chromeOffsetWidth)) {
     resultWidth = availContentWidth + chromeOffsetWidth;
-  } else if (aInputWidth < (200 + chromeOffsetWidth)) {
-    resultWidth = 200 + chromeOffsetWidth;
+  } else if (aInputWidth < (WINDOW_WIDTH_STEP + chromeOffsetWidth)) {
+    resultWidth = WINDOW_WIDTH_STEP + chromeOffsetWidth;
   } else {
-    // Otherwise, we round the window to the nearest upper rounded 200x100.
-    resultWidth = NSToIntCeil((aInputWidth - chromeOffsetWidth) / 200.0) * 200 + chromeOffsetWidth;
+    // Otherwise, we round the window to the nearest upper rounded 128x100.
+    resultWidth =
+      NSToIntCeil((aInputWidth - chromeOffsetWidth) / float(WINDOW_WIDTH_STEP)) *
+        WINDOW_WIDTH_STEP + chromeOffsetWidth;
   }
 
   if (aInputHeight > (availContentHeight + chromeOffsetHeight)) {
     resultHeight = availContentHeight + chromeOffsetHeight;
-  } else if (aInputHeight < (100 + chromeOffsetHeight)) {
-    resultHeight = 100 + chromeOffsetHeight;
+  } else if (aInputHeight < (WINDOW_HEIGHT_STEP + chromeOffsetHeight)) {
+    resultHeight = WINDOW_HEIGHT_STEP + chromeOffsetHeight;
   } else {
-    resultHeight = NSToIntCeil((aInputHeight - chromeOffsetHeight) / 100.0) * 100 + chromeOffsetHeight;
+    resultHeight =
+      NSToIntCeil((aInputHeight - chromeOffsetHeight) / float(WINDOW_HEIGHT_STEP)) *
+        WINDOW_HEIGHT_STEP + chromeOffsetHeight;
   }
 
   *aOutputWidth = resultWidth;

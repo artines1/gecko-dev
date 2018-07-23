@@ -44,10 +44,10 @@ async function calcMaximumAvailSize(aChromeWidth, aChromeHeight) {
   let availWidth = window.screen.availWidth;
   let availHeight = window.screen.availHeight;
 
-  // Ideally, we would round the window size as 1000x1000. But the available
+  // Ideally, we would round the window size as 1280x1000. But the available
   // screen space might not suffice. So, we decide the size according to the
   // available screen size.
-  let availContentWidth = Math.min(1000, availWidth - chromeUIWidth);
+  let availContentWidth = Math.min(1280, availWidth - chromeUIWidth);
   let availContentHeight;
 
   // If it is GTK window, we would consider the system decorations when we
@@ -59,8 +59,8 @@ async function calcMaximumAvailSize(aChromeWidth, aChromeHeight) {
     availContentHeight = Math.min(1000, availHeight - chromeUIHeight);
   }
 
-  // Rounded the desire size to the nearest 200x100.
-  let maxAvailWidth = availContentWidth - (availContentWidth % 200);
+  // Rounded the desire size to the nearest 128x100.
+  let maxAvailWidth = availContentWidth - (availContentWidth % 128);
   let maxAvailHeight = availContentHeight - (availContentHeight % 100);
 
   return {maxAvailWidth, maxAvailHeight};
@@ -77,7 +77,7 @@ async function calcPopUpWindowChromeUISize() {
     let win;
 
     await new Promise(resolve => {
-      win = content.open("about:blank", "", "width=1000,height=1000");
+      win = content.open("about:blank", "", "width=1280,height=1000");
       win.onload = () => resolve();
     });
 

@@ -48,6 +48,9 @@
 #define SPOOFED_APPNAME    "Netscape"
 #define LEGACY_BUILD_ID    "20100101"
 
+#define WINDOW_WIDTH_STEP  128
+#define WINDOW_HEIGHT_STEP 100
+
 // Forward declare LRUCache, defined in nsRFPService.cpp
 class LRUCache;
 

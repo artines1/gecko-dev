@@ -5,7 +5,7 @@
  */
 
 OpenTest.run([
-  {settingWidth: 1025, settingHeight: 1050, targetWidth: 1000, targetHeight: 1000},
-  {settingWidth: 9999, settingHeight: 9999, targetWidth: 1000, targetHeight: 1000},
-  {settingWidth: 999, settingHeight: 999, targetWidth: 1000, targetHeight: 1000}
+  {settingWidth: 1300, settingHeight: 1050, targetWidth: 1280, targetHeight: 1000},
+  {settingWidth: 9999, settingHeight: 9999, targetWidth: 1280, targetHeight: 1000},
+  {settingWidth: 1279, settingHeight: 999, targetWidth: 1280, targetHeight: 1000}
 ], false);

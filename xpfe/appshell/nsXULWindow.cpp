@@ -1052,8 +1052,8 @@ NS_IMETHODIMP nsXULWindow::GetAvailScreenSize(int32_t* aAvailWidth, int32_t* aAv
   return NS_OK;
 }
 
-// Rounds window size to 1000x1000, or, if there isn't enough available
-// screen space, to a multiple of 200x100.
+// Rounds window size to 1280x1000, or, if there isn't enough available
+// screen space, to a multiple of 128x100.
 NS_IMETHODIMP nsXULWindow::ForceRoundedDimensions()
 {
   if (mIsHiddenWindow) {

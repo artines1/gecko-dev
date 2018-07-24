@@ -2409,6 +2409,19 @@ nsFrameLoader::GetWindowDimensions(nsIntRect& aRect)
 nsresult
 nsFrameLoader::UpdatePositionAndSize(nsSubDocumentFrame *aIFrame)
 {
+  // We would report if any size change happens for xul:browser when fingerprinting
+  // resistance is enabled. We need this since the xul:browser won't trigger a resize
+  // event during resizing and we cannot access the content window to add listener for the
+  // resize event for the out-of-process xul:browser.
+  if (nsContentUtils::ShouldResistFingerprinting() &&
+      mOwnerContent->IsXULElement(nsGkAtoms::browser)) {
+    nsCOMPtr<nsIObserverService> os = services::GetObserverService();
+    if (os) {
+      os->NotifyObservers(ToSupports(this),
+                          "resistfingerprinting:content-size-updates", nullptr);
+    }
+  }
+
   if (IsRemoteFrame()) {
     if (mRemoteBrowser) {
       ScreenIntSize size = aIFrame->GetSubdocumentSize();

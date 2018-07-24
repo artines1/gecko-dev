@@ -12,6 +12,10 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 const kPrefResistFingerprinting = "privacy.resistFingerprinting";
 const kPrefSpoofEnglish = "privacy.spoof_english";
 const kTopicHttpOnModifyRequest = "http-on-modify-request";
+const kTopicRFPContentSizeUpdates = "resistfingerprinting:content-size-updates";
+const kTopicDOMWindowOpened = "domwindowopened";
+
+const kTooltipTextContentMargins = "Margins for protection from browser fingerprinting";
 
 class _RFPHelper {
   constructor() {
@@ -46,9 +50,68 @@ class _RFPHelper {
       case kTopicHttpOnModifyRequest:
         this._handleHttpOnModifyRequest(subject, data);
         break;
+      case kTopicRFPContentSizeUpdates:
+        this._handleContentSizeUpdates(subject);
+        break;
+      case kTopicDOMWindowOpened:
+        // We would attach the new created window by adding tabsProgressListener
+        // and event listener on that. We would listen for adding new tabs and the
+        // change of the content principal and apply margins accordingly.
+        this._handleDOMWindowOpened(subject);
+        break;
       default:
         break;
     }
+  }
+
+  handleEvent(aMessage) {
+    switch (aMessage.type) {
+      case "TabOpen":
+      {
+        let tab = aMessage.target;
+        let win = tab.ownerGlobal;
+        let tabBrowser = win.gBrowser;
+
+        this._maybeRoundContentView(tab.linkedBrowser, tabBrowser);
+        break;
+      }
+      case "sizemodechange":
+      {
+        let win = aMessage.target;
+        this._handleSizeModeChanged(win);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /**
+   * We use the TabsProgressListener to catch the change of the content principal.
+   * We would clear the margin around the browser if the content principal is the
+   * system principal.
+   */
+  onLocationChange(aBrowser, aWebProgress, aRequest, aLocation, aFlags) {
+    if (aBrowser.contentPrincipal.isSystemPrincipal) {
+      let tabBrowser = aBrowser.ownerGlobal.gBrowser;
+      this._clearContentViewRounding(aBrowser, tabBrowser);
+    } else {
+      let tabBrowser = aBrowser.ownerGlobal.gBrowser;
+      this._maybeRoundContentView(aBrowser, tabBrowser);
+    }
+  }
+
+  _addObservers() {
+    // Add observers for the language prompt.
+    Services.prefs.addObserver(kPrefSpoofEnglish, this);
+    if (this._shouldPromptForLanguagePref()) {
+      Services.obs.addObserver(this, kTopicHttpOnModifyRequest);
+    }
+
+    // Add observers for the window letterboxing including observing the size change
+    // of the browser element and the creation of a new window.
+    Services.obs.addObserver(this, kTopicRFPContentSizeUpdates);
+    Services.ww.registerNotification(this);
   }
 
   _removeObservers() {
@@ -59,6 +122,8 @@ class _RFPHelper {
     }
     try {
       Services.obs.removeObserver(this, kTopicHttpOnModifyRequest);
+      Services.obs.removeObserver(this, kTopicRFPContentSizeUpdates);
+      Services.ww.unregisterNotification(this);
     } catch (e) {
       // do nothing
     }
@@ -84,11 +149,10 @@ class _RFPHelper {
 
   _handleResistFingerprintingChanged() {
     if (Services.prefs.getBoolPref(kPrefResistFingerprinting)) {
-      Services.prefs.addObserver(kPrefSpoofEnglish, this);
-      if (this._shouldPromptForLanguagePref()) {
-        Services.obs.addObserver(this, kTopicHttpOnModifyRequest);
-      }
+      this._addObservers();
+      this._attachWindows();
     } else {
+      this._detachWindows();
       this._removeObservers();
     }
   }
@@ -196,6 +260,155 @@ class _RFPHelper {
       return null;
     }
     return httpChannel.getRequestHeader("Accept-Language");
+  }
+
+  /**
+   * The function would round the given browser by adding margins if its size is
+   * not quantized when fingerprinting resistance is enable.
+   */
+  _maybeRoundContentView(aBrowser, aTabBrowser) {
+    if (!aBrowser || !aTabBrowser) {
+      return;
+    }
+
+    let contentWidth = aBrowser.clientWidth;
+    let contentHeight = aBrowser.clientHeight;
+
+    // If the size of the content is already quantized, we do nothing.
+    if (0 === (contentWidth % 128) && 0 === (contentHeight % 100)) {
+      return;
+    }
+
+    // Rounding the browser element by adding margins.
+    let browserContainer = aTabBrowser.getBrowserContainer(aBrowser);
+    let containerWidth = browserContainer.clientWidth;
+    let containerHeight = browserContainer.clientHeight;
+    let marginWidth = (containerWidth % 128) / 2;
+    let marginHeight = (containerHeight % 100) / 2;
+
+    aBrowser.style.margin = `${marginHeight}px ${marginWidth}px`;
+
+    // Adding a tooltip on the margin.
+    browserContainer.setAttribute("tooltiptext", kTooltipTextContentMargins);
+  }
+
+  _clearContentViewRounding(aBrowser, aTabBrowser) {
+    if (!aBrowser || !aTabBrowser) {
+      return;
+    }
+
+    let browserContainer = aTabBrowser.getBrowserContainer(aBrowser);
+    aBrowser.style.margin = "";
+    browserContainer.clearAttribute("tooltiptext");
+  }
+
+  _attachWindow(aWindow, aRoundContent = true) {
+    let tabBrowser = aWindow.gBrowser;
+    tabBrowser.addTabsProgressListener(this);
+    aWindow.addEventListener("TabOpen", this);
+    aWindow.addEventListener("sizemodechange", this);
+
+    // Rounding the existing browsers.
+    for (const tab of tabBrowser.tabs) {
+      let browser = tab.linkedBrowser;
+
+      if (!browser.contentPrincipal.isSystemPrincipal) {
+        if (aRoundContent) {
+          this._maybeRoundContentView(browser, tabBrowser);
+        }
+
+        this._handleSizeModeChanged(aWindow);
+      }
+    }
+  }
+
+  _attachWindows() {
+    let windowList = Services.wm.getEnumerator("navigator:browser");
+
+    while (windowList.hasMoreElements()) {
+      let win = windowList.getNext();
+
+      if (win.closed || !win.gBrowser) {
+        continue;
+      }
+
+      this._attachWindow(win);
+    }
+  }
+
+  _detachWindow(aWindow) {
+    let tabBrowser = aWindow.gBrowser;
+    tabBrowser.removeTabsProgressListener(this);
+    aWindow.removeEventListener("TabOpen", this);
+    aWindow.removeEventListener("sizemodechange", this);
+
+    // Clear all margins and tooltip for all browsers.
+    for (const tab of tabBrowser.tabs) {
+      let browser = tab.linkedBrowser;
+      this._clearContentViewRounding(browser, tabBrowser);
+    }
+
+    // Clear the background color of browser containers.
+    this._setBrowserContainersBackgroundColor(tabBrowser, "");
+  }
+
+  _detachWindows() {
+    let windowList = Services.wm.getEnumerator("navigator:browser");
+
+    while (windowList.hasMoreElements()) {
+      let win = windowList.getNext();
+
+      if (win.closed || !win.gBrowser) {
+        continue;
+      }
+
+      this._detachWindow(win);
+    }
+  }
+
+  _handleContentSizeUpdates(aSubject) {
+    let frameLoader = aSubject;
+    let browserElement = frameLoader.ownerElement;
+    let tabBrowser = browserElement.ownerGlobal
+                                   .gBrowser;
+
+    if (!browserElement.contentPrincipal.isSystemPrincipal) {
+      this._maybeRoundContentView(browserElement, tabBrowser);
+    }
+  }
+
+  _handleDOMWindowOpened(aSubject) {
+    let win = aSubject.QueryInterface(Ci.nsIDOMWindow);
+    let self = this;
+
+    win.addEventListener("load", () => {
+      // We attach the new window when it has been loaded. But, we won't
+      // round the content here since the window already been rounded when
+      // fingerprinting resistance is enabled.
+      self._attachWindow(win, false);
+    }, {once: true});
+  }
+
+  _setBrowserContainersBackgroundColor(aTabBrowser, aColor) {
+    if (!aTabBrowser) {
+      return;
+    }
+
+    for (const tab of aTabBrowser.tabs) {
+      let container = aTabBrowser.getBrowserContainer(tab.linkedBrowser);
+
+      container.style.backgroundColor = aColor;
+    }
+  }
+
+  _handleSizeModeChanged(aWindow) {
+    let tabBrowser = aWindow.gBrowser;
+
+    if (aWindow.STATE_FULLSCREEN === aWindow.windowState) {
+      this._setBrowserContainersBackgroundColor(tabBrowser, "black");
+    } else {
+      this._setBrowserContainersBackgroundColor(tabBrowser, "");
+    }
   }
 }
 

@@ -29,7 +29,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   E10SUtils: "resource://gre/modules/E10SUtils.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   FormValidationHandler: "resource:///modules/FormValidationHandler.jsm",
-  LanguagePrompt: "resource://gre/modules/LanguagePrompt.jsm",
+  RFPHelper: "resource://gre/modules/RFPHelper.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
   LightweightThemeConsumer: "resource://gre/modules/LightweightThemeConsumer.jsm",
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
@@ -1887,8 +1887,6 @@ var gBrowserInit = {
     gAccessibilityServiceIndicator.uninit();
 
     AccessibilityRefreshBlocker.uninit();
-
-    LanguagePrompt.uninit();
 
     BrowserSearch.uninit();
 

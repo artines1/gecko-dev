@@ -108,7 +108,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   HybridContentTelemetry: "resource://gre/modules/HybridContentTelemetry.jsm",
   Integration: "resource://gre/modules/Integration.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
-  LanguagePrompt: "resource://gre/modules/LanguagePrompt.jsm",
+  RFPHelper: "resource://gre/modules/RFPHelper.jsm",
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
   LoginManagerParent: "resource://gre/modules/LoginManagerParent.jsm",
@@ -1110,6 +1110,8 @@ BrowserGlue.prototype = {
     Normandy.uninit();
 
     SavantShieldStudy.uninit();
+
+    RFPHelper.uninit();
   },
 
   // All initial windows have opened.
@@ -1260,7 +1262,7 @@ BrowserGlue.prototype = {
     }
 
     Services.tm.idleDispatchToMainThread(() => {
-      LanguagePrompt.init();
+      RFPHelper.init();
     });
 
     Services.tm.idleDispatchToMainThread(() => {

@@ -443,6 +443,15 @@ this.IsolationTestTools = {
         // Close Tabs.
         BrowserTestUtils.removeTab(tabInfoA.tab);
         BrowserTestUtils.removeTab(tabInfoB.tab);
+
+        // A workaround for avoiding a timing issue in Fission. This workaround
+        // makes sure that the shutdown process between parent and content
+        // is finished before the next round of testing.
+        await new Promise(resolve => {
+          Services.tm.idleDispatchToMainThread(() => {
+            resolve();
+          });
+        });
       }
     });
   },

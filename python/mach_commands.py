@@ -40,8 +40,11 @@ class MachCommands(MachCommandBase):
              description='Run Python.')
     @CommandArgument('--no-virtualenv', action='store_true',
                      help='Do not set up a virtualenv')
+    @CommandArgument('--exec-file',
+                     default=None,
+                     help='Execute this Python file using `execfile`')
     @CommandArgument('args', nargs=argparse.REMAINDER)
-    def python(self, no_virtualenv, args):
+    def python(self, no_virtualenv, exec_file, args):
         # Avoid logging the command
         self.log_manager.terminal_handler.setLevel(logging.CRITICAL)
 
@@ -56,6 +59,10 @@ class MachCommands(MachCommandBase):
         else:
             self._activate_virtualenv()
             python_path = self.virtualenv_manager.python_path
+
+        if exec_file:
+            exec(open(exec_file).read())
+            return 0
 
         return self.run_process([python_path] + args,
                                 pass_thru=True,  # Allow user to run Python interactively.
@@ -78,6 +85,10 @@ class MachCommands(MachCommandBase):
                      type=int,
                      help='Number of concurrent jobs to run. Default is the number of CPUs '
                           'in the system.')
+    @CommandArgument('-x', '--exitfirst',
+                     default=False,
+                     action='store_true',
+                     help='Runs all tests sequentially and breaks at the first failure.')
     @CommandArgument('--subsuite',
                      default=None,
                      help=('Python subsuite to run. If not specified, all subsuites are run. '
@@ -86,6 +97,10 @@ class MachCommands(MachCommandBase):
                      metavar='TEST',
                      help=('Tests to run. Each test can be a single file or a directory. '
                            'Default test resolution relies on PYTHON_UNITTEST_MANIFESTS.'))
+    @CommandArgument('extra', nargs=argparse.REMAINDER,
+                     metavar='PYTEST ARGS',
+                     help=('Arguments that aren\'t recognized by mach. These will be '
+                           'passed as it is to pytest'))
     def python_test(self, *args, **kwargs):
         try:
             tempdir = os.environ[b'PYTHON_TEST_TMP'] = str(tempfile.mkdtemp(suffix='-python-test'))
@@ -101,7 +116,10 @@ class MachCommands(MachCommandBase):
                          verbose=False,
                          jobs=None,
                          python=None,
+                         exitfirst=False,
+                         extra=None,
                          **kwargs):
+        python = python or self.virtualenv_manager.python_path
         self.activate_pipenv(pipfile=None, populate=True, python=python)
 
         if test_objects is None:
@@ -139,11 +157,20 @@ class MachCommands(MachCommandBase):
 
         parallel = []
         sequential = []
-        for test in tests:
-            if test.get('sequential'):
-                sequential.append(test)
-            else:
-                parallel.append(test)
+        os.environ.setdefault('PYTEST_ADDOPTS', '')
+
+        if extra:
+            os.environ['PYTEST_ADDOPTS'] += " " + " ".join(extra)
+
+        if exitfirst:
+            sequential = tests
+            os.environ['PYTEST_ADDOPTS'] += " -x"
+        else:
+            for test in tests:
+                if test.get('sequential'):
+                    sequential.append(test)
+                else:
+                    parallel.append(test)
 
         self.jobs = jobs or cpu_count()
         self.terminate = False
@@ -163,7 +190,7 @@ class MachCommands(MachCommandBase):
             return return_code or ret
 
         with ThreadPoolExecutor(max_workers=self.jobs) as executor:
-            futures = [executor.submit(self._run_python_test, test['path'])
+            futures = [executor.submit(self._run_python_test, test)
                        for test in parallel]
 
             try:
@@ -177,14 +204,19 @@ class MachCommands(MachCommandBase):
                 raise
 
         for test in sequential:
-            return_code = on_test_finished(self._run_python_test(test['path']))
+            return_code = on_test_finished(self._run_python_test(test))
+            if return_code and exitfirst:
+                break
 
         self.log(logging.INFO, 'python-test', {'return_code': return_code},
                  'Return code from mach python-test: {return_code}')
         return return_code
 
-    def _run_python_test(self, test_path):
+    def _run_python_test(self, test):
         from mozprocess import ProcessHandler
+
+        if test.get('requirements'):
+            self.virtualenv_manager.install_pip_requirements(test['requirements'], quiet=True)
 
         output = []
 
@@ -205,13 +237,13 @@ class MachCommands(MachCommandBase):
                     file_displayed_test.append(True)
 
             # Hack to make sure treeherder highlights pytest failures
-            if 'FAILED' in line.rsplit(' ', 1)[-1]:
-                line = line.replace('FAILED', 'TEST-UNEXPECTED-FAIL')
+            if b'FAILED' in line.rsplit(b' ', 1)[-1]:
+                line = line.replace(b'FAILED', b'TEST-UNEXPECTED-FAIL')
 
             _log(line)
 
-        _log(test_path)
-        cmd = [self.virtualenv_manager.python_path, test_path]
+        _log(test['path'])
+        cmd = [self.virtualenv_manager.python_path, test['path']]
         env = os.environ.copy()
         env[b'PYTHONDONTWRITEBYTECODE'] = b'1'
 
@@ -222,12 +254,12 @@ class MachCommands(MachCommandBase):
 
         if not file_displayed_test:
             _log('TEST-UNEXPECTED-FAIL | No test output (missing mozunit.main() '
-                 'call?): {}'.format(test_path))
+                 'call?): {}'.format(test['path']))
 
         if self.verbose:
             if return_code != 0:
-                _log('Test failed: {}'.format(test_path))
+                _log('Test failed: {}'.format(test['path']))
             else:
-                _log('Test passed: {}'.format(test_path))
+                _log('Test passed: {}'.format(test['path']))
 
-        return output, return_code, test_path
+        return output, return_code, test['path']

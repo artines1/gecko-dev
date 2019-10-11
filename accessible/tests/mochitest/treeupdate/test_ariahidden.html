@@ -6,8 +6,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -19,7 +18,7 @@
   <script type="application/javascript">
     function t1_setARIAHidden() {
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, "t1")
+        new invokerChecker(EVENT_REORDER, "t1"),
       ];
 
       this.invoke = function t1_setARIAHidden_invoke() {
@@ -37,7 +36,7 @@
 
     function t1_removeARIAHidden() {
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, "t1")
+        new invokerChecker(EVENT_REORDER, "t1"),
       ];
 
       this.invoke = function t1_removeARIAHidden_invoke() {
@@ -55,7 +54,7 @@
 
     function t2_setARIAHidden() {
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, "t2")
+        new invokerChecker(EVENT_REORDER, "t2"),
       ];
 
       this.invoke = function t2_setARIAHidden_invoke() {
@@ -73,7 +72,7 @@
 
     function t2_insertUnderARIAHidden() {
       this.eventSeq = [
-        new unexpectedInvokerChecker(EVENT_REORDER, "t2")
+        new unexpectedInvokerChecker(EVENT_REORDER, "t2"),
       ];
 
       this.invoke = function t2_insertUnderARIAHidden_invoke() {

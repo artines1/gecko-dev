@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf8">
   <title>Test for Bug 819670 - Web console object inspection does not handle native getters throwing very well</title>
-  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript" src="common.js"></script>
   <!-- Any copyright is dedicated to the Public Domain.
      - http://creativecommons.org/publicdomain/zero/1.0/ -->
@@ -23,7 +23,7 @@ function startTest()
 function onAttach(aState, aResponse)
 {
   onEvaluate = onEvaluate.bind(null, aState);
-  aState.client.evaluateJS("document.__proto__", onEvaluate);
+  aState.client.evaluateJS("document.__proto__").then(onEvaluate);
 }
 
 function onEvaluate(aState, aResponse)
@@ -49,17 +49,13 @@ function onInspect(aState, aResponse)
 {
   ok(!aResponse.error, "no response error");
 
-  let expectedProps = {
-    "addBroadcastListenerFor": { value: { type: "object" } },
-  };
+  let expectedProps =  Object.getOwnPropertyNames(document.__proto__);
 
   let props = aResponse.ownProperties;
   ok(props, "response properties available");
 
   if (props) {
-    ok(Object.keys(props).length > Object.keys(expectedProps).length,
-       "number of enumerable properties");
-    checkObject(props, expectedProps);
+    isDeeply(Object.keys(props), expectedProps, "Same own properties.");
   }
 
   closeDebugger(aState, function() {

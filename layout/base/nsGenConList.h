@@ -31,15 +31,14 @@ struct nsGenConNode : public mozilla::LinkedListElement<nsGenConNode> {
   // and needed for similar cases for counters.
   const int32_t mContentIndex;
 
-  // null for 'content:no-open-quote', 'content:no-close-quote' and for
-  // counter nodes for increments and resets (rather than uses)
+  // null for:
+  //  * content: no-open-quote / content: no-close-quote
+  //  * counter nodes for increments and resets
+  //  * counter nodes for bullets (mPseudoFrame->IsBulletFrame()).
   RefPtr<nsTextNode> mText;
 
   explicit nsGenConNode(int32_t aContentIndex)
-    : mPseudoFrame(nullptr)
-    , mContentIndex(aContentIndex)
-  {
-  }
+      : mPseudoFrame(nullptr), mContentIndex(aContentIndex) {}
 
   /**
    * Finish initializing the generated content node once we know the
@@ -54,41 +53,48 @@ struct nsGenConNode : public mozilla::LinkedListElement<nsGenConNode> {
    * @return true iff this marked the list dirty
    */
   virtual bool InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
-                             nsIFrame* aTextFrame)
-  {
+                             nsIFrame* aTextFrame) {
     mPseudoFrame = aPseudoFrame;
     CheckFrameAssertions();
     return false;
   }
 
-  virtual ~nsGenConNode() {} // XXX Avoid, perhaps?
+  virtual ~nsGenConNode() {}  // XXX Avoid, perhaps?
 
-protected:
+ protected:
   void CheckFrameAssertions() {
-    NS_ASSERTION(mContentIndex <
-                   int32_t(mPseudoFrame->StyleContent()->ContentCount()),
-                 "index out of range");
-      // We allow negative values of mContentIndex for 'counter-reset' and
-      // 'counter-increment'.
+    NS_ASSERTION(
+        mContentIndex < int32_t(mPseudoFrame->StyleContent()->ContentCount()) ||
+            // Special-case for the use node created for the legacy markers,
+            // which don't use the content property.
+            (mPseudoFrame->IsBulletFrame() && mContentIndex == 0 &&
+             mPseudoFrame->Style()->GetPseudoType() ==
+                 mozilla::PseudoStyleType::marker &&
+             !mPseudoFrame->StyleContent()->ContentCount()),
+        "index out of range");
+    // We allow negative values of mContentIndex for 'counter-reset' and
+    // 'counter-increment'.
 
     NS_ASSERTION(mContentIndex < 0 ||
-                 mPseudoFrame->Style()->GetPseudo() ==
-                   nsCSSPseudoElements::before ||
-                 mPseudoFrame->Style()->GetPseudo() ==
-                   nsCSSPseudoElements::after,
-                 "not :before/:after generated content and not counter change");
+                     mPseudoFrame->Style()->GetPseudoType() ==
+                         mozilla::PseudoStyleType::before ||
+                     mPseudoFrame->Style()->GetPseudoType() ==
+                         mozilla::PseudoStyleType::after ||
+                     mPseudoFrame->Style()->GetPseudoType() ==
+                         mozilla::PseudoStyleType::marker,
+                 "not CSS generated content and not counter change");
     NS_ASSERTION(mContentIndex < 0 ||
-                 mPseudoFrame->GetStateBits() & NS_FRAME_GENERATED_CONTENT,
+                     mPseudoFrame->GetStateBits() & NS_FRAME_GENERATED_CONTENT,
                  "not generated content and not counter change");
   }
 };
 
 class nsGenConList {
-protected:
+ protected:
   mozilla::LinkedList<nsGenConNode> mList;
   uint32_t mSize;
 
-public:
+ public:
   nsGenConList() : mSize(0), mLastInserted(nullptr) {}
   ~nsGenConList() { Clear(); }
   void Clear();
@@ -107,8 +113,7 @@ public:
   bool DestroyNodesFor(nsIFrame* aFrame);
 
   // Return true if |aNode1| is after |aNode2|.
-  static bool NodeAfter(const nsGenConNode* aNode1,
-                        const nsGenConNode* aNode2);
+  static bool NodeAfter(const nsGenConNode* aNode1, const nsGenConNode* aNode2);
 
   bool IsFirst(nsGenConNode* aNode) {
     MOZ_ASSERT(aNode, "aNode cannot be nullptr!");
@@ -120,9 +125,8 @@ public:
     return aNode == mList.getLast();
   }
 
-private:
-  void Destroy(nsGenConNode* aNode)
-  {
+ private:
+  void Destroy(nsGenConNode* aNode) {
     MOZ_ASSERT(aNode, "aNode cannot be nullptr!");
     delete aNode;
     mSize--;

@@ -2,8 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import
-
 import os
 import sys
 from argparse import Namespace
@@ -54,7 +52,11 @@ def lintdir():
 
 
 @pytest.fixture(scope='module')
-def linters(lintdir, request):
-    suffix_filter = getattr(request.module, 'linters', ['.yml'])
-    return [os.path.join(lintdir, p) for p in os.listdir(lintdir)
-            if any(p.endswith(suffix) for suffix in suffix_filter)]
+def linters(lintdir):
+
+    def inner(*names):
+        return [os.path.join(lintdir, p) for p in os.listdir(lintdir)
+                if any(os.path.splitext(p)[0] == name for name in names)
+                if os.path.splitext(p)[1] == '.yml']
+
+    return inner

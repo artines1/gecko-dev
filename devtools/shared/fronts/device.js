@@ -1,21 +1,49 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-const {Cu} = require("chrome");
-const {deviceSpec} = require("devtools/shared/specs/device");
-const protocol = require("devtools/shared/protocol");
+const { Cu } = require("chrome");
+const { deviceSpec } = require("devtools/shared/specs/device");
+const {
+  FrontClassWithSpec,
+  registerFront,
+} = require("devtools/shared/protocol");
 const defer = require("devtools/shared/defer");
 
-const DeviceFront = protocol.FrontClassWithSpec(deviceSpec, {
-  initialize: function(client, form) {
-    protocol.Front.prototype.initialize.call(this, client);
-    this.actorID = form.deviceActor;
-    this.manage(this);
-  },
+class DeviceFront extends FrontClassWithSpec(deviceSpec) {
+  constructor(client, targetFront, parentFront) {
+    super(client, targetFront, parentFront);
 
-  screenshotToBlob: function() {
+    // Attribute name from which to retrieve the actorID out of the target actor's form
+    this.formAttributeName = "deviceActor";
+
+    // Backward compatibility when connected to Firefox 69 or older.
+    // Re-emit the "multi-e10s-updated" event as "can-debug-sw-updated".
+    // Front events are all cleared via EventEmitter::clearEvents in the Front
+    // base class destroy.
+    this.on("multi-e10s-updated", (e, isMultiE10s) => {
+      this.emit("can-debug-sw-updated", !isMultiE10s);
+    });
+  }
+
+  /**
+   * Handle backward compatibility for getDescription.
+   * Can be removed on Firefox 70 reaches the release channel.
+   */
+  async getDescription() {
+    const description = await super.getDescription();
+
+    // Backward compatibility when connecting for Firefox 69 or older.
+    if (typeof description.canDebugServiceWorkers === "undefined") {
+      description.canDebugServiceWorkers = !description.isMultiE10s;
+    }
+
+    return description;
+  }
+
+  screenshotToBlob() {
     return this.screenshotToDataURL().then(longstr => {
       return longstr.string().then(dataURL => {
         const deferred = defer();
@@ -33,32 +61,8 @@ const DeviceFront = protocol.FrontClassWithSpec(deviceSpec, {
         return deferred.promise;
       });
     });
-  },
-});
-
-const _knownDeviceFronts = new WeakMap();
-
-/**
- * Retrieve the device front already created for the provided client, if available.
- */
-exports.getKnownDeviceFront = function(client) {
-  return _knownDeviceFronts.get(client);
-};
-
-/**
- * Only one DeviceFront is created for a given client, afterwards the instance is cached
- * and returned immediately.
- */
-exports.getDeviceFront = function(client, form) {
-  if (!form.deviceActor) {
-    return null;
   }
+}
 
-  if (_knownDeviceFronts.has(client)) {
-    return _knownDeviceFronts.get(client);
-  }
-
-  const front = new DeviceFront(client, form);
-  _knownDeviceFronts.set(client, front);
-  return front;
-};
+exports.DeviceFront = DeviceFront;
+registerFront(DeviceFront);

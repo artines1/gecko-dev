@@ -20,35 +20,43 @@
 namespace mozilla {
 namespace dom {
 
-class WebAuthnTransactionChild final : public PWebAuthnTransactionChild
-{
-public:
+class WebAuthnTransactionChild final : public PWebAuthnTransactionChild {
+ public:
   NS_INLINE_DECL_REFCOUNTING(WebAuthnTransactionChild);
   explicit WebAuthnTransactionChild(WebAuthnManagerBase* aManager);
 
-  mozilla::ipc::IPCResult
-  RecvConfirmRegister(const uint64_t& aTransactionId,
-                      const WebAuthnMakeCredentialResult& aResult) override;
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY until we can do MOZ_CAN_RUN_SCRIPT in
+  // IPDL-generated things.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  mozilla::ipc::IPCResult RecvConfirmRegister(
+      const uint64_t& aTransactionId,
+      const WebAuthnMakeCredentialResult& aResult);
 
-  mozilla::ipc::IPCResult
-  RecvConfirmSign(const uint64_t& aTransactionId,
-                  const WebAuthnGetAssertionResult& aResult) override;
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY until we can do MOZ_CAN_RUN_SCRIPT in
+  // IPDL-generated things.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  mozilla::ipc::IPCResult RecvConfirmSign(
+      const uint64_t& aTransactionId,
+      const WebAuthnGetAssertionResult& aResult);
 
-  mozilla::ipc::IPCResult
-  RecvAbort(const uint64_t& aTransactionId, const nsresult& aError) override;
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY until we can do MOZ_CAN_RUN_SCRIPT in
+  // IPDL-generated things.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  mozilla::ipc::IPCResult RecvAbort(const uint64_t& aTransactionId,
+                                    const nsresult& aError);
 
   void ActorDestroy(ActorDestroyReason why) override;
 
   void Disconnect();
 
-private:
+ private:
   ~WebAuthnTransactionChild() = default;
 
   // Nulled by ~WebAuthnManager() when disconnecting.
   WebAuthnManagerBase* mManager;
 };
 
-}
-}
+}  // namespace dom
+}  // namespace mozilla
 
-#endif //mozilla_dom_WebAuthnTransactionChild_h
+#endif  // mozilla_dom_WebAuthnTransactionChild_h

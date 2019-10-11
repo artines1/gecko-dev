@@ -333,8 +333,7 @@ carry different lists of available locales.
 Requested Locales
 =================
 
-The list of requested locales can be read using :js:`LocaleService::GetRequestedLocales` API,
-and set using :js:`LocaleService::SetRequestedLocales` API.
+The list of requested locales can be read and set using :js:`LocaleService::requestedLocales` API.
 
 Using the API will perform necessary sanity checks and canonicalize the values.
 
@@ -349,7 +348,7 @@ The former is the current default setting for Firefox Desktop, and the latter is
 default setting for Firefox for Android.
 
 If the developer wants to programmatically request the app to follow OS locales,
-they can call the :js:`SetRequestedLocales` API with no argument.
+they can assign :js:`null` to :js:`requestedLocales`.
 
 Regional Preferences
 ====================
@@ -389,7 +388,7 @@ That means that if Windows is in "**en**-AU" and Firefox is in "**en**-US" Gecko
 into Windows Regional Preferences, but if Windows is in "**de**-CH" and Firefox
 is in "**fr**-FR" it won't.
 In order to force Gecko to look into OS preferences irrelevant of the language match,
-set the flag :js:`intl.locale.use_os_preferences` to :js:`true`.
+set the flag :js:`intl.regional_prefs.use_os_locales` to :js:`true`.
 
 UI Direction
 ------------
@@ -429,6 +428,16 @@ the locales are packaged to allow for bundling applications with different
 sets of locales in different areas - dictionaries, hyphenations, product language resources,
 installer language resources, etc.
 
+Web Exposed Locales
+====================
+
+For anti-tracking or some other reasons, we tend to expose spoofed locale to web content instead
+of default locales. This can be done by setting the pref :js:`intl.locale.privacy.web_exposed`.
+The pref is a comma separated list of locale, and empty string implies default locales.
+
+The pref has no function while :js:`privacy.spoof_english` is set to 2, where *"en-US"* will always
+be returned.
+
 Multi-Process
 =============
 
@@ -450,8 +459,8 @@ a legacy "ja-JP-mac" locale. The "mac" is a variant and BCP47 requires all varia
 to be 5-8 character long.
 
 Gecko supports the limitation by accepting the 3-letter variants in our APIs and also
-provides a special :js:`GetAppLocalesAsLangTags` method which returns this locale in that form.
-(:js:`GetAppLocalesAsBCP47` will canonicalize it and turn into `"ja-JP-macos"`).
+provides a special :js:`appLocalesAsLangTags` method which returns this locale in that form.
+(:js:`appLocalesAsBCP47` will canonicalize it and turn into `"ja-JP-macos"`).
 
 Usage of language negotiation etc. shouldn't rely on this behavior.
 
@@ -507,14 +516,14 @@ It may look like this:
 
     L10nRegistry.registerSource(fs);
 
-    let availableLocales = Services.locale.getAvailableLocales();
+    let availableLocales = Services.locale.availableLocales;
 
     assert(availableLocales.includes("ko-KR"));
     assert(availableLocales.includes("ar"));
 
-    Services.locale.setRequestedLocales(["ko-KR");
+    Services.locale.requestedLocales = ["ko-KR"];
 
-    let appLocales = Services.locale.getAppLocalesAsBCP47();
+    let appLocales = Services.locale.appLocalesAsBCP47;
     assert(appLocales[0], "ko-KR");
 
 From here, a resource :js:`test.ftl` can be added to a `Localization` and for ID :js:`key`
@@ -528,10 +537,10 @@ but it is also simpler:
 
 .. code-block:: javascript
 
-    Services.locale.setAvailableLocales(["ko-KR", "ar"]);
-    Services.locale.setRequestedLocales(["ko-KR"]);
+    Services.locale.availableLocales = ["ko-KR", "ar"];
+    Services.locale.requestedLocales = ["ko-KR"];
 
-    let appLocales = Services.locale.getAppLocalesAsBCP47();
+    let appLocales = Services.locale.appLocalesAsBCP47;
     assert(appLocales[0], "ko-KR");
 
 In the future, Mozilla plans to add a third way for add-ons (`bug 1440969`_)

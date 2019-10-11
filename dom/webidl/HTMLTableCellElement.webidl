@@ -11,7 +11,8 @@
  * and create derivative works of this document.
  */
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLTableCellElement : HTMLElement {
            [CEReactions, SetterThrows]
            attribute unsigned long colSpan;
@@ -48,6 +49,6 @@ partial interface HTMLTableCellElement {
            [CEReactions, SetterThrows]
            attribute DOMString vAlign;
 
-  [CEReactions, TreatNullAs=EmptyString, SetterThrows]
-           attribute DOMString bgColor;
+           [CEReactions, SetterThrows]
+           attribute [TreatNullAs=EmptyString] DOMString bgColor;
 };

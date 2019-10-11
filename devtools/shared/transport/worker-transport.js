@@ -34,11 +34,13 @@ MainThreadWorkerDebuggerTransport.prototype = {
   },
 
   send: function(packet) {
-    this._dbg.postMessage(JSON.stringify({
-      type: "message",
-      id: this._id,
-      message: packet
-    }));
+    this._dbg.postMessage(
+      JSON.stringify({
+        type: "message",
+        id: this._id,
+        message: packet,
+      })
+    );
   },
 
   startBulkSend: function() {
@@ -54,7 +56,7 @@ MainThreadWorkerDebuggerTransport.prototype = {
     if (this.hooks) {
       this.hooks.onPacket(packet.message);
     }
-  }
+  },
 };
 
 exports.MainThreadWorkerDebuggerTransport = MainThreadWorkerDebuggerTransport;
@@ -84,11 +86,13 @@ WorkerThreadWorkerDebuggerTransport.prototype = {
   },
 
   send: function(packet) {
-    this._scope.postMessage(JSON.stringify({
-      type: "message",
-      id: this._id,
-      message: packet
-    }));
+    this._scope.postMessage(
+      JSON.stringify({
+        type: "message",
+        id: this._id,
+        message: packet,
+      })
+    );
   },
 
   startBulkSend: function() {
@@ -104,7 +108,7 @@ WorkerThreadWorkerDebuggerTransport.prototype = {
     if (this.hooks) {
       this.hooks.onPacket(packet.message);
     }
-  }
+  },
 };
 
 exports.WorkerThreadWorkerDebuggerTransport = WorkerThreadWorkerDebuggerTransport;

@@ -6,8 +6,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1330796
 <head>
   <meta charset="utf-8">
   <title>Test for Bug 772796</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <style> .pre { white-space: pre } </style>
 </head>
@@ -55,7 +55,7 @@ var tests = [
     "<span>&gt; mailcite<br></span>x<br>" ],
   // No <br> at the end to simulate prior deletion to the end of the quote.
   [ "<span _moz_quote=true>&gt; mailcite</span>", 10,
-    "<span>&gt; mailcite</span><br>x<br>" ]
+    "<span>&gt; mailcite</span><br>x<br>" ],
 ];
 
 /** Test for Bug 1330796 **/
@@ -63,12 +63,11 @@ var tests = [
 SimpleTest.waitForExplicitFinish();
 
 SimpleTest.waitForFocus(function() {
-
   var sel = window.getSelection();
   var theEdit = document.getElementById("editable");
   makeMailEditor();
 
-  for (i = 0; i < tests.length; i++) {
+  for (let i = 0; i < tests.length; i++) {
     theEdit.innerHTML = tests[i][0];
     theEdit.focus();
     var theText = theEdit.firstChild.firstChild;
@@ -81,7 +80,6 @@ SimpleTest.waitForFocus(function() {
   }
 
   SimpleTest.finish();
-
 });
 
 function makeMailEditor() {

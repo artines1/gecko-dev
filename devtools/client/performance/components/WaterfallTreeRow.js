@@ -22,39 +22,48 @@ function buildMarkerSidebar(blueprint, props) {
   const bullet = dom.div({
     className: `waterfall-marker-bullet marker-color-${blueprint.colorName}`,
     style: { transform: `translateX(${level * LEVEL_INDENT}px)` },
-    "data-type": marker.name
+    "data-type": marker.name,
   });
 
   const label = MarkerBlueprintUtils.getMarkerLabel(marker);
 
-  const name = dom.div({
-    className: "plain waterfall-marker-name",
-    style: { transform: `translateX(${level * LEVEL_INDENT}px)` },
-    title: label
-  }, label);
+  const name = dom.div(
+    {
+      className: "plain waterfall-marker-name",
+      style: { transform: `translateX(${level * LEVEL_INDENT}px)` },
+      title: label,
+    },
+    label
+  );
 
-  return dom.div({
-    className: "waterfall-sidebar theme-sidebar",
-    style: { width: sidebarWidth + "px" }
-  }, bullet, name);
+  return dom.div(
+    {
+      className: "waterfall-sidebar theme-sidebar",
+      style: { width: sidebarWidth + "px" },
+    },
+    bullet,
+    name
+  );
 }
 
 function buildMarkerTimebar(blueprint, props) {
   const { marker, startTime, dataScale, arrow } = props;
   const offset = (marker.start - startTime) * dataScale + ARROW_NODE_OFFSET;
-  const width = Math.max((marker.end - marker.start) * dataScale,
-                         WATERFALL_MARKER_TIMEBAR_WIDTH_MIN);
+  const width = Math.max(
+    (marker.end - marker.start) * dataScale,
+    WATERFALL_MARKER_TIMEBAR_WIDTH_MIN
+  );
 
   const bar = dom.div(
     {
       className: "waterfall-marker-wrap",
-      style: { transform: `translateX(${offset}px)` }
+      style: { transform: `translateX(${offset}px)` },
     },
     arrow,
     dom.div({
       className: `waterfall-marker-bar marker-color-${blueprint.colorName}`,
       style: { width: `${width}px` },
-      "data-type": marker.name
+      "data-type": marker.name,
     })
   );
 
@@ -70,7 +79,7 @@ function WaterfallTreeRow(props) {
 
   const attrs = {
     className: "waterfall-tree-item" + (focused ? " focused" : ""),
-    "data-otmt": marker.isOffMainThread
+    "data-otmt": marker.isOffMainThread,
   };
 
   // Don't render an expando-arrow for leaf nodes.

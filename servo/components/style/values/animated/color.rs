@@ -1,12 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Animated types for CSS colors.
 
-use values::animated::{Animate, Procedure, ToAnimatedZero};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
-use values::generics::color::{Color as GenericColor, ComplexColorRatios};
+use crate::values::animated::{Animate, Procedure, ToAnimatedZero};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
+use crate::values::generics::color::{Color as GenericColor, ComplexColorRatios};
 
 /// An animated RGBA color.
 ///
@@ -61,7 +61,8 @@ impl Animate for RGBA {
         let red =
             (self.red * self.alpha).animate(&(other.red * other.alpha), procedure)? * 1. / alpha;
         let green = (self.green * self.alpha).animate(&(other.green * other.alpha), procedure)? *
-            1. / alpha;
+            1. /
+            alpha;
         let blue =
             (self.blue * self.alpha).animate(&(other.blue * other.alpha), procedure)? * 1. / alpha;
 
@@ -99,8 +100,8 @@ impl Color {
     fn effective_intermediate_rgba(&self) -> RGBA {
         match *self {
             GenericColor::Numeric(color) => color,
-            GenericColor::Foreground => RGBA::transparent(),
-            GenericColor::Complex(color, ratios) => RGBA {
+            GenericColor::CurrentColor => RGBA::transparent(),
+            GenericColor::Complex { color, ratios } => RGBA {
                 alpha: color.alpha * ratios.bg,
                 ..color.clone()
             },
@@ -110,8 +111,8 @@ impl Color {
     fn effective_ratios(&self) -> ComplexColorRatios {
         match *self {
             GenericColor::Numeric(..) => ComplexColorRatios::NUMERIC,
-            GenericColor::Foreground => ComplexColorRatios::FOREGROUND,
-            GenericColor::Complex(.., ratios) => ratios,
+            GenericColor::CurrentColor => ComplexColorRatios::CURRENT_COLOR,
+            GenericColor::Complex { ratios, .. } => ratios,
         }
     }
 }
@@ -127,18 +128,18 @@ impl Animate for Color {
 
         Ok(match (*self, *other, procedure) {
             // Any interpolation of currentcolor with currentcolor returns currentcolor.
-            (Foreground, Foreground, Procedure::Interpolate { .. }) => Foreground,
+            (CurrentColor, CurrentColor, Procedure::Interpolate { .. }) => CurrentColor,
             // Animating two numeric colors.
             (Numeric(c1), Numeric(c2), _) => Numeric(c1.animate(&c2, procedure)?),
             // Combinations of numeric color and currentcolor
-            (Foreground, Numeric(color), _) => Self::with_ratios(
+            (CurrentColor, Numeric(color), _) => Self::with_ratios(
                 color,
                 ComplexColorRatios {
                     bg: other_weight as f32,
                     fg: this_weight as f32,
                 },
             ),
-            (Numeric(color), Foreground, _) => Self::with_ratios(
+            (Numeric(color), CurrentColor, _) => Self::with_ratios(
                 color,
                 ComplexColorRatios {
                     bg: this_weight as f32,
@@ -147,7 +148,7 @@ impl Animate for Color {
             ),
 
             // Any other animation of currentcolor with currentcolor.
-            (Foreground, Foreground, _) => Self::with_ratios(
+            (CurrentColor, CurrentColor, _) => Self::with_ratios(
                 RGBA::transparent(),
                 ComplexColorRatios {
                     bg: 0.,
@@ -161,8 +162,8 @@ impl Animate for Color {
                 fn scaled_rgba(color: &Color) -> RGBA {
                     match *color {
                         GenericColor::Numeric(color) => color,
-                        GenericColor::Foreground => RGBA::transparent(),
-                        GenericColor::Complex(color, ratios) => RGBA {
+                        GenericColor::CurrentColor => RGBA::transparent(),
+                        GenericColor::Complex { color, ratios } => RGBA {
                             red: color.red * ratios.bg,
                             green: color.green * ratios.bg,
                             blue: color.blue * ratios.bg,
@@ -223,7 +224,7 @@ impl Animate for Color {
                 let fg = fg1.animate(&fg2, procedure)?;
 
                 Self::with_ratios(bg_color, ComplexColorRatios { bg: 1., fg })
-            }
+            },
         })
     }
 }
@@ -235,23 +236,23 @@ impl ComputeSquaredDistance for Color {
 
         // All comments from the Animate impl also applies here.
         Ok(match (*self, *other) {
-            (Foreground, Foreground) => SquaredDistance::from_sqrt(0.),
+            (CurrentColor, CurrentColor) => SquaredDistance::from_sqrt(0.),
             (Numeric(c1), Numeric(c2)) => c1.compute_squared_distance(&c2)?,
-            (Foreground, Numeric(color)) | (Numeric(color), Foreground) => {
+            (CurrentColor, Numeric(color)) | (Numeric(color), CurrentColor) => {
                 // `computed_squared_distance` is symmetric.
-                color.compute_squared_distance(&RGBA::transparent())?
-                    + SquaredDistance::from_sqrt(1.)
-            }
+                color.compute_squared_distance(&RGBA::transparent())? +
+                    SquaredDistance::from_sqrt(1.)
+            },
             (_, _) => {
                 let self_color = self.effective_intermediate_rgba();
                 let other_color = other.effective_intermediate_rgba();
                 let self_ratios = self.effective_ratios();
                 let other_ratios = other.effective_ratios();
 
-                self_color.compute_squared_distance(&other_color)?
-                    + self_ratios.bg.compute_squared_distance(&other_ratios.bg)?
-                    + self_ratios.fg.compute_squared_distance(&other_ratios.fg)?
-            }
+                self_color.compute_squared_distance(&other_color)? +
+                    self_ratios.bg.compute_squared_distance(&other_ratios.bg)? +
+                    self_ratios.fg.compute_squared_distance(&other_ratios.fg)?
+            },
         })
     }
 }

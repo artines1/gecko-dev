@@ -1,22 +1,13 @@
 // Tests that system add-on upgrades work.
 
-ChromeUtils.import("resource://testing-common/httpd.js");
-
-BootstrapMonitor.init();
-
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "2");
-
-var testserver = new HttpServer();
-testserver.registerDirectory("/data/", do_get_file("data/system_addons"));
-testserver.start();
-var root = testserver.identity.primaryScheme + "://" +
-           testserver.identity.primaryHost + ":" +
-           testserver.identity.primaryPort + "/data/";
-Services.prefs.setCharPref(PREF_SYSTEM_ADDON_UPDATE_URL, root + "update.xml");
 
 let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"], true);
 registerDirectory("XREAppFeat", distroDir);
-initSystemAddonDirs();
+
+AddonTestUtils.usePrivilegedSignatures = id => "system";
+
+add_task(() => initSystemAddonDirs());
 
 /**
  * Defines the set of initial conditions to run each test against. Each should
@@ -33,11 +24,11 @@ const TEST_CONDITIONS = {
       distroDir.leafName = "empty";
     },
     initialState: [
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null}
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
     ],
   },
   // Runs tests with default system add-ons installed
@@ -47,42 +38,42 @@ const TEST_CONDITIONS = {
       distroDir.leafName = "prefilled";
     },
     initialState: [
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: "2.0"},
-      { isUpgrade: false, version: "2.0"},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null}
-    ]
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: "2.0" },
+      { isUpgrade: false, version: "2.0" },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+    ],
   },
 
   // Runs tests with updated system add-ons installed
   withProfileSet: {
-    setup() {
-      buildPrefilledUpdatesDir();
+    async setup() {
+      await buildPrefilledUpdatesDir();
       distroDir.leafName = "empty";
     },
     initialState: [
-      { isUpgrade: false, version: null},
-      { isUpgrade: true, version: "2.0"},
-      { isUpgrade: true, version: "2.0"},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null}
-    ]
+      { isUpgrade: false, version: null },
+      { isUpgrade: true, version: "2.0" },
+      { isUpgrade: true, version: "2.0" },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+    ],
   },
 
   // Runs tests with both default and updated system add-ons installed
   withBothSets: {
-    setup() {
-      buildPrefilledUpdatesDir();
+    async setup() {
+      await buildPrefilledUpdatesDir();
       distroDir.leafName = "hidden";
     },
     initialState: [
-      { isUpgrade: false, version: "1.0"},
-      { isUpgrade: true, version: "2.0"},
-      { isUpgrade: true, version: "2.0"},
-      { isUpgrade: false, version: null},
-      { isUpgrade: false, version: null}
-    ]
+      { isUpgrade: false, version: "1.0" },
+      { isUpgrade: true, version: "2.0" },
+      { isUpgrade: true, version: "2.0" },
+      { isUpgrade: false, version: null },
+      { isUpgrade: false, version: null },
+    ],
   },
 };
 
@@ -104,47 +95,47 @@ const TESTS = {
     updateList: [],
     finalState: {
       blank: [
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null}
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
       ],
       withAppSet: [
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: "2.0"},
-        { isUpgrade: false, version: "2.0"},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null}
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: "2.0" },
+        { isUpgrade: false, version: "2.0" },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
       ],
       withProfileSet: [
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null}
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
       ],
       withBothSets: [
-        { isUpgrade: false, version: "1.0"},
-        { isUpgrade: false, version: "1.0"},
-        { isUpgrade: false, version: null},
-        { isUpgrade: false, version: null},
+        { isUpgrade: false, version: "1.0" },
+        { isUpgrade: false, version: "1.0" },
+        { isUpgrade: false, version: null },
+        { isUpgrade: false, version: null },
         // Set this to `true` to so `verifySystemAddonState()` expects a blank profile dir
-        { isUpgrade: true, version: null}
-      ]
-    }
-  }
+        { isUpgrade: true, version: null },
+      ],
+    },
+  },
 };
 
 add_task(async function() {
   for (let setupName of Object.keys(TEST_CONDITIONS)) {
     for (let testName of Object.keys(TESTS)) {
-        info("Running test " + setupName + " " + testName);
+      info("Running test " + setupName + " " + testName);
 
-        let setup = TEST_CONDITIONS[setupName];
-        let test = TESTS[testName];
+      let setup = TEST_CONDITIONS[setupName];
+      let test = TESTS[testName];
 
-        await execSystemAddonTest(setupName, setup, test, distroDir, root, testserver);
+      await execSystemAddonTest(setupName, setup, test, distroDir);
     }
   }
 });

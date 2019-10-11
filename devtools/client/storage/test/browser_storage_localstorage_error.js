@@ -12,12 +12,15 @@ add_task(async function() {
 
   const itemsToOpen = [
     ["localStorage", "about:home"],
-    ["sessionStorage", "about:home"]
+    ["sessionStorage", "about:home"],
   ];
 
   for (const item of itemsToOpen) {
     await selectTreeItem(item);
-    ok(gUI.tree.isSelected(item), `Item ${item.join(" > ")} is present in the tree`);
+    ok(
+      gUI.tree.isSelected(item),
+      `Item ${item.join(" > ")} is present in the tree`
+    );
   }
 
   await finishTests();

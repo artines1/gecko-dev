@@ -14,26 +14,31 @@
 #include "nspr.h"
 #include "nsString.h"
 #include "pk11func.h"
-#include "pkix/pkixtypes.h"
+#include "mozpkix/pkix.h"
+#include "mozpkix/pkixtypes.h"
 
 using mozilla::OriginAttributes;
 using mozilla::TimeDuration;
 using mozilla::Vector;
 
 class nsILoadGroup;
+class nsIX509CertList;
 
-char*
-PK11PasswordPrompt(PK11SlotInfo *slot, PRBool retry, void* arg);
+char* PK11PasswordPrompt(PK11SlotInfo* slot, PRBool retry, void* arg);
 
-void HandshakeCallback(PRFileDesc *fd, void *client_data);
+void HandshakeCallback(PRFileDesc* fd, void* client_data);
 SECStatus CanFalseStartCallback(PRFileDesc* fd, void* client_data,
-                                PRBool *canFalseStart);
+                                PRBool* canFalseStart);
 
-mozilla::pkix::Result
-DoOCSPRequest(const nsCString& aiaLocation,
-              const OriginAttributes& originAttributes,
-              Vector<uint8_t>&& ocspRequest,
-              TimeDuration timeout,
-              /*out*/ Vector<uint8_t>& result);
+mozilla::pkix::Result DoOCSPRequest(
+    const nsCString& aiaLocation, const OriginAttributes& originAttributes,
+    uint8_t (&ocspRequest)[mozilla::pkix::OCSP_REQUEST_MAX_LENGTH],
+    size_t ocspRequestLength, TimeDuration timeout,
+    /*out*/ Vector<uint8_t>& result);
 
-#endif // nsNSSCallbacks_h
+nsCString getKeaGroupName(uint32_t aKeaGroup);
+nsCString getSignatureName(uint32_t aSignatureScheme);
+nsresult IsCertificateDistrustImminent(nsIX509CertList* aCertList,
+                                       /* out */ bool& isDistrusted);
+
+#endif  // nsNSSCallbacks_h

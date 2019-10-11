@@ -39,8 +39,10 @@ dictionary PannerOptions : AudioNodeOptions {
 };
 
 [Pref="dom.webaudio.enabled",
- Constructor(BaseAudioContext context, optional PannerOptions options)]
+ Exposed=Window]
 interface PannerNode : AudioNode {
+    [Throws]
+    constructor(BaseAudioContext context, optional PannerOptions options = {});
 
     // Default for stereo is equalpower
     attribute PanningModelType panningModel;
@@ -61,17 +63,21 @@ interface PannerNode : AudioNode {
 
     // Distance model and attributes
     attribute DistanceModelType distanceModel;
+    [SetterThrows]
     attribute double refDistance;
+    [SetterThrows]
     attribute double maxDistance;
+    [SetterThrows]
     attribute double rolloffFactor;
 
     // Directional sound cone
     attribute double coneInnerAngle;
     attribute double coneOuterAngle;
+    [SetterThrows]
     attribute double coneOuterGain;
 
 };
 
 // Mozilla extension
-PannerNode implements AudioNodePassThrough;
+PannerNode includes AudioNodePassThrough;
 

@@ -5,7 +5,6 @@
 "use strict";
 
 module.exports = {
-
   /**
    * Create a simple enum-like object with keys mirrored to values from an array.
    * This makes comparison to a specfic value simpler without having to repeat and
@@ -16,6 +15,5 @@ module.exports = {
       target[key] = key;
     }
     return target;
-  }
-
+  },
 };

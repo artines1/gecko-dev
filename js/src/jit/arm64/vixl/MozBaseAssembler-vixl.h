@@ -169,7 +169,7 @@ class MozBaseAssembler : public js::jit::AssemblerShared {
 
     bool hasTarget = target.valid;
     if (!hasTarget)
-      snprintf(labelBuf, sizeof(labelBuf), "-> (link-time target)");
+      SprintfLiteral(labelBuf, "-> (link-time target)");
 
     if (instr->IsImmBranch() && hasTarget) {
       // The target information in the instruction is likely garbage, so remove it.
@@ -182,7 +182,7 @@ class MozBaseAssembler : public js::jit::AssemblerShared {
 	;
       buffer[i] = 0;
 
-      snprintf(labelBuf, sizeof(labelBuf), "-> %d%s", target.doc, !target.bound ? "f" : "");
+      SprintfLiteral(labelBuf, "-> %d%s", target.doc, !target.bound ? "f" : "");
       hasTarget = false;
     }
 
@@ -304,11 +304,6 @@ class MozBaseAssembler : public js::jit::AssemblerShared {
   static void WritePoolHeader(uint8_t* start, js::jit::Pool* p, bool isNatural);
   static void WritePoolFooter(uint8_t* start, js::jit::Pool* p, bool isNatural);
   static void WritePoolGuard(BufferOffset branch, Instruction* inst, BufferOffset dest);
-
-  static ptrdiff_t GetBranchOffset(const Instruction* i);
-  static void RetargetNearBranch(Instruction* i, int offset, Condition cond, bool final = true);
-  static void RetargetNearBranch(Instruction* i, int offset, bool final = true);
-  static void RetargetFarBranch(Instruction* i, uint8_t** slot, uint8_t* dest, Condition cond);
 
  protected:
   // Functions for managing Labels and linked lists of Label uses.

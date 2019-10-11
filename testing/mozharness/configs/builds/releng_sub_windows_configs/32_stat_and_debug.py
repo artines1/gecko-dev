@@ -4,7 +4,6 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'update',  # decided by query_is_nightly()
     ],
     'stage_platform': 'win32-st-an-debug',
     'debug_build': True,
@@ -24,6 +23,4 @@ releng.manifest",
         'TOOLTOOL_HOME': '/c/builds',
     },
     'mozconfig_variant': 'debug-static-analysis',
-    'artifact_flag_build_variant_in_try': None,
-    #######################
 }

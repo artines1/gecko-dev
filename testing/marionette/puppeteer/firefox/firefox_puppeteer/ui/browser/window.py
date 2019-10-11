@@ -28,7 +28,6 @@ class BrowserWindow(BaseWindow):
 
     dtds = [
         'chrome://branding/locale/brand.dtd',
-        'chrome://browser/locale/aboutPrivateBrowsing.dtd',
         'chrome://browser/locale/browser.dtd',
         'chrome://browser/locale/netError.dtd',
     ]
@@ -36,7 +35,6 @@ class BrowserWindow(BaseWindow):
     properties = [
         'chrome://branding/locale/brand.properties',
         'chrome://browser/locale/browser.properties',
-        'chrome://browser/locale/preferences/preferences.properties',
         'chrome://global/locale/browser.properties',
     ]
 

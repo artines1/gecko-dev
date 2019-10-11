@@ -1,9 +1,20 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
+
+loader.lazyRequireGetter(
+  this,
+  "getWarningGroupType",
+  "devtools/client/webconsole/utils/messages",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "getParentWarningGroupMessageId",
+  "devtools/client/webconsole/utils/messages",
+  true
+);
 
 function getAllMessagesById(state) {
   return state.messages.messagesById;
@@ -16,9 +27,8 @@ function getMessage(state, id) {
 function getAllMessagesUiById(state) {
   return state.messages.messagesUiById;
 }
-
-function getAllMessagesTableDataById(state) {
-  return state.messages.messagesTableDataById;
+function getAllMessagesPayloadById(state) {
+  return state.messages.messagesPayloadById;
 }
 
 function getAllGroupsById(state) {
@@ -49,10 +59,27 @@ function getGroupsById(state) {
   return state.messages.groupsById;
 }
 
+function getPausedExecutionPoint(state) {
+  return state.messages.pausedExecutionPoint;
+}
+
+function getAllWarningGroupsById(state) {
+  return state.messages.warningGroupsById;
+}
+
+function isMessageInWarningGroup(message, visibleMessages = []) {
+  if (!getWarningGroupType(message)) {
+    return false;
+  }
+
+  return visibleMessages.includes(getParentWarningGroupMessageId(message));
+}
+
 module.exports = {
   getAllGroupsById,
+  getAllWarningGroupsById,
   getAllMessagesById,
-  getAllMessagesTableDataById,
+  getAllMessagesPayloadById,
   getAllMessagesUiById,
   getAllNetworkMessagesUpdateById,
   getAllRepeatById,
@@ -61,4 +88,6 @@ module.exports = {
   getGroupsById,
   getMessage,
   getVisibleMessages,
+  getPausedExecutionPoint,
+  isMessageInWarningGroup,
 };

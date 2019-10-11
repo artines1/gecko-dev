@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,17 +10,42 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-function updateWindow(window, buffer, width, height) {
-  // Make sure the window has a canvas filling the screen.
-  let canvas = window.middlemanCanvas;
-  if (!canvas) {
-    canvas = window.document.createElement("canvas");
-    window.document.body.style.margin = "0px";
-    window.document.body.insertBefore(canvas, window.document.body.firstChild);
-    window.middlemanCanvas = canvas;
+const CC = Components.Constructor;
+
+// Create a sandbox with the resources we need. require() doesn't work here.
+const sandbox = Cu.Sandbox(
+  CC("@mozilla.org/systemprincipal;1", "nsIPrincipal")()
+);
+Cu.evalInSandbox(
+  "Components.utils.import('resource://gre/modules/jsdebugger.jsm');" +
+    "addDebuggerToGlobal(this);",
+  sandbox
+);
+
+// Windows in the middleman process are initially set up as about:blank pages.
+// This method fills them in with a canvas filling the tab.
+function setupContents(window) {
+  // The middlemanCanvas element fills the tab's contents.
+  const canvas = (window.middlemanCanvas = window.document.createElement(
+    "canvas"
+  ));
+  canvas.style.position = "absolute";
+  window.document.body.style.margin = "0px";
+  window.document.body.prepend(canvas);
+}
+
+function getCanvas(window) {
+  if (!window.middlemanCanvas) {
+    setupContents(window);
   }
+  return window.middlemanCanvas;
+}
+
+function updateWindowCanvas(window, buffer, width, height) {
+  // Make sure the window has a canvas filling the screen.
+  const canvas = getCanvas(window);
 
   canvas.width = width;
   canvas.height = height;
@@ -32,36 +55,49 @@ function updateWindow(window, buffer, width, height) {
   // transform the canvas to undo the scaling.
   const scale = window.devicePixelRatio;
   if (scale != 1) {
-    canvas.style.transform =
-      `scale(${ 1 / scale }) translate(-${ width / scale }px, -${ height / scale }px)`;
+    canvas.style.transform = `scale(${1 / scale}) translate(-${width /
+      scale}px, -${height / scale}px)`;
   }
 
-  const graphicsData = new Uint8Array(buffer);
-  const imageData = canvas.getContext("2d").getImageData(0, 0, width, height);
-  imageData.data.set(graphicsData);
-  canvas.getContext("2d").putImageData(imageData, 0, 0);
+  const cx = canvas.getContext("2d");
 
-  // Make recording/replaying tabs easier to differentiate from other tabs.
-  window.document.title = "RECORD/REPLAY";
+  const graphicsData = new Uint8Array(buffer);
+  const imageData = cx.getImageData(0, 0, width, height);
+  imageData.data.set(graphicsData);
+  cx.putImageData(imageData, 0, 0);
+}
+
+function clearWindowCanvas(window) {
+  const canvas = getCanvas(window);
+
+  const cx = canvas.getContext("2d");
+  cx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 // Entry point for when we have some new graphics data from the child process
 // to draw.
 // eslint-disable-next-line no-unused-vars
-function Update(buffer, width, height) {
+function UpdateCanvas(buffer, width, height) {
   try {
     // Paint to all windows we can find. Hopefully there is only one.
-    const windowEnumerator = Services.ww.getWindowEnumerator();
-    while (windowEnumerator.hasMoreElements()) {
-      const window = windowEnumerator.getNext().QueryInterface(Ci.nsIDOMWindow);
-      updateWindow(window, buffer, width, height);
+    for (const window of Services.ww.getWindowEnumerator()) {
+      updateWindowCanvas(window, buffer, width, height);
     }
   } catch (e) {
-    dump("Middleman Graphics Update Exception: " + e + "\n");
+    dump(`Middleman Graphics UpdateCanvas Exception: ${e}\n`);
   }
 }
 
 // eslint-disable-next-line no-unused-vars
-var EXPORTED_SYMBOLS = [
-  "Update",
-];
+function ClearCanvas() {
+  try {
+    for (const window of Services.ww.getWindowEnumerator()) {
+      clearWindowCanvas(window);
+    }
+  } catch (e) {
+    dump(`Middleman Graphics ClearCanvas Exception: ${e}\n`);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+var EXPORTED_SYMBOLS = ["UpdateCanvas", "ClearCanvas"];

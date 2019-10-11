@@ -10,23 +10,20 @@ XPIDL_SOURCES += [
     'nsIASN1Object.idl',
     'nsIASN1PrintableItem.idl',
     'nsIASN1Sequence.idl',
-    'nsIAssociatedContentSecurity.idl',
     'nsIBadCertListener2.idl',
-    'nsICertBlocklist.idl',
     'nsICertificateDialogs.idl',
     'nsICertOverrideService.idl',
     'nsIClientAuthDialogs.idl',
     'nsIContentSignatureVerifier.idl',
     'nsICryptoHash.idl',
     'nsICryptoHMAC.idl',
-    'nsIGenKeypairInfoDlg.idl',
-    'nsIKeygenThread.idl',
     'nsIKeyModule.idl',
     'nsILocalCertService.idl',
     'nsINSSComponent.idl',
     'nsINSSErrorsService.idl',
     'nsINSSVersion.idl',
     'nsIOSKeyStore.idl',
+    'nsIOSReauthenticator.idl',
     'nsIPK11Token.idl',
     'nsIPK11TokenDB.idl',
     'nsIPKCS11Module.idl',
@@ -36,7 +33,6 @@ XPIDL_SOURCES += [
     'nsISecretDecoderRing.idl',
     'nsISecurityUITelemetry.idl',
     'nsISiteSecurityService.idl',
-    'nsISSLStatus.idl',
     'nsITokenDialogs.idl',
     'nsITokenPasswordDialogs.idl',
     'nsIX509Cert.idl',
@@ -52,15 +48,20 @@ if CONFIG['MOZ_XUL']:
 
 XPIDL_MODULE = 'pipnss'
 
-# These aren't actually used in production code yet, so we don't want to
-# ship them with the browser.
-TESTING_JS_MODULES.psm += [
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
+
+EXTRA_JS_MODULES.psm += [
     'DER.jsm',
+    'RemoteSecuritySettings.jsm',
     'X509.jsm',
 ]
 
 EXPORTS += [
+    'CommonSocketControl.h',
     'CryptoTask.h',
+    'EnterpriseRoots.h',
     'nsClientAuthRemember.h',
     'nsNSSCallbacks.h',
     'nsNSSCertificate.h',
@@ -69,9 +70,12 @@ EXPORTS += [
     'nsRandomGenerator.h',
     'nsSecurityHeaderParser.h',
     'NSSErrorsService.h',
+    'nsSSLSocketProvider.h',
+    'nsTLSSocketProvider.h',
     'RootCertificateTelemetryUtils.h',
     'ScopedNSSTypes.h',
     'SharedCertVerifier.h',
+    'TransportSecurityInfo.h',
 ]
 
 EXPORTS.mozilla += [
@@ -82,6 +86,7 @@ EXPORTS.mozilla += [
 
 EXPORTS.mozilla.psm += [
     'PSMContentListener.h',
+    'TransportSecurityInfo.h',
 ]
 
 EXPORTS.ipc += [
@@ -89,7 +94,7 @@ EXPORTS.ipc += [
 ]
 
 UNIFIED_SOURCES += [
-    'CertBlocklist.cpp',
+    'CommonSocketControl.cpp',
     'ContentSignatureVerifier.cpp',
     'CryptoTask.cpp',
     'CSTrustDomain.cpp',
@@ -99,9 +104,6 @@ UNIFIED_SOURCES += [
     'nsCertOverrideService.cpp',
     'nsClientAuthRemember.cpp',
     'nsCryptoHash.cpp',
-    'nsKeygenHandler.cpp',
-    'nsKeygenHandlerContent.cpp',
-    'nsKeygenThread.cpp',
     'nsKeyModule.cpp',
     'nsNSSASN1Object.cpp',
     'nsNSSCallbacks.cpp',
@@ -126,7 +128,6 @@ UNIFIED_SOURCES += [
     'nsSiteSecurityService.cpp',
     'NSSKeyStore.cpp',
     'nsSSLSocketProvider.cpp',
-    'nsSSLStatus.cpp',
     'nsTLSSocketProvider.cpp',
     'OSKeyStore.cpp',
     'PKCS11ModuleDB.cpp',
@@ -140,22 +141,39 @@ UNIFIED_SOURCES += [
     'TransportSecurityInfo.cpp',
 ]
 
-if CONFIG['MOZ_LIB_SECRET']:
+if CONFIG['OS_ARCH'] == 'WINNT':
+    # On Windows this file includes ntsecapi.h, which contains definitions that
+    # conflict with headers included in remaining source files. We compile this
+    # one independently to prevent that interferance.
+    SOURCES += [
+        'OSReauthenticator.cpp',
+    ]
+else:
+    UNIFIED_SOURCES += [
+        'OSReauthenticator.cpp',
+    ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     UNIFIED_SOURCES += [
         'LibSecret.cpp',
     ]
-    CFLAGS += CONFIG['MOZ_LIB_SECRET_CFLAGS']
-    CXXFLAGS += CONFIG['MOZ_LIB_SECRET_CFLAGS']
+    CFLAGS += CONFIG['GLIB_CFLAGS']
+    CXXFLAGS += CONFIG['GLIB_CFLAGS']
 
 if CONFIG['OS_ARCH'] == 'Darwin':
     UNIFIED_SOURCES += [
         'KeychainSecret.cpp',
+        'OSReauthenticatorDarwin.mm',
     ]
     OS_LIBS += [
-        '-framework Security'
+        '-framework LocalAuthentication',
+        '-framework Security',
     ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':
+    OS_LIBS += [
+        'credui'
+    ]
     UNIFIED_SOURCES += [
         'CredentialManagerSecret.cpp',
     ]
@@ -173,38 +191,52 @@ UNIFIED_SOURCES += [
     'md4.c',
 ]
 
+if CONFIG['MOZ_NEW_CERT_STORAGE']:
+    XPIDL_SOURCES += [
+        'nsICertStorage.idl',
+    ]
+    UNIFIED_SOURCES += [
+        'cert_storage/src/cert_storage.cpp',
+    ]
+else:
+    XPIDL_SOURCES += [
+        'nsICertBlocklist.idl',
+    ]
+    UNIFIED_SOURCES += [
+        'CertBlocklist.cpp',
+    ]
+
 FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '/dom/base',
     '/dom/crypto',
+    '/netwerk/base',
     '/security/certverifier',
-    '/security/pkix/include',
 ]
 
 LOCAL_INCLUDES += [
     '!/dist/public/nss',
 ]
 
-GENERATED_FILES = [
-    'nsSTSPreloadList.h',
-]
-dafsa_data = GENERATED_FILES['nsSTSPreloadList.h']
-dafsa_data.script = '../../../xpcom/ds/tools/make_dafsa.py'
-dafsa_data.inputs = ['nsSTSPreloadList.inc']
+GeneratedFile('nsSTSPreloadList.h',
+              script='../../../xpcom/ds/tools/make_dafsa.py',
+              inputs=['nsSTSPreloadList.inc'])
 
 if CONFIG['NSS_DISABLE_DBM']:
     DEFINES['NSS_DISABLE_DBM'] = '1'
 
 DEFINES['SSL_DISABLE_DEPRECATED_CIPHER_SUITE_NAMES'] = 'True'
 DEFINES['NSS_ENABLE_ECC'] = 'True'
-for var in ('DLL_PREFIX', 'DLL_SUFFIX'):
-    DEFINES[var] = '"%s"' % CONFIG[var]
 
 if not CONFIG['MOZ_SYSTEM_NSS']:
     USE_LIBS += [
         'crmf',
     ]
+
+# mozpkix is linked statically from the in-tree sources independent of whether
+# system NSS is used or not.
+USE_LIBS += [ 'mozpkix' ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -219,6 +251,3 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += [
         '-Wno-unused-parameter',
     ]
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

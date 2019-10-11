@@ -14,14 +14,14 @@ tab_width = 2
 language = "C++"
 namespaces = ["mozilla", "wr"]
 
+[export]
+item_types = ["globals", "enums", "structs", "unions", "typedefs", "opaque", "functions", "constants"]
+
 [parse]
 parse_deps = true
-include = ["log", "webrender", "webrender_api"]
-expand = ["euclid"]
+include = ["log", "euclid", "webrender", "webrender_api"]
 
 [fn]
-prefix = "WR_INLINE"
-postfix = "WR_FUNC"
 args = "Vertical"
 rename_args = "GeckoCase"
 
@@ -32,7 +32,10 @@ derive_eq = true
 add_sentinel = true
 derive_helper_methods = true
 
+[macro_expansion]
+bitflags = true
+
 [defines]
 "target_os = windows" = "XP_WIN"
 "target_os = macos" = "XP_MACOSX"
-
+"target_os = android" = "ANDROID"

@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -31,7 +30,11 @@ const validLanguageTags = {
 };
 
 for (const [langtag, canonical] of Object.entries(validLanguageTags)) {
-    assert.sameValue(new Intl.Locale(langtag).toString(), canonical);
+    assert.sameValue(
+      new Intl.Locale(langtag).toString(),
+      canonical,
+      `new Intl.Locale("${langtag}").toString() returns "${canonical}"`
+    );
 }
 
 reportCompare(0, 0);

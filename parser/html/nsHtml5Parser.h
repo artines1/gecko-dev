@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,11 +27,8 @@
 #include "nsWeakReference.h"
 #include "nsHtml5StreamListener.h"
 
-class nsHtml5Parser final
-  : public nsIParser
-  , public nsSupportsWeakReference
-{
-public:
+class nsHtml5Parser final : public nsIParser, public nsSupportsWeakReference {
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5Parser, nsIParser)
@@ -129,8 +126,7 @@ public:
    * @param   aKey the root context key (used for document.write)
    * @param   aMode ignored (for interface compat only)
    */
-  NS_IMETHOD Parse(nsIURI* aURL,
-                   nsIRequestObserver* aListener = nullptr,
+  NS_IMETHOD Parse(nsIURI* aURL, nsIRequestObserver* aListener = nullptr,
                    void* aKey = 0,
                    nsDTDMode aMode = eDTDMode_autodetect) override;
 
@@ -139,15 +135,9 @@ public:
    *
    * @param   aSourceBuffer the argument of document.write (empty for .close())
    * @param   aKey a key unique to the script element that caused this call
-   * @param   aContentType "text/html" for HTML mode, else text/plain mode
    * @param   aLastCall true if .close() false if .write()
-   * @param   aMode ignored (for interface compat only)
    */
-  nsresult Parse(const nsAString& aSourceBuffer,
-                 void* aKey,
-                 const nsACString& aContentType,
-                 bool aLastCall,
-                 nsDTDMode aMode = eDTDMode_autodetect);
+  nsresult Parse(const nsAString& aSourceBuffer, void* aKey, bool aLastCall);
 
   /**
    * Stops the parser prematurely
@@ -182,16 +172,24 @@ public:
 
   /**
    * Call immediately before starting to evaluate a parser-inserted script or
-   * in general when the spec says to define an insertion point.
+   * in general when the spec says to increment the script nesting level.
    */
-  virtual void PushDefinedInsertionPoint() override;
+  void IncrementScriptNestingLevel() final;
 
   /**
    * Call immediately after having evaluated a parser-inserted script or
    * generally want to restore to the state before the last
-   * PushDefinedInsertionPoint call.
+   * IncrementScriptNestingLevel call.
    */
-  virtual void PopDefinedInsertionPoint() override;
+  void DecrementScriptNestingLevel() final;
+
+  /**
+   * True if this is an HTML5 parser whose script nesting level (in
+   * the sense of
+   * <https://html.spec.whatwg.org/multipage/parsing.html#script-nesting-level>)
+   * is nonzero.
+   */
+  bool HasNonzeroScriptNestingLevel() const final;
 
   /**
    * Marks the HTML5 parser as not a script-created parser: Prepares the
@@ -212,22 +210,19 @@ public:
   // Not from an external interface
   // Non-inherited methods
 
-public:
+ public:
   /**
    * Initializes the parser to load from a channel.
    */
-  virtual nsresult Initialize(nsIDocument* aDoc,
-                              nsIURI* aURI,
-                              nsISupports* aContainer,
-                              nsIChannel* aChannel);
+  virtual nsresult Initialize(mozilla::dom::Document* aDoc, nsIURI* aURI,
+                              nsISupports* aContainer, nsIChannel* aChannel);
 
   inline nsHtml5Tokenizer* GetTokenizer() { return mTokenizer; }
 
   void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState,
                                      int32_t aLine);
 
-  void DropStreamParser()
-  {
+  void DropStreamParser() {
     if (GetStreamParser()) {
       GetStreamParser()->DropTimer();
       mStreamListener->DropDelegate();
@@ -239,16 +234,14 @@ public:
 
   void ContinueAfterFailedCharsetSwitch();
 
-  nsHtml5StreamParser* GetStreamParser()
-  {
+  nsHtml5StreamParser* GetStreamParser() {
     if (!mStreamListener) {
       return nullptr;
     }
     return mStreamListener->GetDelegate();
   }
 
-  void PermanentlyUndefineInsertionPoint()
-  {
+  void PermanentlyUndefineInsertionPoint() {
     mInsertionPointPermanentlyUndefined = true;
   }
 
@@ -257,7 +250,14 @@ public:
    */
   nsresult ParseUntilBlocked();
 
-private:
+  /**
+   * Start our executor.  This is meant to be used from document.open() _only_
+   * and does some work similar to what nsHtml5StreamParser::OnStartRequest does
+   * for normal parses.
+   */
+  nsresult StartExecutor();
+
+ private:
   virtual ~nsHtml5Parser();
 
   // State variables
@@ -285,10 +285,10 @@ private:
   bool mDocWriteSpeculatorActive;
 
   /**
-   * The number of PushDefinedInsertionPoint calls we've seen without a
-   * matching PopDefinedInsertionPoint.
+   * The number of IncrementScriptNestingLevel calls we've seen without a
+   * matching DecrementScriptNestingLevel.
    */
-  int32_t mInsertionPointPushLevel;
+  int32_t mScriptNestingLevel;
 
   /**
    * True if document.close() has been called.
@@ -321,7 +321,7 @@ private:
    * The last buffer in the pending UTF-16 buffer queue. Always points
    * to a sentinel object with nullptr as its parser key.
    */
-  nsHtml5OwningUTF16Buffer* mLastBuffer; // weak ref;
+  nsHtml5OwningUTF16Buffer* mLastBuffer;  // weak ref;
 
   /**
    * The tree operation executor

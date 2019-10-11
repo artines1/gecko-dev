@@ -10,15 +10,65 @@
  * callback based.
  */
 
+// Disable ownerGlobal use since that's not available on content-privileged elements.
+
+/* eslint-disable mozilla/use-ownerGlobal */
+
 "use strict";
 
-var EXPORTED_SYMBOLS = [
-  "ContentTaskUtils",
-];
+var EXPORTED_SYMBOLS = ["ContentTaskUtils"];
 
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { clearInterval, setInterval, setTimeout } = ChromeUtils.import(
+  "resource://gre/modules/Timer.jsm"
+);
 
 var ContentTaskUtils = {
+  /**
+   * Checks if a DOM element is hidden.
+   *
+   * @param {Element} element
+   *        The element which is to be checked.
+   *
+   * @return {boolean}
+   */
+  is_hidden(element) {
+    let style = element.ownerDocument.defaultView.getComputedStyle(element);
+    if (style.display == "none") {
+      return true;
+    }
+    if (style.visibility != "visible") {
+      return true;
+    }
+
+    // Hiding a parent element will hide all its children
+    if (
+      element.parentNode != element.ownerDocument &&
+      element.parentNode.nodeType != Node.DOCUMENT_FRAGMENT_NODE
+    ) {
+      return ContentTaskUtils.is_hidden(element.parentNode);
+    }
+
+    // Walk up the shadow DOM if we've reached the top of the shadow root
+    if (element.parentNode.host) {
+      return ContentTaskUtils.is_hidden(element.parentNode.host);
+    }
+
+    return false;
+  },
+
+  /**
+   * Checks if a DOM element is visible.
+   *
+   * @param {Element} element
+   *        The element which is to be checked.
+   *
+   * @return {boolean}
+   */
+  is_visible(element) {
+    return !this.is_hidden(element);
+  },
+
   /**
    * Will poll a condition function until it returns true.
    *
@@ -101,22 +151,61 @@ var ContentTaskUtils = {
    */
   waitForEvent(subject, eventName, capture, checkFn, wantsUntrusted = false) {
     return new Promise((resolve, reject) => {
-      subject.addEventListener(eventName, function listener(event) {
-        try {
-          if (checkFn && !checkFn(event)) {
-            return;
-          }
-          subject.removeEventListener(eventName, listener, capture);
-          setTimeout(() => resolve(event), 0);
-        } catch (ex) {
+      subject.addEventListener(
+        eventName,
+        function listener(event) {
           try {
+            if (checkFn && !checkFn(event)) {
+              return;
+            }
             subject.removeEventListener(eventName, listener, capture);
-          } catch (ex2) {
-            // Maybe the provided object does not support removeEventListener.
+            setTimeout(() => resolve(event), 0);
+          } catch (ex) {
+            try {
+              subject.removeEventListener(eventName, listener, capture);
+            } catch (ex2) {
+              // Maybe the provided object does not support removeEventListener.
+            }
+            setTimeout(() => reject(ex), 0);
           }
-          setTimeout(() => reject(ex), 0);
-        }
-      }, capture, wantsUntrusted);
+        },
+        capture,
+        wantsUntrusted
+      );
     });
+  },
+
+  /**
+   * Gets an instance of the `EventUtils` helper module for usage in
+   * content tasks. See https://searchfox.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/EventUtils.js
+   *
+   * @param content
+   *        The `content` global object from your content task.
+   *
+   * @returns an EventUtils instance.
+   */
+  getEventUtils(content) {
+    if (content._EventUtils) {
+      return content._EventUtils;
+    }
+
+    let EventUtils = (content._EventUtils = {});
+
+    EventUtils.window = {};
+    EventUtils.parent = EventUtils.window;
+    /* eslint-disable camelcase */
+    EventUtils._EU_Ci = Ci;
+    EventUtils._EU_Cc = Cc;
+    /* eslint-enable camelcase */
+    // EventUtils' `sendChar` function relies on the navigator to synthetize events.
+    EventUtils.navigator = content.navigator;
+    EventUtils.KeyboardEvent = content.KeyboardEvent;
+
+    Services.scriptloader.loadSubScript(
+      "chrome://mochikit/content/tests/SimpleTest/EventUtils.js",
+      EventUtils
+    );
+
+    return EventUtils;
   },
 };

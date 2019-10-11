@@ -31,7 +31,7 @@ add_task(async function test_createDownload_private() {
   let download = await Downloads.createDownload({
     source: { url: "about:blank", isPrivate: true },
     target: { path: getTempFile(TEST_TARGET_FILE_NAME).path },
-    saver: { type: "copy" }
+    saver: { type: "copy" },
   });
   Assert.ok(download.source.isPrivate);
 });
@@ -44,14 +44,14 @@ add_task(async function test_createDownload_public() {
   let download = await Downloads.createDownload({
     source: { url: "about:blank", isPrivate: false },
     target: { path: tempPath },
-    saver: { type: "copy" }
+    saver: { type: "copy" },
   });
   Assert.ok(!download.source.isPrivate);
 
   download = await Downloads.createDownload({
     source: { url: "about:blank" },
     target: { path: tempPath },
-    saver: { type: "copy" }
+    saver: { type: "copy" },
   });
   Assert.ok(!download.source.isPrivate);
 });
@@ -111,8 +111,7 @@ add_task(async function test_fetch_string_arguments() {
   await promiseVerifyContents(targetPath, TEST_DATA_SHORT);
 
   targetPath = getTempFile(TEST_TARGET_FILE_NAME).path;
-  await Downloads.fetch(httpUrl("source.txt"),
-                        targetPath);
+  await Downloads.fetch(httpUrl("source.txt"), targetPath);
   await promiseVerifyContents(targetPath, TEST_DATA_SHORT);
 });
 

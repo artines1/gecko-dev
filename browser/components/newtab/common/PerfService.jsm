@@ -1,29 +1,28 @@
-/* globals Services */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-/* istanbul ignore if */
 if (typeof ChromeUtils !== "undefined") {
-  ChromeUtils.import("resource://gre/modules/Services.jsm");
+  // Use a var here instead of let outside to avoid creating a locally scoped
+  // variable that hides the global, which we modify for testing.
+  // eslint-disable-next-line no-var, vars-on-top
+  var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 }
 
 let usablePerfObj;
 
-/* istanbul ignore if */
 /* istanbul ignore else */
+// eslint-disable-next-line block-scoped-var
 if (typeof Services !== "undefined") {
   // Borrow the high-resolution timer from the hidden window....
+  // eslint-disable-next-line block-scoped-var
   usablePerfObj = Services.appShell.hiddenDOMWindow.performance;
-} else if (typeof performance !== "undefined") {
+} else {
   // we must be running in content space
   // eslint-disable-next-line no-undef
   usablePerfObj = performance;
-} else {
-  // This is a dummy object so this file doesn't crash in the node prerendering
-  // task.
-  usablePerfObj = {
-    now() {},
-    mark() {}
-  };
 }
 
 function _PerfService(options) {
@@ -118,7 +117,7 @@ _PerfService.prototype = {
 
     let mostRecentEntry = entries[entries.length - 1];
     return this._perf.timeOrigin + mostRecentEntry.startTime;
-  }
+  },
 };
 
 this.perfService = new _PerfService();

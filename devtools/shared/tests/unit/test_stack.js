@@ -9,7 +9,7 @@ function run_test() {
   const loader = new DevToolsLoader();
   const require = loader.require;
 
-  const {StackFrameCache} = require("devtools/server/actors/utils/stack");
+  const { StackFrameCache } = require("devtools/server/actors/utils/stack");
 
   const cache = new StackFrameCache();
   cache.initFrames();
@@ -20,7 +20,7 @@ function run_test() {
     functionDisplayName: "nobody",
     parent: null,
     asyncParent: null,
-    asyncCause: null
+    asyncCause: null,
   };
   cache.addFrame(baseFrame);
 
@@ -36,7 +36,7 @@ function run_test() {
     functionDisplayName: "still nobody",
     parent: null,
     asyncParent: baseFrame,
-    asyncCause: "async"
+    asyncCause: "async",
   });
 
   event = cache.makeEvent();

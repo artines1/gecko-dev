@@ -106,6 +106,9 @@ include css-ruby/reftest.list
 # css required
 include css-required/reftest.list
 
+# css scroll snap
+include css-scroll-snap/reftest.list
+
 # css shapes
 include css-shapes/reftest.list
 
@@ -223,6 +226,9 @@ include frameset/reftest.list
 # gfx
 include ../../gfx/tests/reftest/reftest.list
 
+# high contrast
+include high-contrast/reftest.list
+
 # block-inside-inline splits
 include ib-split/reftest.list
 
@@ -264,6 +270,9 @@ include margin-collapsing/reftest.list
 
 # marquee/
 include marquee/reftest.list
+
+# meta viewport
+include meta-viewport/reftest.list
 
 # native-theme/
 # (no XUL theme on Android)

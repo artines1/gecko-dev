@@ -71,7 +71,6 @@ fun:*nsTArray_base*ShiftData*
 # makes sense to increase runtime performance.
 #
 src:*/netwerk/base/nsSocketTransportService2.cpp
-src:*/dom/xul/XULDocument.cpp
 src:*/nsCharTraits.h
 # Code in xpcom/base/CycleCollectedJSContext.cpp
 fun:*CycleCollectedJSContext*ProcessMetastableStateQueue*
@@ -81,11 +80,6 @@ fun:*nsDisplayOpacity*ShouldFlattenAway*
 fun:*pref_InitInitialObjects*
 # Code in netwerk/base/nsIOService.cpp
 fun:*nsIOService*GetCachedProtocolHandler*
-# Code in layout/style/nsCSSRuleProcessor.cpp
-fun:*0nsCSSRuleProcessor@@*
-fun:*nsCSSRuleProcessor*ClearSheets*
-fun:*TreeMatchContext*InitAncestors*
-fun:*TreeMatchContext*InitStyleScopes*
 # Code in layout/xul/nsXULPopupManager.cpp
 fun:*nsXULPopupManager*AdjustPopupsOnWindowChange*
 # Code in dom/base/nsDocument.cpp
@@ -110,7 +104,7 @@ fun:*CodedInputStream*ReadTagWithCutoff*
 
 
 # SQLite3 is full of overflows :/
-src:*/db/sqlite3/src/sqlite3.c
+src:*/third_party/sqlite3/src/sqlite3.c
 
 # zlib has some overflows, we can't deal with them right now
 src:*/modules/zlib/src/*

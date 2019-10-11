@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -49,16 +48,16 @@ const validCollationOptions = [
   ["1234abcd-abc123", "en-u-co-1234abcd-abc123"],
 ];
 for (const [collation, expected] of validCollationOptions) {
-  let options = { collation };
   assert.sameValue(
-    new Intl.Locale('en', options).toString(),
+    new Intl.Locale('en', {collation}).toString(),
     expected,
-    `new Intl.Locale('en', options).toString() equals the value of ${expected}`
+    `new Intl.Locale('en', {collation: "${collation}"}).toString() returns "${expected}"`
   );
+
   assert.sameValue(
-    new Intl.Locale('en-u-co-gregory', options).toString(),
+    new Intl.Locale('en-u-co-gregory', {collation}).toString(),
     expected,
-    `new Intl.Locale('en-u-co-gregory', options).toString() equals the value of ${expected}`
+    `new Intl.Locale('en-u-co-gregory', {collation: "${collation}"}).toString() returns "${expected}"`
   );
 }
 

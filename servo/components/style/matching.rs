@@ -1,25 +1,25 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! High-level interface to CSS selector matching.
 
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use context::{ElementCascadeInputs, QuirksMode, SelectorFlagsMap};
-use context::{SharedStyleContext, StyleContext};
-use data::ElementData;
-use dom::TElement;
-use invalidation::element::restyle_hints::RestyleHint;
-use properties::ComputedValues;
-use properties::longhands::display::computed_value::T as Display;
-use rule_tree::{CascadeLevel, StrongRuleNode};
-use selector_parser::{PseudoElement, RestyleDamage};
+use crate::context::{ElementCascadeInputs, QuirksMode, SelectorFlagsMap};
+use crate::context::{SharedStyleContext, StyleContext};
+use crate::data::ElementData;
+use crate::dom::TElement;
+use crate::invalidation::element::restyle_hints::RestyleHint;
+use crate::properties::longhands::display::computed_value::T as Display;
+use crate::properties::ComputedValues;
+use crate::rule_tree::{CascadeLevel, StrongRuleNode};
+use crate::selector_parser::{PseudoElement, RestyleDamage};
+use crate::style_resolver::ResolvedElementStyles;
+use crate::traversal_flags::TraversalFlags;
 use selectors::matching::ElementSelectorFlags;
 use servo_arc::{Arc, ArcBorrow};
-use style_resolver::ResolvedElementStyles;
-use traversal_flags::TraversalFlags;
 
 /// Represents the result of comparing an element's old and new style.
 #[derive(Debug)]
@@ -93,8 +93,8 @@ trait PrivateMatchMethods: TElement {
         cascade_visited: CascadeVisitedMode,
         cascade_inputs: &mut ElementCascadeInputs,
     ) -> bool {
-        use properties::PropertyDeclarationBlock;
-        use shared_lock::Locked;
+        use crate::properties::PropertyDeclarationBlock;
+        use crate::shared_lock::Locked;
 
         debug_assert!(
             replacements.intersects(RestyleHint::replacements()) &&
@@ -195,9 +195,9 @@ trait PrivateMatchMethods: TElement {
         context: &mut StyleContext<Self>,
         primary_style: &Arc<ComputedValues>,
     ) -> Option<Arc<ComputedValues>> {
-        use context::CascadeInputs;
-        use style_resolver::{PseudoElementResolution, StyleResolverForElement};
-        use stylist::RuleInclusion;
+        use crate::context::CascadeInputs;
+        use crate::style_resolver::{PseudoElementResolution, StyleResolverForElement};
+        use crate::stylist::RuleInclusion;
 
         let rule_node = primary_style.rules();
         let without_transition_rules = context
@@ -224,7 +224,8 @@ trait PrivateMatchMethods: TElement {
             context,
             RuleInclusion::All,
             PseudoElementResolution::IfApplicable,
-        ).cascade_style_and_visited_with_default_parents(inputs);
+        )
+        .cascade_style_and_visited_with_default_parents(inputs);
 
         Some(style.0)
     }
@@ -239,15 +240,30 @@ trait PrivateMatchMethods: TElement {
         let new_box_style = new_style.get_box();
         let new_style_specifies_animations = new_box_style.specifies_animations();
 
-        let old_style = match old_style {
-            Some(old) => old,
-            None => return new_style_specifies_animations,
-        };
-
         let has_animations = self.has_css_animations();
         if !new_style_specifies_animations && !has_animations {
             return false;
         }
+
+        let old_style = match old_style {
+            Some(old) => old,
+            // If we have no old style but have animations, we may be a
+            // pseudo-element which was re-created without style changes.
+            //
+            // This can happen when we reframe the pseudo-element without
+            // restyling it (due to content insertion on a flex container or
+            // such, for example). See bug 1564366.
+            //
+            // FIXME(emilio): The really right fix for this is keeping the
+            // pseudo-element itself around on reframes, but that's a bit
+            // harder. If we do that we can probably remove quite a lot of the
+            // EffectSet complexity though, since right now it's stored on the
+            // parent element for pseudo-elements given we need to keep it
+            // around...
+            None => {
+                return new_style_specifies_animations || new_style.is_pseudo_style();
+            },
+        };
 
         let old_box_style = old_style.get_box();
 
@@ -306,7 +322,7 @@ trait PrivateMatchMethods: TElement {
         new_values: &ComputedValues,
         restyle_hints: RestyleHint,
     ) {
-        use context::PostAnimationTasks;
+        use crate::context::PostAnimationTasks;
 
         if !restyle_hints.intersects(RestyleHint::RESTYLE_SMIL) {
             return;
@@ -336,7 +352,7 @@ trait PrivateMatchMethods: TElement {
         restyle_hint: RestyleHint,
         important_rules_changed: bool,
     ) {
-        use context::UpdateAnimationsTasks;
+        use crate::context::UpdateAnimationsTasks;
 
         if context.shared.traversal_flags.for_animation_only() {
             self.handle_display_change_for_smil_if_needed(
@@ -356,10 +372,9 @@ trait PrivateMatchMethods: TElement {
             tasks.insert(UpdateAnimationsTasks::CSS_ANIMATIONS);
         }
 
-        let before_change_style = if self.might_need_transitions_update(
-            old_values.as_ref().map(|s| &**s),
-            new_values,
-        ) {
+        let before_change_style = if self
+            .might_need_transitions_update(old_values.as_ref().map(|s| &**s), new_values)
+        {
             let after_change_style = if self.has_css_transitions() {
                 self.after_change_style(context, new_values)
             } else {
@@ -419,8 +434,8 @@ trait PrivateMatchMethods: TElement {
         _restyle_hint: RestyleHint,
         _important_rules_changed: bool,
     ) {
-        use animation;
-        use dom::TNode;
+        use crate::animation;
+        use crate::dom::TNode;
 
         let mut possibly_expired_animations = vec![];
         let shared_context = context.shared;
@@ -471,7 +486,7 @@ trait PrivateMatchMethods: TElement {
         debug!("accumulate_damage_for: {:?}", self);
         debug_assert!(!shared_context
             .traversal_flags
-            .contains(TraversalFlags::Forgetful));
+            .contains(TraversalFlags::FinalAnimationTraversal));
 
         let difference = self.compute_style_difference(old_values, new_values, pseudo);
 
@@ -503,29 +518,31 @@ trait PrivateMatchMethods: TElement {
         let old_display = old_values.get_box().clone_display();
         let new_display = new_values.get_box().clone_display();
 
-        // If we used to be a display: none element, and no longer are,
-        // our children need to be restyled because they're unstyled.
-        //
-        // NOTE(emilio): Gecko has the special-case of -moz-binding, but
-        // that gets handled on the frame constructor when processing
-        // the reframe, so no need to handle that here.
-        if old_display == Display::None && old_display != new_display {
-            return ChildCascadeRequirement::MustCascadeChildren;
-        }
-
-        // Blockification of children may depend on our display value,
-        // so we need to actually do the recascade. We could potentially
-        // do better, but it doesn't seem worth it.
-        if old_display.is_item_container() != new_display.is_item_container() {
-            return ChildCascadeRequirement::MustCascadeChildren;
-        }
-
-        // Line break suppression may also be affected if the display
-        // type changes from ruby to non-ruby.
-        #[cfg(feature = "gecko")]
-        {
-            if old_display.is_ruby_type() != new_display.is_ruby_type() {
+        if old_display != new_display {
+            // If we used to be a display: none element, and no longer are, our
+            // children need to be restyled because they're unstyled.
+            if old_display == Display::None {
                 return ChildCascadeRequirement::MustCascadeChildren;
+            }
+            // Blockification of children may depend on our display value,
+            // so we need to actually do the recascade. We could potentially
+            // do better, but it doesn't seem worth it.
+            if old_display.is_item_container() != new_display.is_item_container() {
+                return ChildCascadeRequirement::MustCascadeChildren;
+            }
+            // We may also need to blockify and un-blockify descendants if our
+            // display goes from / to display: contents, since the "layout
+            // parent style" changes.
+            if old_display.is_contents() || new_display.is_contents() {
+                return ChildCascadeRequirement::MustCascadeChildren;
+            }
+            // Line break suppression may also be affected if the display
+            // type changes from ruby to non-ruby.
+            #[cfg(feature = "gecko")]
+            {
+                if old_display.is_ruby_type() != new_display.is_ruby_type() {
+                    return ChildCascadeRequirement::MustCascadeChildren;
+                }
             }
         }
 
@@ -536,7 +553,7 @@ trait PrivateMatchMethods: TElement {
         // seems not common enough to care about.
         #[cfg(feature = "gecko")]
         {
-            use values::specified::align::AlignFlags;
+            use crate::values::specified::align::AlignFlags;
 
             let old_justify_items = old_values.get_position().clone_justify_items();
             let new_justify_items = new_values.get_position().clone_justify_items();
@@ -581,11 +598,11 @@ trait PrivateMatchMethods: TElement {
         &self,
         context: &SharedStyleContext,
         style: &mut Arc<ComputedValues>,
-        possibly_expired_animations: &mut Vec<::animation::PropertyAnimation>,
-        font_metrics: &::font_metrics::FontMetricsProvider,
+        possibly_expired_animations: &mut Vec<crate::animation::PropertyAnimation>,
+        font_metrics: &dyn crate::font_metrics::FontMetricsProvider,
     ) {
-        use animation::{self, Animation};
-        use dom::TNode;
+        use crate::animation::{self, Animation, AnimationUpdate};
+        use crate::dom::TNode;
 
         // Finish any expired transitions.
         let this_opaque = self.as_node().opaque();
@@ -602,30 +619,27 @@ trait PrivateMatchMethods: TElement {
         }
 
         let mut all_running_animations = context.running_animations.write();
-        for running_animation in all_running_animations.get_mut(&this_opaque).unwrap() {
-            // This shouldn't happen frequently, but under some circumstances
-            // mainly huge load or debug builds, the constellation might be
-            // delayed in sending the `TickAllAnimations` message to layout.
-            //
-            // Thus, we can't assume all the animations have been already
-            // updated by layout, because other restyle due to script might be
-            // triggered by layout before the animation tick.
-            //
-            // See #12171 and the associated PR for an example where this
-            // happened while debugging other release panic.
-            if running_animation.is_expired() {
+        for mut running_animation in all_running_animations.get_mut(&this_opaque).unwrap() {
+            if let Animation::Transition(_, _, ref frame) = *running_animation {
+                possibly_expired_animations.push(frame.property_animation.clone());
                 continue;
             }
 
-            animation::update_style_for_animation::<Self>(
+            let update = animation::update_style_for_animation::<Self>(
                 context,
-                running_animation,
+                &mut running_animation,
                 style,
                 font_metrics,
             );
 
-            if let Animation::Transition(_, _, ref frame, _) = *running_animation {
-                possibly_expired_animations.push(frame.property_animation.clone())
+            match *running_animation {
+                Animation::Transition(..) => unreachable!(),
+                Animation::Keyframes(_, _, _, ref mut state) => match update {
+                    AnimationUpdate::Regular => {},
+                    AnimationUpdate::AnimationCanceled => {
+                        state.expired = true;
+                    },
+                },
             }
         }
     }
@@ -721,16 +735,16 @@ pub trait MatchMethods: TElement {
                 let device = context.shared.stylist.device();
 
                 // Needed for the "inherit from body" quirk.
-                let text_color = new_primary_style.get_color().clone_color();
+                let text_color = new_primary_style.get_inherited_text().clone_color();
                 device.set_body_text_color(text_color);
             }
         }
 
-        // Don't accumulate damage if we're in a forgetful traversal.
+        // Don't accumulate damage if we're in the final animation traversal.
         if context
             .shared
             .traversal_flags
-            .contains(TraversalFlags::Forgetful)
+            .contains(TraversalFlags::FinalAnimationTraversal)
         {
             return ChildCascadeRequirement::MustCascadeChildren;
         }

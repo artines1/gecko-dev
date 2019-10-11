@@ -1,4 +1,3 @@
-// Copyright © 2016-2017 winapi-rs developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
@@ -23,22 +22,29 @@
 #[cfg(feature = "dxgi1_3")] pub mod dxgi1_3;
 #[cfg(feature = "dxgi1_4")] pub mod dxgi1_4;
 #[cfg(feature = "dxgi1_5")] pub mod dxgi1_5;
+#[cfg(feature = "dxgi1_6")] pub mod dxgi1_6;
 #[cfg(feature = "dxgiformat")] pub mod dxgiformat;
 #[cfg(feature = "dxgitype")] pub mod dxgitype;
+#[cfg(feature = "evntprov")] pub mod evntprov;
+#[cfg(feature = "evntrace")] pub mod evntrace;
 pub mod guiddef;
 #[cfg(feature = "hidclass")] pub mod hidclass;
 #[cfg(feature = "hidpi")] pub mod hidpi;
 #[cfg(feature = "hidsdi")] pub mod hidsdi;
 #[cfg(feature = "hidusage")] pub mod hidusage;
+#[cfg(feature = "ifdef")] pub mod ifdef;
 #[cfg(feature = "in6addr")] pub mod in6addr;
 #[cfg(feature = "inaddr")] pub mod inaddr;
 #[cfg(feature = "intsafe")] pub mod intsafe;
+#[cfg(feature = "ks")] pub mod ks;
 #[cfg(feature = "ksmedia")] pub mod ksmedia;
 #[cfg(feature = "ktmtypes")] pub mod ktmtypes;
 #[cfg(feature = "lmcons")] pub mod lmcons;
 #[cfg(feature = "minwindef")] pub mod minwindef;
 #[cfg(feature = "mmreg")] pub mod mmreg;
 #[cfg(feature = "mstcpip")] pub mod mstcpip;
+#[cfg(feature = "mswsockdef")] pub mod mswsockdef;
+#[cfg(feature = "netioapi")] pub mod netioapi;
 #[cfg(feature = "ntddscsi")] pub mod ntddscsi;
 #[cfg(feature = "ntddser")] pub mod ntddser;
 #[cfg(feature = "ntdef")] pub mod ntdef;
@@ -47,8 +53,11 @@ pub mod guiddef;
 #[cfg(feature = "rpc")] pub mod rpc;
 #[cfg(feature = "rpcdce")] pub mod rpcdce;
 #[cfg(feature = "rpcndr")] pub mod rpcndr;
+#[cfg(feature = "sddl")] pub mod sddl;
 #[cfg(feature = "sspi")] pub mod sspi;
 #[cfg(feature = "stralign")] pub mod stralign;
+#[cfg(feature = "transportsettingcommon")] pub mod transportsettingcommon;
+#[cfg(feature = "tvout")] pub mod tvout;
 #[cfg(feature = "usb")] pub mod usb;
 #[cfg(feature = "usbiodef")] pub mod usbiodef;
 #[cfg(feature = "usbspec")] pub mod usbspec;
@@ -56,6 +65,7 @@ pub mod guiddef;
 #[cfg(feature = "windowsx")] pub mod windowsx;
 #[cfg(feature = "winerror")] pub mod winerror;
 #[cfg(feature = "winusbio")] pub mod winusbio;
+#[cfg(feature = "wmistr")] pub mod wmistr;
 #[cfg(feature = "wnnc")] pub mod wnnc;
 #[cfg(feature = "ws2def")] pub mod ws2def;
 #[cfg(feature = "ws2ipdef")] pub mod ws2ipdef;

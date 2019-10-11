@@ -1,116 +1,34 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
-<%helpers:shorthand
-    name="overflow"
-    flags="SHORTHAND_IN_GETCS"
-    sub_properties="overflow-x overflow-y"
-    spec="https://drafts.csswg.org/css-overflow/#propdef-overflow"
->
-    use properties::longhands::overflow_x::parse as parse_overflow;
-    % if product == "gecko":
-        use properties::longhands::overflow_x::SpecifiedValue;
-    % endif
+${helpers.two_properties_shorthand(
+    "overflow",
+    "overflow-x",
+    "overflow-y",
+    "specified::Overflow::parse",
+    engines="gecko servo-2013",
+    flags="SHORTHAND_IN_GETCS",
+    needs_context=False,
+    spec="https://drafts.csswg.org/css-overflow/#propdef-overflow",
+)}
 
-    pub fn parse_value<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Longhands, ParseError<'i>> {
-        % if product == "gecko":
-            use gecko_bindings::structs;
-            let moz_kw_enabled = unsafe {
-                structs::StaticPrefs_sVarCache_layout_css_overflow_moz_scrollbars_enabled
-            };
-            if moz_kw_enabled {
-                let moz_kw_found = input.try(|input| {
-                    try_match_ident_ignore_ascii_case! { input,
-                        "-moz-scrollbars-horizontal" => {
-                            Ok(expanded! {
-                                overflow_x: SpecifiedValue::Scroll,
-                                overflow_y: SpecifiedValue::Hidden,
-                            })
-                        }
-                        "-moz-scrollbars-vertical" => {
-                            Ok(expanded! {
-                                overflow_x: SpecifiedValue::Hidden,
-                                overflow_y: SpecifiedValue::Scroll,
-                            })
-                        }
-                        "-moz-scrollbars-none" => {
-                            Ok(expanded! {
-                                overflow_x: SpecifiedValue::Hidden,
-                                overflow_y: SpecifiedValue::Hidden,
-                            })
-                        }
-                    }
-                });
-                if moz_kw_found.is_ok() {
-                    return moz_kw_found
-                }
-            }
-        % endif
-        let overflow_x = parse_overflow(context, input)?;
-        let overflow_y =
-            input.try(|i| parse_overflow(context, i)).unwrap_or(overflow_x);
-        Ok(expanded! {
-            overflow_x: overflow_x,
-            overflow_y: overflow_y,
-        })
-    }
-
-    impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            self.overflow_x.to_css(dest)?;
-            if self.overflow_x != self.overflow_y {
-                dest.write_char(' ')?;
-                self.overflow_y.to_css(dest)?;
-            }
-            Ok(())
-        }
-    }
-</%helpers:shorthand>
-
-<%helpers:shorthand
-    name="overflow-clip-box"
-    sub_properties="overflow-clip-box-block overflow-clip-box-inline"
-    enabled_in="ua"
-    gecko_pref="layout.css.overflow-clip-box.enabled"
+${helpers.two_properties_shorthand(
+    "overflow-clip-box",
+    "overflow-clip-box-block",
+    "overflow-clip-box-inline",
+    "specified::OverflowClipBox::parse",
+    engines="gecko",
+    enabled_in="ua",
+    needs_context=False,
+    gecko_pref="layout.css.overflow-clip-box.enabled",
     spec="Internal, may be standardized in the future "
-         "(https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-clip-box)"
-    products="gecko"
->
-    use values::specified::OverflowClipBox;
-    pub fn parse_value<'i, 't>(
-        _: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Longhands, ParseError<'i>> {
-        let block_value = OverflowClipBox::parse(input)?;
-        let inline_value =
-            input.try(|input| OverflowClipBox::parse(input)).unwrap_or(block_value);
+         "(https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-clip-box)",
+)}
 
-        Ok(expanded! {
-          overflow_clip_box_block: block_value,
-          overflow_clip_box_inline: inline_value,
-        })
-    }
-
-    impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            self.overflow_clip_box_block.to_css(dest)?;
-
-            if self.overflow_clip_box_block != self.overflow_clip_box_inline {
-                dest.write_str(" ")?;
-                self.overflow_clip_box_inline.to_css(dest)?;
-            }
-
-            Ok(())
-        }
-    }
-</%helpers:shorthand>
-
+#[cfg(any(feature = "gecko", feature = "servo-layout-2013"))]
 macro_rules! try_parse_one {
     ($context: expr, $input: expr, $var: ident, $prop_module: ident) => {
         if $var.is_none() {
@@ -125,16 +43,17 @@ macro_rules! try_parse_one {
 }
 
 <%helpers:shorthand name="transition"
+                    engines="gecko servo-2013"
                     extra_prefixes="moz:layout.css.prefixes.transitions webkit"
                     sub_properties="transition-property transition-duration
                                     transition-timing-function
                                     transition-delay"
                     spec="https://drafts.csswg.org/css-transitions/#propdef-transition">
-    use parser::Parse;
+    use crate::parser::Parse;
     % for prop in "delay duration property timing_function".split():
-    use properties::longhands::transition_${prop};
+    use crate::properties::longhands::transition_${prop};
     % endfor
-    use values::specified::TransitionProperty;
+    use crate::values::specified::TransitionProperty;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
@@ -221,7 +140,7 @@ macro_rules! try_parse_one {
 
         Ok(expanded! {
             % for prop in "property duration timing_function delay".split():
-            transition_${prop}: transition_${prop}::SpecifiedValue(${prop}s),
+            transition_${prop}: transition_${prop}::SpecifiedValue(${prop}s.into()),
             % endfor
         })
     }
@@ -270,6 +189,7 @@ macro_rules! try_parse_one {
 </%helpers:shorthand>
 
 <%helpers:shorthand name="animation"
+                    engines="gecko servo-2013"
                     extra_prefixes="moz:layout.css.prefixes.animations webkit"
                     sub_properties="animation-name animation-duration
                                     animation-timing-function animation-delay
@@ -282,7 +202,7 @@ macro_rules! try_parse_one {
                  direction fill_mode play_state".split()
     %>
     % for prop in props:
-    use properties::longhands::animation_${prop};
+    use crate::properties::longhands::animation_${prop};
     % endfor
 
     pub fn parse_value<'i, 't>(
@@ -350,7 +270,7 @@ macro_rules! try_parse_one {
 
         Ok(expanded! {
             % for prop in props:
-            animation_${prop}: animation_${prop}::SpecifiedValue(${prop}s),
+            animation_${prop}: animation_${prop}::SpecifiedValue(${prop}s.into()),
             % endfor
         })
     }
@@ -387,61 +307,135 @@ macro_rules! try_parse_one {
     }
 </%helpers:shorthand>
 
-<%helpers:shorthand name="scroll-snap-type" products="gecko"
-                    gecko_pref="layout.css.scroll-snap.enabled"
-                    sub_properties="scroll-snap-type-x scroll-snap-type-y"
-                    spec="https://drafts.csswg.org/css-scroll-snap/#propdef-scroll-snap-type">
-    use properties::longhands::scroll_snap_type_x;
+${helpers.two_properties_shorthand(
+    "overscroll-behavior",
+    "overscroll-behavior-x",
+    "overscroll-behavior-y",
+    "specified::OverscrollBehavior::parse",
+    engines="gecko",
+    needs_context=False,
+    gecko_pref="layout.css.overscroll-behavior.enabled",
+    spec="https://wicg.github.io/overscroll-behavior/#overscroll-behavior-properties",
+)}
+
+<%helpers:shorthand
+    engines="gecko"
+    name="page-break-before"
+    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
+    sub_properties="break-before"
+    spec="https://drafts.csswg.org/css2/page.html#propdef-page-break-before"
+>
+    pub fn parse_value<'i>(
+        _: &ParserContext,
+        input: &mut Parser<'i, '_>,
+    ) -> Result<Longhands, ParseError<'i>> {
+        use crate::values::specified::box_::BreakBetween;
+        Ok(expanded! {
+            break_before: BreakBetween::parse_legacy(input)?,
+        })
+    }
+
+    impl<'a> ToCss for LonghandsToSerialize<'a> {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            self.break_before.to_css_legacy(dest)
+        }
+    }
+</%helpers:shorthand>
+
+<%helpers:shorthand
+    engines="gecko"
+    name="page-break-after"
+    flags="SHORTHAND_IN_GETCS IS_LEGACY_SHORTHAND"
+    sub_properties="break-after"
+    spec="https://drafts.csswg.org/css2/page.html#propdef-page-break-after"
+>
+    pub fn parse_value<'i>(
+        _: &ParserContext,
+        input: &mut Parser<'i, '_>,
+    ) -> Result<Longhands, ParseError<'i>> {
+        use crate::values::specified::box_::BreakBetween;
+        Ok(expanded! {
+            break_after: BreakBetween::parse_legacy(input)?,
+        })
+    }
+
+    impl<'a> ToCss for LonghandsToSerialize<'a> {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            self.break_after.to_css_legacy(dest)
+        }
+    }
+</%helpers:shorthand>
+
+<%helpers:shorthand name="offset"
+                    engines="gecko"
+                    sub_properties="offset-path offset-distance offset-rotate offset-anchor"
+                    gecko_pref="layout.css.motion-path.enabled",
+                    spec="https://drafts.fxtf.org/motion-1/#offset-shorthand">
+    use crate::parser::Parse;
+    use crate::values::specified::motion::{OffsetPath, OffsetRotate};
+    use crate::values::specified::position::PositionOrAuto;
+    use crate::values::specified::LengthPercentage;
+    use crate::Zero;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
-        let result = scroll_snap_type_x::parse(context, input)?;
+        // FIXME: Bug 1559232: Support offset-position.
+        // Per the spec, this must have offet-position and/or offset-path. However, we don't
+        // support offset-position, so offset-path is necessary now.
+        let offset_path = OffsetPath::parse(context, input)?;
+
+        let mut offset_distance = None;
+        let mut offset_rotate = None;
+        loop {
+            if offset_distance.is_none() {
+                if let Ok(value) = input.try(|i| LengthPercentage::parse(context, i)) {
+                    offset_distance = Some(value);
+                }
+            }
+
+            if offset_rotate.is_none() {
+                if let Ok(value) = input.try(|i| OffsetRotate::parse(context, i)) {
+                    offset_rotate = Some(value);
+                    continue;
+                }
+            }
+            break;
+        }
+
+        let offset_anchor = input.try(|i| {
+            i.expect_delim('/')?;
+            PositionOrAuto::parse(context, i)
+        }).ok();
+
         Ok(expanded! {
-            scroll_snap_type_x: result,
-            scroll_snap_type_y: result,
+            offset_path: offset_path,
+            offset_distance: offset_distance.unwrap_or(LengthPercentage::zero()),
+            offset_rotate: offset_rotate.unwrap_or(OffsetRotate::auto()),
+            offset_anchor: offset_anchor.unwrap_or(PositionOrAuto::auto()),
         })
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        // Serializes into the single keyword value if both scroll-snap-type-x and scroll-snap-type-y are same.
-        // Otherwise into an empty string. This is done to match Gecko's behaviour.
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            if self.scroll_snap_type_x == self.scroll_snap_type_y {
-                self.scroll_snap_type_x.to_css(dest)
-            } else {
-                Ok(())
-            }
-        }
-    }
-</%helpers:shorthand>
+            // FIXME: Bug 1559232: Support offset-position. We don't support offset-position,
+            // so always serialize offset-path now.
+            self.offset_path.to_css(dest)?;
 
-<%helpers:shorthand name="overscroll-behavior" products="gecko"
-                    gecko_pref="layout.css.overscroll-behavior.enabled"
-                    sub_properties="overscroll-behavior-x overscroll-behavior-y"
-                    spec="https://wicg.github.io/overscroll-behavior/#overscroll-behavior-properties">
-    pub fn parse_value<'i, 't>(
-        _: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Longhands, ParseError<'i>> {
-        use values::specified::OverscrollBehavior;
-        let behavior_x = OverscrollBehavior::parse(input)?;
-        let behavior_y = input.try(OverscrollBehavior::parse).unwrap_or(behavior_x);
-        Ok(expanded! {
-            overscroll_behavior_x: behavior_x,
-            overscroll_behavior_y: behavior_y,
-        })
-    }
-
-    impl<'a> ToCss for LonghandsToSerialize<'a> {
-        // Serializes into the single keyword value if both overscroll-behavior-x and overscroll-behavior-y are same.
-        // Otherwise into two values separated by a space.
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            self.overscroll_behavior_x.to_css(dest)?;
-            if self.overscroll_behavior_y != self.overscroll_behavior_x {
+            if !self.offset_distance.is_zero() {
                 dest.write_str(" ")?;
-                self.overscroll_behavior_y.to_css(dest)?;
+                self.offset_distance.to_css(dest)?;
+            }
+
+            if !self.offset_rotate.is_auto() {
+                dest.write_str(" ")?;
+                self.offset_rotate.to_css(dest)?;
+            }
+
+            if *self.offset_anchor != PositionOrAuto::auto() {
+                dest.write_str(" / ")?;
+                self.offset_anchor.to_css(dest)?;
             }
             Ok(())
         }

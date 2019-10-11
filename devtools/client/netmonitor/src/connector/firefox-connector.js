@@ -9,12 +9,12 @@ const { ACTIVITY_TYPE, EVENTS } = require("../constants");
 const FirefoxDataProvider = require("./firefox-data-provider");
 const { getDisplayedTimingMarker } = require("../selectors/index");
 
-// To be removed once FF60 is deprecated
-loader.lazyRequireGetter(this, "TimelineFront", "devtools/shared/fronts/timeline", true);
-
 // Network throttling
-loader.lazyRequireGetter(this, "throttlingProfiles", "devtools/client/shared/components/throttling/profiles");
-loader.lazyRequireGetter(this, "EmulationFront", "devtools/shared/fronts/emulation", true);
+loader.lazyRequireGetter(
+  this,
+  "throttlingProfiles",
+  "devtools/client/shared/components/throttling/profiles"
+);
 
 /**
  * Connector to Firefox backend.
@@ -27,7 +27,6 @@ class FirefoxConnector {
     this.willNavigate = this.willNavigate.bind(this);
     this.navigate = this.navigate.bind(this);
     this.displayCachedEvents = this.displayCachedEvents.bind(this);
-    this.onDocLoadingMarker = this.onDocLoadingMarker.bind(this);
     this.onDocEvent = this.onDocEvent.bind(this);
     this.sendHTTPRequest = this.sendHTTPRequest.bind(this);
     this.setPreferences = this.setPreferences.bind(this);
@@ -80,8 +79,7 @@ class FirefoxConnector {
       this.tabTarget.on("navigate", this.navigate);
 
       // Initialize Emulation front for network throttling.
-      const { tab } = await this.tabTarget.client.getTab();
-      this.emulationFront = EmulationFront(this.tabTarget.client, tab);
+      this.emulationFront = await this.tabTarget.getFront("emulation");
     }
 
     // Displaying cache events is only intended for the UI panel.
@@ -90,16 +88,21 @@ class FirefoxConnector {
     }
   }
 
-  async disconnect() {
+  disconnect() {
     if (this.actions) {
       this.actions.batchReset();
     }
 
-    await this.removeListeners();
+    this.removeListeners();
 
     if (this.emulationFront) {
       this.emulationFront.destroy();
       this.emulationFront = null;
+    }
+
+    if (this.webSocketFront) {
+      this.webSocketFront.destroy();
+      this.webSocketFront = null;
     }
 
     if (this.tabTarget) {
@@ -122,43 +125,72 @@ class FirefoxConnector {
 
   async addListeners() {
     this.tabTarget.on("close", this.disconnect);
-    this.webConsoleClient.on("networkEvent",
-      this.dataProvider.onNetworkEvent);
-    this.webConsoleClient.on("networkEventUpdate",
-      this.dataProvider.onNetworkEventUpdate);
+    this.webConsoleClient.on("networkEvent", this.dataProvider.onNetworkEvent);
+    this.webConsoleClient.on(
+      "networkEventUpdate",
+      this.dataProvider.onNetworkEventUpdate
+    );
     this.webConsoleClient.on("documentEvent", this.onDocEvent);
 
-    // With FF60+ console actor supports listening to document events like
-    // DOMContentLoaded and load. We used to query Timeline actor, but it was too CPU
-    // intensive.
-    const { startedListeners } = await this.webConsoleClient.startListeners(
-      ["DocumentEvents"]);
-    // Allows to know if we are on FF60 and support these events.
-    const supportsDocEvents = startedListeners.includes("DocumentEvents");
+    // Support for WebSocket monitoring is currently hidden behind this pref.
+    if (Services.prefs.getBoolPref("devtools.netmonitor.features.webSockets")) {
+      try {
+        // Initialize WebSocket front to intercept websocket traffic.
+        this.webSocketFront = await this.tabTarget.getFront("webSocket");
+        this.webSocketFront.startListening();
 
-    // Don't start up waiting for timeline markers if the server isn't
-    // recent enough (<FF45) to emit the markers we're interested in.
-    if (!supportsDocEvents && !this.timelineFront &&
-        this.tabTarget.getTrait("documentLoadingMarkers")) {
-      this.timelineFront = new TimelineFront(this.tabTarget.client, this.tabTarget.form);
-      this.timelineFront.on("doc-loading", this.onDocLoadingMarker);
-      await this.timelineFront.start({ withDocLoadingEvents: true });
+        this.webSocketFront.on(
+          "webSocketOpened",
+          this.dataProvider.onWebSocketOpened
+        );
+        this.webSocketFront.on(
+          "webSocketClosed",
+          this.dataProvider.onWebSocketClosed
+        );
+        this.webSocketFront.on(
+          "frameReceived",
+          this.dataProvider.onFrameReceived
+        );
+        this.webSocketFront.on("frameSent", this.dataProvider.onFrameSent);
+      } catch (e) {
+        // Support for FF68 or older
+      }
     }
+
+    // The console actor supports listening to document events like
+    // DOMContentLoaded and load.
+    await this.webConsoleClient.startListeners(["DocumentEvents"]);
   }
 
-  async removeListeners() {
+  removeListeners() {
     if (this.tabTarget) {
-      this.tabTarget.off("close");
-    }
-    if (this.timelineFront) {
-      this.timelineFront.off("doc-loading", this.onDocLoadingMarker);
-      await this.timelineFront.destroy();
-      this.timelineFront = null;
+      this.tabTarget.off("close", this.disconnect);
+      if (this.webSocketFront) {
+        this.webSocketFront.off(
+          "webSocketOpened",
+          this.dataProvider.onWebSocketOpened
+        );
+        this.webSocketFront.off(
+          "webSocketClosed",
+          this.dataProvider.onWebSocketClosed
+        );
+        this.webSocketFront.off(
+          "frameReceived",
+          this.dataProvider.onFrameReceived
+        );
+        this.webSocketFront.off("frameSent", this.dataProvider.onFrameSent);
+      }
     }
     if (this.webConsoleClient) {
-      this.webConsoleClient.off("networkEvent");
-      this.webConsoleClient.off("networkEventUpdate");
-      this.webConsoleClient.off("docEvent");
+      this.webConsoleClient.off(
+        "networkEvent",
+        this.dataProvider.onNetworkEvent
+      );
+      this.webConsoleClient.off(
+        "networkEventUpdate",
+        this.dataProvider.onNetworkEventUpdate
+      );
+      this.webConsoleClient.off("docEvent", this.onDocEvent);
     }
   }
 
@@ -234,32 +266,7 @@ class FirefoxConnector {
   }
 
   /**
-   * The "DOMContentLoaded" and "Load" events sent by the timeline actor.
-   *
-   * To be removed once FF60 is deprecated.
-   *
-   * @param {object} marker
-   */
-  onDocLoadingMarker(marker) {
-    // Translate marker into event similar to newer "docEvent" event sent by the console
-    // actor
-    const event = {
-      name: marker.name == "document::DOMContentLoaded" ?
-            "dom-interactive" : "dom-complete",
-      time: marker.unixTime / 1000
-    };
-
-    if (this.actions) {
-      this.actions.addTimingMarker(event);
-    }
-
-    this.emit(EVENTS.TIMELINE_EVENT, event);
-  }
-
-  /**
    * The "DOMContentLoaded" and "Load" events sent by the console actor.
-   *
-   * Only used by FF60+.
    *
    * @param {object} marker
    */
@@ -268,7 +275,7 @@ class FirefoxConnector {
       this.actions.addTimingMarker(event);
     }
 
-    this.emit(EVENTS.TIMELINE_EVENT, event);
+    this.emitForTests(EVENTS.TIMELINE_EVENT, event);
   }
 
   /**
@@ -278,7 +285,34 @@ class FirefoxConnector {
    * @param {function} callback callback will be invoked after the request finished
    */
   sendHTTPRequest(data, callback) {
-    this.webConsoleClient.sendHTTPRequest(data, callback);
+    this.webConsoleClient.sendHTTPRequest(data).then(callback);
+  }
+
+  /**
+   * Block future requests matching a filter.
+   *
+   * @param {object} filter request filter specifying what to block
+   */
+  blockRequest(filter) {
+    return this.webConsoleClient.blockRequest(filter);
+  }
+
+  /**
+   * Unblock future requests matching a filter.
+   *
+   * @param {object} filter request filter specifying what to unblock
+   */
+  unblockRequest(filter) {
+    return this.webConsoleClient.unblockRequest(filter);
+  }
+
+  /**
+   * Updates the list of blocked URLs
+   *
+   * @param {object} urls An array of URL strings
+   */
+  setBlockedUrls(urls) {
+    return this.webConsoleClient.setBlockedUrls(urls);
   }
 
   /**
@@ -287,8 +321,8 @@ class FirefoxConnector {
    * @param {object} request request payload would like to sent to backend
    * @param {function} callback callback will be invoked after the request finished
    */
-  setPreferences(request, callback) {
-    this.webConsoleClient.setPreferences(request, callback);
+  setPreferences(request) {
+    return this.webConsoleClient.setPreferences(request);
   }
 
   /**
@@ -307,7 +341,7 @@ class FirefoxConnector {
 
     // Waits for a series of "navigation start" and "navigation stop" events.
     const waitForNavigation = () => {
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         this.tabTarget.once("will-navigate", () => {
           this.tabTarget.once("navigate", () => {
             resolve();
@@ -317,14 +351,12 @@ class FirefoxConnector {
     };
 
     // Reconfigures the tab, optionally triggering a reload.
-    const reconfigureTab = (options) => {
-      return new Promise((resolve) => {
-        this.tabTarget.activeTab.reconfigure(options, resolve);
-      });
+    const reconfigureTab = options => {
+      return this.tabTarget.reconfigure({ options });
     };
 
     // Reconfigures the tab and waits for the target to finish navigating.
-    const reconfigureTabAndWaitForNavigation = (options) => {
+    const reconfigureTabAndWaitForNavigation = options => {
       options.performReload = true;
       const navigationFinished = waitForNavigation();
       return reconfigureTab(options).then(() => navigationFinished);
@@ -405,9 +437,9 @@ class FirefoxConnector {
    * @param {string} sourceURL source url
    * @param {number} sourceLine source line number
    */
-  viewSourceInDebugger(sourceURL, sourceLine) {
+  viewSourceInDebugger(sourceURL, sourceLine, sourceColumn) {
     if (this.toolbox) {
-      this.toolbox.viewSourceInDebugger(sourceURL, sourceLine);
+      this.toolbox.viewSourceInDebugger(sourceURL, sourceLine, sourceColumn);
     }
   }
 
@@ -442,14 +474,17 @@ class FirefoxConnector {
         latency,
       });
     }
+
+    this.emitForTests(EVENTS.THROTTLING_CHANGED, { profile });
   }
 
   /**
-   * Fire events for the owner object.
+   * Fire events for the owner object. These events are only
+   * used in tests so, don't fire them in production release.
    */
-  emit(type, data) {
+  emitForTests(type, data) {
     if (this.owner) {
-      this.owner.emit(type, data);
+      this.owner.emitForTests(type, data);
     }
   }
 }

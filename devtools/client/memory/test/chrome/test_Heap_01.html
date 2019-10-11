@@ -6,7 +6,7 @@ Test that rendering a dominator tree error is handled correctly.
 <head>
     <meta charset="utf-8">
     <title>Tree component test</title>
-    <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+    <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
     <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -25,13 +25,13 @@ Test that rendering a dominator tree error is handled correctly.
              const container = document.getElementById("container");
 
              const props = immutableUpdate(TEST_HEAP_PROPS, {
-               view: { state: viewState.DOMINATOR_TREE, },
+               view: { state: viewState.DOMINATOR_TREE },
                snapshot: immutableUpdate(TEST_HEAP_PROPS.snapshot, {
                  dominatorTree: {
                    error: new Error(errorMessage),
                    state: dominatorTreeState.ERROR,
-                 }
-               })
+                 },
+               }),
              });
 
              await renderComponent(Heap(props), container);

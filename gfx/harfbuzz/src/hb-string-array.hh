@@ -29,7 +29,7 @@
 #define HB_STRING_ARRAY_HH
 #endif
 
-#include "hb-private.hh"
+#include "hb.hh"
 
 /* Based on Bruno Haible's code in Appendix B of Ulrich Drepper's dsohowto.pdf:
  * https://software.intel.com/sites/default/files/m/a/1/e/dsohowto.pdf */
@@ -48,7 +48,7 @@ static const union HB_STRING_ARRAY_TYPE_NAME {
 #include HB_STRING_ARRAY_LIST
 #undef _S
   } st;
-  char str[VAR];
+  char str[HB_VAR_ARRAY];
 }
 HB_STRING_ARRAY_POOL_NAME =
 {

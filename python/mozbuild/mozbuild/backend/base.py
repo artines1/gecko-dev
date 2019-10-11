@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 from abc import (
     ABCMeta,
@@ -169,8 +169,7 @@ class BuildBackend(LoggingMixin):
                 pass
 
         # Write out the list of backend files generated, if it changed.
-        if self._deleted_count or self._created_count or \
-                not os.path.exists(list_file):
+        if backend_output_list != self._backend_output_files:
             with self._write_file(list_file) as fh:
                 fh.write('\n'.join(sorted(self._backend_output_files)))
         else:
@@ -264,7 +263,7 @@ class BuildBackend(LoggingMixin):
         return status
 
     @contextmanager
-    def _write_file(self, path=None, fh=None, mode='rU'):
+    def _write_file(self, path=None, fh=None, readmode='rU'):
         """Context manager to write a file.
 
         This is a glorified wrapper around FileAvoidWrite with integration to
@@ -279,7 +278,7 @@ class BuildBackend(LoggingMixin):
         if path is not None:
             assert fh is None
             fh = FileAvoidWrite(path, capture_diff=True, dry_run=self.dry_run,
-                                mode=mode)
+                                readmode=readmode)
         else:
             assert fh is not None
 
@@ -318,6 +317,7 @@ class BuildBackend(LoggingMixin):
             top_srcdir=obj.topsrcdir,
             topobjdir=obj.topobjdir,
             srcdir=srcdir,
+            srcdir_rel=mozpath.relpath(srcdir, mozpath.dirname(obj.output_path)),
             relativesrcdir=mozpath.relpath(srcdir, obj.topsrcdir) or '.',
             DEPTH=mozpath.relpath(obj.topobjdir, mozpath.dirname(obj.output_path)) or '.',
         )

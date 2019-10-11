@@ -10,16 +10,16 @@
   --preference-active-color: #858585;
 }
 
+#name {
+  -moz-box-flex: 1;
+}
+
 .radio-buttons {
-  display: flex;
+  -moz-box-orient: horizontal;
   margin-inline-start: 0.35rem;
 }
 
 .radio-buttons > radio {
-  flex: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   -moz-user-select: none;
   outline: 2px solid transparent;
   outline-offset: 4px;
@@ -31,7 +31,7 @@
   margin: 9px;
 }
 
-.icon-buttons > radio > [data-identity-icon] {
+.icon-buttons > radio > .userContext-icon {
   fill: #4d4d4d;
 }
 
@@ -39,7 +39,7 @@
   padding-inline-start: 2px;
 }
 
-radio > [data-identity-icon] {
+radio > .userContext-icon {
   inline-size: 22px;
   block-size: 22px;
 }

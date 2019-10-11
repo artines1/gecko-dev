@@ -8,11 +8,10 @@ import os
 import shutil
 import socket
 
-from mozlog import get_proxy_logger
-
+from logger.logger import RaptorLogger
 from wptserve import server, handlers
 
-LOG = get_proxy_logger(component="raptor-benchmark")
+LOG = RaptorLogger(component='raptor-benchmark')
 here = os.path.abspath(os.path.dirname(__file__))
 
 
@@ -62,7 +61,7 @@ class Benchmark(object):
         sock.bind(('', 0))
         self.port = sock.getsockname()[1]
         sock.close()
-        _webserver = '127.0.0.1:%d' % self.port
+        _webserver = '%s:%d' % (self.config['host'], self.port)
 
         self.httpd = self.setup_webserver(_webserver)
         self.httpd.start()
@@ -82,7 +81,8 @@ class Benchmark(object):
         LOG.info("serving benchmarks from here: %s" % self.bench_dir)
         self.host, self.port = webserver.split(':')
 
-        return server.WebTestHttpd(port=int(self.port), doc_root=self.bench_dir,
+        return server.WebTestHttpd(host=self.host, port=int(self.port),
+                                   doc_root=self.bench_dir,
                                    routes=[("GET", "*", handlers.file_handler)])
 
     def stop_serve(self):

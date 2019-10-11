@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 use jsapi::root::*;
 use heap::Heap;
 use std::os::raw::c_void;
@@ -30,7 +34,7 @@ pub struct ProxyTraps {
                                                    -> bool>,
     pub ownPropertyKeys: ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
                                                                     proxy: JS::HandleObject,
-                                                                    props: *mut JS::AutoIdVector)
+                                                                    props: JS::MutableHandleIdVector)
                                                                     -> bool>,
     pub delete_: ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
                                                             proxy: JS::HandleObject,
@@ -82,12 +86,6 @@ pub struct ProxyTraps {
                                                               proxy: JS::HandleObject,
                                                               args: *const JS::CallArgs)
                                                               -> bool>,
-    pub getPropertyDescriptor:
-        ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
-                                                   proxy: JS::HandleObject,
-                                                   id: JS::HandleId,
-                                                   desc: JS::MutableHandle<JS::PropertyDescriptor>)
-                                                   -> bool>,
     pub hasOwn: ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
                                                            proxy: JS::HandleObject,
                                                            id: JS::HandleId,
@@ -96,7 +94,7 @@ pub struct ProxyTraps {
     pub getOwnEnumerablePropertyKeys:
         ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
                                                    proxy: JS::HandleObject,
-                                                   props: *mut JS::AutoIdVector)
+                                                   props: JS::MutableHandleIdVector)
                                                    -> bool>,
     pub nativeCall: ::std::option::Option<unsafe extern "C" fn(cx: *mut JSContext,
                                                                test: JS::IsAcceptableThis,
@@ -240,7 +238,7 @@ extern "C" {
                           aObj: JS::HandleObject,
                           aHandler: *const ::libc::c_void)
                           -> *mut JSObject;
-    pub fn GetWindowProxyClass() -> *const js::Class;
+    pub fn GetWindowProxyClass() -> *const JSClass;
     pub fn GetProxyPrivate(obj: *mut JSObject) -> JS::Value;
     pub fn SetProxyPrivate(obj: *mut JSObject, private: *const JS::Value);
     pub fn GetProxyReservedSlot(obj: *mut JSObject, slot: u32) -> JS::Value;
@@ -261,15 +259,16 @@ extern "C" {
     pub fn GetProxyHandler(obj: *mut JSObject) -> *const ::libc::c_void;
     pub fn ReportError(aCx: *mut JSContext, aError: *const i8);
     pub fn IsWrapper(obj: *mut JSObject) -> bool;
-    pub fn UnwrapObject(obj: *mut JSObject, stopAtOuter: u8) -> *mut JSObject;
+    pub fn UnwrapObjectStatic(obj: *mut JSObject) -> *mut JSObject;
     pub fn UncheckedUnwrapObject(obj: *mut JSObject, stopAtOuter: u8) -> *mut JSObject;
-    pub fn CreateAutoIdVector(cx: *mut JSContext) -> *mut JS::AutoIdVector;
-    pub fn AppendToAutoIdVector(v: *mut JS::AutoIdVector, id: jsid) -> bool;
-    pub fn SliceAutoIdVector(v: *const JS::AutoIdVector, length: *mut usize) -> *const jsid;
-    pub fn DestroyAutoIdVector(v: *mut JS::AutoIdVector);
-    pub fn CreateAutoObjectVector(aCx: *mut JSContext) -> *mut JS::AutoObjectVector;
-    pub fn AppendToAutoObjectVector(v: *mut JS::AutoObjectVector, obj: *mut JSObject) -> bool;
-    pub fn DeleteAutoObjectVector(v: *mut JS::AutoObjectVector);
+    pub fn CreateRootedIdVector(cx: *mut JSContext) -> *mut JS::PersistentRootedIdVector;
+    pub fn AppendToRootedIdVector(v: *mut JS::PersistentRootedIdVector, id: jsid) -> bool;
+    pub fn SliceRootedIdVector(v: *const JS::PersistentRootedIdVector, length: *mut usize) -> *const jsid;
+    pub fn DestroyRootedIdVector(v: *mut JS::PersistentRootedIdVector);
+    pub fn GetMutableHandleIdVector(v: *mut JS::PersistentRootedIdVector)-> JS::MutableHandleIdVector;
+    pub fn CreateRootedObjectVector(aCx: *mut JSContext) -> *mut JS::PersistentRootedObjectVector;
+    pub fn AppendToRootedObjectVector(v: *mut JS::PersistentRootedObjectVector, obj: *mut JSObject) -> bool;
+    pub fn DeleteRootedObjectVector(v: *mut JS::PersistentRootedObjectVector);
     pub fn CollectServoSizes(rt: *mut JSRuntime, sizes: *mut JS::ServoSizes) -> bool;
     pub fn CallIdTracer(trc: *mut JSTracer, idp: *mut Heap<jsid>, name: *const ::libc::c_char);
     pub fn CallValueTracer(trc: *mut JSTracer,
@@ -339,6 +338,10 @@ extern "C" {
                                              len: usize,
                                              dest: *mut JSStructuredCloneData)
                                              -> bool;
+
+    pub fn JSEncodeStringToUTF8(cx: *mut JSContext,
+                                string: JS::HandleString)
+                                -> *mut ::libc::c_char;
 
     pub fn IsDebugBuild() -> bool;
 }

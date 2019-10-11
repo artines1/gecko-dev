@@ -12,13 +12,18 @@
  * https://w3c.github.io/page-visibility/#extensions-to-the-document-interface
  * https://drafts.csswg.org/cssom/#extensions-to-the-document-interface
  * https://drafts.csswg.org/cssom-view/#extensions-to-the-document-interface
+ * https://wicg.github.io/feature-policy/#policy
  */
 
+interface ContentSecurityPolicy;
+interface Principal;
 interface WindowProxy;
 interface nsISupports;
 interface URI;
 interface nsIDocShell;
 interface nsILoadGroup;
+interface nsIReferrerInfo;
+interface XULCommandDispatcher;
 
 enum VisibilityState { "hidden", "visible" };
 
@@ -31,8 +36,11 @@ dictionary ElementCreationOptions {
 };
 
 /* https://dom.spec.whatwg.org/#interface-document */
-[Constructor]
+[Exposed=Window]
 interface Document : Node {
+  [Throws]
+  constructor();
+
   [Throws]
   readonly attribute DOMImplementation implementation;
   [Pure, Throws, BinaryName="documentURIFromJS", NeedsCallerType]
@@ -63,22 +71,25 @@ interface Document : Node {
   [Pure]
   Element? getElementById(DOMString elementId);
 
-  [CEReactions, NewObject, Throws]
-  Element createElement(DOMString localName, optional (ElementCreationOptions or DOMString) options);
-  [CEReactions, NewObject, Throws]
-  Element createElementNS(DOMString? namespace, DOMString qualifiedName, optional (ElementCreationOptions or DOMString) options);
+  // These DOM methods cannot be accessed by UA Widget scripts
+  // because the DOM element reflectors will be in the content scope,
+  // instead of the desired UA Widget scope.
+  [CEReactions, NewObject, Throws, Func="IsNotUAWidget"]
+  Element createElement(DOMString localName, optional (ElementCreationOptions or DOMString) options = {});
+  [CEReactions, NewObject, Throws, Func="IsNotUAWidget"]
+  Element createElementNS(DOMString? namespace, DOMString qualifiedName, optional (ElementCreationOptions or DOMString) options = {});
   [NewObject]
   DocumentFragment createDocumentFragment();
-  [NewObject]
+  [NewObject, Func="IsNotUAWidget"]
   Text createTextNode(DOMString data);
-  [NewObject]
+  [NewObject, Func="IsNotUAWidget"]
   Comment createComment(DOMString data);
   [NewObject, Throws]
   ProcessingInstruction createProcessingInstruction(DOMString target, DOMString data);
 
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node importNode(Node node, optional boolean deep = false);
-  [CEReactions, Throws]
+  [CEReactions, Throws, Func="IsNotUAWidget"]
   Node adoptNode(Node node);
 
   [NewObject, Throws, NeedsCallerType]
@@ -111,9 +122,9 @@ interface Document : Node {
 // https://html.spec.whatwg.org/multipage/dom.html#the-document-object
 partial interface Document {
   [PutForwards=href, Unforgeable] readonly attribute Location? location;
-  //(HTML only)         attribute DOMString domain;
+  [SetterThrows]                           attribute DOMString domain;
   readonly attribute DOMString referrer;
-  //(HTML only)         attribute DOMString cookie;
+  [Throws] attribute DOMString cookie;
   readonly attribute DOMString lastModified;
   readonly attribute DOMString readyState;
 
@@ -138,26 +149,37 @@ partial interface Document {
   //(Not implemented)readonly attribute DOMElementMap cssElementMap;
 
   // dynamic markup insertion
-  //(HTML only)Document open(optional DOMString type, optional DOMString replace);
-  //(HTML only)WindowProxy open(DOMString url, DOMString name, DOMString features, optional boolean replace);
-  //(HTML only)void close();
-  //(HTML only)void write(DOMString... text);
-  //(HTML only)void writeln(DOMString... text);
+  [CEReactions, Throws]
+  Document open(optional DOMString unused1, optional DOMString unused2); // both arguments are ignored
+  [CEReactions, Throws]
+  WindowProxy? open(USVString url, DOMString name, DOMString features);
+  [CEReactions, Throws]
+  void close();
+  [CEReactions, Throws]
+  void write(DOMString... text);
+  [CEReactions, Throws]
+  void writeln(DOMString... text);
 
   // user interaction
   [Pure]
   readonly attribute WindowProxy? defaultView;
   [Throws]
   boolean hasFocus();
-  //(HTML only)         attribute DOMString designMode;
-  //(HTML only)boolean execCommand(DOMString commandId);
-  //(HTML only)boolean execCommand(DOMString commandId, boolean showUI);
-  //(HTML only)boolean execCommand(DOMString commandId, boolean showUI, DOMString value);
-  //(HTML only)boolean queryCommandEnabled(DOMString commandId);
-  //(HTML only)boolean queryCommandIndeterm(DOMString commandId);
-  //(HTML only)boolean queryCommandState(DOMString commandId);
-  //(HTML only)boolean queryCommandSupported(DOMString commandId);
-  //(HTML only)DOMString queryCommandValue(DOMString commandId);
+  [CEReactions, SetterThrows, SetterNeedsSubjectPrincipal]
+           attribute DOMString designMode;
+  [CEReactions, Throws, NeedsSubjectPrincipal]
+  boolean execCommand(DOMString commandId, optional boolean showUI = false,
+                      optional DOMString value = "");
+  [Throws, NeedsSubjectPrincipal]
+  boolean queryCommandEnabled(DOMString commandId);
+  [Throws]
+  boolean queryCommandIndeterm(DOMString commandId);
+  [Throws]
+  boolean queryCommandState(DOMString commandId);
+  [Throws, NeedsCallerType]
+  boolean queryCommandSupported(DOMString commandId);
+  [Throws]
+  DOMString queryCommandValue(DOMString commandId);
   //(Not implemented)readonly attribute HTMLCollection commands;
 
   // special event handler IDL attributes that only apply to Document objects
@@ -174,9 +196,7 @@ partial interface Document {
    * True if this document is synthetic : stand alone image, video, audio file,
    * etc.
    */
-  [Func="IsChromeOrXBL"] readonly attribute boolean mozSyntheticDocument;
-  [Throws, Func="IsChromeOrXBL"]
-  BoxObject? getBoxObjectFor(Element? element);
+  [Func="IsChromeOrXBLOrUAWidget"] readonly attribute boolean mozSyntheticDocument;
   /**
    * Returns the script element whose script is currently being processed.
    *
@@ -227,54 +247,64 @@ partial interface Document {
   readonly attribute URI? documentURIObject;
 
   /**
-   * Current referrer policy - one of the REFERRER_POLICY_* constants
-   * from nsIHttpChannel.
+   * Current referrer policy - one of the referrer policy value from
+   * ReferrerPolicy.webidl.
    */
   [ChromeOnly]
-  readonly attribute unsigned long referrerPolicy;
+  readonly attribute ReferrerPolicy referrerPolicy;
+
+    /**
+   * Current referrer info, which holds all referrer related information
+   * including referrer policy and raw referrer of document.
+   */
+  [ChromeOnly]
+  readonly attribute nsIReferrerInfo referrerInfo;
 
 };
 
 // https://html.spec.whatwg.org/multipage/obsolete.html#other-elements%2C-attributes-and-apis
 partial interface Document {
-  //(HTML only)[CEReactions] attribute [TreatNullAs=EmptyString] DOMString fgColor;
-  //(HTML only)[CEReactions] attribute [TreatNullAs=EmptyString] DOMString linkColor;
-  //(HTML only)[CEReactions] attribute [TreatNullAs=EmptyString] DOMString vlinkColor;
-  //(HTML only)[CEReactions] attribute [TreatNullAs=EmptyString] DOMString alinkColor;
-  //(HTML only)[CEReactions] attribute [TreatNullAs=EmptyString] DOMString bgColor;
+  [CEReactions] attribute [TreatNullAs=EmptyString] DOMString fgColor;
+  [CEReactions] attribute [TreatNullAs=EmptyString] DOMString linkColor;
+  [CEReactions] attribute [TreatNullAs=EmptyString] DOMString vlinkColor;
+  [CEReactions] attribute [TreatNullAs=EmptyString] DOMString alinkColor;
+  [CEReactions] attribute [TreatNullAs=EmptyString] DOMString bgColor;
 
   [SameObject] readonly attribute HTMLCollection anchors;
   [SameObject] readonly attribute HTMLCollection applets;
 
-  //(HTML only)void clear();
-  //(HTML only)void captureEvents();
-  //(HTML only)void releaseEvents();
+  void clear();
+  // @deprecated These are old Netscape 4 methods. Do not use,
+  //             the implementation is no-op.
+  // XXXbz do we actually need these anymore?
+  void captureEvents();
+  void releaseEvents();
 
-  //(HTML only)[SameObject] readonly attribute HTMLAllCollection all;
+  [SameObject] readonly attribute HTMLAllCollection all;
 };
 
 // https://fullscreen.spec.whatwg.org/#api
 partial interface Document {
   // Note: Per spec the 'S' in these two is lowercase, but the "Moz"
   // versions have it uppercase.
-  [LenientSetter, Unscopable, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [LenientSetter, Unscopable, Func="Document::IsUnprefixedFullscreenEnabled"]
   readonly attribute boolean fullscreen;
   [BinaryName="fullscreen"]
   readonly attribute boolean mozFullScreen;
-  [LenientSetter, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
+  [LenientSetter, Func="Document::IsUnprefixedFullscreenEnabled", NeedsCallerType]
   readonly attribute boolean fullscreenEnabled;
   [BinaryName="fullscreenEnabled", NeedsCallerType]
   readonly attribute boolean mozFullScreenEnabled;
 
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
-  void exitFullscreen();
-  [BinaryName="exitFullscreen"]
-  void mozCancelFullScreen();
+  [Throws, Func="Document::IsUnprefixedFullscreenEnabled"]
+  Promise<void> exitFullscreen();
+  [Throws, BinaryName="exitFullscreen"]
+  Promise<void> mozCancelFullScreen();
 
   // Events handlers
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
   attribute EventHandler onfullscreenchange;
-  [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
   attribute EventHandler onfullscreenerror;
 };
 
@@ -286,6 +316,16 @@ partial interface Document {
   // Event handlers
   attribute EventHandler onpointerlockchange;
   attribute EventHandler onpointerlockerror;
+};
+
+partial interface Document {
+  [Func="Document::CallerIsTrustedAboutCertError", Throws]
+  FailedCertSecurityInfo getFailedCertSecurityInfo();
+};
+
+partial interface Document {
+  [Func="Document::CallerIsTrustedAboutNetError", Throws]
+  NetErrorInfo getNetErrorInfo();
 };
 
 // https://w3c.github.io/page-visibility/#extensions-to-the-document-interface
@@ -325,9 +365,9 @@ partial interface Document {
 
 // https://drafts.csswg.org/web-animations/#extensions-to-the-document-interface
 partial interface Document {
-  [Func="nsDocument::AreWebAnimationsTimelinesEnabled"]
+  [Func="Document::AreWebAnimationsTimelinesEnabled"]
   readonly attribute DocumentTimeline timeline;
-  [Func="nsDocument::IsWebAnimationsGetAnimationsEnabled"]
+  [Func="Document::IsWebAnimationsGetAnimationsEnabled"]
   sequence<Animation> getAnimations();
 };
 
@@ -348,16 +388,25 @@ partial interface Document {
                                           DOMString attrValue);
   [Func="IsChromeOrXBL"]
   Element? getBindingParent(Node node);
-  [Throws, Func="IsChromeOrXBL", NeedsSubjectPrincipal]
-  void loadBindingDocument(DOMString documentURL);
   // Creates a new XUL element regardless of the document's default type.
   [CEReactions, NewObject, Throws, Func="IsChromeOrXBL"]
-  Element createXULElement(DOMString localName, optional (ElementCreationOptions or DOMString) options);
+  Element createXULElement(DOMString localName, optional (ElementCreationOptions or DOMString) options = {});
+  // Wether the document was loaded using a nsXULPrototypeDocument.
+  [ChromeOnly]
+  readonly attribute boolean loadedFromPrototype;
+
+  // The principal to use for the storage area of this document
+  [ChromeOnly]
+  readonly attribute Principal effectiveStoragePrincipal;
+
+  // The principal to use for the content blocking allow list
+  [ChromeOnly]
+  readonly attribute Principal? contentBlockingAllowListPrincipal;
 
   // Touch bits
   // XXXbz I can't find the sane spec for this stuff, so just cribbing
   // from our xpidl for now.
-  [NewObject, Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [NewObject, Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   Touch createTouch(optional Window? view = null,
                     optional EventTarget? target = null,
                     optional long identifier = 0,
@@ -373,16 +422,16 @@ partial interface Document {
                     optional float force = 0);
   // XXXbz a hack to get around the fact that we don't support variadics as
   // distinguishing arguments yet.  Once this hack is removed. we can also
-  // remove the corresponding overload on nsIDocument, since Touch... and
+  // remove the corresponding overload on Document, since Touch... and
   // sequence<Touch> look the same in the C++.
-  [NewObject, Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [NewObject, Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   TouchList createTouchList(Touch touch, Touch... touches);
   // XXXbz and another hack for the fact that we can't usefully have optional
   // distinguishing arguments but need a working zero-arg form of
   // createTouchList().
-  [NewObject, Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [NewObject, Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   TouchList createTouchList();
-  [NewObject, Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [NewObject, Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   TouchList createTouchList(sequence<Touch> touches);
 
   [ChromeOnly]
@@ -395,7 +444,7 @@ partial interface Document {
   // Blocks the initial document parser until the given promise is settled.
   [ChromeOnly, Throws]
   Promise<any> blockParsing(Promise<any> promise,
-                            optional BlockParsingOptions options);
+                            optional BlockParsingOptions options = {});
 
   // like documentURI, except that for error pages, it returns the URI we were
   // trying to load when we hit an error, rather than the error page's own URI.
@@ -414,6 +463,12 @@ partial interface Document {
 
   [ChromeOnly]
   attribute Node? popupNode;
+
+  // The JS debugger uses DOM mutation events to implement DOM mutation
+  // breakpoints. This is used to avoid logging a warning that the user
+  // cannot address and have no control over.
+  [ChromeOnly]
+  attribute boolean dontWarnAboutMutationEventsAndAllowSlowDOMMutations;
 
   /**
    * These attributes correspond to rangeParent and rangeOffset. They will help
@@ -480,17 +535,54 @@ partial interface Document {
   Selection? getSelection();
 };
 
+// https://github.com/whatwg/html/issues/3338
+partial interface Document {
+  [Pref="dom.storage_access.enabled", Throws]
+  Promise<boolean> hasStorageAccess();
+  [Pref="dom.storage_access.enabled", Throws]
+  Promise<void> requestStorageAccess();
+};
+
+enum DocumentAutoplayPolicy {
+  "allowed",       // autoplay is currently allowed
+  "allowed-muted", // muted video autoplay is currently allowed
+  "disallowed"     // autoplay is not current allowed
+};
+
+// https://github.com/WICG/autoplay/issues/1
+partial interface Document {
+  [Pref="dom.media.autoplay.autoplay-policy-api"]
+  readonly attribute DocumentAutoplayPolicy autoplayPolicy;
+};
+
 // Extension to give chrome JS the ability to determine whether
 // the user has interacted with the document or not.
 partial interface Document {
   [ChromeOnly] readonly attribute boolean userHasInteracted;
 };
 
-// Extension to give chrome JS the ability to simulate activate the docuement
+// Extension to give chrome JS the ability to simulate activate the document
 // by user gesture.
 partial interface Document {
   [ChromeOnly]
   void notifyUserGestureActivation();
+  // For testing only.
+  [ChromeOnly]
+  void clearUserGestureActivation();
+  [ChromeOnly]
+  readonly attribute boolean hasBeenUserGestureActivated;
+  [ChromeOnly]
+  readonly attribute boolean hasValidTransientUserGestureActivation;
+  [ChromeOnly]
+  boolean consumeTransientUserGestureActivation();
+};
+
+// Extension to give chrome JS the ability to set an event handler which is
+// called with certain events that happened while events were suppressed in the
+// document or one of its subdocuments.
+partial interface Document {
+  [ChromeOnly]
+  void setSuppressedEventListener(EventListener? aListener);
 };
 
 // Extension to give chrome and XBL JS the ability to determine whether
@@ -501,11 +593,17 @@ partial interface Document {
   [Func="IsChromeOrXBL"] readonly attribute boolean inlineScriptAllowedByCSP;
 };
 
+// Allows frontend code to query a CSP which needs to be passed for a
+// new load into docshell. Further, allows to query the CSP in JSON
+// format for testing purposes.
+partial interface Document {
+  [ChromeOnly] readonly attribute ContentSecurityPolicy? csp;
+  [ChromeOnly] readonly attribute DOMString cspJSON;
+};
+
 // For more information on Flash classification, see
 // toolkit/components/url-classifier/flash-block-lists.rst
 enum FlashClassification {
-  "unclassified",   // Denotes a classification that has not yet been computed.
-                    // Allows for lazy classification.
   "unknown",        // Site is not on the whitelist or blacklist
   "allowed",        // Site is on the Flash whitelist
   "denied"          // Site is on the Flash blacklist
@@ -515,12 +613,91 @@ partial interface Document {
   readonly attribute FlashClassification documentFlashClassification;
 };
 
-Document implements XPathEvaluator;
-Document implements GlobalEventHandlers;
-Document implements DocumentAndElementEventHandlers;
-Document implements TouchEventHandlers;
-Document implements ParentNode;
-Document implements OnErrorEventHandlerForNodes;
-Document implements GeometryUtils;
-Document implements FontFaceSource;
-Document implements DocumentOrShadowRoot;
+partial interface Document {
+  [Func="Document::DocumentSupportsL10n"] readonly attribute DocumentL10n? l10n;
+};
+
+Document includes XPathEvaluatorMixin;
+Document includes GlobalEventHandlers;
+Document includes DocumentAndElementEventHandlers;
+Document includes TouchEventHandlers;
+Document includes ParentNode;
+Document includes OnErrorEventHandlerForNodes;
+Document includes GeometryUtils;
+Document includes  FontFaceSource;
+Document includes DocumentOrShadowRoot;
+
+// https://w3c.github.io/webappsec-feature-policy/#idl-index
+partial interface Document {
+    [SameObject, Pref="dom.security.featurePolicy.webidl.enabled"]
+    readonly attribute FeaturePolicy featurePolicy;
+};
+
+/**
+ * Document extensions to support devtools.
+ */
+partial interface Document {
+  // Is the Document embedded in a Responsive Design Mode pane. This property
+  // is not propegated to descendant Documents upon settting.
+  [ChromeOnly]
+  attribute boolean inRDMPane;
+  // Extension to give chrome JS the ability to set the window screen
+  // orientation while in RDM.
+  [ChromeOnly]
+  void setRDMPaneOrientation(OrientationType type, float rotationAngle);
+};
+
+// Extension to give chrome JS the ability to specify a non-default keypress
+// event model.
+partial interface Document {
+  /**
+   * setKeyPressEventModel() is called when we need to check whether the web
+   * app requires specific keypress event model or not.
+   *
+   * @param aKeyPressEventModel  Proper keypress event model for the web app.
+   *   KEYPRESS_EVENT_MODEL_DEFAULT:
+   *     Use default keypress event model.  I.e., depending on
+   *     "dom.keyboardevent.keypress.set_keycode_and_charcode_to_same_value"
+   *     pref.
+   *   KEYPRESS_EVENT_MODEL_SPLIT:
+   *     Use split model.  I.e, if keypress event inputs a character,
+   *     keyCode should be 0.  Otherwise, charCode should be 0.
+   *   KEYPRESS_EVENT_MODEL_CONFLATED:
+   *     Use conflated model.  I.e., keyCode and charCode values of each
+   *     keypress event should be set to same value.
+   */
+  [ChromeOnly]
+  const unsigned short KEYPRESS_EVENT_MODEL_DEFAULT = 0;
+  [ChromeOnly]
+  const unsigned short KEYPRESS_EVENT_MODEL_SPLIT = 1;
+  [ChromeOnly]
+  const unsigned short KEYPRESS_EVENT_MODEL_CONFLATED = 2;
+  [ChromeOnly]
+  void setKeyPressEventModel(unsigned short aKeyPressEventModel);
+};
+
+// Extensions to return information about about the nodes blocked by the
+// Safebrowsing API inside a document.
+partial interface Document {
+  /*
+   * Number of nodes that have been blocked by the Safebrowsing API to prevent
+   * tracking, cryptomining and so on. This method is for testing only.
+   */
+  [ChromeOnly, Pure]
+  readonly attribute long blockedNodeByClassifierCount;
+
+  /*
+   * List of nodes that have been blocked by the Safebrowsing API to prevent
+   * tracking, fingerprinting, cryptomining and so on. This method is for
+   * testing only.
+   */
+  [ChromeOnly, Pure]
+  readonly attribute NodeList blockedNodesByClassifier;
+};
+
+// Extension to programmatically simulate a user interaction on a document,
+// used for testing.
+partial interface Document {
+  [ChromeOnly, BinaryName="setUserHasInteracted"]
+  void userInteractionForTesting();
+};

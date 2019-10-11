@@ -5,13 +5,30 @@
 "use strict";
 
 const Services = require("Services");
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const L10N = new LocalizationHelper(
+  "devtools/client/locales/toolbox.properties"
+);
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const Telemetry = require("devtools/client/shared/telemetry");
 
-loader.lazyRequireGetter(this, "Toolbox", "devtools/client/framework/toolbox", true);
-loader.lazyRequireGetter(this, "Hosts", "devtools/client/framework/toolbox-hosts", true);
+// The min-width of toolbox and browser toolbox.
+const WIDTH_CHEVRON_AND_MEATBALL = 50;
+const WIDTH_CHEVRON_AND_MEATBALL_AND_CLOSE = 74;
+const ZOOM_VALUE_PREF = "devtools.toolbox.zoomValue";
+
+loader.lazyRequireGetter(
+  this,
+  "Toolbox",
+  "devtools/client/framework/toolbox",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "Hosts",
+  "devtools/client/framework/toolbox-hosts",
+  true
+);
 
 /**
  * Implement a wrapper on the chrome side to setup a Toolbox within Firefox UI.
@@ -54,6 +71,8 @@ function ToolboxHostManager(target, hostType, hostOptions) {
   this.host = this.createHost(hostType, hostOptions);
   this.hostType = hostType;
   this.telemetry = new Telemetry();
+  this.setMinWidthWithZoom = this.setMinWidthWithZoom.bind(this);
+  Services.prefs.addObserver(ZOOM_VALUE_PREF, this.setMinWidthWithZoom);
 }
 
 ToolboxHostManager.prototype = {
@@ -65,10 +84,18 @@ ToolboxHostManager.prototype = {
     // We have to listen on capture as no event fires on bubble
     this.host.frame.addEventListener("unload", this, true);
 
-    const msSinceProcessStart = parseInt(this.telemetry.msSinceProcessStart(), 10);
-    const toolbox = new Toolbox(this.target, toolId, this.host.type,
-                                this.host.frame.contentWindow, this.frameId,
-                                msSinceProcessStart);
+    const msSinceProcessStart = parseInt(
+      this.telemetry.msSinceProcessStart(),
+      10
+    );
+    const toolbox = new Toolbox(
+      this.target,
+      toolId,
+      this.host.type,
+      this.host.frame.contentWindow,
+      this.frameId,
+      msSinceProcessStart
+    );
 
     // Prevent reloading the toolbox when loading the tools in a tab
     // (e.g. from about:debugging)
@@ -81,7 +108,30 @@ ToolboxHostManager.prototype = {
     // access to the toolbox internals in order to get the session ID.
     this.host.frame.setAttribute("session_id", msSinceProcessStart);
 
+    this.setMinWidthWithZoom();
     return toolbox;
+  },
+
+  setMinWidthWithZoom: function() {
+    const zoomValue = parseFloat(Services.prefs.getCharPref(ZOOM_VALUE_PREF));
+
+    if (isNaN(zoomValue)) {
+      return;
+    }
+
+    if (
+      this.hostType === Toolbox.HostType.LEFT ||
+      this.hostType === Toolbox.HostType.RIGHT
+    ) {
+      this.host.frame.minWidth =
+        WIDTH_CHEVRON_AND_MEATBALL_AND_CLOSE * zoomValue;
+    } else if (
+      this.hostType === Toolbox.HostType.WINDOW ||
+      this.hostType === Toolbox.HostType.PAGE ||
+      this.hostType === Toolbox.HostType.CUSTOM
+    ) {
+      this.host.frame.minWidth = WIDTH_CHEVRON_AND_MEATBALL * zoomValue;
+    }
   },
 
   handleEvent(event) {
@@ -137,6 +187,7 @@ ToolboxHostManager.prototype = {
   },
 
   destroy() {
+    Services.prefs.removeObserver(ZOOM_VALUE_PREF, this.setMinWidthWithZoom);
     this.destroyHost();
     this.host = null;
     this.hostType = null;
@@ -189,7 +240,10 @@ ToolboxHostManager.prototype = {
 
     this.destroyHost();
 
-    if (this.hostType != Toolbox.HostType.CUSTOM) {
+    if (
+      this.hostType !== Toolbox.HostType.CUSTOM &&
+      this.hostType !== Toolbox.HostType.PAGE
+    ) {
       Services.prefs.setCharPref(PREVIOUS_HOST, this.hostType);
     }
 
@@ -199,14 +253,19 @@ ToolboxHostManager.prototype = {
     this.host.frame.ownerDocument.defaultView.addEventListener("message", this);
     this.host.frame.addEventListener("unload", this, true);
 
-    if (hostType != Toolbox.HostType.CUSTOM) {
+    this.setMinWidthWithZoom();
+
+    if (
+      hostType !== Toolbox.HostType.CUSTOM &&
+      hostType !== Toolbox.HostType.PAGE
+    ) {
       Services.prefs.setCharPref(LAST_HOST, hostType);
     }
 
     // Tell the toolbox the host changed
     this.postMessage({
       name: "switched-host",
-      hostType
+      hostType,
     });
   },
 
@@ -219,11 +278,14 @@ ToolboxHostManager.prototype = {
     // When Firefox toplevel is closed, the frame may already be detached and
     // the top level document gone
     if (this.host.frame.ownerDocument.defaultView) {
-      this.host.frame.ownerDocument.defaultView.removeEventListener("message", this);
+      this.host.frame.ownerDocument.defaultView.removeEventListener(
+        "message",
+        this
+      );
     }
     this.host.frame.removeEventListener("unload", this, true);
 
     return this.host.destroy();
-  }
+  },
 };
 exports.ToolboxHostManager = ToolboxHostManager;

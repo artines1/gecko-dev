@@ -20,16 +20,30 @@ var EXPORTED_SYMBOLS = ["PdfjsChromeUtils"];
 const PREF_PREFIX = "pdfjs";
 const PDF_CONTENT_TYPE = "application/pdf";
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.defineModuleGetter(this, "PdfJsDefaultPreferences",
-  "resource://pdf.js/PdfJsDefaultPreferences.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "PdfJsDefaultPreferences",
+  "resource://pdf.js/PdfJsDefaultPreferences.jsm"
+);
 
 var Svc = {};
-XPCOMUtils.defineLazyServiceGetter(Svc, "mime",
-                                   "@mozilla.org/mime;1",
-                                   "nsIMIMEService");
+XPCOMUtils.defineLazyServiceGetter(
+  Svc,
+  "mime",
+  "@mozilla.org/mime;1",
+  "nsIMIMEService"
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "matchesCountLimit",
+  "accessibility.typeaheadfind.matchesCountLimit"
+);
 
 var PdfjsChromeUtils = {
   // For security purposes when running remote, we restrict preferences
@@ -61,6 +75,7 @@ var PdfjsChromeUtils = {
       this._mmg.addMessageListener("PDFJS:Parent:addEventListener", this);
       this._mmg.addMessageListener("PDFJS:Parent:removeEventListener", this);
       this._mmg.addMessageListener("PDFJS:Parent:updateControlState", this);
+      this._mmg.addMessageListener("PDFJS:Parent:updateMatchesCount", this);
 
       // Observer to handle shutdown.
       Services.obs.addObserver(this, "quit-application");
@@ -74,14 +89,17 @@ var PdfjsChromeUtils = {
       this._ppmm.removeMessageListener("PDFJS:Parent:setBoolPref", this);
       this._ppmm.removeMessageListener("PDFJS:Parent:setCharPref", this);
       this._ppmm.removeMessageListener("PDFJS:Parent:setStringPref", this);
-      this._ppmm.removeMessageListener("PDFJS:Parent:isDefaultHandlerApp",
-                                       this);
+      this._ppmm.removeMessageListener(
+        "PDFJS:Parent:isDefaultHandlerApp",
+        this
+      );
 
       this._mmg.removeMessageListener("PDFJS:Parent:displayWarning", this);
 
       this._mmg.removeMessageListener("PDFJS:Parent:addEventListener", this);
       this._mmg.removeMessageListener("PDFJS:Parent:removeEventListener", this);
       this._mmg.removeMessageListener("PDFJS:Parent:updateControlState", this);
+      this._mmg.removeMessageListener("PDFJS:Parent:updateMatchesCount", this);
 
       Services.obs.removeObserver(this, "quit-application");
 
@@ -125,6 +143,8 @@ var PdfjsChromeUtils = {
 
       case "PDFJS:Parent:updateControlState":
         return this._updateControlState(aMsg);
+      case "PDFJS:Parent:updateMatchesCount":
+        return this._updateMatchesCount(aMsg);
       case "PDFJS:Parent:addEventListener":
         return this._addEventListener(aMsg);
       case "PDFJS:Parent:removeEventListener":
@@ -148,49 +168,91 @@ var PdfjsChromeUtils = {
         return;
       }
       fb.updateControlState(data.result, data.findPrevious);
+
+      const matchesCount = this._requestMatchesCount(data.matchesCount);
+      fb.onMatchesCountResult(matchesCount);
     });
   },
 
+  _updateMatchesCount(aMsg) {
+    let data = aMsg.data;
+    let browser = aMsg.target;
+    let tabbrowser = browser.getTabBrowser();
+    let tab = tabbrowser.getTabForBrowser(browser);
+    tabbrowser.getFindBar(tab).then(fb => {
+      if (!fb) {
+        // The tab or window closed.
+        return;
+      }
+      const matchesCount = this._requestMatchesCount(data);
+      fb.onMatchesCountResult(matchesCount);
+    });
+  },
+
+  _requestMatchesCount(data) {
+    if (!data) {
+      return { current: 0, total: 0 };
+    }
+    let result = {
+      current: data.current,
+      total: data.total,
+      limit: typeof matchesCountLimit === "number" ? matchesCountLimit : 0,
+    };
+    if (result.total > result.limit) {
+      result.total = -1;
+    }
+    return result;
+  },
+
   handleEvent(aEvent) {
+    const type = aEvent.type;
     // Handle the tab find initialized event specially:
-    if (aEvent.type == "TabFindInitialized") {
+    if (type == "TabFindInitialized") {
       let browser = aEvent.target.linkedBrowser;
       this._hookupEventListeners(browser);
-      aEvent.target.removeEventListener(aEvent.type, this);
+      aEvent.target.removeEventListener(type, this);
       return;
     }
 
     // To avoid forwarding the message as a CPOW, create a structured cloneable
     // version of the event for both performance, and ease of usage, reasons.
-    let type = aEvent.type;
-    let detail = {
-      query: aEvent.detail.query,
-      caseSensitive: aEvent.detail.caseSensitive,
-      highlightAll: aEvent.detail.highlightAll,
-      findPrevious: aEvent.detail.findPrevious,
-    };
+    let detail = null;
+    if (type !== "findbarclose") {
+      detail = {
+        query: aEvent.detail.query,
+        caseSensitive: aEvent.detail.caseSensitive,
+        entireWord: aEvent.detail.entireWord,
+        highlightAll: aEvent.detail.highlightAll,
+        findPrevious: aEvent.detail.findPrevious,
+      };
+    }
 
     let browser = aEvent.currentTarget.browser;
     if (!this._browsers.has(browser)) {
-      throw new Error("FindEventManager was not bound " +
-                      "for the current browser.");
+      throw new Error(
+        "FindEventManager was not bound for the current browser."
+      );
     }
     // Only forward the events if the current browser is a registered browser.
     let mm = browser.messageManager;
-    mm.sendAsyncMessage("PDFJS:Child:handleEvent", { type, detail, });
+    mm.sendAsyncMessage("PDFJS:Child:handleEvent", { type, detail });
     aEvent.preventDefault();
   },
 
-  _types: ["find",
-           "findagain",
-           "findhighlightallchange",
-           "findcasesensitivitychange"],
+  _types: [
+    "find",
+    "findagain",
+    "findhighlightallchange",
+    "findcasesensitivitychange",
+    "findbarclose",
+  ],
 
   _addEventListener(aMsg) {
     let browser = aMsg.target;
     if (this._browsers.has(browser)) {
-      throw new Error("FindEventManager was bound 2nd time " +
-                      "without unbinding it first.");
+      throw new Error(
+        "FindEventManager was bound 2nd time without unbinding it first."
+      );
     }
 
     // Since this jsm is global, we need to store all the browsers
@@ -244,10 +306,15 @@ var PdfjsChromeUtils = {
 
   _ensurePreferenceAllowed(aPrefName) {
     let unPrefixedName = aPrefName.split(PREF_PREFIX + ".");
-    if (unPrefixedName[0] !== "" ||
-        !this._allowedPrefNames.includes(unPrefixedName[1])) {
-      let msg = "\"" + aPrefName + "\" " +
-                "can't be accessed from content. See PdfjsChromeUtils.";
+    if (
+      unPrefixedName[0] !== "" ||
+      !this._allowedPrefNames.includes(unPrefixedName[1])
+    ) {
+      let msg =
+        '"' +
+        aPrefName +
+        '" ' +
+        "can't be accessed from content. See PdfjsChromeUtils.";
       throw new Error(msg);
     }
   },
@@ -284,8 +351,10 @@ var PdfjsChromeUtils = {
    */
   isDefaultHandlerApp() {
     var handlerInfo = Svc.mime.getFromTypeAndExtension(PDF_CONTENT_TYPE, "pdf");
-    return (!handlerInfo.alwaysAskBeforeHandling &&
-            handlerInfo.preferredAction === Ci.nsIHandlerInfo.handleInternally);
+    return (
+      !handlerInfo.alwaysAskBeforeHandling &&
+      handlerInfo.preferredAction === Ci.nsIHandlerInfo.handleInternally
+    );
   },
 
   /*
@@ -305,32 +374,37 @@ var PdfjsChromeUtils = {
     let messageSent = false;
     function sendMessage(download) {
       let mm = browser.messageManager;
-      mm.sendAsyncMessage("PDFJS:Child:fallbackDownload", { download, });
+      mm.sendAsyncMessage("PDFJS:Child:fallbackDownload", { download });
     }
-    let buttons = [{
-      label: data.label,
-      accessKey: data.accessKey,
-      callback() {
-        messageSent = true;
-        sendMessage(true);
+    let buttons = [
+      {
+        label: data.label,
+        accessKey: data.accessKey,
+        callback() {
+          messageSent = true;
+          sendMessage(true);
+        },
       },
-    }];
-    notificationBox.appendNotification(data.message, "pdfjs-fallback", null,
-                                       notificationBox.PRIORITY_INFO_LOW,
-                                       buttons,
-                                       function eventsCallback(eventType) {
-      // Currently there is only one event "removed" but if there are any other
-      // added in the future we still only care about removed at the moment.
-      if (eventType !== "removed") {
-        return;
+    ];
+    notificationBox.appendNotification(
+      data.message,
+      "pdfjs-fallback",
+      null,
+      notificationBox.PRIORITY_INFO_LOW,
+      buttons,
+      function eventsCallback(eventType) {
+        // Currently there is only one event "removed" but if there are any other
+        // added in the future we still only care about removed at the moment.
+        if (eventType !== "removed") {
+          return;
+        }
+        // Don't send a response again if we already responded when the button was
+        // clicked.
+        if (messageSent) {
+          return;
+        }
+        sendMessage(false);
       }
-      // Don't send a response again if we already responded when the button was
-      // clicked.
-      if (messageSent) {
-        return;
-      }
-      sendMessage(false);
-    });
+    );
   },
 };
-

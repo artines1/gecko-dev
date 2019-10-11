@@ -7,6 +7,9 @@
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "General")
 
+with Files("blocklist.xml"):
+    BUG_COMPONENT = ("Toolkit", "Blocklist Implementation")
+
 with Files("firefox.exe.manifest"):
     BUG_COMPONENT = ("Core", "Widget: Win32")
 with Files("module.ver"):
@@ -29,7 +32,12 @@ with Files("profile/channel-prefs.js"):
 with Files("profile/firefox.js"):
     BUG_COMPONENT = ("Firefox", "General")
 
-GeckoProgram(CONFIG['MOZ_APP_NAME'])
+if CONFIG['MOZ_NO_PIE_COMPAT']:
+    GeckoProgram(CONFIG['MOZ_APP_NAME'] + '-bin')
+
+    DIRS += ['no-pie']
+else:
+    GeckoProgram(CONFIG['MOZ_APP_NAME'])
 
 SOURCES += [
     'nsBrowserApp.cpp',
@@ -54,7 +62,7 @@ if CONFIG['LIBFUZZER']:
 if CONFIG['ENABLE_GECKODRIVER']:
     DEFINES['MOZ_GECKODRIVER'] = True
 
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+if CONFIG['CC_TYPE'] == 'clang-cl':
     # Always enter a Windows program through wmain, whether or not we're
     # a console application.
     WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
@@ -74,6 +82,22 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     DELAYLOAD_DLLS += [
         'oleaut32.dll',
         'ole32.dll',
+        'rpcrt4.dll',
+        'version.dll',
+    ]
+
+    if CONFIG['CC_TYPE'] == 'clang-cl':
+        libpath_flag = '-LIBPATH:'
+    else:
+        libpath_flag = '-L'
+
+    WIN32_EXE_LDFLAGS += [
+        libpath_flag + OBJDIR + '/winlauncher/freestanding',
+    ]
+
+if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'Darwin':
+    USE_LIBS += [
+        'mozsandbox',
     ]
 
 if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
@@ -91,11 +115,6 @@ if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
         'winmm.dll',
         'user32.dll',
     ]
-
-    if CONFIG['CC_TYPE'] == "msvc":
-        CFLAGS += ['-guard:cf']
-        CXXFLAGS += ['-guard:cf']
-        LDFLAGS += ['-guard:cf']
 
 # Control the default heap size.
 # This is the heap returned by GetProcessHeap().

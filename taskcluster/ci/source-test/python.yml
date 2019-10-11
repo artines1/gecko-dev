@@ -1,13 +1,21 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
 job-defaults:
     platform: linux64/opt
     always-target: true
     worker-type:
         by-platform:
-            linux64.*: aws-provisioner-v1/gecko-t-linux-xlarge
+            linux64.*: t-linux-xlarge
+            macosx1014-64.*: t-osx-1014
+            windows10-64.*: t-win10-64
     worker:
         by-platform:
             linux64.*:
                 docker-image: {in-tree: "lint"}
+                max-run-time: 3600
+            default:
                 max-run-time: 3600
     treeherder:
         kind: test
@@ -32,8 +40,27 @@ taskgraph-tests:
             - 'taskcluster/**/*.py'
             - 'python/mach/**/*.py'
 
+mach:
+    description: python/mach unit tests
+    platform:
+        - linux64/opt
+        - macosx1014-64/opt
+        - windows10-64/opt
+    python-version: [2, 3]
+    treeherder:
+        symbol: mach
+    run:
+        using: python-test
+        subsuite: mach
+    when:
+        files-changed:
+            - 'python/mach/**'
+
 marionette-harness:
     description: testing/marionette/harness unit tests
+    platform:
+        - linux64/opt
+        - windows10-64/opt
     python-version: [2]
     treeherder:
         symbol: mnh
@@ -64,18 +91,20 @@ mochitest-harness:
                 max-run-time: 3600
     run:
         using: run-task
+        cwd: '{checkout}'
         command: >
             source /builds/worker/scripts/xvfb.sh &&
             start_xvfb '1600x1200x24' 0 &&
             export GECKO_BINARY_PATH=$MOZ_FETCHES_DIR/firefox/firefox &&
             export TEST_HARNESS_ROOT=$MOZ_FETCHES_DIR/tests &&
-            cd /builds/worker/checkouts/gecko &&
             ./mach python-test --python 2 --subsuite mochitest
     fetches:
         build:
             - target.tar.bz2
-            - target.common.tests.tar.gz>tests
-            - target.mochitest.tests.tar.gz>tests
+            - artifact: target.common.tests.tar.gz
+              dest: tests
+            - artifact: target.mochitest.tests.tar.gz
+              dest: tests
     when:
         files-changed:
             - 'testing/mochitest/**'
@@ -87,6 +116,10 @@ mochitest-harness:
 
 mozbase:
     description: testing/mozbase unit tests
+    platform:
+        - linux64/opt
+        - macosx1014-64/opt
+        - windows10-64/opt
     python-version: [2, 3]
     treeherder:
         symbol: mb
@@ -104,8 +137,8 @@ mozharness:
     run:
         using: run-task
         cache-dotcache: true
+        cwd: '{checkout}/testing/mozharness'
         command: >
-            cd /builds/worker/checkouts/gecko/testing/mozharness &&
             /usr/local/bin/tox -e py27-hg4.3
     when:
         files-changed:
@@ -113,9 +146,13 @@ mozharness:
 
 mozlint:
     description: python/mozlint unit tests
-    python-version: [2]
+    platform:
+        - linux64/opt
+        - macosx1014-64/opt
+        - windows10-64/opt
+    python-version: [3]
     treeherder:
-        symbol: ml
+        symbol: mozlint
     run:
         using: python-test
         subsuite: mozlint
@@ -124,8 +161,23 @@ mozlint:
             - 'python/mozlint/**'
             - 'tools/lint/**'
 
+mozrelease:
+    description: python/mozrelease unit tests
+    python-version: [2, 3]
+    treeherder:
+        symbol: release
+    run:
+        using: python-test
+        subsuite: mozrelease
+    when:
+        files-changed:
+            - 'python/mozrelease/**'
+
 mozterm:
     description: python/mozterm unit tests
+    platform:
+        - linux64/opt
+        - windows10-64/opt
     python-version: [2, 3]
     treeherder:
         symbol: term
@@ -150,6 +202,9 @@ mozversioncontrol:
 
 raptor:
     description: testing/raptor unit tests
+    platform:
+        - linux64/opt
+        - windows10-64/opt
     python-version: [2]
     treeherder:
         symbol: rap
@@ -177,18 +232,20 @@ reftest-harness:
                 max-run-time: 3600
     run:
         using: run-task
+        cwd: '{checkout}'
         command: >
             source /builds/worker/scripts/xvfb.sh &&
             start_xvfb '1600x1200x24' 0 &&
             export GECKO_BINARY_PATH=$MOZ_FETCHES_DIR/firefox/firefox &&
             export TEST_HARNESS_ROOT=$MOZ_FETCHES_DIR/tests &&
-            cd /builds/worker/checkouts/gecko &&
             ./mach python-test --python 2 --subsuite reftest
     fetches:
         build:
             - target.tar.bz2
-            - target.common.tests.tar.gz>tests
-            - target.reftest.tests.tar.gz>tests
+            - artifact: target.common.tests.tar.gz
+              dest: tests
+            - artifact: target.reftest.tests.tar.gz
+              dest: tests
     when:
         files-changed:
             - 'layout/tools/reftest/**'
@@ -199,6 +256,9 @@ reftest-harness:
 
 tryselect:
     description: tools/tryselect unit tests
+    platform:
+        - linux64/opt
+        - windows10-64/opt
     python-version: [2]
     treeherder:
         symbol: try
@@ -207,4 +267,40 @@ tryselect:
         subsuite: try
     when:
         files-changed:
+            - 'taskcluster/ci/test/**'
+            - 'taskcluster/taskgraph/transforms/**'
             - 'tools/tryselect/**'
+
+mozbuild:
+    description: mozbuild unit tests
+    platform:
+        - linux64/opt
+        - macosx1014-64/opt
+        - windows10-64/opt
+    python-version: [2, 3]
+    treeherder:
+        symbol: mbu
+    run:
+        using: python-test
+        subsuite: mozbuild
+    fetches:
+        toolchain:
+            by-platform:
+                linux64/opt:
+                    - linux64-node
+                macosx1014-64/opt:
+                    - macosx64-node
+                windows10-64/opt:
+                    - win64-node
+    when:
+        files-changed:
+            - '**/moz.configure'
+            - 'build/moz.configure/**'
+            - 'config/tests/**'
+            - 'python/mach/**'
+            - 'python/mozboot/**'
+            - 'python/mozbuild/**'
+            - 'python/mozterm/**'
+            - 'python/mozversioncontrol/**'
+            - 'testing/mozbase/**'
+            - 'testing/xpcshell/xpcshellcommandline.py'

@@ -12,7 +12,7 @@ const { UiState } = require("devtools/client/webconsole/reducers/ui");
 const {
   applyMiddleware,
   compose,
-  createStore
+  createStore,
 } = require("devtools/client/shared/vendor/redux");
 
 // Prefs
@@ -22,10 +22,12 @@ const { getPrefsService } = require("devtools/client/webconsole/utils/prefs");
 // Reducers
 const { reducers } = require("./reducers/index");
 
-// Middleware
+// Middlewares
 const eventTelemetry = require("./middleware/event-telemetry");
 const historyPersistence = require("./middleware/history-persistence");
-const thunk = require("./middleware/thunk");
+const {
+  thunkWithOptions,
+} = require("devtools/client/shared/redux/middleware/thunk-with-options");
 
 // Enhancers
 const enableBatching = require("./enhancers/batching");
@@ -38,25 +40,26 @@ const enableMessagesCacheClearing = require("./enhancers/message-cache-clearing"
  * Create and configure store for the Console panel. This is the place
  * where various enhancers and middleware can be registered.
  */
-function configureStore(hud, options = {}) {
-  const prefsService = getPrefsService(hud);
-  const {
-    getBoolPref,
-    getIntPref,
-  } = prefsService;
+function configureStore(webConsoleUI, options = {}) {
+  const prefsService = getPrefsService(webConsoleUI);
+  const { getBoolPref, getIntPref } = prefsService;
 
-  const logLimit = options.logLimit
-    || Math.max(getIntPref("devtools.hud.loglimit"), 1);
+  const logLimit =
+    options.logLimit || Math.max(getIntPref("devtools.hud.loglimit"), 1);
   const sidebarToggle = getBoolPref(PREFS.FEATURES.SIDEBAR_TOGGLE);
-  const jstermCodeMirror = getBoolPref(PREFS.FEATURES.JSTERM_CODE_MIRROR);
+  const autocomplete = getBoolPref(PREFS.FEATURES.AUTOCOMPLETE);
+  const groupWarnings = getBoolPref(PREFS.FEATURES.GROUP_WARNINGS);
+  const editor = getBoolPref(PREFS.FEATURES.EDITOR);
   const historyCount = getIntPref(PREFS.UI.INPUT_HISTORY_COUNT);
 
   const initialState = {
     prefs: PrefState({
       logLimit,
       sidebarToggle,
-      jstermCodeMirror,
+      autocomplete,
       historyCount,
+      groupWarnings,
+      editor,
     }),
     filters: FilterState({
       error: getBoolPref(PREFS.FILTER.ERROR),
@@ -69,17 +72,25 @@ function configureStore(hud, options = {}) {
       netxhr: getBoolPref(PREFS.FILTER.NETXHR),
     }),
     ui: UiState({
-      filterBarVisible: getBoolPref(PREFS.UI.FILTER_BAR),
       networkMessageActiveTabId: "headers",
       persistLogs: getBoolPref(PREFS.UI.PERSIST),
-    })
+      showContentMessages: webConsoleUI.isBrowserConsole
+        ? getBoolPref(PREFS.UI.CONTENT_MESSAGES)
+        : true,
+      editor: getBoolPref(PREFS.UI.EDITOR),
+      editorWidth: getIntPref(PREFS.UI.EDITOR_WIDTH),
+      showEditorOnboarding: getBoolPref(PREFS.UI.EDITOR_ONBOARDING),
+      timestampsVisible: getBoolPref(PREFS.UI.MESSAGE_TIMESTAMP),
+    }),
   };
 
-  // Prepare middleware.
   const middleware = applyMiddleware(
-    thunk.bind(null, {prefsService}),
+    thunkWithOptions.bind(null, {
+      prefsService,
+      ...options.thunkArgs,
+    }),
     historyPersistence,
-    eventTelemetry.bind(null, options.telemetry, options.sessionId),
+    eventTelemetry.bind(null, options.telemetry, options.sessionId)
   );
 
   return createStore(
@@ -87,11 +98,11 @@ function configureStore(hud, options = {}) {
     initialState,
     compose(
       middleware,
-      enableActorReleaser(hud),
+      enableActorReleaser(webConsoleUI),
       enableBatching(),
-      enableNetProvider(hud),
-      enableMessagesCacheClearing(hud),
-      ensureCSSErrorReportingEnabled(hud),
+      enableNetProvider(webConsoleUI),
+      enableMessagesCacheClearing(webConsoleUI),
+      ensureCSSErrorReportingEnabled(webConsoleUI)
     )
   );
 }
@@ -101,7 +112,7 @@ function createRootReducer() {
     // We want to compute the new state for all properties except
     // "messages" and "history". These two reducers are handled
     // separately since they are receiving additional arguments.
-    const newState = [...Object.entries(reducers)].reduce((res, [key, reducer]) => {
+    const newState = Object.entries(reducers).reduce((res, [key, reducer]) => {
       if (key !== "messages" && key !== "history") {
         res[key] = reducer(state[key], action);
       }
@@ -111,19 +122,19 @@ function createRootReducer() {
     // Pass prefs state as additional argument to the history reducer.
     newState.history = reducers.history(state.history, action, newState.prefs);
 
-    return Object.assign(newState, {
-      // specifically pass the updated filters and prefs state as additional arguments.
-      messages: reducers.messages(
-        state.messages,
-        action,
-        newState.filters,
-        newState.prefs,
-      ),
-    });
+    // Specifically pass the updated filters, prefs and ui states as additional arguments.
+    newState.messages = reducers.messages(
+      state.messages,
+      action,
+      newState.filters,
+      newState.prefs,
+      newState.ui
+    );
+
+    return newState;
   };
 }
 
 // Provide the store factory for test code so that each test is working with
 // its own instance.
 module.exports.configureStore = configureStore;
-

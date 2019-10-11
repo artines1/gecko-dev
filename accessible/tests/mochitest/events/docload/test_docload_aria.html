@@ -6,8 +6,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../../common.js"></script>
@@ -26,7 +25,7 @@
       this.dialogNode = getNode(aID);
 
       this.eventSeq = [
-        new invokerChecker(EVENT_DOCUMENT_LOAD_COMPLETE, this.dialogNode)
+        new invokerChecker(EVENT_DOCUMENT_LOAD_COMPLETE, this.dialogNode),
       ];
 
       this.invoke = function showARIADialog_invoke() {

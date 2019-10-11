@@ -6,8 +6,7 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="Accessible XUL groupbox hierarchy tests">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
   <script type="application/javascript"
           src="../common.js" />
@@ -54,7 +53,7 @@
 
     <vbox flex="1">
       <groupbox id="groupbox">
-        <caption label="Some caption" />
+        <label value="Some caption"/>
         <checkbox label="some checkbox label" />
     </groupbox>
     </vbox>

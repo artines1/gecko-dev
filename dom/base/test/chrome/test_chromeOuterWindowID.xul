@@ -9,8 +9,7 @@ windows.
 -->
 <window title="Mozilla Bug 1474662"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml">
@@ -21,8 +20,8 @@ windows.
   <!-- test code goes here -->
   <script type="application/javascript"><![CDATA[
   SimpleTest.waitForExplicitFinish();
-  ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
-  ChromeUtils.import("resource://testing-common/ContentTask.jsm");
+  const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+  const {ContentTask} = ChromeUtils.import("resource://testing-common/ContentTask.jsm");
 
   const BROWSER_DOC = "window_chromeOuterWindowID.xul";
   const TEST_PAGE = "http://example.com";
@@ -73,7 +72,7 @@ windows.
    *        nonRemote<num>: a reference to the non-remote browser in the window
    */
   async function prepareWindow(num, page) {
-    let win = window.open(BROWSER_DOC, "bug1474662-" + num, "chrome,width=200,height=200");
+    let win = docShell.rootTreeItem.domWindow.open(BROWSER_DOC, "bug1474662-" + num, "chrome,width=200,height=200");
     await BrowserTestUtils.waitForEvent(win, "load");
     let remote = win.document.getElementById("remote");
     let nonRemote = win.document.getElementById("non-remote");
@@ -83,9 +82,9 @@ windows.
     ok(nonRemote && !nonRemote.isRemoteBrowser,
        "Should have found a non-remote browser in test window " + num);
 
-    remote.loadURI(page);
+    BrowserTestUtils.loadURI(remote, page);
     await BrowserTestUtils.browserLoaded(remote);
-    nonRemote.loadURI(page);
+    BrowserTestUtils.loadURI(nonRemote, page);
     await BrowserTestUtils.browserLoaded(nonRemote);
 
     let result = {};

@@ -5,14 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 function macWindowMenuDidShow() {
-  let windows = Services.wm.getEnumerator("");
   let frag = document.createDocumentFragment();
-  while (windows.hasMoreElements()) {
-    let win = windows.getNext();
+  for (let win of Services.wm.getEnumerator("")) {
     if (win.document.documentElement.getAttribute("inwindowmenu") == "false") {
       continue;
     }
-    let item = document.createElement("menuitem");
+    let item = document.createXULElement("menuitem");
     item.setAttribute("label", win.document.title);
     if (win == window) {
       item.setAttribute("checked", "true");
@@ -37,8 +35,9 @@ function macWindowMenuDidHide() {
 }
 
 function zoomWindow() {
-  if (window.windowState == window.STATE_NORMAL)
+  if (window.windowState == window.STATE_NORMAL) {
     window.maximize();
-  else
+  } else {
     window.restore();
+  }
 }

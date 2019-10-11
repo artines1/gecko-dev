@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import sys
@@ -11,10 +11,22 @@ import subprocess
 import glob
 
 from mozboot.base import BaseBootstrapper
-from mozboot.linux_common import StyloInstall
+from mozboot.linux_common import (
+    ClangStaticAnalysisInstall,
+    NodeInstall,
+    SccacheInstall,
+    StyloInstall,
+)
+
+# NOTE: This script is intended to be run with a vanilla Python install.  We
+# have to rely on the standard library instead of Python 2+3 helpers like
+# the six module.
+if sys.version_info < (3,):
+    input = raw_input  # noqa
 
 
-class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
+class ArchlinuxBootstrapper(NodeInstall, StyloInstall, SccacheInstall,
+                            ClangStaticAnalysisInstall, BaseBootstrapper):
     '''Archlinux experimental bootstrapper.'''
 
     SYSTEM_PACKAGES = [
@@ -31,25 +43,15 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
     BROWSER_PACKAGES = [
         'alsa-lib',
         'dbus-glib',
-        'desktop-file-utils',
-        'gconf',
         'gtk2',
         'gtk3',
-        'hicolor-icon-theme',
-        'hunspell',
-        'icu',
         'libevent',
         'libvpx',
         'libxt',
         'mime-types',
-        'mozilla-common',
-        'nss',
-        'sqlite',
+        'nasm',
         'startup-notification',
-        'diffutils',
         'gst-plugins-base-libs',
-        'imake',
-        'inetutils',
         'libpulse',
         'xorg-server-xvfb',
         'yasm',
@@ -68,7 +70,6 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
         # For downloading the Android SDK and NDK.
         'wget',
         # See comment about 32 bit binaries and multilib below.
-        'multilib/lib32-libstdc++5',
         'multilib/lib32-ncurses',
         'multilib/lib32-readline',
         'multilib/lib32-zlib',
@@ -98,6 +99,10 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
         self.aur_install(*self.BROWSER_AUR_PACKAGES)
         self.pacman_install(*self.BROWSER_PACKAGES)
 
+    def ensure_nasm_packages(self, state_dir, checkout_root):
+        # installed via ensure_browser_packages
+        pass
+
     def ensure_mobile_android_packages(self, artifact_mode=False):
         # Multi-part process:
         # 1. System packages.
@@ -118,6 +123,7 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
             raise e
 
         # 2. Android pieces.
+        self.ensure_java()
         from mozboot import android
         android.ensure_android('linux', artifact_mode=artifact_mode,
                                no_interactive=self.no_interactive)
@@ -190,7 +196,7 @@ class ArchlinuxBootstrapper(StyloInstall, BaseBootstrapper):
                   'This is potentially unsecure so I recommend that you carefully '
                   'read each package description and check the sources.'
                   'These packages will be built in ' + path + '.')
-            choice = raw_input('Do you want to continue? (yes/no) [no]')
+            choice = input('Do you want to continue? (yes/no) [no]')
             if choice != 'yes':
                 sys.exit(1)
 

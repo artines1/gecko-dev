@@ -30,7 +30,8 @@ class WasmRemap {
   /**
    * @param url string
    */
-  set sourceRoot(url) { // important, since sources are using this.
+  set sourceRoot(url) {
+    // important, since sources are using this.
     this._map.sourceRoot = url;
   }
 
@@ -54,7 +55,7 @@ class WasmRemap {
     const result = this._map.originalPositionFor({
       line: 1,
       column: generatedPosition.line,
-      bias: generatedPosition.bias
+      bias: generatedPosition.bias,
     });
     return result;
   }
@@ -77,7 +78,7 @@ class WasmRemap {
 
   allGeneratedPositionsFor(originalPosition) {
     const positions = this._map.allGeneratedPositionsFor(originalPosition);
-    return positions.map((position) => {
+    return positions.map(position => {
       return this._remapGeneratedPosition(position);
     });
   }
@@ -91,23 +92,27 @@ class WasmRemap {
   }
 
   eachMapping(callback, context, order) {
-    this._map.eachMapping((entry) => {
-      const {
-        source,
-        generatedColumn,
-        originalLine,
-        originalColumn,
-        name
-      } = entry;
-      callback({
-        source,
-        generatedLine: generatedColumn,
-        generatedColumn: 0,
-        originalLine,
-        originalColumn,
-        name,
-      });
-    }, context, order);
+    this._map.eachMapping(
+      entry => {
+        const {
+          source,
+          generatedColumn,
+          originalLine,
+          originalColumn,
+          name,
+        } = entry;
+        callback({
+          source,
+          generatedLine: generatedColumn,
+          generatedColumn: 0,
+          originalLine,
+          originalColumn,
+          name,
+        });
+      },
+      context,
+      order
+    );
   }
 }
 

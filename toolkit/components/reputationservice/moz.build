@@ -22,6 +22,7 @@ XPIDL_MODULE = 'reputationservice'
 
 UNIFIED_SOURCES += [
     'ApplicationReputation.cpp',
+    'ApplicationReputationTelemetryUtils.cpp',
     'chromium/chrome/common/safe_browsing/csd.pb.cc',
     'LoginReputation.cpp',
     'LoginReputationIPC.cpp',
@@ -43,5 +44,6 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497
+
+if CONFIG['ENABLE_TESTS']:
+    DIRS += ['test/gtest']

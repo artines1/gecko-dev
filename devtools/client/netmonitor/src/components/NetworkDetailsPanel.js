@@ -7,7 +7,9 @@
 const { createFactory } = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
-const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
+const {
+  connect,
+} = require("devtools/client/shared/redux/visibility-handler-connect");
 const Actions = require("../actions/index");
 const { getSelectedRequest } = require("../selectors/index");
 
@@ -32,16 +34,18 @@ function NetworkDetailsPanel({
   selectTab,
   sourceMapService,
   toggleNetworkDetails,
+  openNetworkDetails,
   openLink,
+  targetSearchResult,
 }) {
   if (!request) {
     return null;
   }
 
-  return (
-    div({ className: "network-details-panel" },
-      !request.isCustom ?
-        TabboxPanel({
+  return div(
+    { className: "network-details-panel" },
+    !request.isCustom
+      ? TabboxPanel({
           activeTabId,
           cloneSelectedRequest,
           connector,
@@ -50,12 +54,13 @@ function NetworkDetailsPanel({
           selectTab,
           sourceMapService,
           toggleNetworkDetails,
-        }) :
-        CustomRequestPanel({
+          openNetworkDetails,
+          targetSearchResult,
+        })
+      : CustomRequestPanel({
           connector,
           request,
         })
-    )
   );
 }
 
@@ -71,16 +76,19 @@ NetworkDetailsPanel.propTypes = {
   sourceMapService: PropTypes.object,
   toggleNetworkDetails: PropTypes.func.isRequired,
   openLink: PropTypes.func,
+  targetSearchResult: PropTypes.object,
 };
 
 module.exports = connect(
-  (state) => ({
+  state => ({
     activeTabId: state.ui.detailsPanelSelectedTab,
     request: getSelectedRequest(state),
+    targetSearchResult: state.search.targetSearchResult,
   }),
-  (dispatch) => ({
+  dispatch => ({
     cloneSelectedRequest: () => dispatch(Actions.cloneSelectedRequest()),
-    selectTab: (tabId) => dispatch(Actions.selectDetailsPanelTab(tabId)),
+    selectTab: tabId => dispatch(Actions.selectDetailsPanelTab(tabId)),
     toggleNetworkDetails: () => dispatch(Actions.toggleNetworkDetails()),
-  }),
+    openNetworkDetails: open => dispatch(Actions.openNetworkDetails(open)),
+  })
 )(NetworkDetailsPanel);

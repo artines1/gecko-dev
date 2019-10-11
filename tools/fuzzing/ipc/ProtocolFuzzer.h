@@ -15,17 +15,31 @@
 namespace mozilla {
 namespace ipc {
 
-template<typename T>
-void
-FuzzProtocol(T* aProtocol,
-             const uint8_t* aData,
-             size_t aSize,
-             const nsTArray<nsCString>& aIgnoredMessageTypes)
-{
+class ProtocolFuzzerHelper {
+ public:
+  static mozilla::dom::ContentParent* CreateContentParent(
+      mozilla::dom::ContentParent* aOpener, const nsAString& aRemoteType);
+
+  static void CompositorBridgeParentSetup();
+
+  static void AddShmemToProtocol(IToplevelProtocol* aProtocol,
+                                 Shmem::SharedMemory* aSegment, int32_t aId) {
+    aProtocol->mShmemMap.AddWithID(aSegment, aId);
+  }
+
+  static void RemoveShmemFromProtocol(IToplevelProtocol* aProtocol,
+                                      int32_t aId) {
+    aProtocol->mShmemMap.RemoveIfPresent(aId);
+  }
+};
+
+template <typename T>
+void FuzzProtocol(T* aProtocol, const uint8_t* aData, size_t aSize,
+                  const nsTArray<nsCString>& aIgnoredMessageTypes) {
   while (true) {
     uint32_t msg_size =
-      IPC::Message::MessageSize(reinterpret_cast<const char*>(aData),
-                                reinterpret_cast<const char*>(aData) + aSize);
+        IPC::Message::MessageSize(reinterpret_cast<const char*>(aData),
+                                  reinterpret_cast<const char*>(aData) + aSize);
     if (msg_size == 0 || msg_size > aSize) {
       break;
     }
@@ -37,10 +51,43 @@ FuzzProtocol(T* aProtocol,
     if (aIgnoredMessageTypes.Contains(m.name())) {
       continue;
     }
+
+    uint8_t num_shmems = 0;
+    if (aSize) {
+      num_shmems = *aData;
+      aData++;
+      aSize--;
+
+      for (uint32_t i = 0; i < num_shmems; i++) {
+        if (aSize < sizeof(uint16_t)) {
+          break;
+        }
+        size_t shmem_size = *reinterpret_cast<const uint16_t*>(aData);
+        aData += sizeof(uint16_t);
+        aSize -= sizeof(uint16_t);
+
+        if (shmem_size > aSize) {
+          break;
+        }
+        RefPtr<Shmem::SharedMemory> segment(
+            Shmem::Alloc(Shmem::PrivateIPDLCaller(), shmem_size,
+                         SharedMemory::TYPE_BASIC, false));
+        if (!segment) {
+          break;
+        }
+
+        Shmem shmem(Shmem::PrivateIPDLCaller(), segment.get(), i + 1);
+        memcpy(shmem.get<uint8_t>(), aData, shmem_size);
+        ProtocolFuzzerHelper::AddShmemToProtocol(
+            aProtocol, segment.forget().take(), i + 1);
+
+        aData += shmem_size;
+        aSize -= shmem_size;
+      }
+    }
     // TODO: attach |m.header().num_fds| file descriptors to |m|. MVP can be
     // empty files, next implementation maybe read a length header from |data|
-    // and then that many bytes. Probably need similar handling for shmem,
-    // other types?
+    // and then that many bytes.
 
     if (m.is_sync()) {
       nsAutoPtr<IPC::Message> reply;
@@ -48,19 +95,17 @@ FuzzProtocol(T* aProtocol,
     } else {
       aProtocol->OnMessageReceived(m);
     }
+    for (uint32_t i = 0; i < num_shmems; i++) {
+      Shmem::SharedMemory* segment = aProtocol->LookupSharedMemory(i + 1);
+      Shmem::Dealloc(Shmem::PrivateIPDLCaller(), segment);
+      ProtocolFuzzerHelper::RemoveShmemFromProtocol(aProtocol, i + 1);
+    }
   }
 }
 
 nsTArray<nsCString> LoadIPCMessageBlacklist(const char* aPath);
 
-class ProtocolFuzzerHelper
-{
-public:
-  static mozilla::dom::ContentParent* CreateContentParent(
-    mozilla::dom::ContentParent* aOpener,
-    const nsAString& aRemoteType);
-};
-}
-}
+}  // namespace ipc
+}  // namespace mozilla
 
 #endif

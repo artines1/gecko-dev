@@ -5,10 +5,8 @@
 <window title="Key Tests"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
 
 <script>
 <![CDATA[
@@ -122,7 +120,7 @@ function runTest()
   $("menubutton").open = false;
 
   window.close();
-  window.opener.wrappedJSObject.SimpleTest.finish();
+  window.arguments[0].SimpleTest.finish();
 }
 
 function iterateKeys(enabled, testid)
@@ -149,8 +147,8 @@ function checkKey(event)
   gExpected = null;
 }
 
-function is(l, r, n) { window.opener.wrappedJSObject.SimpleTest.is(l,r,n); }
-function ok(v, n) { window.opener.wrappedJSObject.SimpleTest.ok(v,n); }
+function is(l, r, n) { window.arguments[0].SimpleTest.is(l,r,n); }
+function ok(v, n) { window.arguments[0].SimpleTest.ok(v,n); }
 
 SimpleTest.waitForFocus(runTest);
 

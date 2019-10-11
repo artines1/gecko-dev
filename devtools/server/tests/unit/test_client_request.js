@@ -14,23 +14,26 @@ TestActor.prototype = {
   actorPrefix: "test",
 
   hello: function() {
-    return {hello: "world"};
+    return { hello: "world" };
   },
 
   error: function() {
-    return {error: "code", message: "human message"};
-  }
+    return { error: "code", message: "human message" };
+  },
 };
 TestActor.prototype.requestTypes = {
-  "hello": TestActor.prototype.hello,
-  "error": TestActor.prototype.error
+  hello: TestActor.prototype.hello,
+  error: TestActor.prototype.error,
 };
 
 function run_test() {
-  DebuggerServer.addGlobalActor({
-    constructorName: "TestActor",
-    constructorFun: TestActor,
-  }, "test");
+  ActorRegistry.addGlobalActor(
+    {
+      constructorName: "TestActor",
+      constructorFun: TestActor,
+    },
+    "test"
+  );
 
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
@@ -48,8 +51,9 @@ function run_test() {
 
 function init() {
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect()
-    .then(() => gClient.listTabs())
+  gClient
+    .connect()
+    .then(() => gClient.mainRoot.rootForm)
     .then(response => {
       gActorId = response.test;
       run_next_test();
@@ -77,28 +81,31 @@ function checkStack(expectedName) {
 
 function test_client_request_callback() {
   // Test that DebuggerClient.request accepts a `onResponse` callback as 2nd argument
-  gClient.request({
-    to: gActorId,
-    type: "hello"
-  }, response => {
-    Assert.equal(response.from, gActorId);
-    Assert.equal(response.hello, "world");
-    checkStack("test_client_request_callback");
-    run_next_test();
-  });
+  gClient.request(
+    {
+      to: gActorId,
+      type: "hello",
+    },
+    response => {
+      Assert.equal(response.from, gActorId);
+      Assert.equal(response.hello, "world");
+      checkStack("test_client_request_callback");
+      run_next_test();
+    }
+  );
 }
 
 function test_client_request_promise() {
   // Test that DebuggerClient.request returns a promise that resolves on response
   const request = gClient.request({
     to: gActorId,
-    type: "hello"
+    type: "hello",
   });
 
   request.then(response => {
     Assert.equal(response.from, gActorId);
     Assert.equal(response.hello, "world");
-    checkStack("test_client_request_promise");
+    checkStack("test_client_request_promise/<");
     run_next_test();
   });
 }
@@ -108,25 +115,28 @@ function test_client_request_promise_error() {
   // returns an explicit error message
   const request = gClient.request({
     to: gActorId,
-    type: "error"
+    type: "error",
   });
 
-  request.then(() => {
-    do_throw("Promise shouldn't be resolved on error");
-  }, response => {
-    Assert.equal(response.from, gActorId);
-    Assert.equal(response.error, "code");
-    Assert.equal(response.message, "human message");
-    checkStack("test_client_request_promise_error");
-    run_next_test();
-  });
+  request.then(
+    () => {
+      do_throw("Promise shouldn't be resolved on error");
+    },
+    response => {
+      Assert.equal(response.from, gActorId);
+      Assert.equal(response.error, "code");
+      Assert.equal(response.message, "human message");
+      checkStack("test_client_request_promise_error/<");
+      run_next_test();
+    }
+  );
 }
 
 function test_client_request_event_emitter() {
   // Test that DebuggerClient.request returns also an EventEmitter object
   const request = gClient.request({
     to: gActorId,
-    type: "hello"
+    type: "hello",
   });
   request.on("json-reply", reply => {
     Assert.equal(reply.from, gActorId);
@@ -142,42 +152,65 @@ function test_close_client_while_sending_requests() {
   // i.e. will be sent but no response received yet.
   const activeRequest = gClient.request({
     to: gActorId,
-    type: "hello"
+    type: "hello",
   });
 
   // Pile up a second one that will be "pending".
   // i.e. won't event be sent.
   const pendingRequest = gClient.request({
     to: gActorId,
-    type: "hello"
+    type: "hello",
   });
 
   const expectReply = defer();
   gClient.expectReply("root", function(response) {
     Assert.equal(response.error, "connectionClosed");
-    Assert.equal(response.message,
-                 "server side packet can't be received as the connection just closed.");
+    Assert.equal(
+      response.message,
+      "server side packet can't be received as the connection just closed."
+    );
     expectReply.resolve();
   });
 
   gClient.close().then(() => {
-    activeRequest.then(() => {
-      ok(false, "First request unexpectedly succeed while closing the connection");
-    }, response => {
-      Assert.equal(response.error, "connectionClosed");
-      Assert.equal(response.message, "'hello' active request packet to '" +
-                   gActorId + "' can't be sent as the connection just closed.");
-    })
-    .then(() => pendingRequest)
-    .then(() => {
-      ok(false, "Second request unexpectedly succeed while closing the connection");
-    }, response => {
-      Assert.equal(response.error, "connectionClosed");
-      Assert.equal(response.message, "'hello' pending request packet to '" +
-                   gActorId + "' can't be sent as the connection just closed.");
-    })
-    .then(() => expectReply.promise)
-    .then(run_next_test);
+    activeRequest
+      .then(
+        () => {
+          ok(
+            false,
+            "First request unexpectedly succeed while closing the connection"
+          );
+        },
+        response => {
+          Assert.equal(response.error, "connectionClosed");
+          Assert.equal(
+            response.message,
+            "'hello' active request packet to '" +
+              gActorId +
+              "' can't be sent as the connection just closed."
+          );
+        }
+      )
+      .then(() => pendingRequest)
+      .then(
+        () => {
+          ok(
+            false,
+            "Second request unexpectedly succeed while closing the connection"
+          );
+        },
+        response => {
+          Assert.equal(response.error, "connectionClosed");
+          Assert.equal(
+            response.message,
+            "'hello' pending request packet to '" +
+              gActorId +
+              "' can't be sent as the connection just closed."
+          );
+        }
+      )
+      .then(() => expectReply.promise)
+      .then(run_next_test);
   });
 }
 
@@ -186,31 +219,45 @@ function test_client_request_after_close() {
   // (with promise API)
   const request = gClient.request({
     to: gActorId,
-    type: "hello"
+    type: "hello",
   });
 
-  request.then(response => {
-    ok(false, "Request succeed even after client.close");
-  }, response => {
-    ok(true, "Request failed after client.close");
-    Assert.equal(response.error, "connectionClosed");
-    ok(response.message.match(
-        /'hello' request packet to '.*' can't be sent as the connection is closed./));
-    run_next_test();
-  });
+  request.then(
+    response => {
+      ok(false, "Request succeed even after client.close");
+    },
+    response => {
+      ok(true, "Request failed after client.close");
+      Assert.equal(response.error, "connectionClosed");
+      ok(
+        response.message.match(
+          /'hello' request packet to '.*' can't be sent as the connection is closed./
+        )
+      );
+      run_next_test();
+    }
+  );
 }
 
 function test_client_request_after_close_callback() {
   // Test that DebuggerClient.request fails after we called client.close()
   // (with callback API)
-  gClient.request({
-    to: gActorId,
-    type: "hello"
-  }, response => {
-    ok(true, "Request failed after client.close");
-    Assert.equal(response.error, "connectionClosed");
-    ok(response.message.match(
-        /'hello' request packet to '.*' can't be sent as the connection is closed./));
-    run_next_test();
-  });
+  gClient
+    .request(
+      {
+        to: gActorId,
+        type: "hello",
+      },
+      response => {
+        ok(true, "Request failed after client.close");
+        Assert.equal(response.error, "connectionClosed");
+        ok(
+          response.message.match(
+            /'hello' request packet to '.*' can't be sent as the connection is closed./
+          )
+        );
+        run_next_test();
+      }
+    )
+    .catch(() => info("Caught rejected promise as expected"));
 }

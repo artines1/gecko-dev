@@ -6,7 +6,6 @@
 #ifndef nsIStyleSheetLinkingElement_h__
 #define nsIStyleSheetLinkingElement_h__
 
-
 #include "nsISupports.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/Result.h"
@@ -16,75 +15,68 @@ class nsICSSLoaderObserver;
 class nsIPrincipal;
 class nsIURI;
 
-#define NS_ISTYLESHEETLINKINGELEMENT_IID          \
-{ 0xa8b79f3b, 0x9d18, 0x4f9c, \
-  { 0xb1, 0xaa, 0x8c, 0x9b, 0x1b, 0xaa, 0xac, 0xad } }
+#define NS_ISTYLESHEETLINKINGELEMENT_IID             \
+  {                                                  \
+    0xa8b79f3b, 0x9d18, 0x4f9c, {                    \
+      0xb1, 0xaa, 0x8c, 0x9b, 0x1b, 0xaa, 0xac, 0xad \
+    }                                                \
+  }
 
 class nsIStyleSheetLinkingElement : public nsISupports {
-public:
-  enum class ForceUpdate
-  {
+ public:
+  enum class ForceUpdate : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class Completed : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class HasAlternateRel : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class IsAlternate : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class IsInline : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class IsExplicitlyEnabled : uint8_t {
+    No,
+    Yes,
+  };
+
+  enum class MediaMatched : uint8_t {
     Yes,
     No,
   };
 
-  enum class Completed
-  {
-    Yes,
-    No,
-  };
-
-  enum class HasAlternateRel
-  {
-    Yes,
-    No
-  };
-
-  enum class IsAlternate
-  {
-    Yes,
-    No,
-  };
-
-  enum class IsInline
-  {
-    Yes,
-    No
-  };
-
-  enum class MediaMatched
-  {
-    Yes,
-    No,
-  };
-
-  struct Update
-  {
-  private:
+  struct Update {
+   private:
     bool mWillNotify;
     bool mIsAlternate;
     bool mMediaMatched;
 
-  public:
-    Update()
-      : mWillNotify(false)
-      , mIsAlternate(false)
-      , mMediaMatched(false)
-    { }
+   public:
+    Update() : mWillNotify(false), mIsAlternate(false), mMediaMatched(false) {}
 
-    Update(Completed aCompleted, IsAlternate aIsAlternate, MediaMatched aMediaMatched)
-      : mWillNotify(aCompleted == Completed::No)
-      , mIsAlternate(aIsAlternate == IsAlternate::Yes)
-      , mMediaMatched(aMediaMatched == MediaMatched::Yes)
-    { }
+    Update(Completed aCompleted, IsAlternate aIsAlternate,
+           MediaMatched aMediaMatched)
+        : mWillNotify(aCompleted == Completed::No),
+          mIsAlternate(aIsAlternate == IsAlternate::Yes),
+          mMediaMatched(aMediaMatched == MediaMatched::Yes) {}
 
-    bool WillNotify() const
-    {
-      return mWillNotify;
-    }
+    bool WillNotify() const { return mWillNotify; }
 
-    bool ShouldBlock() const
-    {
+    bool ShouldBlock() const {
       if (!mWillNotify) {
         return false;
       }
@@ -93,8 +85,7 @@ public:
     }
   };
 
-  struct MOZ_STACK_CLASS SheetInfo
-  {
+  struct MOZ_STACK_CLASS SheetInfo {
     nsIContent* mContent;
     // FIXME(emilio): do these really need to be strong refs?
     nsCOMPtr<nsIURI> mURI;
@@ -102,7 +93,7 @@ public:
     // The principal of the scripted caller that initiated the load, if
     // available. Otherwise null.
     nsCOMPtr<nsIPrincipal> mTriggeringPrincipal;
-    mozilla::net::ReferrerPolicy mReferrerPolicy;
+    nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
     mozilla::CORSMode mCORSMode;
     nsString mTitle;
     nsString mMedia;
@@ -110,21 +101,18 @@ public:
 
     bool mHasAlternateRel;
     bool mIsInline;
+    IsExplicitlyEnabled mIsExplicitlyEnabled;
 
-    SheetInfo(const nsIDocument&,
-              nsIContent*,
+    SheetInfo(const mozilla::dom::Document&, nsIContent*,
               already_AddRefed<nsIURI> aURI,
               already_AddRefed<nsIPrincipal> aTriggeringPrincipal,
-              mozilla::net::ReferrerPolicy aReferrerPolicy,
-              mozilla::CORSMode aCORSMode,
-              const nsAString& aTitle,
-              const nsAString& aMedia,
-              HasAlternateRel aHasAlternateRel,
-              IsInline aIsInline);
+              already_AddRefed<nsIReferrerInfo> aReferrerInfo,
+              mozilla::CORSMode, const nsAString& aTitle,
+              const nsAString& aMedia, HasAlternateRel, IsInline,
+              IsExplicitlyEnabled);
 
     ~SheetInfo();
   };
-
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ISTYLESHEETLINKINGELEMENT_IID)
 
@@ -158,8 +146,8 @@ public:
    * @param aObserver    observer to notify once the stylesheet is loaded.
    *                     This will be passed to the CSSLoader
    */
-  virtual mozilla::Result<Update, nsresult>
-    UpdateStyleSheet(nsICSSLoaderObserver* aObserver) = 0;
+  virtual mozilla::Result<Update, nsresult> UpdateStyleSheet(
+      nsICSSLoaderObserver* aObserver) = 0;
 
   /**
    * Tells this element whether to update the stylesheet when the
@@ -217,4 +205,4 @@ public:
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIStyleSheetLinkingElement,
                               NS_ISTYLESHEETLINKINGELEMENT_IID)
 
-#endif // nsILinkingElement_h__
+#endif  // nsILinkingElement_h__

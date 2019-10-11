@@ -16,21 +16,21 @@ namespace mozilla {
 struct ReflowInput;
 
 class CSSAlignUtils {
-public:
+ public:
   /**
    * Flags to customize the behavior of AlignJustifySelf:
    */
   enum class AlignJustifyFlags {
-    eNoFlags           = 0,
+    NoFlags = 0,
     // Indicates that we have <overflow-position> = safe.
-    eOverflowSafe      = 1 << 0,
+    OverflowSafe = 1 << 0,
     // Indicates that the container's start side in aAxis is the same
     // as the child's start side in the child's parallel axis.
-    eSameSide          = 1 << 1,
+    SameSide = 1 << 1,
     // Indicates that AlignJustifySelf() shouldn't expand "auto" margins.
     // (By default, AlignJustifySelf() *will* expand such margins, to fill the
     // available space before any alignment is done.)
-    eIgnoreAutoMargins = 1 << 2,
+    IgnoreAutoMargins = 1 << 2,
   };
 
   /**
@@ -59,6 +59,6 @@ public:
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CSSAlignUtils::AlignJustifyFlags)
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_CSSAlignUtils_h
+#endif  // mozilla_CSSAlignUtils_h

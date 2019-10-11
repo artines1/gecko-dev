@@ -6,11 +6,11 @@
 #define mozilla_widget_RemotePlugin_h__
 
 #ifndef XP_WIN
-#error "Plugin widgets are Windows-only."
+#  error "Plugin widgets are Windows-only."
 #endif
 
 #include "PuppetWidget.h"
-#include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/BrowserChild.h"
 
 /*
  * PluginWidgetProxy is a nsIWidget wrapper we hand around in plugin and layout
@@ -22,40 +22,40 @@
 namespace mozilla {
 namespace plugins {
 class PluginWidgetChild;
-} // namespace plugins
+}  // namespace plugins
 namespace widget {
 
-class PluginWidgetProxy final : public PuppetWidget
-{
-public:
-  explicit PluginWidgetProxy(dom::TabChild* aTabChild,
+class PluginWidgetProxy final : public PuppetWidget {
+ public:
+  explicit PluginWidgetProxy(dom::BrowserChild* aBrowserChild,
                              mozilla::plugins::PluginWidgetChild* aChannel);
 
-protected:
+ protected:
   virtual ~PluginWidgetProxy();
 
-public:
+ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIWidget
-  using PuppetWidget::Create; // for Create signature not overridden here
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget* aParent,
-                                       nsNativeWidget aNativeParent,
-                                       const LayoutDeviceIntRect& aRect,
-                                       nsWidgetInitData* aInitData = nullptr)
-                                       override;
+  using PuppetWidget::Create;  // for Create signature not overridden here
+  virtual MOZ_MUST_USE nsresult
+  Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
+         const LayoutDeviceIntRect& aRect,
+         nsWidgetInitData* aInitData = nullptr) override;
   virtual void Destroy() override;
-  virtual nsresult SetFocus(bool aRaise = false) override;
+  virtual void SetFocus(Raise) override;
   virtual void SetParent(nsIWidget* aNewParent) override;
 
   virtual nsIWidget* GetParent(void) override;
   virtual void* GetNativeData(uint32_t aDataType) override;
   void SetNativeData(uint32_t aDataType, uintptr_t aVal) override;
-  virtual nsTransparencyMode GetTransparencyMode() override
-  { return eTransparencyOpaque; }
-  virtual void GetWindowClipRegion(nsTArray<LayoutDeviceIntRect>* aRects) override;
+  virtual nsTransparencyMode GetTransparencyMode() override {
+    return eTransparencyOpaque;
+  }
+  virtual void GetWindowClipRegion(
+      nsTArray<LayoutDeviceIntRect>* aRects) override;
 
-public:
+ public:
   /**
    * When tabs are closed PPluginWidget can terminate before plugin code is
    * finished tearing us down. When this happens plugin calls over mActor
@@ -65,7 +65,7 @@ public:
    */
   void ChannelDestroyed() { mActor = nullptr; }
 
-private:
+ private:
   // Our connection with the chrome widget, created on PBrowser.
   mozilla::plugins::PluginWidgetChild* mActor;
   // PuppetWidget does not implement parent apis, but we need
@@ -74,7 +74,7 @@ private:
   uintptr_t mCachedPluginPort;
 };
 
-} // namespace widget
-} // namespace mozilla
+}  // namespace widget
+}  // namespace mozilla
 
 #endif

@@ -1,17 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use attr::{AttrSelectorOperation, NamespaceConstraint, ParsedAttrSelectorOperation};
-use bloom::{BloomFilter, BLOOM_HASH_MASK};
-use nth_index_cache::NthIndexCacheInner;
-use parser::{AncestorHashes, Combinator, Component, LocalName};
-use parser::{NonTSPseudoClass, Selector, SelectorImpl, SelectorIter, SelectorList};
+use crate::attr::{AttrSelectorOperation, NamespaceConstraint, ParsedAttrSelectorOperation};
+use crate::bloom::{BloomFilter, BLOOM_HASH_MASK};
+use crate::nth_index_cache::NthIndexCacheInner;
+use crate::parser::{AncestorHashes, Combinator, Component, LocalName};
+use crate::parser::{NonTSPseudoClass, Selector, SelectorImpl, SelectorIter, SelectorList};
+use crate::tree::Element;
 use std::borrow::Borrow;
 use std::iter;
-use tree::Element;
 
-pub use context::*;
+pub use crate::context::*;
 
 // The bloom filter for descendant CSS selectors will have a <1% false
 // positive rate until it has this many selectors in it, then it will
@@ -331,11 +331,9 @@ where
             return false;
         }
 
-        // Advance to the non-pseudo-element part of the selector, but let the
-        // context note that .
-        if iter.next_sequence().is_none() {
-            return true;
-        }
+        // Advance to the non-pseudo-element part of the selector.
+        let next_sequence = iter.next_sequence().unwrap();
+        debug_assert_eq!(next_sequence, Combinator::PseudoElement);
     }
 
     let result =
@@ -411,6 +409,7 @@ fn next_element_for_combinator<E>(
     element: &E,
     combinator: Combinator,
     selector: &SelectorIter<E::Impl>,
+    context: &MatchingContext<E::Impl>,
 ) -> Option<E>
 where
     E: Element,
@@ -449,13 +448,17 @@ where
 
             element.containing_shadow_host()
         },
+        Combinator::Part => element.containing_shadow_host(),
         Combinator::SlotAssignment => {
-            debug_assert!(
-                element
-                    .assigned_slot()
-                    .map_or(true, |s| s.is_html_slot_element())
-            );
-            element.assigned_slot()
+            debug_assert!(element
+                .assigned_slot()
+                .map_or(true, |s| s.is_html_slot_element()));
+            let scope = context.current_host?;
+            let mut current_slot = element.assigned_slot()?;
+            while current_slot.containing_shadow_host().unwrap().opaque() != scope {
+                current_slot = current_slot.assigned_slot()?;
+            }
+            Some(current_slot)
         },
         Combinator::PseudoElement => element.pseudo_element_originating_element(),
     }
@@ -509,10 +512,12 @@ where
         Combinator::Child |
         Combinator::Descendant |
         Combinator::SlotAssignment |
+        Combinator::Part |
         Combinator::PseudoElement => SelectorMatchingResult::NotMatchedGlobally,
     };
 
-    let mut next_element = next_element_for_combinator(element, combinator, &selector_iter);
+    let mut next_element =
+        next_element_for_combinator(element, combinator, &selector_iter, &context);
 
     // Stop matching :visited as soon as we find a link, or a combinator for
     // something that isn't an ancestor.
@@ -576,7 +581,7 @@ where
             visited_handling = VisitedHandlingMode::AllLinksUnvisited;
         }
 
-        next_element = next_element_for_combinator(&element, combinator, &selector_iter);
+        next_element = next_element_for_combinator(&element, combinator, &selector_iter, &context);
     }
 }
 
@@ -589,8 +594,9 @@ where
         element.is_html_element_in_html_document(),
         &local_name.name,
         &local_name.lower_name,
-    ).borrow();
-    element.local_name() == name
+    )
+    .borrow();
+    element.has_local_name(name)
 }
 
 /// Determines whether the given element matches the given compound selector.
@@ -661,9 +667,10 @@ where
 
     match *selector {
         Component::Combinator(_) => unreachable!(),
+        Component::Part(ref part) => element.is_part(part),
         Component::Slotted(ref selector) => {
             // <slots> are never flattened tree slottables.
-            !element.is_html_slot_element() && element.assigned_slot().is_some() &&
+            !element.is_html_slot_element() &&
                 context.shared.nest(|context| {
                     matches_complex_selector(selector.iter(), element, context, flags_setter)
                 })
@@ -674,11 +681,11 @@ where
         Component::LocalName(ref local_name) => matches_local_name(element, local_name),
         Component::ExplicitUniversalType | Component::ExplicitAnyNamespace => true,
         Component::Namespace(_, ref url) | Component::DefaultNamespace(ref url) => {
-            element.namespace() == url.borrow()
+            element.has_namespace(&url.borrow())
         },
         Component::ExplicitNoNamespace => {
-            let ns = ::parser::namespace_empty_string::<E::Impl>();
-            element.namespace() == ns.borrow()
+            let ns = crate::parser::namespace_empty_string::<E::Impl>();
+            element.has_namespace(&ns.borrow())
         },
         Component::ID(ref id) => {
             element.has_id(id, context.shared.classes_and_ids_case_sensitivity())
@@ -692,7 +699,7 @@ where
         } => {
             let is_html = element.is_html_element_in_html_document();
             element.attr_matches(
-                &NamespaceConstraint::Specific(&::parser::namespace_empty_string::<E::Impl>()),
+                &NamespaceConstraint::Specific(&crate::parser::namespace_empty_string::<E::Impl>()),
                 select_name(is_html, local_name, local_name_lower),
                 &AttrSelectorOperation::Exists,
             )
@@ -709,7 +716,7 @@ where
             }
             let is_html = element.is_html_element_in_html_document();
             element.attr_matches(
-                &NamespaceConstraint::Specific(&::parser::namespace_empty_string::<E::Impl>()),
+                &NamespaceConstraint::Specific(&crate::parser::namespace_empty_string::<E::Impl>()),
                 local_name,
                 &AttrSelectorOperation::WithValue {
                     operator: operator,
@@ -727,9 +734,9 @@ where
             let namespace = match attr_sel.namespace() {
                 Some(ns) => ns,
                 None => {
-                    empty_string = ::parser::namespace_empty_string::<E::Impl>();
+                    empty_string = crate::parser::namespace_empty_string::<E::Impl>();
                     NamespaceConstraint::Specific(&empty_string)
-                }
+                },
             };
             element.attr_matches(
                 &namespace,
@@ -750,7 +757,8 @@ where
         },
         Component::NonTSPseudoClass(ref pc) => {
             if context.matches_hover_and_active_quirk == MatchesHoverAndActiveQuirk::Yes &&
-                !context.shared.is_nested() && pc.is_active_or_hover() &&
+                !context.shared.is_nested() &&
+                pc.is_active_or_hover() &&
                 !element.is_link()
             {
                 return false;
@@ -890,11 +898,6 @@ where
 }
 
 #[inline]
-fn same_type<E: Element>(a: &E, b: &E) -> bool {
-    a.local_name() == b.local_name() && a.namespace() == b.namespace()
-}
-
-#[inline]
 fn nth_child_index<E>(
     element: &E,
     is_of_type: bool,
@@ -916,7 +919,7 @@ where
             let mut curr = element.clone();
             while let Some(e) = curr.prev_sibling_element() {
                 curr = e;
-                if !is_of_type || same_type(element, &curr) {
+                if !is_of_type || element.is_same_type(&curr) {
                     if let Some(i) = c.lookup(curr.opaque()) {
                         return i - index;
                     }
@@ -937,7 +940,7 @@ where
     };
     while let Some(e) = next(curr) {
         curr = e;
-        if !is_of_type || same_type(element, &curr) {
+        if !is_of_type || element.is_same_type(&curr) {
             // If we're computing indices from the left, check each element in the
             // cache. We handle the indices-from-the-right case at the top of this
             // function.

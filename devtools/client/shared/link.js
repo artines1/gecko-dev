@@ -62,8 +62,9 @@ exports.openContentLink = async function(url, options = {}) {
   if (!options.triggeringPrincipal && top.gBrowser) {
     const tab = top.gBrowser.selectedTab;
     if (TargetFactory.isKnownTab(tab)) {
-      const target = TargetFactory.forTab(tab);
+      const target = await TargetFactory.forTab(tab);
       options.triggeringPrincipal = target.contentPrincipal;
+      options.csp = target.csp;
     }
   }
   top.openWebLinkIn(url, "tab", options);

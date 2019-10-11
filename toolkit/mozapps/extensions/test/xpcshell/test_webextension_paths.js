@@ -1,4 +1,3 @@
-
 let profileDir;
 add_task(async function setup() {
   profileDir = gProfD.clone();
@@ -22,15 +21,12 @@ add_task(async function test_bad_unpacked_path() {
 
     browser_specific_settings: {
       gecko: {
-        id: MANIFEST_ID
-      }
-    }
+        id: MANIFEST_ID,
+      },
+    },
   };
 
-  const directories = [
-    "not a valid ID",
-    '"quotes"@tests.mozilla.org',
-  ];
+  const directories = ["not a valid ID", '"quotes"@tests.mozilla.org'];
 
   for (let dir of directories) {
     try {
@@ -49,4 +45,3 @@ add_task(async function test_bad_unpacked_path() {
     Assert.equal(addon, null);
   }
 });
-

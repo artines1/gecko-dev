@@ -12,20 +12,23 @@
 #include "MainThreadUtils.h"
 #include "nsIGlobalObject.h"
 #include "nsIPrincipal.h"
+#include "xpcpublic.h"
 
 #include "mozilla/Maybe.h"
 
 #include "jsapi.h"
 #include "js/Debug.h"
+#include "js/Warnings.h"  // JS::WarningReporter
 
 class nsPIDOMWindowInner;
 class nsGlobalWindowInner;
 class nsIScriptContext;
-class nsIDocument;
 class nsIDocShell;
 
 namespace mozilla {
 namespace dom {
+
+class Document;
 
 /*
  * System-wide setup/teardown routines. Init and Destroy should be invoked
@@ -73,7 +76,8 @@ void UnuseEntryScriptProfiling();
 //
 // The incumbent global is very similar, but differs in a few edge cases. For
 // example, if window |B| does |C.location.href = "..."|, the incumbent global
-// used for the navigation algorithm is B, because no script from |C| was ever run.
+// used for the navigation algorithm is B, because no script from |C| was ever
+// run.
 //
 // The entry global is used for various things like computing base URIs, mostly
 // for historical reasons.
@@ -87,7 +91,7 @@ nsIGlobalObject* GetEntryGlobal();
 
 // If the entry global is a window, returns its extant document. Otherwise,
 // returns null.
-nsIDocument* GetEntryDocument();
+Document* GetEntryDocument();
 
 // Returns the global associated with the top-most entry of the the Script
 // Settings Stack. See the HTML spec. This may be null.
@@ -114,14 +118,6 @@ nsIGlobalObject* GetCurrentGlobal();
 //   Components.utils.
 nsIPrincipal* GetWebIDLCallerPrincipal();
 
-// This may be used by callers that know that their incumbent global is non-
-// null (i.e. they know there have been no System Caller pushes since the
-// inner-most script execution).
-inline JSObject& IncumbentJSGlobal()
-{
-  return *GetIncumbentGlobal()->GetGlobalJSObject();
-}
-
 // Returns whether JSAPI is active right now.  If it is not, working with a
 // JSContext you grab from somewhere random is not OK and you should be doing
 // AutoJSAPI or AutoEntryScript to get yourself a properly set up JSContext.
@@ -134,7 +130,7 @@ namespace danger {
 // what they're doing.
 JSContext* GetJSContext();
 
-} // namespace danger
+}  // namespace danger
 
 JS::RootingContext* RootingCx();
 
@@ -142,7 +138,7 @@ class ScriptSettingsStack;
 class ScriptSettingsStackEntry {
   friend class ScriptSettingsStack;
 
-public:
+ public:
   ~ScriptSettingsStackEntry();
 
   bool NoJSAPI() const { return mType == eNoJSAPI; }
@@ -152,22 +148,16 @@ public:
   bool IsIncumbentCandidate() { return mType != eJSAPI; }
   bool IsIncumbentScript() { return mType == eIncumbentScript; }
 
-protected:
-  enum Type {
-    eEntryScript,
-    eIncumbentScript,
-    eJSAPI,
-    eNoJSAPI
-  };
+ protected:
+  enum Type { eEntryScript, eIncumbentScript, eJSAPI, eNoJSAPI };
 
-  ScriptSettingsStackEntry(nsIGlobalObject *aGlobal,
-                           Type aEntryType);
+  ScriptSettingsStackEntry(nsIGlobalObject* aGlobal, Type aEntryType);
 
   nsCOMPtr<nsIGlobalObject> mGlobalObject;
   Type mType;
 
-private:
-  ScriptSettingsStackEntry *mOlder;
+ private:
+  ScriptSettingsStackEntry* mOlder;
 };
 
 /*
@@ -185,7 +175,6 @@ private:
  *   previously entered compartment for that JSContext is not used by mistake.
  * * Reporting any exceptions left on the JSRuntime, unless the caller steals
  *   or silences them.
- * * On main thread, entering a JSAutoRequest.
  *
  * Additionally, the following duties are planned, but not yet implemented:
  *
@@ -201,7 +190,7 @@ private:
  * execution at inopportune moments via surreptitious getters and proxies.
  */
 class MOZ_STACK_CLASS AutoJSAPI : protected ScriptSettingsStackEntry {
-public:
+ public:
   // Trivial constructor. One of the Init functions must be called before
   // accessing the JSContext through cx().
   AutoJSAPI();
@@ -225,6 +214,9 @@ public:
   // If aGlobalObject represents a web-visible global, errors reported by this
   // AutoJSAPI as it comes off the stack will fire the relevant error events and
   // show up in the corresponding web console.
+  //
+  // Successfully initializing the AutoJSAPI will ensure that it enters the
+  // Realm of aGlobalObject's JSObject and exposes that JSObject to active JS.
   MOZ_MUST_USE bool Init(nsIGlobalObject* aGlobalObject);
 
   // This is a helper that grabs the native global associated with aObject and
@@ -242,7 +234,7 @@ public:
   // show up in the corresponding web console.
   MOZ_MUST_USE bool Init(nsIGlobalObject* aGlobalObject, JSContext* aCx);
 
-  // Convenience functions to take an nsPIDOMWindow* or nsGlobalWindow*,
+  // Convenience functions to take an nsPIDOMWindowInner or nsGlobalWindowInner,
   // when it is more easily available than an nsIGlobalObject.
   MOZ_MUST_USE bool Init(nsPIDOMWindowInner* aWindow);
   MOZ_MUST_USE bool Init(nsPIDOMWindowInner* aWindow, JSContext* aCx);
@@ -276,6 +268,12 @@ public:
   // into the current compartment.
   MOZ_MUST_USE bool StealException(JS::MutableHandle<JS::Value> aVal);
 
+  // As for StealException(), but put the saved frames for any stack trace
+  // associated with the point the exception was thrown into aStack.
+  // aVal will be in the current compartment, but aStack might not be.
+  MOZ_MUST_USE bool StealExceptionAndStack(JS::MutableHandle<JS::Value> aVal,
+                                           JS::MutableHandle<JSObject*> aStack);
+
   // Peek the current exception from the JS engine, without stealing it.
   // Callers must ensure that HasException() is true, and that cx() is in a
   // non-null compartment.
@@ -289,25 +287,24 @@ public:
     JS_ClearPendingException(cx());
   }
 
-protected:
+ protected:
   // Protected constructor for subclasses.  This constructor initialises the
   // AutoJSAPI, so Init must NOT be called on subclasses that use this.
   AutoJSAPI(nsIGlobalObject* aGlobalObject, bool aIsMainThread, Type aType);
 
-  mozilla::Maybe<JSAutoRequest> mAutoRequest;
   mozilla::Maybe<JSAutoNullableRealm> mAutoNullableRealm;
-  JSContext *mCx;
+  JSContext* mCx;
 
   // Whether we're mainthread or not; set when we're initialized.
   bool mIsMainThread;
   Maybe<JS::WarningReporter> mOldWarningReporter;
 
-private:
+ private:
   void InitInternal(nsIGlobalObject* aGlobalObject, JSObject* aGlobal,
                     JSContext* aCx, bool aIsMainThread);
 
   AutoJSAPI(const AutoJSAPI&) = delete;
-  AutoJSAPI& operator= (const AutoJSAPI&) = delete;
+  AutoJSAPI& operator=(const AutoJSAPI&) = delete;
 };
 
 /*
@@ -316,31 +313,34 @@ private:
  * |aReason| should be a statically-allocated C string naming the reason we're
  * invoking JavaScript code: "setTimeout", "event", and so on. The devtools use
  * these strings to label JS execution in timeline and profiling displays.
+ *
  */
 class MOZ_STACK_CLASS AutoEntryScript : public AutoJSAPI {
-public:
-  AutoEntryScript(nsIGlobalObject* aGlobalObject,
-                  const char *aReason,
+ public:
+  // Constructing the AutoEntryScript will ensure that it enters the
+  // Realm of aGlobalObject's JSObject and exposes that JSObject to active JS.
+  AutoEntryScript(nsIGlobalObject* aGlobalObject, const char* aReason,
                   bool aIsMainThread = NS_IsMainThread());
 
   // aObject can be any object from the relevant global. It must not be a
   // cross-compartment wrapper because CCWs are not associated with a single
   // global.
-  AutoEntryScript(JSObject* aObject,
-                  const char *aReason,
+  //
+  // Constructing the AutoEntryScript will ensure that it enters the
+  // Realm of aObject JSObject and exposes aObject's global to active JS.
+  AutoEntryScript(JSObject* aObject, const char* aReason,
                   bool aIsMainThread = NS_IsMainThread());
 
   ~AutoEntryScript();
 
-  void SetWebIDLCallerPrincipal(nsIPrincipal *aPrincipal) {
+  void SetWebIDLCallerPrincipal(nsIPrincipal* aPrincipal) {
     mWebIDLCallerPrincipal = aPrincipal;
   }
 
-private:
+ private:
   // A subclass of AutoEntryMonitor that notifies the docshell.
-  class DocshellEntryMonitor final : public JS::dbg::AutoEntryMonitor
-  {
-  public:
+  class DocshellEntryMonitor final : public JS::dbg::AutoEntryMonitor {
+   public:
     DocshellEntryMonitor(JSContext* aCx, const char* aReason);
 
     // Please note that |aAsyncCause| here is owned by the caller, and its
@@ -350,24 +350,21 @@ private:
     // trivially satisfied by |aReason| being a statically allocated string.
     void Entry(JSContext* aCx, JSFunction* aFunction,
                JS::Handle<JS::Value> aAsyncStack,
-               const char* aAsyncCause) override
-    {
+               const char* aAsyncCause) override {
       Entry(aCx, aFunction, nullptr, aAsyncStack, aAsyncCause);
     }
 
     void Entry(JSContext* aCx, JSScript* aScript,
                JS::Handle<JS::Value> aAsyncStack,
-               const char* aAsyncCause) override
-    {
+               const char* aAsyncCause) override {
       Entry(aCx, nullptr, aScript, aAsyncStack, aAsyncCause);
     }
 
     void Exit(JSContext* aCx) override;
 
-  private:
+   private:
     void Entry(JSContext* aCx, JSFunction* aFunction, JSScript* aScript,
-               JS::Handle<JS::Value> aAsyncStack,
-               const char* aAsyncCause);
+               JS::Handle<JS::Value> aAsyncStack, const char* aAsyncCause);
 
     const char* mReason;
   };
@@ -383,6 +380,7 @@ private:
   friend nsIPrincipal* GetWebIDLCallerPrincipal();
 
   Maybe<DocshellEntryMonitor> mDocShellEntryMonitor;
+  Maybe<xpc::AutoScriptActivity> mScriptActivity;
   JS::AutoHideScriptedCaller mCallerOverride;
 #ifdef MOZ_GECKO_PROFILER
   AutoProfilerLabel mAutoProfilerLabel;
@@ -393,11 +391,11 @@ private:
  * A class that can be used to force a particular incumbent script on the stack.
  */
 class AutoIncumbentScript : protected ScriptSettingsStackEntry {
-public:
+ public:
   explicit AutoIncumbentScript(nsIGlobalObject* aGlobalObject);
   ~AutoIncumbentScript();
 
-private:
+ private:
   JS::AutoHideScriptedCaller mCallerOverride;
 };
 
@@ -409,13 +407,26 @@ private:
  *
  * This class may not be instantiated if an exception is pending.
  */
-class AutoNoJSAPI : protected ScriptSettingsStackEntry {
-public:
-  explicit AutoNoJSAPI();
+class AutoNoJSAPI : protected ScriptSettingsStackEntry,
+                    protected JSAutoNullableRealm {
+ public:
+  AutoNoJSAPI() : AutoNoJSAPI(danger::GetJSContext()) {}
   ~AutoNoJSAPI();
+
+ private:
+  // Helper constructor to avoid doing GetJSContext() multiple times
+  // during construction.
+  explicit AutoNoJSAPI(JSContext* aCx);
+
+  // Stashed JSContext* so we don't need to GetJSContext in our destructor.
+  // It's probably safe to hold on to this, in the sense that the world should
+  // not get torn down while we're on the stack, and if it's not, we'd need to
+  // fix JSAutoNullableRealm to not hold on to a JSContext either, or
+  // something.
+  JSContext* mCx;
 };
 
-} // namespace dom
+}  // namespace dom
 
 /**
  * Use AutoJSContext when you need a JS context on the stack but don't have one
@@ -423,11 +434,11 @@ public:
  * appropriate JS context and release it when leaving the stack.
  */
 class MOZ_RAII AutoJSContext {
-public:
+ public:
   explicit AutoJSContext(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM);
   operator JSContext*() const;
 
-protected:
+ protected:
   JSContext* mCx;
   dom::AutoJSAPI mJSAPI;
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
@@ -435,19 +446,17 @@ protected:
 
 /**
  * AutoSafeJSContext is similar to AutoJSContext but will only return the safe
- * JS context. That means it will never call nsContentUtils::GetCurrentJSContext().
+ * JS context. That means it will never call
+ * nsContentUtils::GetCurrentJSContext().
  *
  * Note - This is deprecated. Please use AutoJSAPI instead.
  */
 class MOZ_RAII AutoSafeJSContext : public dom::AutoJSAPI {
-public:
+ public:
   explicit AutoSafeJSContext(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM);
-  operator JSContext*() const
-  {
-    return cx();
-  }
+  operator JSContext*() const { return cx(); }
 
-private:
+ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -455,39 +464,38 @@ private:
  * Use AutoSlowOperation when native side calls many JS callbacks in a row
  * and slow script dialog should be activated if too much time is spent going
  * through those callbacks.
- * AutoSlowOperation puts a JSAutoRequest on the stack so that we don't continue
- * to reset the watchdog and CheckForInterrupt can be then used to check whether
- * JS execution should be interrupted.
+ * AutoSlowOperation puts an AutoScriptActivity on the stack so that we don't
+ * continue to reset the watchdog. CheckForInterrupt can then be used to check
+ * whether JS execution should be interrupted.
+ * This class (including CheckForInterrupt) is a no-op when used off the main
+ * thread.
  */
-class MOZ_RAII AutoSlowOperation : public dom::AutoJSAPI
-{
-public:
+class MOZ_RAII AutoSlowOperation {
+ public:
   explicit AutoSlowOperation(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM);
   void CheckForInterrupt();
-private:
+
+ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  bool mIsMainThread;
+  Maybe<xpc::AutoScriptActivity> mScriptActivity;
 };
 
 /**
  * A class to disable interrupt callback temporary.
  */
-class MOZ_RAII AutoDisableJSInterruptCallback
-{
-public:
+class MOZ_RAII AutoDisableJSInterruptCallback {
+ public:
   explicit AutoDisableJSInterruptCallback(JSContext* aCx)
-    : mCx(aCx)
-    , mOld(JS_DisableInterruptCallback(aCx))
-  { }
+      : mCx(aCx), mOld(JS_DisableInterruptCallback(aCx)) {}
 
-  ~AutoDisableJSInterruptCallback() {
-    JS_ResetInterruptCallback(mCx, mOld);
-  }
+  ~AutoDisableJSInterruptCallback() { JS_ResetInterruptCallback(mCx, mOld); }
 
-private:
+ private:
   JSContext* mCx;
   bool mOld;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_dom_ScriptSettings_h
+#endif  // mozilla_dom_ScriptSettings_h

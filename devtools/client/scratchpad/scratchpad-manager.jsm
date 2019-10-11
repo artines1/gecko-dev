@@ -1,5 +1,4 @@
-/* vim:set ts=2 sw=2 sts=2 et tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,13 +7,15 @@
 this.EXPORTED_SYMBOLS = ["ScratchpadManager"];
 
 const SCRATCHPAD_WINDOW_URL = "chrome://devtools/content/scratchpad/index.xul";
-const SCRATCHPAD_WINDOW_FEATURES = "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
+const SCRATCHPAD_WINDOW_FEATURES =
+  "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
 
-const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
 const Services = require("Services");
 const Telemetry = require("devtools/client/shared/telemetry");
 
-const TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT = "DEVTOOLS_SCRATCHPAD_WINDOW_OPENED_COUNT";
+const TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT =
+  "DEVTOOLS_SCRATCHPAD_WINDOW_OPENED_COUNT";
 
 /**
  * The ScratchpadManager object opens new Scratchpad windows and manages the state
@@ -22,7 +23,6 @@ const TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT = "DEVTOOLS_SCRATCHPAD_WINDOW_OPENED_C
  * the life of the browser.
  */
 this.ScratchpadManager = {
-
   _nextUid: 1,
   _scratchpads: [],
 
@@ -87,9 +87,7 @@ this.ScratchpadManager = {
     // such objects are not primitive-values-only anymore so they
     // can leak.
 
-    const enumerator = Services.wm.getEnumerator("devtools:scratchpad");
-    while (enumerator.hasMoreElements()) {
-      const win = enumerator.getNext();
+    for (const win of Services.wm.getEnumerator("devtools:scratchpad")) {
       if (!win.closed && win.Scratchpad.initialized) {
         this._scratchpads.push(clone(win.Scratchpad.getState()));
       }
@@ -107,8 +105,9 @@ this.ScratchpadManager = {
    *         The opened scratchpad window.
    */
   openScratchpad: function SPM_openScratchpad(aState) {
-    const params = Cc["@mozilla.org/embedcomp/dialogparam;1"]
-                 .createInstance(Ci.nsIDialogParamBlock);
+    const params = Cc["@mozilla.org/embedcomp/dialogparam;1"].createInstance(
+      Ci.nsIDialogParamBlock
+    );
 
     params.SetNumberStrings(2);
     params.SetString(0, this.createUid());
@@ -121,10 +120,17 @@ this.ScratchpadManager = {
       params.SetString(1, JSON.stringify(aState));
     }
 
-    const win = Services.ww.openWindow(null, SCRATCHPAD_WINDOW_URL, "_blank",
-                                     SCRATCHPAD_WINDOW_FEATURES, params);
+    const win = Services.ww.openWindow(
+      null,
+      SCRATCHPAD_WINDOW_URL,
+      "_blank",
+      SCRATCHPAD_WINDOW_FEATURES,
+      params
+    );
 
-    this._telemetry.getHistogramById(TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT).add(true);
+    this._telemetry
+      .getHistogramById(TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT)
+      .add(true);
 
     // Only add the shutdown observer if we've opened a scratchpad window.
     ShutdownObserver.init();
@@ -137,7 +143,7 @@ this.ScratchpadManager = {
    */
   createUid: function SPM_createUid() {
     return JSON.stringify(this._nextUid++);
-  }
+  },
 };
 
 /**
@@ -165,5 +171,5 @@ var ShutdownObserver = {
 
   uninit() {
     Services.obs.removeObserver(this, "quit-application-granted");
-  }
+  },
 };

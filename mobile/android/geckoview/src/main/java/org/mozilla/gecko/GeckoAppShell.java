@@ -28,40 +28,31 @@ import java.util.TreeMap;
 import org.mozilla.gecko.annotation.JNITarget;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.permissions.Permissions;
-import org.mozilla.gecko.process.GeckoProcessManager;
-import org.mozilla.gecko.SysInfo;
 import org.mozilla.gecko.util.BitmapUtils;
 import org.mozilla.gecko.util.HardwareCodecCapabilityUtils;
 import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.InputDeviceUtils;
 import org.mozilla.gecko.util.IOUtils;
 import org.mozilla.gecko.util.ProxySelector;
+import org.mozilla.gecko.util.StrictModeContext;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
+import org.mozilla.geckoview.R;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
-import android.content.pm.ServiceInfo;
-import android.content.pm.Signature;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.RectF;
-import android.graphics.SurfaceTexture;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.hardware.Camera;
 import android.hardware.Sensor;
@@ -75,45 +66,38 @@ import android.location.LocationManager;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.LocaleList;
 import android.os.Looper;
-import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
-import android.os.StrictMode;
-import android.os.SystemClock;
 import android.os.Vibrator;
 import android.provider.Settings;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.content.res.ResourcesCompat;
 import android.support.v4.util.SimpleArrayMap;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.ContextThemeWrapper;
 import android.view.Display;
 import android.view.HapticFeedbackConstants;
-import android.view.Surface;
-import android.view.SurfaceView;
-import android.view.TextureView;
-import android.view.View;
+import android.view.InputDevice;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
 import android.webkit.MimeTypeMap;
-import android.widget.AbsoluteLayout;
 
-public class GeckoAppShell
-{
+public class GeckoAppShell {
     private static final String LOGTAG = "GeckoAppShell";
 
     // We have static members only.
     private GeckoAppShell() { }
 
     private static class GeckoCrashHandler extends CrashHandler {
+
+        public GeckoCrashHandler(final Class<? extends Service> handlerService) {
+            super(handlerService);
+        }
+
         @Override
         protected String getAppPackageName() {
             final Context appContext = getAppContext();
@@ -178,12 +162,21 @@ public class GeckoAppShell
     private static String sAppNotes;
     private static CrashHandler sCrashHandler;
 
-    public static synchronized CrashHandler ensureCrashHandling() {
+    public static synchronized CrashHandler ensureCrashHandling(final Class<? extends Service> handler) {
         if (sCrashHandler == null) {
-            sCrashHandler = new GeckoCrashHandler();
+            sCrashHandler = new GeckoCrashHandler(handler);
         }
 
         return sCrashHandler;
+    }
+
+    private static Class<? extends Service> sCrashHandlerService;
+    public static synchronized void setCrashHandlerService(final Class<? extends Service> handlerService) {
+        sCrashHandlerService = handlerService;
+    }
+
+    public static synchronized Class<? extends Service> getCrashHandlerService() {
+        return sCrashHandlerService;
     }
 
     public static synchronized boolean isCrashHandlingEnabled() {
@@ -211,6 +204,7 @@ public class GeckoAppShell
     static private int sDensityDpi;
     static private Float sDensity;
     static private int sScreenDepth;
+    static private boolean sUseMaxScreenDepth;
 
     /* Is the value in sVibrationEndTime valid? */
     private static boolean sVibrationMaybePlaying;
@@ -261,7 +255,7 @@ public class GeckoAppShell
     @WrapForJNI(dispatchTo = "gecko")
     public static native void notifyUriVisited(String uri);
 
-    private static Rect sScreenSize;
+    private static Rect sScreenSizeOverride;
 
     @WrapForJNI(stubName = "NotifyObservers", dispatchTo = "gecko")
     private static native void nativeNotifyObservers(String topic, String data);
@@ -286,25 +280,25 @@ public class GeckoAppShell
      */
 
     @WrapForJNI(exceptionMode = "ignore")
-    private static String getExceptionStackTrace(Throwable e) {
+    private static String getExceptionStackTrace(final Throwable e) {
         return CrashHandler.getExceptionStackTrace(CrashHandler.getRootException(e));
     }
 
     @WrapForJNI(exceptionMode = "ignore")
-    private static synchronized void handleUncaughtException(Throwable e) {
+    private static synchronized void handleUncaughtException(final Throwable e) {
         if (sCrashHandler != null) {
             sCrashHandler.uncaughtException(null, e);
         }
     }
 
-    private static float getLocationAccuracy(Location location) {
+    private static float getLocationAccuracy(final Location location) {
         float radius = location.getAccuracy();
         return (location.hasAccuracy() && radius > 0) ? radius : 1001;
     }
 
     // Permissions are explicitly checked when requesting content permission.
     @SuppressLint("MissingPermission")
-    private static Location getLastKnownLocation(LocationManager lm) {
+    private static Location getLastKnownLocation(final LocationManager lm) {
         Location lastKnownLocation = null;
         List<String> providers = lm.getAllProviders();
 
@@ -378,7 +372,7 @@ public class GeckoAppShell
         return true;
     }
 
-    private static LocationManager getLocationManager(Context context) {
+    private static LocationManager getLocationManager(final Context context) {
         try {
             return (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
         } catch (NoSuchFieldError e) {
@@ -397,7 +391,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
-    /* package */ static native void onSensorChanged(int hal_type, float x, float y, float z,
+    /* package */ static native void onSensorChanged(int halType, float x, float y, float z,
                                                      float w, long time);
 
     @WrapForJNI(calledFrom = "any", dispatchTo = "gecko")
@@ -413,73 +407,73 @@ public class GeckoAppShell
                                                      WakeLockDelegate,
                                                      HapticFeedbackDelegate {
         @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        public void onAccuracyChanged(final Sensor sensor, final int accuracy) {
         }
 
         @Override
-        public void onSensorChanged(SensorEvent s) {
-            int sensor_type = s.sensor.getType();
-            int hal_type = 0;
+        public void onSensorChanged(final SensorEvent s) {
+            int sensorType = s.sensor.getType();
+            int halType = 0;
             float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
             // SensorEvent timestamp is in nanoseconds, Gecko expects microseconds.
             final long time = s.timestamp / 1000;
 
-            switch (sensor_type) {
-            case Sensor.TYPE_ACCELEROMETER:
-            case Sensor.TYPE_LINEAR_ACCELERATION:
-            case Sensor.TYPE_ORIENTATION:
-                if (sensor_type == Sensor.TYPE_ACCELEROMETER) {
-                    hal_type = GeckoHalDefines.SENSOR_ACCELERATION;
-                } else if (sensor_type == Sensor.TYPE_LINEAR_ACCELERATION) {
-                    hal_type = GeckoHalDefines.SENSOR_LINEAR_ACCELERATION;
-                } else {
-                    hal_type = GeckoHalDefines.SENSOR_ORIENTATION;
-                }
-                x = s.values[0];
-                y = s.values[1];
-                z = s.values[2];
-                break;
+            switch (sensorType) {
+                case Sensor.TYPE_ACCELEROMETER:
+                case Sensor.TYPE_LINEAR_ACCELERATION:
+                case Sensor.TYPE_ORIENTATION:
+                    if (sensorType == Sensor.TYPE_ACCELEROMETER) {
+                        halType = GeckoHalDefines.SENSOR_ACCELERATION;
+                    } else if (sensorType == Sensor.TYPE_LINEAR_ACCELERATION) {
+                        halType = GeckoHalDefines.SENSOR_LINEAR_ACCELERATION;
+                    } else {
+                        halType = GeckoHalDefines.SENSOR_ORIENTATION;
+                    }
+                    x = s.values[0];
+                    y = s.values[1];
+                    z = s.values[2];
+                    break;
 
-            case Sensor.TYPE_GYROSCOPE:
-                hal_type = GeckoHalDefines.SENSOR_GYROSCOPE;
-                x = (float) Math.toDegrees(s.values[0]);
-                y = (float) Math.toDegrees(s.values[1]);
-                z = (float) Math.toDegrees(s.values[2]);
-                break;
+                case Sensor.TYPE_GYROSCOPE:
+                    halType = GeckoHalDefines.SENSOR_GYROSCOPE;
+                    x = (float) Math.toDegrees(s.values[0]);
+                    y = (float) Math.toDegrees(s.values[1]);
+                    z = (float) Math.toDegrees(s.values[2]);
+                    break;
 
-            case Sensor.TYPE_PROXIMITY:
-                hal_type = GeckoHalDefines.SENSOR_PROXIMITY;
-                x = s.values[0];
-                z = s.sensor.getMaximumRange();
-                break;
+                case Sensor.TYPE_PROXIMITY:
+                    halType = GeckoHalDefines.SENSOR_PROXIMITY;
+                    x = s.values[0];
+                    z = s.sensor.getMaximumRange();
+                    break;
 
-            case Sensor.TYPE_LIGHT:
-                hal_type = GeckoHalDefines.SENSOR_LIGHT;
-                x = s.values[0];
-                break;
+                case Sensor.TYPE_LIGHT:
+                    halType = GeckoHalDefines.SENSOR_LIGHT;
+                    x = s.values[0];
+                    break;
 
-            case Sensor.TYPE_ROTATION_VECTOR:
-            case Sensor.TYPE_GAME_ROTATION_VECTOR: // API >= 18
-                hal_type = (sensor_type == Sensor.TYPE_ROTATION_VECTOR ?
-                        GeckoHalDefines.SENSOR_ROTATION_VECTOR :
-                        GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR);
-                x = s.values[0];
-                y = s.values[1];
-                z = s.values[2];
-                if (s.values.length >= 4) {
-                    w = s.values[3];
-                } else {
-                    // s.values[3] was optional in API <= 18, so we need to compute it
-                    // The values form a unit quaternion, so we can compute the angle of
-                    // rotation purely based on the given 3 values.
-                    w = 1.0f - s.values[0] * s.values[0] -
-                            s.values[1] * s.values[1] - s.values[2] * s.values[2];
-                    w = (w > 0.0f) ? (float) Math.sqrt(w) : 0.0f;
-                }
-                break;
+                case Sensor.TYPE_ROTATION_VECTOR:
+                case Sensor.TYPE_GAME_ROTATION_VECTOR: // API >= 18
+                    halType = (sensorType == Sensor.TYPE_ROTATION_VECTOR ?
+                            GeckoHalDefines.SENSOR_ROTATION_VECTOR :
+                            GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR);
+                    x = s.values[0];
+                    y = s.values[1];
+                    z = s.values[2];
+                    if (s.values.length >= 4) {
+                        w = s.values[3];
+                    } else {
+                        // s.values[3] was optional in API <= 18, so we need to compute it
+                        // The values form a unit quaternion, so we can compute the angle of
+                        // rotation purely based on the given 3 values.
+                        w = 1.0f - s.values[0] * s.values[0] -
+                                s.values[1] * s.values[1] - s.values[2] * s.values[2];
+                        w = (w > 0.0f) ? (float) Math.sqrt(w) : 0.0f;
+                    }
+                    break;
             }
 
-            GeckoAppShell.onSensorChanged(hal_type, x, y, z, w, time);
+            GeckoAppShell.onSensorChanged(halType, x, y, z, w, time);
         }
 
         // Geolocation.
@@ -517,42 +511,38 @@ public class GeckoAppShell
         }
 
         @Override
-        public void onProviderDisabled(String provider)
-        {
-        }
+        public void onProviderDisabled(final String provider) {}
 
         @Override
-        public void onProviderEnabled(String provider)
-        {
-        }
+        public void onProviderEnabled(final String provider) {}
 
         @Override
-        public void onStatusChanged(String provider, int status, Bundle extras)
-        {
-        }
+        public void onStatusChanged(final String provider, final int status, final Bundle extras) {}
 
         @Override // NotificationListener
-        public void showNotification(String name, String cookie, String host,
-                                     String title, String text, String imageUrl) {
+        public void showNotification(final String name, final String cookie, final String host,
+                                     final String title, final String text, final String imageUrl) {
             // Default is to not show the notification, and immediate send close message.
             GeckoAppShell.onNotificationClose(name, cookie);
         }
 
         @Override // NotificationListener
-        public void showPersistentNotification(String name, String cookie, String host,
-                                               String title, String text, String imageUrl,
-                                               String data) {
+        public void showPersistentNotification(final String name, final String cookie,
+                                               final String host, final String title,
+                                               final String text, final String imageUrl,
+                                               final String data) {
             // Default is to not show the notification, and immediate send close message.
             GeckoAppShell.onNotificationClose(name, cookie);
         }
 
         @Override // NotificationListener
-        public void closeNotification(String name) {
+        public void closeNotification(final String name) {
             // Do nothing.
         }
 
         @Override // ScreenOrientationDelegate
-        public boolean setRequestedOrientationForCurrentActivity(int requestedActivityInfoOrientation) {
+        public boolean setRequestedOrientationForCurrentActivity(
+                final int requestedActivityInfoOrientation) {
             // Do nothing, and report that the orientation was not set.
             return false;
         }
@@ -581,13 +571,13 @@ public class GeckoAppShell
 
                 if (WakeLockDelegate.LOCK_CPU.equals(lock) ||
                     WakeLockDelegate.LOCK_AUDIO_PLAYING.equals(lock)) {
-                  wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, lock);
+                    wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, lock);
                 } else if (WakeLockDelegate.LOCK_SCREEN.equals(lock) ||
                            WakeLockDelegate.LOCK_VIDEO_PLAYING.equals(lock)) {
                   // ON_AFTER_RELEASE is set, the user activity timer will be reset when the
                   // WakeLock is released, causing the illumination to remain on a bit longer.
-                  wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
-                                      PowerManager.ON_AFTER_RELEASE, lock);
+                    wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
+                                        PowerManager.ON_AFTER_RELEASE, lock);
                 } else {
                     Log.w(LOGTAG, "Unsupported wake-lock: " + lock);
                     return;
@@ -658,7 +648,8 @@ public class GeckoAppShell
         return sScreenOrientationDelegate;
     }
 
-    public static void setScreenOrientationDelegate(@Nullable ScreenOrientationDelegate screenOrientationDelegate) {
+    public static void setScreenOrientationDelegate(
+            final @Nullable ScreenOrientationDelegate screenOrientationDelegate) {
         sScreenOrientationDelegate = (screenOrientationDelegate != null) ? screenOrientationDelegate : DEFAULT_LISTENERS;
     }
 
@@ -680,174 +671,174 @@ public class GeckoAppShell
 
     @SuppressWarnings("fallthrough")
     @WrapForJNI(calledFrom = "gecko")
-    private static void enableSensor(int aSensortype) {
+    private static void enableSensor(final int aSensortype) {
         final SensorManager sm = (SensorManager)
             getApplicationContext().getSystemService(Context.SENSOR_SERVICE);
 
         switch (aSensortype) {
-        case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
-            if (gGameRotationVectorSensor == null) {
-                gGameRotationVectorSensor = sm.getDefaultSensor(
-                        Sensor.TYPE_GAME_ROTATION_VECTOR);
-            }
-            if (gGameRotationVectorSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gGameRotationVectorSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            if (gGameRotationVectorSensor != null) {
-              break;
-            }
-            // Fallthrough
+            case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
+                if (gGameRotationVectorSensor == null) {
+                    gGameRotationVectorSensor = sm.getDefaultSensor(
+                            Sensor.TYPE_GAME_ROTATION_VECTOR);
+                }
+                if (gGameRotationVectorSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gGameRotationVectorSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                if (gGameRotationVectorSensor != null) {
+                    break;
+                }
+                // Fallthrough
 
-        case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
-            if (gRotationVectorSensor == null) {
-                gRotationVectorSensor = sm.getDefaultSensor(
-                    Sensor.TYPE_ROTATION_VECTOR);
-            }
-            if (gRotationVectorSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gRotationVectorSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            if (gRotationVectorSensor != null) {
-              break;
-            }
-            // Fallthrough
+            case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
+                if (gRotationVectorSensor == null) {
+                    gRotationVectorSensor = sm.getDefaultSensor(
+                        Sensor.TYPE_ROTATION_VECTOR);
+                }
+                if (gRotationVectorSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gRotationVectorSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                if (gRotationVectorSensor != null) {
+                    break;
+                }
+                // Fallthrough
 
-        case GeckoHalDefines.SENSOR_ORIENTATION:
-            if (gOrientationSensor == null) {
-                gOrientationSensor = sm.getDefaultSensor(
-                    Sensor.TYPE_ORIENTATION);
-            }
-            if (gOrientationSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gOrientationSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_ORIENTATION:
+                if (gOrientationSensor == null) {
+                    gOrientationSensor = sm.getDefaultSensor(
+                        Sensor.TYPE_ORIENTATION);
+                }
+                if (gOrientationSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gOrientationSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_ACCELERATION:
-            if (gAccelerometerSensor == null) {
-                gAccelerometerSensor = sm.getDefaultSensor(
-                    Sensor.TYPE_ACCELEROMETER);
-            }
-            if (gAccelerometerSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gAccelerometerSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_ACCELERATION:
+                if (gAccelerometerSensor == null) {
+                    gAccelerometerSensor = sm.getDefaultSensor(
+                        Sensor.TYPE_ACCELEROMETER);
+                }
+                if (gAccelerometerSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gAccelerometerSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_PROXIMITY:
-            if (gProximitySensor == null) {
-                gProximitySensor = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY);
-            }
-            if (gProximitySensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gProximitySensor,
-                                    SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_PROXIMITY:
+                if (gProximitySensor == null) {
+                    gProximitySensor = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+                }
+                if (gProximitySensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gProximitySensor,
+                                        SensorManager.SENSOR_DELAY_NORMAL);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_LIGHT:
-            if (gLightSensor == null) {
-                gLightSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT);
-            }
-            if (gLightSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gLightSensor,
-                                    SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_LIGHT:
+                if (gLightSensor == null) {
+                    gLightSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT);
+                }
+                if (gLightSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gLightSensor,
+                                        SensorManager.SENSOR_DELAY_NORMAL);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
-            if (gLinearAccelerometerSensor == null) {
-                gLinearAccelerometerSensor = sm.getDefaultSensor(
-                    Sensor.TYPE_LINEAR_ACCELERATION);
-            }
-            if (gLinearAccelerometerSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gLinearAccelerometerSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
+                if (gLinearAccelerometerSensor == null) {
+                    gLinearAccelerometerSensor = sm.getDefaultSensor(
+                        Sensor.TYPE_LINEAR_ACCELERATION);
+                }
+                if (gLinearAccelerometerSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gLinearAccelerometerSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_GYROSCOPE:
-            if (gGyroscopeSensor == null) {
-                gGyroscopeSensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
-            }
-            if (gGyroscopeSensor != null) {
-                sm.registerListener(getSensorListener(),
-                                    gGyroscopeSensor,
-                                    SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_GYROSCOPE:
+                if (gGyroscopeSensor == null) {
+                    gGyroscopeSensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+                }
+                if (gGyroscopeSensor != null) {
+                    sm.registerListener(getSensorListener(),
+                                        gGyroscopeSensor,
+                                        SensorManager.SENSOR_DELAY_FASTEST);
+                }
+                break;
 
-        default:
-            Log.w(LOGTAG, "Error! Can't enable unknown SENSOR type " +
-                  aSensortype);
+            default:
+                Log.w(LOGTAG, "Error! Can't enable unknown SENSOR type " +
+                      aSensortype);
         }
     }
 
     @SuppressWarnings("fallthrough")
     @WrapForJNI(calledFrom = "gecko")
-    private static void disableSensor(int aSensortype) {
+    private static void disableSensor(final int aSensortype) {
         final SensorManager sm = (SensorManager)
             getApplicationContext().getSystemService(Context.SENSOR_SERVICE);
 
         switch (aSensortype) {
-        case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
-            if (gGameRotationVectorSensor != null) {
-                sm.unregisterListener(getSensorListener(), gGameRotationVectorSensor);
-              break;
-            }
-            // Fallthrough
+            case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
+                if (gGameRotationVectorSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gGameRotationVectorSensor);
+                    break;
+                }
+                // Fallthrough
 
-        case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
-            if (gRotationVectorSensor != null) {
-                sm.unregisterListener(getSensorListener(), gRotationVectorSensor);
-              break;
-            }
-            // Fallthrough
+            case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
+                if (gRotationVectorSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gRotationVectorSensor);
+                    break;
+                }
+                // Fallthrough
 
-        case GeckoHalDefines.SENSOR_ORIENTATION:
-            if (gOrientationSensor != null) {
-                sm.unregisterListener(getSensorListener(), gOrientationSensor);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_ORIENTATION:
+                if (gOrientationSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gOrientationSensor);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_ACCELERATION:
-            if (gAccelerometerSensor != null) {
-                sm.unregisterListener(getSensorListener(), gAccelerometerSensor);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_ACCELERATION:
+                if (gAccelerometerSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gAccelerometerSensor);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_PROXIMITY:
-            if (gProximitySensor != null) {
-                sm.unregisterListener(getSensorListener(), gProximitySensor);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_PROXIMITY:
+                if (gProximitySensor != null) {
+                    sm.unregisterListener(getSensorListener(), gProximitySensor);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_LIGHT:
-            if (gLightSensor != null) {
-                sm.unregisterListener(getSensorListener(), gLightSensor);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_LIGHT:
+                if (gLightSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gLightSensor);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
-            if (gLinearAccelerometerSensor != null) {
-                sm.unregisterListener(getSensorListener(), gLinearAccelerometerSensor);
-            }
-            break;
+            case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
+                if (gLinearAccelerometerSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gLinearAccelerometerSensor);
+                }
+                break;
 
-        case GeckoHalDefines.SENSOR_GYROSCOPE:
-            if (gGyroscopeSensor != null) {
-                sm.unregisterListener(getSensorListener(), gGyroscopeSensor);
-            }
-            break;
-        default:
-            Log.w(LOGTAG, "Error! Can't disable unknown SENSOR type " + aSensortype);
+            case GeckoHalDefines.SENSOR_GYROSCOPE:
+                if (gGyroscopeSensor != null) {
+                    sm.unregisterListener(getSensorListener(), gGyroscopeSensor);
+                }
+                break;
+            default:
+                Log.w(LOGTAG, "Error! Can't disable unknown SENSOR type " + aSensortype);
         }
     }
 
@@ -864,7 +855,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static String[] getHandlersForMimeType(String aMimeType, String aAction) {
+    private static String[] getHandlersForMimeType(final String aMimeType, final String aAction) {
         final GeckoInterface geckoInterface = getGeckoInterface();
         if (geckoInterface == null) {
             return new String[] {};
@@ -873,7 +864,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static String[] getHandlersForURL(String aURL, String aAction) {
+    private static String[] getHandlersForURL(final String aURL, final String aAction) {
         final GeckoInterface geckoInterface = getGeckoInterface();
         if (geckoInterface == null) {
             return new String[] {};
@@ -882,16 +873,16 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static boolean getHWEncoderCapability() {
-      return HardwareCodecCapabilityUtils.getHWEncoderCapability();
+    private static boolean hasHWVP8Encoder() {
+        return HardwareCodecCapabilityUtils.hasHWVP8(true /* aIsEncoder */);
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static boolean getHWDecoderCapability() {
-      return HardwareCodecCapabilityUtils.getHWDecoderCapability();
+    private static boolean hasHWVP8Decoder() {
+        return HardwareCodecCapabilityUtils.hasHWVP8(false /* aIsEncoder */);
     }
 
-    static List<ResolveInfo> queryIntentActivities(Intent intent) {
+    static List<ResolveInfo> queryIntentActivities(final Intent intent) {
         final PackageManager pm = getApplicationContext().getPackageManager();
 
         // Exclude any non-exported activities: we can't open them even if we want to!
@@ -907,12 +898,12 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    public static String getExtensionFromMimeType(String aMimeType) {
+    public static String getExtensionFromMimeType(final String aMimeType) {
         return MimeTypeMap.getSingleton().getExtensionFromMimeType(aMimeType);
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    public static String getMimeTypeFromExtensions(String aFileExt) {
+    public static String getMimeTypeFromExtensions(final String aFileExt) {
         StringTokenizer st = new StringTokenizer(aFileExt, ".,; ");
         String type = null;
         String subType = null;
@@ -936,27 +927,14 @@ public class GeckoAppShell
         return type + "/" + subType;
     }
 
-    static boolean isUriSafeForScheme(Uri aUri) {
-        // Bug 794034 - We don't want to pass MWI or USSD codes to the
-        // dialer, and ensure the Uri class doesn't parse a URI
-        // containing a fragment ('#')
-        final String scheme = aUri.getScheme();
-        if ("tel".equals(scheme) || "sms".equals(scheme)) {
-            final String number = aUri.getSchemeSpecificPart();
-            if (number.contains("#") || number.contains("*") || aUri.getFragment() != null) {
-                return false;
-            }
-        }
-        return true;
-    }
-
+    @SuppressWarnings("try")
     @WrapForJNI(calledFrom = "gecko")
-    private static boolean openUriExternal(String targetURI,
-                                           String mimeType,
-                                           String packageName,
-                                           String className,
-                                           String action,
-                                           String title) {
+    private static boolean openUriExternal(final String targetURI,
+                                           final String mimeType,
+                                           final String packageName,
+                                           final String className,
+                                           final String action,
+                                           final String title) {
         final GeckoInterface geckoInterface = getGeckoInterface();
         if (geckoInterface == null) {
             return false;
@@ -964,11 +942,9 @@ public class GeckoAppShell
         // Bug 1450449 - Downloaded files already are already in a public directory and aren't
         // really owned exclusively by Firefox, so there's no real benefit to using
         // content:// URIs here.
-        StrictMode.VmPolicy prevPolicy = StrictMode.getVmPolicy();
-        StrictMode.setVmPolicy(StrictMode.VmPolicy.LAX);
-        boolean success = geckoInterface.openUriExternal(targetURI, mimeType, packageName, className, action, title);
-        StrictMode.setVmPolicy(prevPolicy);
-        return success;
+        try (StrictModeContext unused = StrictModeContext.allowAllVmPolicies()) {
+            return geckoInterface.openUriExternal(targetURI, mimeType, packageName, className, action, title);
+        }
     }
 
     @WrapForJNI(dispatchTo = "gecko")
@@ -1005,9 +981,9 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static void showNotification(String name, String cookie, String title,
-                                         String text, String host, String imageUrl,
-                                         String persistentData) {
+    private static void showNotification(final String name, final String cookie, final String title,
+                                         final String text, final String host,
+                                         final String imageUrl, final String persistentData) {
         if (persistentData == null) {
             getNotificationListener().showNotification(name, cookie, title, text, host, imageUrl);
             return;
@@ -1018,20 +994,37 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static void closeNotification(String name) {
+    private static void closeNotification(final String name) {
         getNotificationListener().closeNotification(name);
     }
 
+    public static synchronized void setDisplayDpiOverride(@Nullable final Integer dpi) {
+        if (dpi == null) {
+            return;
+        }
+        if (sDensityDpi != 0) {
+            Log.e(LOGTAG, "Tried to override screen DPI after it's already been set");
+            return;
+        }
+        sDensityDpi = dpi;
+    }
+
     @WrapForJNI(calledFrom = "gecko")
-    public static int getDpi() {
+    public static synchronized int getDpi() {
         if (sDensityDpi == 0) {
             sDensityDpi = getApplicationContext().getResources().getDisplayMetrics().densityDpi;
         }
-
         return sDensityDpi;
     }
 
-    public static synchronized void setDisplayDensityOverride(@Nullable Float density) {
+    public static synchronized void setDisplayDensityOverride(@Nullable final Float density) {
+        if (density == null) {
+            return;
+        }
+        if (sDensity != null) {
+            Log.e(LOGTAG, "Tried to override screen density after it's already been set");
+            return;
+        }
         sDensity = density;
     }
 
@@ -1044,24 +1037,28 @@ public class GeckoAppShell
         return sDensity;
     }
 
-    private static boolean isHighMemoryDevice() {
-        return HardwareUtils.getMemSize() > HIGH_MEMORY_DEVICE_THRESHOLD_MB;
+    private static boolean isHighMemoryDevice(final Context context) {
+        return SysInfo.getMemSize(context) > HIGH_MEMORY_DEVICE_THRESHOLD_MB;
+    }
+
+    public static synchronized void useMaxScreenDepth(final boolean enable) {
+        sUseMaxScreenDepth = enable;
     }
 
     /**
      * Returns the colour depth of the default screen. This will either be
-     * 24 or 16.
+     * 32, 24 or 16.
      */
     @WrapForJNI(calledFrom = "gecko")
     public static synchronized int getScreenDepth() {
         if (sScreenDepth == 0) {
             sScreenDepth = 16;
+            final Context applicationContext = getApplicationContext();
             PixelFormat info = new PixelFormat();
-            final WindowManager wm = (WindowManager)
-                    getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+            final WindowManager wm = (WindowManager) applicationContext.getSystemService(Context.WINDOW_SERVICE);
             PixelFormat.getPixelFormatInfo(wm.getDefaultDisplay().getPixelFormat(), info);
-            if (info.bitsPerPixel >= 24 && isHighMemoryDevice()) {
-                sScreenDepth = 24;
+            if (info.bitsPerPixel >= 24 && isHighMemoryDevice(applicationContext)) {
+                sScreenDepth = sUseMaxScreenDepth ? info.bitsPerPixel : 24;
             }
         }
 
@@ -1069,17 +1066,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static synchronized void setScreenDepthOverride(int aScreenDepth) {
-        if (sScreenDepth != 0) {
-            Log.e(LOGTAG, "Tried to override screen depth after it's already been set");
-            return;
-        }
-
-        sScreenDepth = aScreenDepth;
-    }
-
-    @WrapForJNI(calledFrom = "gecko")
-    private static void performHapticFeedback(boolean aIsLongPress) {
+    private static void performHapticFeedback(final boolean aIsLongPress) {
         // Don't perform haptic feedback if a vibration is currently playing,
         // because the haptic feedback will nuke the vibration.
         if (!sVibrationMaybePlaying || System.nanoTime() >= sVibrationEndTime) {
@@ -1096,7 +1083,7 @@ public class GeckoAppShell
     }
 
     // Helper method to convert integer array to long array.
-    private static long[] convertIntToLongArray(int[] input) {
+    private static long[] convertIntToLongArray(final int[] input) {
         long[] output = new long[input.length];
         for (int i = 0; i < input.length; i++) {
             output[i] = input[i];
@@ -1105,7 +1092,7 @@ public class GeckoAppShell
     }
 
     // Vibrate only if haptic feedback is enabled.
-    private static void vibrateOnHapticFeedbackEnabled(int[] milliseconds) {
+    private static void vibrateOnHapticFeedbackEnabled(final int[] milliseconds) {
         if (Settings.System.getInt(getApplicationContext().getContentResolver(),
                                    Settings.System.HAPTIC_FEEDBACK_ENABLED, 0) > 0) {
             if (milliseconds.length == 1) {
@@ -1116,39 +1103,54 @@ public class GeckoAppShell
         }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
-    private static void vibrate(long milliseconds) {
+    private static void vibrate(final long milliseconds) {
         sVibrationEndTime = System.nanoTime() + milliseconds * 1000000;
         sVibrationMaybePlaying = true;
-        vibrator().vibrate(milliseconds);
+        try {
+            vibrator().vibrate(milliseconds);
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
-    private static void vibrate(long[] pattern, int repeat) {
+    private static void vibrate(final long[] pattern, final int repeat) {
         // If pattern.length is odd, the last element in the pattern is a
         // meaningless delay, so don't include it in vibrationDuration.
         long vibrationDuration = 0;
         int iterLen = pattern.length & ~1;
         for (int i = 0; i < iterLen; i++) {
-          vibrationDuration += pattern[i];
+            vibrationDuration += pattern[i];
         }
 
         sVibrationEndTime = System.nanoTime() + vibrationDuration * 1000000;
         sVibrationMaybePlaying = true;
-        vibrator().vibrate(pattern, repeat);
+        try {
+            vibrator().vibrate(pattern, repeat);
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
+    @SuppressLint("MissingPermission")
     @WrapForJNI(calledFrom = "gecko")
     private static void cancelVibrate() {
         sVibrationMaybePlaying = false;
         sVibrationEndTime = 0;
-        vibrator().cancel();
+        try {
+            vibrator().cancel();
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
     @WrapForJNI(calledFrom = "gecko")
     private static boolean isNetworkLinkUp() {
         ConnectivityManager cm = (ConnectivityManager)
-           getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+                getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
         try {
             NetworkInfo info = cm.getActiveNetworkInfo();
             if (info == null || !info.isConnected())
@@ -1272,7 +1274,7 @@ public class GeckoAppShell
     public static void killAnyZombies() {
         GeckoProcessesVisitor visitor = new GeckoProcessesVisitor() {
             @Override
-            public boolean callback(int pid) {
+            public boolean callback(final int pid) {
                 if (pid != android.os.Process.myPid())
                     android.os.Process.killProcess(pid);
                 return true;
@@ -1286,7 +1288,7 @@ public class GeckoAppShell
         boolean callback(int pid);
     }
 
-    private static void EnumerateGeckoProcesses(GeckoProcessesVisitor visiter) {
+    private static void EnumerateGeckoProcesses(final GeckoProcessesVisitor visiter) {
         int pidColumn = -1;
         int userColumn = -1;
 
@@ -1340,7 +1342,7 @@ public class GeckoAppShell
         }
     }
 
-    public static String getAppNameByPID(int pid) {
+    public static String getAppNameByPID(final int pid) {
         BufferedReader cmdlineReader = null;
         String path = "/proc/" + pid + "/cmdline";
         try {
@@ -1412,42 +1414,46 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static byte[] getIconForExtension(String aExt, int iconSize) {
+    private static byte[] getIconForExtension(final String aExt, final int iconSize) {
         try {
-            if (iconSize <= 0)
-                iconSize = 16;
-
-            if (aExt != null && aExt.length() > 1 && aExt.charAt(0) == '.')
-                aExt = aExt.substring(1);
-
-            PackageManager pm = getApplicationContext().getPackageManager();
-            Drawable icon = getDrawableForExtension(pm, aExt);
-            if (icon == null) {
-                // Use a generic icon
-                icon = pm.getDefaultActivityIcon();
+            int resolvedIconSize = iconSize;
+            if (iconSize <= 0) {
+                resolvedIconSize = 16;
             }
 
-            Bitmap bitmap = ((BitmapDrawable)icon).getBitmap();
-            if (bitmap.getWidth() != iconSize || bitmap.getHeight() != iconSize)
-                bitmap = Bitmap.createScaledBitmap(bitmap, iconSize, iconSize, true);
+            String resolvedExt = aExt;
+            if (aExt != null && aExt.length() > 1 && aExt.charAt(0) == '.') {
+                resolvedExt = aExt.substring(1);
+            }
 
-            ByteBuffer buf = ByteBuffer.allocate(iconSize * iconSize * 4);
+            PackageManager pm = getApplicationContext().getPackageManager();
+            Drawable icon = getDrawableForExtension(pm, resolvedExt);
+            if (icon == null) {
+                // Use a generic icon.
+                icon = ResourcesCompat.getDrawable(getApplicationContext().getResources(), R.drawable.ic_generic_file, getApplicationContext().getTheme());
+            }
+
+            Bitmap bitmap = BitmapUtils.getBitmapFromDrawable(icon);
+            if (bitmap.getWidth() != resolvedIconSize || bitmap.getHeight() != resolvedIconSize) {
+                bitmap = Bitmap.createScaledBitmap(bitmap, resolvedIconSize, resolvedIconSize, true);
+            }
+
+            ByteBuffer buf = ByteBuffer.allocate(resolvedIconSize * resolvedIconSize * 4);
             bitmap.copyPixelsToBuffer(buf);
 
             return buf.array();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Log.w(LOGTAG, "getIconForExtension failed.",  e);
             return null;
         }
     }
 
-    public static String getMimeTypeFromExtension(String ext) {
+    public static String getMimeTypeFromExtension(final String ext) {
         final MimeTypeMap mtm = MimeTypeMap.getSingleton();
         return mtm.getMimeTypeFromExtension(ext);
     }
 
-    private static Drawable getDrawableForExtension(PackageManager pm, String aExt) {
+    private static Drawable getDrawableForExtension(final PackageManager pm, final String aExt) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         final String mimeType = getMimeTypeFromExtension(aExt);
         if (mimeType != null && mimeType.length() > 0)
@@ -1476,8 +1482,7 @@ public class GeckoAppShell
                 Settings.System.getInt(getApplicationContext().getContentResolver(),
                                        Settings.System.TEXT_SHOW_PASSWORD, 1);
             return (showPassword > 0);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             return true;
         }
     }
@@ -1506,7 +1511,7 @@ public class GeckoAppShell
         return sGeckoInterface;
     }
 
-    public static void setGeckoInterface(GeckoInterface aGeckoInterface) {
+    public static void setGeckoInterface(final GeckoInterface aGeckoInterface) {
         sGeckoInterface = aGeckoInterface;
     }
 
@@ -1521,12 +1526,12 @@ public class GeckoAppShell
 
         private final int mCamera;
 
-        public CameraCallback(int camera) {
+        public CameraCallback(final int camera) {
             mCamera = camera;
         }
 
         @Override
-        public void onPreviewFrame(byte[] data, Camera camera) {
+        public void onPreviewFrame(final byte[] data, final Camera camera) {
             onFrameData(mCamera, data);
 
             if (sCamera != null) {
@@ -1536,7 +1541,8 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static int[] initCamera(String aContentType, int aCamera, int aWidth, int aHeight) {
+    private static int[] initCamera(final String aContentType, final int aCamera, final int aWidth,
+                                    final int aHeight) {
         // [0] = 0|1 (failure/success)
         // [1] = width
         // [2] = height
@@ -1685,7 +1691,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static void lockScreenOrientation(int aOrientation) {
+    private static void lockScreenOrientation(final int aOrientation) {
         // TODO: don't vector through GeckoAppShell.
         GeckoScreenOrientation.getInstance().lock(aOrientation);
     }
@@ -1726,7 +1732,8 @@ public class GeckoAppShell
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static String getProxyForURI(String spec, String scheme, String host, int port) {
+    private static String getProxyForURI(final String spec, final String scheme, final String host,
+                                         final int port) {
         final ProxySelector ps = new ProxySelector();
 
         Proxy proxy = ps.select(scheme, host);
@@ -1745,16 +1752,17 @@ public class GeckoAppShell
     }
 
     @WrapForJNI
-    private static InputStream createInputStream(URLConnection connection) throws IOException {
+    private static InputStream createInputStream(final URLConnection connection)
+            throws IOException {
         return connection.getInputStream();
     }
 
     private static class BitmapConnection extends URLConnection {
-        private Bitmap bitmap;
+        private Bitmap mBitmap;
 
-        BitmapConnection(Bitmap b) throws MalformedURLException, IOException {
+        BitmapConnection(final Bitmap b) throws MalformedURLException, IOException {
             super(null);
-            bitmap = b;
+            mBitmap = b;
         }
 
         @Override
@@ -1774,8 +1782,8 @@ public class GeckoAppShell
             private boolean mHaveConnected = false;
 
             @Override
-            public synchronized int read(byte[] buffer, int byteOffset, int byteCount)
-                                    throws IOException {
+            public synchronized int read(final byte[] buffer, final int byteOffset,
+                                         final int byteCount) throws IOException {
                 if (mHaveConnected) {
                     return super.read(buffer, byteOffset, byteCount);
                 }
@@ -1788,7 +1796,7 @@ public class GeckoAppShell
                         @Override
                         public void run() {
                             try {
-                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
+                                mBitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
                             } finally {
                                 IOUtils.safeStreamClose(output);
                             }
@@ -1801,7 +1809,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI
-    private static URLConnection getConnection(String url) {
+    private static URLConnection getConnection(final String url) {
         try {
             String spec;
             if (url.startsWith("android://")) {
@@ -1839,7 +1847,7 @@ public class GeckoAppShell
     }
 
     @WrapForJNI
-    private static String connectionGetMimeType(URLConnection connection) {
+    private static String connectionGetMimeType(final URLConnection connection) {
         return connection.getContentType();
     }
 
@@ -1862,26 +1870,101 @@ public class GeckoAppShell
         return 0;
     }
 
-    public static synchronized void resetScreenSize() {
-        sScreenSize = null;
+    /*
+     * Keep in sync with PointerCapabilities in ServoTypes.h
+    */
+    static private final int NO_POINTER            = 0x00000000;
+    static private final int COARSE_POINTER        = 0x00000001;
+    static private final int FINE_POINTER          = 0x00000002;
+    static private final int HOVER_CAPABLE_POINTER = 0x00000004;
+    private static int getPointerCapabilities(final InputDevice inputDevice) {
+        int result = NO_POINTER;
+        int sources = inputDevice.getSources();
+
+        if (hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHSCREEN) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_JOYSTICK)) {
+            result |= COARSE_POINTER;
+        } else if (hasInputDeviceSource(sources, InputDevice.SOURCE_MOUSE) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_STYLUS) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHPAD) ||
+                   hasInputDeviceSource(sources, InputDevice.SOURCE_TRACKBALL)) {
+            result |= FINE_POINTER;
+        }
+
+        if (hasInputDeviceSource(sources, InputDevice.SOURCE_MOUSE) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_TOUCHPAD) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_TRACKBALL) ||
+            hasInputDeviceSource(sources, InputDevice.SOURCE_JOYSTICK)) {
+            result |= HOVER_CAPABLE_POINTER;
+        }
+
+        return result;
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
+    // For any-pointer and any-hover media queries features.
+    private static int getAllPointerCapabilities() {
+        int result = NO_POINTER;
+
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice inputDevice = InputDevice.getDevice(deviceId);
+            if (inputDevice == null ||
+                !InputDeviceUtils.isPointerTypeDevice(inputDevice)) {
+                continue;
+            }
+
+            result |= getPointerCapabilities(inputDevice);
+        }
+
+        return result;
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
+    // For pointer and hover media queries features.
+    private static int getPrimaryPointerCapabilities() {
+        int result = NO_POINTER;
+
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice inputDevice = InputDevice.getDevice(deviceId);
+            if (inputDevice == null ||
+                !InputDeviceUtils.isPointerTypeDevice(inputDevice)) {
+                continue;
+            }
+
+            result = getPointerCapabilities(inputDevice);
+
+            // We need information only for the primary pointer.
+            // (Assumes that the primary pointer appears first in the list)
+            break;
+        }
+
+        return result;
+    }
+
+    private static boolean hasInputDeviceSource(final int sources, final int inputDeviceSource) {
+        return (sources & inputDeviceSource) == inputDeviceSource;
+    }
+
+    public static synchronized void setScreenSizeOverride(final Rect size) {
+        sScreenSizeOverride = size;
     }
 
     @WrapForJNI(calledFrom = "gecko")
     private static synchronized Rect getScreenSize() {
-        if (sScreenSize == null) {
-            final WindowManager wm = (WindowManager)
-                    getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
-            final Display disp = wm.getDefaultDisplay();
-            sScreenSize = new Rect(0, 0, disp.getWidth(), disp.getHeight());
+        if (sScreenSizeOverride != null) {
+            return sScreenSizeOverride;
         }
-        return sScreenSize;
+        final WindowManager wm = (WindowManager)
+                getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+        final Display disp = wm.getDefaultDisplay();
+        return new Rect(0, 0, disp.getWidth(), disp.getHeight());
     }
 
     @WrapForJNI(calledFrom = "any")
     public static int getAudioOutputFramesPerBuffer() {
         final int DEFAULT = 512;
 
-        if (SysInfo.getVersion() < 17) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
             return DEFAULT;
         }
         final AudioManager am = (AudioManager)getApplicationContext()
@@ -1900,7 +1983,7 @@ public class GeckoAppShell
     public static int getAudioOutputSampleRate() {
         final int DEFAULT = 44100;
 
-        if (SysInfo.getVersion() < 17) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
             return DEFAULT;
         }
         final AudioManager am = (AudioManager)getApplicationContext()
@@ -1913,6 +1996,31 @@ public class GeckoAppShell
             return DEFAULT;
         }
         return Integer.parseInt(prop);
+    }
+
+    static private int sPreviousAudioMode = -2;
+
+    @WrapForJNI(calledFrom = "any")
+    public static void setCommunicationAudioModeOn(final boolean on) {
+        final AudioManager am = (AudioManager)getApplicationContext()
+                                .getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) {
+            return;
+        }
+
+        try {
+            if (on)  {
+                Log.e(LOGTAG, "Setting communication mode ON");
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+            } else {
+                Log.e(LOGTAG, "Setting communication mode OFF");
+                am.stopBluetoothSco();
+                am.setBluetoothScoOn(false);
+            }
+        } catch (SecurityException e) {
+            Log.e(LOGTAG, "could not set communication mode", e);
+        }
     }
 
     private static String getLanguageTag(final Locale locale) {

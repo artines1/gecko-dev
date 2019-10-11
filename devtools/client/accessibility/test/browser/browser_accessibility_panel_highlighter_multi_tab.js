@@ -3,7 +3,7 @@
 
 "use strict";
 
-const TEST_URI = "<h1 id=\"h1\">header</h1><p id=\"p\">paragraph</p>";
+const TEST_URI = '<h1 id="h1">header</h1><p id="p">paragraph</p>';
 
 add_task(async function() {
   const { toolbox: toolbox1 } = await addTestTab(buildURL(TEST_URI));
@@ -26,8 +26,11 @@ add_task(async function() {
   await toggleAccessibility(options);
 
   const panel = await toolbox2.selectTool("accessibility");
-  await disableAccessibilityInspector(
-    { panel, win: panel.panelWin, doc: panel.panelWin.document });
+  await disableAccessibilityInspector({
+    panel,
+    win: panel.panelWin,
+    doc: panel.panelWin.document,
+  });
 
   await checkHighlighted(toolbox1, false);
   await checkHighlighted(toolbox2, false);
@@ -48,14 +51,15 @@ async function openOptions(toolbox) {
     // is a tool-registered or tool-undregistered event.
     get checkbox() {
       return panel.panelDoc.getElementById("accessibility");
-    }
+    },
   };
 }
 
 async function toggleAccessibility({ panelWin, checkbox }) {
   const prevChecked = checkbox.checked;
   const onToggleTool = gDevTools.once(
-    `tool-${prevChecked ? "unregistered" : "registered"}`);
+    `tool-${prevChecked ? "unregistered" : "registered"}`
+  );
   EventUtils.sendMouseEvent({ type: "click" }, checkbox, panelWin);
   const id = await onToggleTool;
   is(id, "accessibility", "Correct event was fired");

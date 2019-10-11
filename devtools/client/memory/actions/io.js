@@ -3,14 +3,18 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { immutableUpdate, reportException, assert } = require("devtools/shared/DevToolsUtils");
-const { snapshotState: states, actions} = require("../constants");
+const {
+  immutableUpdate,
+  reportException,
+  assert,
+} = require("devtools/shared/DevToolsUtils");
+const { snapshotState: states, actions } = require("../constants");
 const { L10N, openFilePicker, createSnapshot } = require("../utils");
 const { OS } = require("resource://gre/modules/osfile.jsm");
 const {
   selectSnapshot,
   computeSnapshotData,
-  readSnapshot
+  readSnapshot,
 } = require("./snapshot");
 const VALID_EXPORT_STATES = [states.SAVED, states.READ];
 
@@ -31,12 +35,14 @@ exports.pickFileAndExportSnapshot = function(snapshot) {
   };
 };
 
-const exportSnapshot = exports.exportSnapshot = function(snapshot, dest) {
+const exportSnapshot = (exports.exportSnapshot = function(snapshot, dest) {
   return async function(dispatch, getState) {
     dispatch({ type: actions.EXPORT_SNAPSHOT_START, snapshot });
 
-    assert(VALID_EXPORT_STATES.includes(snapshot.state),
-      `Snapshot is in invalid state for exporting: ${snapshot.state}`);
+    assert(
+      VALID_EXPORT_STATES.includes(snapshot.state),
+      `Snapshot is in invalid state for exporting: ${snapshot.state}`
+    );
 
     try {
       await OS.File.copy(snapshot.path, dest);
@@ -47,7 +53,7 @@ const exportSnapshot = exports.exportSnapshot = function(snapshot, dest) {
 
     dispatch({ type: actions.EXPORT_SNAPSHOT_END, snapshot });
   };
-};
+});
 
 exports.pickFileAndImportSnapshotAndCensus = function(heapWorker) {
   return async function(dispatch, getState) {

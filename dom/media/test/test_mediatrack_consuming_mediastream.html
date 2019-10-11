@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>Test track interfaces when consuming a MediaStream from gUM</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   <script type="text/javascript" src="manifest.js"></script>
   <script type="text/javascript" src="gUM_support.js"></script>
@@ -131,7 +131,7 @@ async function startTest() {
       checkTrackChanged(1, false);
     } else if (steps == 3) {
       checkTrackChanged(2, true);
-      stream.stop();
+      stream.getTracks().forEach(t => t.stop());
     }
   }
 

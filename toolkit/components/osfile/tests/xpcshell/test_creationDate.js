@@ -16,13 +16,15 @@ add_task(async function test_deprecatedCreationDate() {
   let consoleMessagePromise = new Promise(resolve => {
     let consoleListener = {
       observe(aMessage) {
-        if (aMessage.message.indexOf("Field 'creationDate' is deprecated.") > -1) {
-        info("Deprecation message printed");
+        if (
+          aMessage.message.indexOf("Field 'creationDate' is deprecated.") > -1
+        ) {
+          info("Deprecation message printed");
           Assert.ok(true);
           Services.console.unregisterListener(consoleListener);
           resolve();
         }
-      }
+      },
     };
     Services.console.registerListener(consoleListener);
   });

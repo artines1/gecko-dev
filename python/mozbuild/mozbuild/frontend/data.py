@@ -15,19 +15,18 @@ contains the code for converting executed mozbuild files into these data
 structures.
 """
 
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 from mozbuild.frontend.context import (
     ObjDirPath,
     SourcePath,
 )
-from mozbuild.util import StrictOrderingOnAppendList
 from mozpack.chrome.manifest import ManifestEntry
 
 import mozpack.path as mozpath
 from .context import FinalTargetValue
 
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 import itertools
 
 from ..util import (
@@ -192,6 +191,7 @@ class ComputedFlags(ContextDerived):
                     flags[dest_var].extend(value)
         return flags.items()
 
+
 class XPIDLModule(ContextDerived):
     """Describes an XPIDL module to be compiled."""
 
@@ -206,6 +206,7 @@ class XPIDLModule(ContextDerived):
         assert all(isinstance(idl, SourcePath) for idl in idl_files)
         self.name = name
         self.idl_files = idl_files
+
 
 class BaseDefines(ContextDerived):
     """Context derived container object for DEFINES/HOST_DEFINES,
@@ -232,11 +233,14 @@ class BaseDefines(ContextDerived):
         else:
             self.defines.update(more_defines)
 
+
 class Defines(BaseDefines):
     pass
 
+
 class HostDefines(BaseDefines):
     pass
+
 
 class WebIDLCollection(ContextDerived):
     """Collects WebIDL info referenced during the build."""
@@ -373,12 +377,22 @@ class IPDLCollection(ContextDerived):
         return sorted(set(p for p, _ in self.unified_source_mapping))
 
 
+class XPCOMComponentManifests(ContextDerived):
+    """Collects XPCOM manifest files during the build."""
+
+    def __init__(self, context):
+        ContextDerived.__init__(self, context)
+        self.manifests = set()
+
+    def all_sources(self):
+        return self.manifests
+
+    def all_source_files(self):
+        return []
+
+
 class LinkageWrongKindError(Exception):
     """Error thrown when trying to link objects of the wrong kind"""
-
-
-class LinkageMultipleRustLibrariesError(Exception):
-    """Error thrown when trying to link multiple Rust libraries to an object"""
 
 
 class Linkable(ContextDerived):
@@ -389,7 +403,6 @@ class Linkable(ContextDerived):
         'linked_libraries',
         'linked_system_libs',
         'no_pgo_sources',
-        'pgo_gen_only_sources',
         'no_pgo',
         'sources',
     )
@@ -402,20 +415,12 @@ class Linkable(ContextDerived):
         self.lib_defines = Defines(context, {})
         self.sources = defaultdict(list)
         self.no_pgo_sources = []
-        self.pgo_gen_only_sources = set()
         self.no_pgo = False
 
     def link_library(self, obj):
         assert isinstance(obj, BaseLibrary)
         if obj.KIND != self.KIND:
             raise LinkageWrongKindError('%s != %s' % (obj.KIND, self.KIND))
-        # Linking multiple Rust libraries into an object would result in
-        # multiple copies of the Rust standard library, as well as linking
-        # errors from duplicate symbols.
-        if isinstance(obj, RustLibrary) and any(isinstance(l, RustLibrary)
-                                                for l in self.linked_libraries):
-            raise LinkageMultipleRustLibrariesError("Cannot link multiple Rust libraries into %s",
-                                                    self)
         self.linked_libraries.append(obj)
         if obj.cxx_link and not isinstance(obj, SharedLibrary):
             self.cxx_link = True
@@ -425,7 +430,9 @@ class Linkable(ContextDerived):
         # The '$' check is here as a special temporary rule, allowing the
         # inherited use of make variables, most notably in TK_LIBS.
         if not lib.startswith('$') and not lib.startswith('-'):
-            if self.config.substs.get('GNU_CC'):
+            type_var = 'HOST_CC_TYPE' if self.KIND == 'host' else 'CC_TYPE'
+            compiler_type = self.config.substs.get(type_var)
+            if compiler_type in ('gcc', 'clang'):
                 lib = '-l%s' % lib
             else:
                 lib = '%s%s%s' % (
@@ -461,10 +468,6 @@ class Linkable(ContextDerived):
     def objs(self):
         return self._get_objs(self.source_files())
 
-    @property
-    def pgo_gen_only_objs(self):
-        return self._get_objs(self.pgo_gen_only_sources)
-
 
 class BaseProgram(Linkable):
     """Context derived container object for programs, which is a unicode
@@ -497,7 +500,8 @@ class BaseProgram(Linkable):
     @property
     def output_path(self):
         if self.installed:
-            return ObjDirPath(self._context, '!/' + mozpath.join(self.install_target, self.program))
+            return ObjDirPath(self._context, '!/' + mozpath.join(
+                self.install_target, self.program))
         else:
             return ObjDirPath(self._context, '!' + self.program)
 
@@ -600,12 +604,14 @@ class RustTests(ContextDerived):
     __slots__ = (
         'names',
         'features',
+        'output_category',
     )
 
     def __init__(self, context, names, features):
         ContextDerived.__init__(self, context)
         self.names = names
         self.features = features
+        self.output_category = 'rusttests'
 
 
 class BaseLibrary(Linkable):
@@ -658,29 +664,25 @@ class StaticLibrary(Library):
     )
 
     def __init__(self, context, basename, real_name=None,
-        link_into=None, no_expand_lib=False):
+                 link_into=None, no_expand_lib=False):
         Library.__init__(self, context, basename, real_name)
         self.link_into = link_into
         self.no_expand_lib = no_expand_lib
 
 
-class RustLibrary(StaticLibrary):
-    """Context derived container object for a static library"""
-    __slots__ = (
+class BaseRustLibrary(object):
+    slots = (
         'cargo_file',
         'crate_type',
         'dependencies',
         'deps_path',
         'features',
         'target_dir',
+        'output_category',
     )
-    TARGET_SUBST_VAR = 'RUST_TARGET'
-    FEATURES_VAR = 'RUST_LIBRARY_FEATURES'
-    LIB_FILE_VAR = 'RUST_LIBRARY_FILE'
 
-    def __init__(self, context, basename, cargo_file, crate_type, dependencies,
-                 features, target_dir, **args):
-        StaticLibrary.__init__(self, context, basename, **args)
+    def init(self, context, basename, cargo_file, crate_type, dependencies,
+             features, target_dir):
         self.cargo_file = cargo_file
         self.crate_type = crate_type
         # We need to adjust our naming here because cargo replaces '-' in
@@ -689,11 +691,12 @@ class RustLibrary(StaticLibrary):
         # many other things in the build system depend on that.
         assert self.crate_type == 'staticlib'
         self.lib_name = '%s%s%s' % (context.config.rust_lib_prefix,
-                                     basename.replace('-', '_'),
-                                     context.config.rust_lib_suffix)
+                                    basename.replace('-', '_'),
+                                    context.config.rust_lib_suffix)
         self.dependencies = dependencies
         self.features = features
         self.target_dir = target_dir
+        self.output_category = context.get('RUST_LIBRARY_OUTPUT_CATEGORY')
         # Skip setting properties below which depend on cargo
         # when we don't have a compile environment. The required
         # config keys won't be available, but the instance variables
@@ -707,12 +710,32 @@ class RustLibrary(StaticLibrary):
         self.deps_path = mozpath.join(build_dir, 'deps')
 
 
+class RustLibrary(StaticLibrary, BaseRustLibrary):
+    """Context derived container object for a rust static library"""
+    KIND = 'target'
+    TARGET_SUBST_VAR = 'RUST_TARGET'
+    FEATURES_VAR = 'RUST_LIBRARY_FEATURES'
+    LIB_FILE_VAR = 'RUST_LIBRARY_FILE'
+    __slots__ = BaseRustLibrary.slots
+
+    def __init__(self, context, basename, cargo_file, crate_type, dependencies,
+                 features, target_dir, link_into=None):
+        StaticLibrary.__init__(self, context, basename, link_into=link_into,
+                               # A rust library is a real static library ; make
+                               # it known to the build system.
+                               no_expand_lib=True)
+        BaseRustLibrary.init(self, context, basename, cargo_file,
+                             crate_type, dependencies, features, target_dir)
+
+
 class SharedLibrary(Library):
     """Context derived container object for a shared library"""
     __slots__ = (
         'soname',
         'variant',
         'symbols_file',
+        'output_category',
+        'symbols_link_arg',
     )
 
     DICT_ATTRS = {
@@ -733,6 +756,7 @@ class SharedLibrary(Library):
         Library.__init__(self, context, basename, real_name)
         self.variant = variant
         self.lib_name = real_name or basename
+        self.output_category = context.get('SHARED_LIBRARY_OUTPUT_CATEGORY')
         assert self.lib_name
 
         if variant == self.FRAMEWORK:
@@ -770,6 +794,18 @@ class SharedLibrary(Library):
             # Explicitly provided name.
             self.symbols_file = symbols_file
 
+        if self.symbols_file:
+            os_target = context.config.substs['OS_TARGET']
+            if os_target == 'Darwin':
+                self.symbols_link_arg = '-Wl,-exported_symbols_list,' + self.symbols_file
+            elif os_target == 'WINNT':
+                if context.config.substs.get('GNU_CC'):
+                    self.symbols_link_arg = self.symbols_file
+                else:
+                    self.symbols_link_arg = '-DEF:' + self.symbols_file
+            elif context.config.substs.get('GCC_USE_GNU_LD'):
+                self.symbols_link_arg = '-Wl,--version-script,' + self.symbols_file
+
 
 class HostSharedLibrary(HostMixin, Library):
     """Context derived container object for a host shared library.
@@ -805,14 +841,23 @@ class ExternalSharedLibrary(SharedLibrary, ExternalLibrary):
 class HostLibrary(HostMixin, BaseLibrary):
     """Context derived container object for a host library"""
     KIND = 'host'
+    no_expand_lib = False
 
 
-class HostRustLibrary(HostMixin, RustLibrary):
+class HostRustLibrary(HostLibrary, BaseRustLibrary):
     """Context derived container object for a host rust library"""
     KIND = 'host'
     TARGET_SUBST_VAR = 'RUST_HOST_TARGET'
     FEATURES_VAR = 'HOST_RUST_LIBRARY_FEATURES'
     LIB_FILE_VAR = 'HOST_RUST_LIBRARY_FILE'
+    __slots__ = BaseRustLibrary.slots
+    no_expand_lib = True
+
+    def __init__(self, context, basename, cargo_file, crate_type, dependencies,
+                 features, target_dir):
+        HostLibrary.__init__(self, context, basename)
+        BaseRustLibrary.init(self, context, basename, cargo_file,
+                             crate_type, dependencies, features, target_dir)
 
 
 class TestManifest(ContextDerived):
@@ -870,8 +915,8 @@ class TestManifest(ContextDerived):
     )
 
     def __init__(self, context, path, manifest, flavor=None,
-            install_prefix=None, relpath=None, sources=(),
-            dupe_manifest=False):
+                 install_prefix=None, relpath=None, sources=(),
+                 dupe_manifest=False):
         ContextDerived.__init__(self, context)
 
         assert flavor in all_test_flavors()
@@ -1014,11 +1059,13 @@ class UnifiedSources(BaseSources):
             unified_prefix = unified_prefix.replace('/', '_')
 
             suffix = self.canonical_suffix[1:]
-            unified_prefix='Unified_%s_%s' % (suffix, unified_prefix)
-            self.unified_source_mapping = list(group_unified_files(source_files,
-                                                                   unified_prefix=unified_prefix,
-                                                                   unified_suffix=suffix,
-                                                                   files_per_unified_file=files_per_unified_file))
+            unified_prefix = 'Unified_%s_%s' % (suffix, unified_prefix)
+            self.unified_source_mapping = list(
+                group_unified_files(source_files,
+                                    unified_prefix=unified_prefix,
+                                    unified_suffix=suffix,
+                                    files_per_unified_file=files_per_unified_file)
+                )
 
 
 class InstallationTarget(ContextDerived):
@@ -1077,6 +1124,7 @@ class FinalTargetPreprocessedFiles(ContextDerived):
     def __init__(self, sandbox, files):
         ContextDerived.__init__(self, sandbox)
         self.files = files
+
 
 class LocalizedFiles(FinalTargetFiles):
     """Sandbox container object for LOCALIZED_FILES, which is a
@@ -1141,7 +1189,8 @@ class GeneratedFile(ContextDerived):
         'outputs',
         'inputs',
         'flags',
-        'required_for_compile',
+        'required_before_compile',
+        'required_during_compile',
         'localized',
         'force',
     )
@@ -1157,16 +1206,32 @@ class GeneratedFile(ContextDerived):
         self.localized = localized
         self.force = force
 
-        suffixes = (
-            '.c',
-            '.cpp',
+        suffixes = [
             '.h',
             '.inc',
             '.py',
             '.rs',
-            'new', # 'new' is an output from make-stl-wrappers.py
-        )
-        self.required_for_compile = any(f.endswith(suffixes) for f in self.outputs)
+            # We need to compile Java to generate JNI wrappers for native code
+            # compilation to consume.
+            'android_apks',
+            '.profdata',
+            '.webidl'
+        ]
+
+        try:
+            lib_suffix = context.config.substs['LIB_SUFFIX']
+            suffixes.append('.' + lib_suffix)
+        except KeyError:
+            # Tests may not define LIB_SUFFIX
+            pass
+
+        suffixes = tuple(suffixes)
+
+        self.required_before_compile = [
+            f for f in self.outputs if f.endswith(suffixes) or 'stl_wrappers/' in f]
+
+        self.required_during_compile = [
+            f for f in self.outputs if f.endswith(('.asm', '.c', '.cpp'))]
 
 
 class ChromeManifestEntry(ContextDerived):
@@ -1196,3 +1261,4 @@ class GnProjectData(ContextDerived):
         self.gn_input_variables = gn_dir_attrs.variables
         self.gn_sandbox_variables = gn_dir_attrs.sandbox_vars
         self.mozilla_flags = gn_dir_attrs.mozilla_flags
+        self.gn_target = gn_dir_attrs.gn_target

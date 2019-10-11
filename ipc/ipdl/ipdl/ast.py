@@ -177,7 +177,8 @@ class Include(Node):
 
 
 class UsingStmt(Node):
-    def __init__(self, loc, cxxTypeSpec, cxxHeader=None, kind=None, refcounted=False):
+    def __init__(self, loc, cxxTypeSpec, cxxHeader=None, kind=None,
+                 refcounted=False, moveonly=False):
         Node.__init__(self, loc)
         assert not isinstance(cxxTypeSpec, str)
         assert cxxHeader is None or isinstance(cxxHeader, str)
@@ -186,6 +187,7 @@ class UsingStmt(Node):
         self.header = cxxHeader
         self.kind = kind
         self.refcounted = refcounted
+        self.moveonly = moveonly
 
     def canBeForwardDeclared(self):
         return self.isClass() or self.isStruct()
@@ -198,6 +200,9 @@ class UsingStmt(Node):
 
     def isRefcounted(self):
         return self.refcounted
+
+    def isMoveonly(self):
+        return self.moveonly
 
 # "singletons"
 
@@ -261,6 +266,11 @@ class StructDecl(NamespacedNode):
     def __init__(self, loc, name, fields):
         NamespacedNode.__init__(self, loc, name)
         self.fields = fields
+        # A list of indices into `fields` for determining the order in
+        # which fields are laid out in memory.  We don't just reorder
+        # `fields` itself so as to keep the ordering reasonably stable
+        # for e.g. C++ constructors when new fields are added.
+        self.packed_field_ordering = []
 
 
 class UnionDecl(NamespacedNode):
@@ -321,8 +331,10 @@ class TypeSpec(Node):
     def __init__(self, loc, spec):
         Node.__init__(self, loc)
         self.spec = spec                # QualifiedId
-        self.array = 0                  # bool
-        self.nullable = 0               # bool
+        self.array = False              # bool
+        self.maybe = False              # bool
+        self.nullable = False           # bool
+        self.uniqueptr = False          # bool
 
     def basename(self):
         return self.spec.baseid

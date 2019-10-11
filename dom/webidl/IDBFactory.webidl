@@ -23,7 +23,7 @@ dictionary IDBOpenDBOptions
  * http://dvcs.w3.org/hg/IndexedDB/raw-file/tip/Overview.html#idl-def-IDBFactory
  * for more information.
  */
-[Exposed=(Window,Worker,System)]
+[Exposed=(Window,Worker)]
 interface IDBFactory {
   [Throws, NeedsCallerType]
   IDBOpenDBRequest
@@ -33,12 +33,12 @@ interface IDBFactory {
   [Throws, NeedsCallerType]
   IDBOpenDBRequest
   open(DOMString name,
-       optional IDBOpenDBOptions options);
+       optional IDBOpenDBOptions options = {});
 
   [Throws, NeedsCallerType]
   IDBOpenDBRequest
   deleteDatabase(DOMString name,
-                 optional IDBOpenDBOptions options);
+                 optional IDBOpenDBOptions options = {});
 
   [Throws]
   short
@@ -55,11 +55,11 @@ interface IDBFactory {
   IDBOpenDBRequest
   openForPrincipal(Principal principal,
                    DOMString name,
-                   optional IDBOpenDBOptions options);
+                   optional IDBOpenDBOptions options = {});
 
   [Throws, ChromeOnly, NeedsCallerType]
   IDBOpenDBRequest
   deleteForPrincipal(Principal principal,
                      DOMString name,
-                     optional IDBOpenDBOptions options);
+                     optional IDBOpenDBOptions options = {});
 };

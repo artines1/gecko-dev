@@ -3,7 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/EndianUtils.h"
 #include "gfx2DGlue.h"
+#include "mozilla/gfx/Swizzle.h"
 
 #include "YCbCrUtils.h"
 #include "yuv_convert.h"
@@ -106,10 +108,10 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
   UniquePtr<uint8_t[]> cbChannel;
   UniquePtr<uint8_t[]> crChannel;
   layers::PlanarYCbCrData dstData;
-  const layers::PlanarYCbCrData& srcData = aData.mBitDepth == 8 ? aData : dstData;
+  const layers::PlanarYCbCrData& srcData =
+    aData.mColorDepth == ColorDepth::COLOR_8 ? aData : dstData;
 
-  if (aData.mBitDepth != 8) {
-    MOZ_ASSERT(aData.mBitDepth > 8 && aData.mBitDepth <= 16);
+  if (aData.mColorDepth != ColorDepth::COLOR_8) {
     // Convert to 8 bits data first.
     dstData.mPicSize = aData.mPicSize;
     dstData.mPicX = aData.mPicX;
@@ -121,7 +123,7 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
     dstData.mCbCrSize = aData.mCbCrSize;
     dstData.mCbCrStride = (aData.mCbCrSize.width + 31) & ~31;
     dstData.mYUVColorSpace = aData.mYUVColorSpace;
-    dstData.mBitDepth = 8;
+    dstData.mColorDepth = ColorDepth::COLOR_8;
 
     size_t ySize = GetAlignedStride<1>(dstData.mYStride, aData.mYSize.height);
     size_t cbcrSize =
@@ -137,13 +139,15 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
     dstData.mCbChannel = cbChannel.get();
     dstData.mCrChannel = crChannel.get();
 
+    int bitDepth = BitDepthForColorDepth(aData.mColorDepth);
+
     ConvertYCbCr16to8Line(dstData.mYChannel,
                           dstData.mYStride,
                           reinterpret_cast<uint16_t*>(aData.mYChannel),
                           aData.mYStride / 2,
                           aData.mYSize.width,
                           aData.mYSize.height,
-                          aData.mBitDepth);
+                          bitDepth);
 
     ConvertYCbCr16to8Line(dstData.mCbChannel,
                           dstData.mCbCrStride,
@@ -151,7 +155,7 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                           aData.mCbCrStride / 2,
                           aData.mCbCrSize.width,
                           aData.mCbCrSize.height,
-                          aData.mBitDepth);
+                          bitDepth);
 
     ConvertYCbCr16to8Line(dstData.mCrChannel,
                           dstData.mCbCrStride,
@@ -159,7 +163,7 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                           aData.mCbCrStride / 2,
                           aData.mCbCrSize.width,
                           aData.mCbCrSize.height,
-                          aData.mBitDepth);
+                          bitDepth);
   }
 
   YUVType yuvtype =
@@ -234,6 +238,13 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                           yuvtype,
                           srcData.mYUVColorSpace);
   }
+#if MOZ_BIG_ENDIAN
+  // libyuv makes endian-correct result, which needs to be swapped to BGRX
+  if (aDestFormat != SurfaceFormat::R5G6B5_UINT16)
+    gfx::SwizzleData(aDestBuffer, aStride, gfx::SurfaceFormat::X8R8G8B8,
+                     aDestBuffer, aStride, gfx::SurfaceFormat::B8G8R8X8,
+                     srcData.mPicSize);
+#endif
 }
 
 void
@@ -255,6 +266,12 @@ ConvertYCbCrAToARGB(const uint8_t* aSrcY,
                         aSrcStrideYA,
                         aSrcStrideUV,
                         aDstStrideARGB);
+#if MOZ_BIG_ENDIAN
+  // libyuv makes endian-correct result, which needs to be swapped to BGRA
+  gfx::SwizzleData(aDstARGB, aDstStrideARGB, gfx::SurfaceFormat::A8R8G8B8,
+                   aDstARGB, aDstStrideARGB, gfx::SurfaceFormat::B8G8R8A8,
+                   IntSize(aWidth, aHeight));
+#endif
 }
 
 } // namespace gfx

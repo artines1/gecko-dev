@@ -5,15 +5,30 @@
 "use strict";
 
 const Services = require("Services");
-const { closeToolboxAndLog, garbageCollect, runTest, testSetup,
-        testTeardown, PAGES_BASE_URL } = require("../head");
-const { createContext, openDebuggerAndLog, pauseDebugger, reloadDebuggerAndLog,
-        removeBreakpoints, resume, step } = require("./debugger-helpers");
+const {
+  closeToolboxAndLog,
+  garbageCollect,
+  runTest,
+  testSetup,
+  testTeardown,
+  PAGES_BASE_URL,
+} = require("../head");
+const {
+  createContext,
+  openDebuggerAndLog,
+  pauseDebugger,
+  reloadDebuggerAndLog,
+  removeBreakpoints,
+  resume,
+  step,
+  hoverOnToken,
+} = require("./debugger-helpers");
 
 const EXPECTED = {
-  sources: 7,
+  sources: 107,
   file: "App.js",
-  text: "import React, { Component } from 'react';"
+  sourceURL: `${PAGES_BASE_URL}custom/debugger/static/js/App.js`,
+  text: "import React, { Component } from 'react';",
 };
 
 const EXPECTED_FUNCTION = "window.hitBreakpoint()";
@@ -28,6 +43,9 @@ module.exports = async function() {
   // these tests are only run on custom.jsdebugger
   await pauseDebuggerAndLog(tab, toolbox, EXPECTED_FUNCTION);
   await stepDebuggerAndLog(tab, toolbox, EXPECTED_FUNCTION);
+
+  await testProjectSearch(tab, toolbox);
+  await testPreview(tab, toolbox, EXPECTED_FUNCTION);
 
   await closeToolboxAndLog("custom.jsdebugger", toolbox);
 
@@ -68,16 +86,16 @@ async function stepDebuggerAndLog(tab, toolbox, testFunction) {
   const stepTests = [
     {
       location: { line: 10194, file: "step-in-test.js" },
-      key: "stepIn"
+      key: "stepIn",
     },
     {
       location: { line: 16, file: "step-over-test.js" },
-      key: "stepOver"
+      key: "stepOver",
     },
     {
       location: { line: 998, file: "step-out-test.js" },
-      key: "stepOut"
-    }
+      key: "stepOut",
+    },
   ];
 
   for (const stepTest of stepTests) {
@@ -91,4 +109,35 @@ async function stepDebuggerAndLog(tab, toolbox, testFunction) {
     await resume(dbg);
     await garbageCollect();
   }
+}
+
+async function testProjectSearch(tab, toolbox) {
+  const panel = await toolbox.getPanelWhenReady("jsdebugger");
+  const dbg = await createContext(panel);
+  const cx = dbg.selectors.getContext(dbg.getState());
+
+  dump("Executing project search\n");
+  const test = runTest(`custom.jsdebugger.project-search.DAMP`);
+  await dbg.actions.setActiveSearch("project");
+  await dbg.actions.searchSources(cx, "return");
+  await dbg.actions.closeActiveSearch();
+  test.done();
+  await garbageCollect();
+}
+
+async function testPreview(tab, toolbox, testFunction) {
+  const panel = await toolbox.getPanelWhenReady("jsdebugger");
+  const dbg = await createContext(panel);
+  const cx = dbg.selectors.getContext(dbg.getState());
+  const pauseLocation = { line: 22, file: "App.js" };
+
+  let test = runTest("custom.jsdebugger.preview.DAMP");
+  await pauseDebugger(dbg, tab, testFunction, pauseLocation);
+  await hoverOnToken(dbg, cx, "window.hitBreakpoint", "window");
+  dbg.actions.clearPreview(cx);
+  test.done();
+
+  await removeBreakpoints(dbg);
+  await resume(dbg);
+  await garbageCollect();
 }

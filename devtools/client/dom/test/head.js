@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
@@ -8,7 +7,9 @@
 
 // shared-head.js handles imports, constants, and utility functions
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
+  this
+);
 
 // DOM panel actions.
 const constants = require("devtools/client/dom/content/constants");
@@ -32,26 +33,29 @@ registerCleanupFunction(() => {
  * @return a promise that resolves to the tab object when
  *        the url is loaded
  */
-function addTestTab(url) {
+async function addTestTab(url) {
   info("Adding a new test tab with URL: '" + url + "'");
 
-  return new Promise(resolve => {
-    addTab(url).then(tab => {
-      // Load devtools/shared/test/frame-script-utils.js
-      loadFrameScriptUtils();
+  const tab = await addTab(url);
 
-      // Select the DOM panel and wait till it's initialized.
-      initDOMPanel(tab).then(panel => {
-        waitForDispatch(panel, "FETCH_PROPERTIES").then(() => {
-          resolve({
-            tab: tab,
-            browser: tab.linkedBrowser,
-            panel: panel
-          });
-        });
-      });
-    });
-  });
+  // Load devtools/shared/test/frame-script-utils.js
+  loadFrameScriptUtils();
+
+  // Select the DOM panel and wait till it's initialized.
+  const panel = await initDOMPanel(tab);
+
+  // FETCH_PROPERTIES should be fired during the call to initDOMPanel
+  // But note that this behavior changed during a change in webconsole
+  // initialization. So this might be racy.
+  const doc = panel.panelWin.document;
+  const nodes = [...doc.querySelectorAll(".treeLabel")];
+  ok(nodes.length > 0, "The DOM panel is already populated");
+
+  return {
+    tab,
+    browser: tab.linkedBrowser,
+    panel,
+  };
 }
 
 /**
@@ -62,14 +66,11 @@ function addTestTab(url) {
  *        The default tab is taken from the global variable |tab|.
  * @return a promise that is resolved once the web console is open.
  */
-function initDOMPanel(tab) {
-  return new Promise(resolve => {
-    const target = TargetFactory.forTab(tab || gBrowser.selectedTab);
-    gDevTools.showToolbox(target, "dom").then(toolbox => {
-      const panel = toolbox.getCurrentPanel();
-      resolve(panel);
-    });
-  });
+async function initDOMPanel(tab) {
+  const target = await TargetFactory.forTab(tab || gBrowser.selectedTab);
+  const toolbox = await gDevTools.showToolbox(target, "dom");
+  const panel = toolbox.getCurrentPanel();
+  return panel;
 }
 
 /**
@@ -91,6 +92,16 @@ function getRowByLabel(panel, text) {
   const doc = panel.panelWin.document;
   const labels = [...doc.querySelectorAll(".treeLabel")];
   const label = labels.find(node => node.textContent == text);
+  return label ? label.closest(".treeRow") : null;
+}
+
+/**
+ * Returns tree row with specified index.
+ */
+function getRowByIndex(panel, id) {
+  const doc = panel.panelWin.document;
+  const labels = [...doc.querySelectorAll(".treeLabel")];
+  const label = labels.find((node, i) => i == id);
   return label ? label.closest(".treeRow") : null;
 }
 
@@ -129,7 +140,9 @@ function getAllRowsForLabel(panel, text) {
     if (level > rootObjectLevel) {
       result.push({
         name: normalizeTreeValue(node.textContent),
-        value: normalizeTreeValue(node.parentNode.nextElementSibling.textContent)
+        value: normalizeTreeValue(
+          node.parentNode.nextElementSibling.textContent
+        ),
       });
     } else {
       break;
@@ -176,11 +189,7 @@ function expandRow(panel, labelText) {
 }
 
 function evaluateJSAsync(panel, expression) {
-  return new Promise(resolve => {
-    panel.target.activeConsole.evaluateJSAsync(expression, res => {
-      resolve(res);
-    });
-  });
+  return panel.target.activeConsole.evaluateJSAsync(expression);
 }
 
 function refreshPanel(panel) {
@@ -207,15 +216,15 @@ function _afterDispatchDone(store, type) {
       type: "@@service/waitUntil",
       predicate: action => {
         if (action.type === type) {
-          return action.status ?
-            (action.status === "end" || action.status === "error") :
-            true;
+          return action.status
+            ? action.status === "end" || action.status === "error"
+            : true;
         }
         return false;
       },
       run: (dispatch, getState, action) => {
         resolve(action);
-      }
+      },
     });
   });
 }

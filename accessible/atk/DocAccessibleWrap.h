@@ -14,18 +14,20 @@
 #include "DocAccessible.h"
 
 namespace mozilla {
+
+class PresShell;
+
 namespace a11y {
 
-class DocAccessibleWrap : public DocAccessible
-{
-public:
-  DocAccessibleWrap(nsIDocument* aDocument, nsIPresShell* aPresShell);
+class DocAccessibleWrap : public DocAccessible {
+ public:
+  DocAccessibleWrap(dom::Document* aDocument, PresShell* aPresShell);
   virtual ~DocAccessibleWrap();
 
   bool mActivated;
 };
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif

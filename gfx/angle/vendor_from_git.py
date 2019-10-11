@@ -21,17 +21,21 @@ def print_now(*args):
 
 
 def run_checked(*args, **kwargs):
-    print_now(' ', args)
+    print(' ', args)
+    sys.stdout.flush()
     return subprocess.run(args, check=True, **kwargs)
 
 # --
 
-def record_cherry_picks(dir_in_gecko, merge_base_from):
+def record_cherry_picks(dir_in_gecko, merge_base_origin):
+    # merge_base_origin is not always 'origin'!
+    merge_base_from = Path(dir_in_gecko, 'MERGE_BASE').read_text().split('\n')[0]
+    merge_base_from = merge_base_origin + '/' + merge_base_from
+
     assert '/' in merge_base_from, 'Please specify a reference tip from a remote.'
     log_path = Path(dir_in_gecko, 'cherry_picks.txt')
     print_now('Logging cherry picks to {}.'.format(log_path))
 
-    print('cwd:', Path.cwd())
     merge_base = run_checked('git', 'merge-base', 'HEAD', merge_base_from,
                              stdout=subprocess.PIPE).stdout.decode().strip()
 

@@ -23,11 +23,12 @@
 #include "nsCOMPtr.h"
 #include "mozilla/ErrorResult.h"
 #include "nsWrapperCache.h"
+#include "nsThreadUtils.h"
+#include "mozilla/LinkedList.h"
 
 class nsSHistory;
 class nsDocShell;
 class nsISHistory;
-class nsISHistoryInternal;
 class nsIWebNavigation;
 class nsIGlobalObject;
 
@@ -36,17 +37,15 @@ namespace dom {
 
 class ParentSHistory;
 
-class ChildSHistory
-  : public nsISupports
-  , public nsWrapperCache
-{
-public:
+class ChildSHistory : public nsISupports, public nsWrapperCache {
+ public:
   friend class ParentSHistory;
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(ChildSHistory)
   nsISupports* GetParentObject() const;
-  JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapObject(JSContext* cx,
+                       JS::Handle<JSObject*> aGivenProto) override;
 
   explicit ChildSHistory(nsDocShell* aDocShell);
 
@@ -65,6 +64,9 @@ public:
    */
   bool CanGo(int32_t aOffset);
   void Go(int32_t aOffset, ErrorResult& aRv);
+  void AsyncGo(int32_t aOffset);
+
+  void RemovePendingHistoryNavigations();
 
   /**
    * Evicts all content viewers within the current process.
@@ -72,19 +74,40 @@ public:
   void EvictLocalContentViewers();
 
   nsISHistory* LegacySHistory();
-  nsISHistoryInternal* LegacySHistoryInternal();
-  nsIWebNavigation* LegacySHistoryWebNav();
 
   ParentSHistory* GetParentIfSameProcess();
 
-private:
+ private:
   virtual ~ChildSHistory();
+
+  class PendingAsyncHistoryNavigation
+      : public Runnable,
+        public mozilla::LinkedListElement<PendingAsyncHistoryNavigation> {
+   public:
+    PendingAsyncHistoryNavigation(ChildSHistory* aHistory, int32_t aOffset)
+        : Runnable("PendingAsyncHistoryNavigation"),
+          mHistory(aHistory),
+          mOffset(aOffset) {}
+
+    NS_IMETHOD Run() override {
+      if (isInList()) {
+        remove();
+        mHistory->Go(mOffset, IgnoreErrors());
+      }
+      return NS_OK;
+    }
+
+   private:
+    RefPtr<ChildSHistory> mHistory;
+    int32_t mOffset;
+  };
 
   RefPtr<nsDocShell> mDocShell;
   RefPtr<nsSHistory> mHistory;
+  mozilla::LinkedList<PendingAsyncHistoryNavigation> mPendingNavigations;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif /* mozilla_dom_ChildSHistory_h */

@@ -1,19 +1,17 @@
 {
-    "llvm_revision": "338614",
     "stages": "3",
     "build_libcxx": false,
     "build_type": "Release",
     "assertions": false,
-    "llvm_repo": "https://llvm.org/svn/llvm-project/llvm/trunk",
-    "clang_repo": "https://llvm.org/svn/llvm-project/cfe/trunk",
-    "lld_repo": "https://llvm.org/svn/llvm-project/lld/trunk",
-    "compiler_repo": "https://llvm.org/svn/llvm-project/compiler-rt/trunk",
-    "libcxx_repo": "https://llvm.org/svn/llvm-project/libcxx/trunk",
     "python_path": "c:/mozilla-build/python/python.exe",
     "cc": "cl.exe",
     "cxx": "cl.exe",
     "ml": "ml64.exe",
     "patches": [
+      "unpoison-thread-stacks.patch",
+      "downgrade-mangling-error.patch",
+      "r372020-r372182-profiler-linkage.patch",
+      "revert-r359260-due-to-bug41817.patch",
       "loosen-msvc-detection.patch"
     ]
 }

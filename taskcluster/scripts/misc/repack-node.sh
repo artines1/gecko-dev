@@ -4,7 +4,6 @@ set -x -e -v
 # This script is for repacking Node (and NPM) from nodejs.org.
 
 WORKSPACE=$HOME/workspace
-UPLOAD_DIR=$HOME/artifacts
 SUFFIX=tar.xz
 UNARCHIVE="tar xaf"
 REPACK_TAR_COMPRESSION_SWITCH=J
@@ -25,6 +24,15 @@ win64)
     ARCH=win-x64
     # From https://nodejs.org/dist/v8.11.3/SHASUMS256.txt.asc
     SHA256SUM=91b779def1b21dcd1def7fc9671a869a1e2f989952e76fdc08a5d73570075f31
+    SUFFIX=zip
+    UNARCHIVE=unzip
+    REPACK_TAR_COMPRESSION_SWITCH=j
+    REPACK_SUFFIX=tar.bz2
+    ;;
+win32)
+    ARCH=win-x86
+    # From https://nodejs.org/dist/v8.11.3/SHASUMS256.txt.asc
+    SHA256SUM=9482a0ad7aa5cd964cbeb11a605377b5c5aae4eae952c838aecf079de6088dc6
     SUFFIX=zip
     UNARCHIVE=unzip
     REPACK_TAR_COMPRESSION_SWITCH=j

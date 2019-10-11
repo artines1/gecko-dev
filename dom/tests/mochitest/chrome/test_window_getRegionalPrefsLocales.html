@@ -5,7 +5,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1337234
 -->
 <head>
   <title>Test for Bug 1337234</title>
-  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -18,7 +18,7 @@ const localeService =
   Cc["@mozilla.org/intl/localeservice;1"].getService(Ci.mozILocaleService);
 
 let rpLocales = localeService.negotiateLanguages(window.getRegionalPrefsLocales(),
-                                                 localeService.getAvailableLocales());
+                                                 localeService.availableLocales);
 
 ok(rpLocales.length > 0, "getRegionalPrefsLocales returns at least one locale.");
 is(rpLocales[0], "en-US", "The first regional prefs locale should resolve to en-US.");

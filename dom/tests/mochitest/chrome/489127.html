@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>nsIDOMWindowUtils::nodesFromRect test - bug 489127</title>
-  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 <script type="application/javascript">
 
@@ -13,20 +13,8 @@
 
   let dwu = window.windowUtils;
 
-  /*
-    NodeList nodesFromRect(in float aX,
-                           in float aY,
-                           in float aTopSize, 
-                           in float aRightSize,
-                           in float aBottomSize,
-                           in float aLeftSize,
-                           in boolean aIgnoreRootScrollFrame,
-                           in boolean aFlushLayout);
-
-  */
-
   function check(x, y, top, right, bottom, left, list) {
-    let nodes = dwu.nodesFromRect(x, y, top, right, bottom, left, true, false);
+    let nodes = dwu.nodesFromRect(x, y, top, right, bottom, left, true, false, false);
     
     list.push(e.body);
     list.push(e.html);
@@ -54,7 +42,7 @@
   function doTest() {
 
     // Set up shortcut access to elements
-    e['html'] = document.getElementsByTagName("html")[0];
+    e.html = document.getElementsByTagName("html")[0];
     ['h1', 'd1', 'd2', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'span',
      'a1', 'a2', 'a3', 'transf', 'iframe1', 'body'].forEach(function(a) {
       e[a] = document.getElementById(a);

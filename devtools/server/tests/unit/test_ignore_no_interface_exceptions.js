@@ -8,39 +8,26 @@
  * exceptions, but not normal ones.
  */
 
-var gDebuggee;
-var gClient;
+add_task(
+  threadFrontTest(
+    async ({ threadFront, debuggee }) => {
+      await threadFront.pauseOnExceptions(true, false);
+      const paused = await executeOnNextTickAndWaitForPause(
+        () => evaluateTestCode(debuggee),
+        threadFront
+      );
+      equal(paused.frame.where.line, 6, "paused at throw");
 
-function run_test() {
-  do_test_pending();
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-}
+      await resume(threadFront);
+    },
+    {
+      // Bug 1508289, exception tests fails in worker scope
+      doNotRunWorker: true,
+    }
+  )
+);
 
-function run_test_with_server(server, callback) {
-  initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-pausing", server);
-  gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect(test_pause_frame);
-}
-
-async function test_pause_frame() {
-  const [,, threadClient] = await attachTestTabAndResume(gClient, "test-pausing");
-
-  await threadClient.pauseOnExceptions(true, false);
-  await executeOnNextTickAndWaitForPause(evaluateTestCode, gClient);
-
-  await resume(threadClient);
-  const paused = await waitForPause(gClient);
-  Assert.equal(paused.why.type, "exception");
-  equal(paused.frame.where.line, 12, "paused at throw");
-
-  await resume(threadClient);
-  finishClient(gClient);
-}
-
-function evaluateTestCode() {
+function evaluateTestCode(debuggee) {
   /* eslint-disable */
   Cu.evalInSandbox(`                    // 1
     function QueryInterface() {         // 2
@@ -55,7 +42,7 @@ function evaluateTestCode() {
     try {                               // 11
       stopMe();                         // 12
     } catch (e) {}`,                    // 13
-    gDebuggee,
+    debuggee,
     "1.8",
     "test_ignore_no_interface_exceptions.js",
     1

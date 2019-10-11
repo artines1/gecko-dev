@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -24,7 +23,7 @@ const TEST_URI = `
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view} = await openRuleView();
+  const { inspector, view } = await openRuleView();
 
   // Mock the highlighter front to get the reference of the NodeFront
   const HighlighterFront = {
@@ -40,7 +39,7 @@ add_task(async function() {
       this.nodeFront = null;
       this.options = null;
       this.isShown = false;
-    }
+    },
   };
 
   // Inject the mock highlighter in the rule-view
@@ -63,16 +62,28 @@ add_task(async function() {
   icon = await getRuleViewSelectorHighlighterIcon(view, "p");
 
   await clickSelectorIcon(icon, view);
-  is(HighlighterFront.nodeFront.tagName, "P",
-    "The right NodeFront is passed to the highlighter (1)");
-  is(HighlighterFront.options.selector, "p",
-    "The right selector option is passed to the highlighter (1)");
+  is(
+    HighlighterFront.nodeFront.tagName,
+    "P",
+    "The right NodeFront is passed to the highlighter (1)"
+  );
+  is(
+    HighlighterFront.options.selector,
+    "p",
+    "The right selector option is passed to the highlighter (1)"
+  );
 
   await selectNode("body", inspector);
   icon = await getRuleViewSelectorHighlighterIcon(view, "body");
   await clickSelectorIcon(icon, view);
-  is(HighlighterFront.nodeFront.tagName, "BODY",
-    "The right NodeFront is passed to the highlighter (2)");
-  is(HighlighterFront.options.selector, "body",
-    "The right selector option is passed to the highlighter (2)");
+  is(
+    HighlighterFront.nodeFront.tagName,
+    "BODY",
+    "The right NodeFront is passed to the highlighter (2)"
+  );
+  is(
+    HighlighterFront.options.selector,
+    "body",
+    "The right selector option is passed to the highlighter (2)"
+  );
 });

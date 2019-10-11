@@ -10,7 +10,9 @@
 # go through that custom allocator.
 #
 # Therefore, the presence of any calls to "vanilla" allocation/free functions
-# (e.g. malloc(), free()) is a bug.
+# from within SpiderMonkey itself (e.g. malloc(), free()) is a bug.  Calls from
+# within mozglue and non-SpiderMonkey locations are fine; there is a list of
+# exceptions that can be added to as the need arises.
 #
 # This script checks for the presence of such disallowed vanilla
 # allocation/free function in SpiderMonkey when it's built as a library.  It
@@ -36,6 +38,7 @@
 # mismatched alloc/free checking.
 # ----------------------------------------------------------------------------
 
+from __future__ import absolute_import
 from __future__ import print_function
 
 import argparse
@@ -148,6 +151,18 @@ def main():
         # Ignore the profiling pseudo-stack, since it needs to run even when
         # SpiderMonkey's allocator isn't initialized.
         if "ProfilingStack" in filename:
+            continue
+
+        # Ignore implicit call to operator new in std::condition_variable_any.
+        #
+        # From intl/icu/source/common/umutex.h:
+        # On Linux, the default constructor of std::condition_variable_any
+        # produces an in-line reference to global operator new(), [...].
+        if filename == 'umutex.o':
+            continue
+
+        # Ignore allocations from decimal conversion functions inside mozglue.
+        if filename == 'Decimal.o':
             continue
 
         fn = m.group(2)

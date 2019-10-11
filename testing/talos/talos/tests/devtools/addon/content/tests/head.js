@@ -18,7 +18,8 @@ const PAGES_BASE_URL = webserver + "/tests/devtools/addon/content/pages/";
 
 exports.PAGES_BASE_URL = PAGES_BASE_URL;
 exports.SIMPLE_URL = PAGES_BASE_URL + "simple.html";
-exports.COMPLICATED_URL = webserver + "/tests/tp5n/bild.de/www.bild.de/index.html";
+exports.COMPLICATED_URL =
+  webserver + "/tests/tp5n/bild.de/www.bild.de/index.html";
 
 let damp = null;
 /*
@@ -60,9 +61,9 @@ function getActiveTab() {
 }
 exports.getActiveTab = getActiveTab;
 
-exports.getToolbox = function() {
+exports.getToolbox = async function() {
   let tab = getActiveTab();
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   return gDevTools.getToolbox(target);
 };
 
@@ -80,12 +81,12 @@ async function waitForPendingPaints(toolbox) {
 
 const openToolbox = async function(tool = "webconsole", onLoad) {
   let tab = getActiveTab();
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   let onToolboxCreated = gDevTools.once("toolbox-created");
   let showPromise = gDevTools.showToolbox(target, tool);
   let toolbox = await onToolboxCreated;
 
-  if (typeof(onLoad) == "function") {
+  if (typeof onLoad == "function") {
     let panel = await toolbox.getPanelWhenReady(tool);
     await onLoad(toolbox, panel);
   }
@@ -95,9 +96,9 @@ const openToolbox = async function(tool = "webconsole", onLoad) {
 };
 exports.openToolbox = openToolbox;
 
-exports.closeToolbox =  async function() {
+exports.closeToolbox = async function() {
   let tab = getActiveTab();
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   await target.client.waitForRequestsToSettle();
   await gDevTools.closeToolbox(target);
 };

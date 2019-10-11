@@ -12,38 +12,38 @@
 #include "nsAutoPtr.h"
 #include "nsSVGContainerFrame.h"
 
-class nsSVGGFrame : public nsSVGDisplayContainerFrame
-{
-  friend nsIFrame*
-  NS_NewSVGGFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
-  explicit nsSVGGFrame(ComputedStyle* aStyle)
-    : nsSVGGFrame(aStyle, kClassID) {}
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
 
-protected:
-  nsSVGGFrame(ComputedStyle* aStyle, nsIFrame::ClassID aID)
-    : nsSVGDisplayContainerFrame(aStyle, aID)
-  {}
+class nsSVGGFrame : public nsSVGDisplayContainerFrame {
+  friend nsIFrame* NS_NewSVGGFrame(mozilla::PresShell* aPresShell,
+                                   ComputedStyle* aStyle);
+  explicit nsSVGGFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
+      : nsSVGGFrame(aStyle, aPresContext, kClassID) {}
 
-public:
+ protected:
+  nsSVGGFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
+              nsIFrame::ClassID aID)
+      : nsSVGDisplayContainerFrame(aStyle, aPresContext, aID) {}
+
+ public:
   NS_DECL_FRAMEARENA_HELPERS(nsSVGGFrame)
 
 #ifdef DEBUG
-  virtual void Init(nsIContent*       aContent,
-                    nsContainerFrame* aParent,
-                    nsIFrame*         aPrevInFlow) override;
+  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
+                    nsIFrame* aPrevInFlow) override;
 #endif
 
 #ifdef DEBUG_FRAME_DUMP
-  virtual nsresult GetFrameName(nsAString& aResult) const override
-  {
+  virtual nsresult GetFrameName(nsAString& aResult) const override {
     return MakeFrameName(NS_LITERAL_STRING("SVGG"), aResult);
   }
 #endif
 
   // nsIFrame interface:
-  virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsAtom*        aAttribute,
-                                    int32_t         aModType) override;
+  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                                    int32_t aModType) override;
 };
 
 #endif

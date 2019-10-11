@@ -19,20 +19,20 @@
 class nsCookie;
 class nsICookiePermission;
 class nsIEffectiveTLDService;
-
-struct nsCookieAttributes;
+class nsILoadInfo;
 
 namespace mozilla {
 namespace net {
 class CookieStruct;
 
-class CookieServiceChild : public PCookieServiceChild
-                         , public nsICookieService
-                         , public nsIObserver
-                         , public nsITimerCallback
-                         , public nsSupportsWeakReference
-{
-public:
+class CookieServiceChild : public PCookieServiceChild,
+                           public nsICookieService,
+                           public nsIObserver,
+                           public nsITimerCallback,
+                           public nsSupportsWeakReference {
+  friend class PCookieServiceChild;
+
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSICOOKIESERVICE
   NS_DECL_NSIOBSERVER
@@ -45,103 +45,67 @@ public:
 
   static already_AddRefed<CookieServiceChild> GetSingleton();
 
-  void
-  TrackCookieLoad(nsIChannel *aChannel);
+  void TrackCookieLoad(nsIChannel* aChannel);
 
-protected:
+ protected:
   virtual ~CookieServiceChild();
   void MoveCookies();
 
-  void SerializeURIs(nsIURI *aHostURI,
-                     nsIChannel *aChannel,
-                     nsCString &aHostSpec,
-                     nsCString &aHostCharset,
-                     nsCString &aOriginatingSpec,
-                     nsCString &aOriginatingCharset);
+  void SerializeURIs(nsIURI* aHostURI, nsIChannel* aChannel,
+                     nsCString& aHostSpec, nsCString& aHostCharset,
+                     nsCString& aOriginatingSpec,
+                     nsCString& aOriginatingCharset);
 
-  nsresult GetCookieStringInternal(nsIURI *aHostURI,
-                                   nsIChannel *aChannel,
-                                   char **aCookieString);
+  nsresult GetCookieStringInternal(nsIURI* aHostURI, nsIChannel* aChannel,
+                                   nsACString& aCookieString);
 
-  void GetCookieStringFromCookieHashTable(nsIURI *aHostURI,
-                                          bool aIsForeign,
-                                          bool aIsTrackingResource,
-                                          bool aFirstPartyStorageAccessGranted,
-                                          bool aIsSafeTopLevelNav,
-                                          bool aIsSameSiteForeign,
-                                          const OriginAttributes &aAttrs,
-                                          nsCString &aCookieString);
+  void GetCookieStringFromCookieHashTable(
+      nsIURI* aHostURI, bool aIsForeign, bool aIsTrackingResource,
+      bool aFirstPartyStorageAccessGranted, uint32_t aRejectedReason,
+      bool aIsSafeTopLevelNav, bool aIsSameSiteForeign, nsIChannel* aChannel,
+      nsACString& aCookieString);
 
-  void
-  GetCookieStringSyncIPC(nsIURI                 *aHostURI,
-                         bool                    aIsForeign,
-                         bool                    aIsTrackingResource,
-                         bool                    aFirstPartyStorageAccessGranted,
-                         bool                    aIsSafeTopLevelNav,
-                         bool                    aIsSameSiteForeign,
-                         const OriginAttributes &aAttrs,
-                         nsAutoCString          &aCookieString);
-
-  nsresult SetCookieStringInternal(nsIURI *aHostURI,
-                                   nsIChannel *aChannel,
-                                   const char *aCookieString,
-                                   const char *aServerTime,
+  nsresult SetCookieStringInternal(nsIURI* aHostURI, nsIChannel* aChannel,
+                                   const nsACString& aCookieString,
+                                   const nsACString& aServerTime,
                                    bool aFromHttp);
 
-  void
-  RecordDocumentCookie(nsCookie *aCookie,
-                       const OriginAttributes &aAttrs);
+  void RecordDocumentCookie(nsCookie* aCookie, const OriginAttributes& aAttrs);
 
-  void
-  SetCookieInternal(nsCookieAttributes &aCookieAttributes,
-                    const mozilla::OriginAttributes &aAttrs,
-                    nsIChannel *aChannel,
-                    bool aFromHttp,
-                    nsICookiePermission *aPermissionService);
+  void SetCookieInternal(const CookieStruct& aCookieData,
+                         const mozilla::OriginAttributes& aAttrs,
+                         nsIChannel* aChannel, bool aFromHttp,
+                         nsICookiePermission* aPermissionService);
 
-  uint32_t
-  CountCookiesFromHashTable(const nsCString &aBaseDomain,
-                            const OriginAttributes &aOriginAttrs);
+  uint32_t CountCookiesFromHashTable(const nsCString& aBaseDomain,
+                                     const OriginAttributes& aOriginAttrs);
 
-  void PrefChanged(nsIPrefBranch *aPrefBranch);
+  void PrefChanged(nsIPrefBranch* aPrefBranch);
 
-  bool RequireThirdPartyCheck();
+  bool RequireThirdPartyCheck(nsILoadInfo* aLoadInfo);
 
-  virtual
-  mozilla::ipc::IPCResult RecvTrackCookiesLoad(nsTArray<CookieStruct>&& aCookiesList,
-                                               const OriginAttributes &aAttrs) override;
+  mozilla::ipc::IPCResult RecvTrackCookiesLoad(
+      nsTArray<CookieStruct>&& aCookiesList, const OriginAttributes& aAttrs);
 
-  virtual
-  mozilla::ipc::IPCResult RecvRemoveAll() override;
+  mozilla::ipc::IPCResult RecvRemoveAll();
 
-  virtual mozilla::ipc::IPCResult
-  RecvRemoveBatchDeletedCookies(nsTArray<CookieStruct>&& aCookiesList,
-                                nsTArray<OriginAttributes>&& aAttrsList) override;
+  mozilla::ipc::IPCResult RecvRemoveBatchDeletedCookies(
+      nsTArray<CookieStruct>&& aCookiesList,
+      nsTArray<OriginAttributes>&& aAttrsList);
 
-  virtual
-  mozilla::ipc::IPCResult RecvRemoveCookie(const CookieStruct &aCookie,
-                                           const OriginAttributes &aAttrs) override;
+  mozilla::ipc::IPCResult RecvRemoveCookie(const CookieStruct& aCookie,
+                                           const OriginAttributes& aAttrs);
 
-  virtual
-  mozilla::ipc::IPCResult RecvAddCookie(const CookieStruct &aCookie,
-                                        const OriginAttributes &aAttrs) override;
-
-  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
+  mozilla::ipc::IPCResult RecvAddCookie(const CookieStruct& aCookie,
+                                        const OriginAttributes& aAttrs);
 
   CookiesMap mCookiesMap;
   nsCOMPtr<nsITimer> mCookieTimer;
   nsCOMPtr<mozIThirdPartyUtil> mThirdPartyUtil;
   nsCOMPtr<nsIEffectiveTLDService> mTLDService;
-  uint8_t mCookieBehavior;
-  bool mThirdPartySession;
-  bool mThirdPartyNonsecureSession;
-  bool mLeaveSecureAlone;
-  bool mIPCSync;
-  bool mIPCOpen;
 };
 
-} // namespace net
-} // namespace mozilla
+}  // namespace net
+}  // namespace mozilla
 
-#endif // mozilla_net_CookieServiceChild_h__
-
+#endif  // mozilla_net_CookieServiceChild_h__

@@ -15,6 +15,7 @@
 #include "mozilla/ServoElementSnapshotTable.h"
 #include "nsChangeHint.h"
 #include "nsPresContext.h"
+#include "nsPresContextInlines.h"  // XXX Shouldn't be included by header though
 #include "nsStringFwd.h"
 
 class nsAttrValue;
@@ -39,54 +40,57 @@ class Element;
  * comfortable way than a bunch of individual arguments, and that also checks
  * that the change hint used for optimization is correctly used in debug mode.
  */
-class ServoRestyleState
-{
-public:
-  ServoRestyleState(ServoStyleSet& aStyleSet,
-                    nsStyleChangeList& aChangeList,
-                    nsTArray<nsIFrame*>& aPendingWrapperRestyles)
-    : mStyleSet(aStyleSet)
-    , mChangeList(aChangeList)
-    , mPendingWrapperRestyles(aPendingWrapperRestyles)
-    , mPendingWrapperRestyleOffset(aPendingWrapperRestyles.Length())
-    , mChangesHandled(nsChangeHint(0))
+class ServoRestyleState {
+ public:
+  ServoRestyleState(
+      ServoStyleSet& aStyleSet, nsStyleChangeList& aChangeList,
+      nsTArray<nsIFrame*>& aPendingWrapperRestyles,
+      nsTArray<RefPtr<dom::Element>>& aPendingScrollAnchorSuppressions)
+      : mStyleSet(aStyleSet),
+        mChangeList(aChangeList),
+        mPendingWrapperRestyles(aPendingWrapperRestyles),
+        mPendingScrollAnchorSuppressions(aPendingScrollAnchorSuppressions),
+        mPendingWrapperRestyleOffset(aPendingWrapperRestyles.Length()),
+        mChangesHandled(nsChangeHint(0))
 #ifdef DEBUG
-    // If !mOwner, then we wouldn't have processed our wrapper restyles, because
-    // we only process those when handling an element with a frame.  But that's
-    // OK, because if we started our traversal at an element with no frame
-    // (e.g. it's display:contents), that means the wrapper frames in our list
-    // actually inherit from one of its ancestors, not from it, and hence not
-    // restyling them is OK.
-    , mAssertWrapperRestyleLength(false)
-#endif // DEBUG
-  {}
+        // If !mOwner, then we wouldn't have processed our wrapper restyles,
+        // because we only process those when handling an element with a frame.
+        // But that's OK, because if we started our traversal at an element with
+        // no frame (e.g. it's display:contents), that means the wrapper frames
+        // in our list actually inherit from one of its ancestors, not from it,
+        // and hence not restyling them is OK.
+        ,
+        mAssertWrapperRestyleLength(false)
+#endif  // DEBUG
+  {
+  }
 
   // We shouldn't assume that changes handled from our parent are handled for
   // our children too if we're out of flow since they aren't necessarily
   // parented in DOM order, and thus a change handled by a DOM ancestor doesn't
   // necessarily mean that it's handled for an ancestor frame.
-  enum class Type
-  {
+  enum class Type {
     InFlow,
     OutOfFlow,
   };
 
-  ServoRestyleState(const nsIFrame& aOwner,
-                    ServoRestyleState& aParentState,
-                    nsChangeHint aHintForThisFrame,
-                    Type aType,
+  ServoRestyleState(const nsIFrame& aOwner, ServoRestyleState& aParentState,
+                    nsChangeHint aHintForThisFrame, Type aType,
                     bool aAssertWrapperRestyleLength = true)
-    : mStyleSet(aParentState.mStyleSet)
-    , mChangeList(aParentState.mChangeList)
-    , mPendingWrapperRestyles(aParentState.mPendingWrapperRestyles)
-    , mPendingWrapperRestyleOffset(aParentState.mPendingWrapperRestyles.Length())
-    , mChangesHandled(
-        aType == Type::InFlow
-          ? aParentState.mChangesHandled | aHintForThisFrame
-          : aHintForThisFrame)
+      : mStyleSet(aParentState.mStyleSet),
+        mChangeList(aParentState.mChangeList),
+        mPendingWrapperRestyles(aParentState.mPendingWrapperRestyles),
+        mPendingScrollAnchorSuppressions(
+            aParentState.mPendingScrollAnchorSuppressions),
+        mPendingWrapperRestyleOffset(
+            aParentState.mPendingWrapperRestyles.Length()),
+        mChangesHandled(aType == Type::InFlow
+                            ? aParentState.mChangesHandled | aHintForThisFrame
+                            : aHintForThisFrame)
 #ifdef DEBUG
-    , mOwner(&aOwner)
-    , mAssertWrapperRestyleLength(aAssertWrapperRestyleLength)
+        ,
+        mOwner(&aOwner),
+        mAssertWrapperRestyleLength(aAssertWrapperRestyleLength)
 #endif
   {
     if (aType == Type::InFlow) {
@@ -95,9 +99,10 @@ public:
   }
 
   ~ServoRestyleState() {
-    MOZ_ASSERT(!mAssertWrapperRestyleLength ||
-               mPendingWrapperRestyles.Length() == mPendingWrapperRestyleOffset,
-               "Someone forgot to call ProcessWrapperRestyles!");
+    MOZ_ASSERT(
+        !mAssertWrapperRestyleLength ||
+            mPendingWrapperRestyles.Length() == mPendingWrapperRestyleOffset,
+        "Someone forgot to call ProcessWrapperRestyles!");
   }
 
   nsStyleChangeList& ChangeList() { return mChangeList; }
@@ -105,11 +110,10 @@ public:
 
 #ifdef DEBUG
   void AssertOwner(const ServoRestyleState& aParentState) const;
-  nsChangeHint ChangesHandledFor(const nsIFrame&) const;
+  nsChangeHint ChangesHandledFor(const nsIFrame*) const;
 #else
   void AssertOwner(const ServoRestyleState&) const {}
-  nsChangeHint ChangesHandledFor(const nsIFrame&) const
-  {
+  nsChangeHint ChangesHandledFor(const nsIFrame*) const {
     return mChangesHandled;
   }
 #endif
@@ -127,7 +131,21 @@ public:
   // outer table and cellcontent frames.
   static nsIFrame* TableAwareParentFor(const nsIFrame* aChild);
 
-private:
+  // When the value of the position property changes such as we stop or start
+  // being absolutely or fixed positioned, we need to suppress scroll anchoring
+  // adjustments to avoid breaking websites.
+  //
+  // We do need to process all this once we're done with all our reframes,
+  // to handle correctly the cases where we reconstruct an ancestor, like when
+  // you reframe an ib-split (see bug 1559627 for example).
+  //
+  // This doesn't handle nested reframes. We'd need to rework quite some code to
+  // do that, and so far it doesn't seem to be a problem in practice.
+  void AddPendingScrollAnchorSuppression(dom::Element* aElement) {
+    mPendingScrollAnchorSuppressions.AppendElement(aElement);
+  }
+
+ private:
   // Process a wrapper restyle at the given index, and restyles for any
   // wrappers nested in it.  Returns the number of entries from
   // mPendingWrapperRestyles that we processed.  The return value is always at
@@ -156,6 +174,8 @@ private:
   // before descendants.
   nsTArray<nsIFrame*>& mPendingWrapperRestyles;
 
+  nsTArray<RefPtr<dom::Element>>& mPendingScrollAnchorSuppressions;
+
   // Since we're given a possibly-nonempty mPendingWrapperRestyles to start
   // with, we need to keep track of where the part of it we're responsible for
   // starts.
@@ -169,23 +189,22 @@ private:
   // frame (given DOM order isn't always frame order, and that there are a few
   // special cases for stuff like wrapper frames, ::backdrop, and so on).
 #ifdef DEBUG
-  const nsIFrame* mOwner { nullptr };
+  const nsIFrame* mOwner{nullptr};
 #endif
 
   // Whether we should assert in our destructor that we've processed all of the
   // relevant wrapper restyles.
 #ifdef DEBUG
   const bool mAssertWrapperRestyleLength;
-#endif // DEBUG
+#endif  // DEBUG
 };
 
 enum class ServoPostTraversalFlags : uint32_t;
 
-class RestyleManager
-{
+class RestyleManager {
   friend class ServoStyleSet;
 
-public:
+ public:
   typedef ServoElementSnapshotTable SnapshotTable;
   typedef mozilla::dom::Element Element;
 
@@ -202,14 +221,11 @@ public:
 
   void Disconnect() { mPresContext = nullptr; }
 
-  ~RestyleManager()
-  {
+  ~RestyleManager() {
     MOZ_ASSERT(!mAnimationsWithDestroyedFrame,
                "leaving dangling pointers from AnimationsWithDestroyedFrame");
     MOZ_ASSERT(!mReentrantChanges);
   }
-
-  static nsCString RestyleHintToString(nsRestyleHint aHint);
 
 #ifdef DEBUG
   static nsCString ChangeHintToString(nsChangeHint aHint);
@@ -220,9 +236,7 @@ public:
   void DebugVerifyStyleTree(nsIFrame* aFrame);
 #endif
 
-  void FlushOverflowChangedTracker() {
-    mOverflowChangedTracker.Flush();
-  }
+  void FlushOverflowChangedTracker() { mOverflowChangedTracker.Flush(); }
 
   // Should be called when a frame is going to be destroyed and
   // WillDestroyFrameTree hasn't been called yet.
@@ -248,7 +262,7 @@ public:
   // on elements that have no frame at the end of the restyling process.
   // It only lives during the restyling process.
   class MOZ_STACK_CLASS AnimationsWithDestroyedFrame final {
-  public:
+   public:
     // Construct a AnimationsWithDestroyedFrame object.  The caller must
     // ensure that aRestyleManager lives at least as long as the
     // object.  (This is generally easy since the caller is typically a
@@ -260,25 +274,29 @@ public:
     // content node for the real element.
     void Put(nsIContent* aContent, ComputedStyle* aComputedStyle) {
       MOZ_ASSERT(aContent);
-      CSSPseudoElementType pseudoType = aComputedStyle->GetPseudoType();
-      if (pseudoType == CSSPseudoElementType::NotPseudo) {
+      PseudoStyleType pseudoType = aComputedStyle->GetPseudoType();
+      if (pseudoType == PseudoStyleType::NotPseudo) {
         mContents.AppendElement(aContent);
-      } else if (pseudoType == CSSPseudoElementType::before) {
+      } else if (pseudoType == PseudoStyleType::before) {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
-                     nsGkAtoms::mozgeneratedcontentbefore);
+                   nsGkAtoms::mozgeneratedcontentbefore);
         mBeforeContents.AppendElement(aContent->GetParent());
-      } else if (pseudoType == CSSPseudoElementType::after) {
+      } else if (pseudoType == PseudoStyleType::after) {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
-                     nsGkAtoms::mozgeneratedcontentafter);
+                   nsGkAtoms::mozgeneratedcontentafter);
         mAfterContents.AppendElement(aContent->GetParent());
+      } else if (pseudoType == PseudoStyleType::marker) {
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
+                   nsGkAtoms::mozgeneratedcontentmarker);
+        mMarkerContents.AppendElement(aContent->GetParent());
       }
     }
 
     void StopAnimationsForElementsWithoutFrames();
 
-  private:
+   private:
     void StopAnimationsWithoutFrame(nsTArray<RefPtr<nsIContent>>& aArray,
-                                    CSSPseudoElementType aPseudoType);
+                                    PseudoStyleType aPseudoType);
 
     RestyleManager* mRestyleManager;
     AutoRestore<AnimationsWithDestroyedFrame*> mRestorePointer;
@@ -286,12 +304,13 @@ public:
     // Below three arrays might include elements that have already had their
     // animations or transitions stopped.
     //
-    // mBeforeContents and mAfterContents hold the real element rather than
-    // the content node for the generated content (which might change during
-    // a reframe)
+    // mBeforeContents, mAfterContents and mMarkerContents hold the real element
+    // rather than the content node for the generated content (which might
+    // change during a reframe)
     nsTArray<RefPtr<nsIContent>> mContents;
     nsTArray<RefPtr<nsIContent>> mBeforeContents;
     nsTArray<RefPtr<nsIContent>> mAfterContents;
+    nsTArray<RefPtr<nsIContent>> mMarkerContents;
   };
 
   /**
@@ -321,7 +340,8 @@ public:
   // affect :empty / :-moz-only-whitespace / :-moz-first-node / :-moz-last-node.
   void CharacterDataChanged(nsIContent*, const CharacterDataChangeInfo&);
 
-  void PostRestyleEvent(dom::Element*, nsRestyleHint, nsChangeHint aMinChangeHint);
+  void PostRestyleEvent(dom::Element*, RestyleHint,
+                        nsChangeHint aMinChangeHint);
 
   /**
    * Posts restyle hints for animations.
@@ -332,41 +352,28 @@ public:
    * restyling process and this restyle event will be processed in the second
    * traversal of the same restyling process.
    */
-  void PostRestyleEventForAnimations(dom::Element*,
-                                     CSSPseudoElementType,
-                                     nsRestyleHint);
+  void PostRestyleEventForAnimations(dom::Element*, PseudoStyleType,
+                                     RestyleHint);
 
-  void NextRestyleIsForCSSRuleChanges()
-  {
-    mRestyleForCSSRuleChanges = true;
-  }
+  void NextRestyleIsForCSSRuleChanges() { mRestyleForCSSRuleChanges = true; }
 
-  void RebuildAllStyleData(nsChangeHint aExtraHint, nsRestyleHint aRestyleHint);
-  void PostRebuildAllStyleDataEvent(nsChangeHint aExtraHint,
-                                    nsRestyleHint aRestyleHint);
+  void RebuildAllStyleData(nsChangeHint aExtraHint, RestyleHint);
+  void PostRebuildAllStyleDataEvent(nsChangeHint aExtraHint, RestyleHint);
 
   void ProcessPendingRestyles();
   void ProcessAllPendingAttributeAndStateInvalidations();
 
   void ContentStateChanged(nsIContent* aContent, EventStates aStateMask);
-  void AttributeWillChange(Element* aElement,
-                           int32_t aNameSpaceID,
-                           nsAtom* aAttribute,
-                           int32_t aModType,
-                           const nsAttrValue* aNewValue);
+  void AttributeWillChange(Element* aElement, int32_t aNameSpaceID,
+                           nsAtom* aAttribute, int32_t aModType);
   void ClassAttributeWillBeChangedBySMIL(dom::Element* aElement);
-  void AttributeChanged(dom::Element* aElement,
-                        int32_t aNameSpaceID,
-                        nsAtom* aAttribute,
-                        int32_t aModType,
+  void AttributeChanged(dom::Element* aElement, int32_t aNameSpaceID,
+                        nsAtom* aAttribute, int32_t aModType,
                         const nsAttrValue* aOldValue);
 
   // This is only used to reparent things when moving them in/out of the
   // ::first-line.
   void ReparentComputedStyleForFirstLine(nsIFrame*);
-
-  bool HasPendingRestyleAncestor(dom::Element* aElement) const;
-
 
   /**
    * Performs a Servo animation-only traversal to compute style for all nodes
@@ -387,7 +394,9 @@ public:
   // track whether off-main-thread animations are up-to-date.
   uint64_t GetAnimationGeneration() const { return mAnimationGeneration; }
 
-  static uint64_t GetAnimationGenerationForFrame(nsIFrame* aFrame);
+  // Typically only style frames have animations associated with them so this
+  // will likely return zero for anything that is not a style frame.
+  static uint64_t GetAnimationGenerationForFrame(nsIFrame* aStyleFrame);
 
   // Update the animation generation count to mark that animation state
   // has changed.
@@ -408,11 +417,9 @@ public:
   // a) Pausing animations via the Web Animations API
   // b) When the style before sending the animation to the compositor exactly
   // the same as the current style
-  static void AddLayerChangesForAnimation(nsIFrame* aFrame,
-                                          nsIContent* aContent,
-                                          nsChangeHint aHintForThisFrame,
-                                          nsStyleChangeList&
-                                            aChangeListToProcess);
+  static void AddLayerChangesForAnimation(
+      nsIFrame* aStyleFrame, nsIFrame* aPrimaryFrame, Element* aElement,
+      nsChangeHint aHintForThisFrame, nsStyleChangeList& aChangeListToProcess);
 
   /**
    * Whether to clear all the style data (including the element itself), or just
@@ -427,7 +434,8 @@ public:
    * Clears the ServoElementData and HasDirtyDescendants from all elements
    * in the subtree rooted at aElement.
    */
-  static void ClearServoDataFromSubtree(Element*, IncludeRoot = IncludeRoot::Yes);
+  static void ClearServoDataFromSubtree(Element*,
+                                        IncludeRoot = IncludeRoot::Yes);
 
   /**
    * Clears HasDirtyDescendants and RestyleData from all elements in the
@@ -437,7 +445,7 @@ public:
 
   explicit RestyleManager(nsPresContext* aPresContext);
 
-protected:
+ protected:
   /**
    * Reparent the descendants of aFrame.  This is used by ReparentComputedStyle
    * and shouldn't be called by anyone else.  aProviderChild, if non-null, is a
@@ -456,8 +464,7 @@ protected:
    * attribute changes that happens not to have any effect on the style of that
    * element or any descendant or sibling.
    */
-  bool ProcessPostTraversal(Element* aElement,
-                            ComputedStyle* aParentContext,
+  bool ProcessPostTraversal(Element* aElement, ComputedStyle* aParentContext,
                             ServoRestyleState& aRestyleState,
                             ServoPostTraversalFlags aFlags);
 
@@ -470,13 +477,8 @@ protected:
   ServoStyleSet* StyleSet() const { return PresContext()->StyleSet(); }
 
   void RestyleForEmptyChange(Element* aContainer);
-  void MaybeRestyleForEdgeChildChange(Element* aContainer, nsIContent* aChangedChild);
-
-  // TODO(emilio): there's no good reason this isn't part of ContentStateChanged
-  // now, or the change hint isn't returned instead of via an out-param, really.
-  void ContentStateChangedInternal(const Element&,
-                                   EventStates aStateMask,
-                                   nsChangeHint* aOutChangeHint);
+  void MaybeRestyleForEdgeChildChange(Element* aContainer,
+                                      nsIContent* aChangedChild);
 
   bool IsDisconnected() const { return !mPresContext; }
 
@@ -507,17 +509,18 @@ protected:
     return PresContext()->FrameConstructor();
   }
 
-private:
-  nsPresContext* mPresContext; // weak, can be null after Disconnect().
+ private:
+  nsPresContext* mPresContext;  // weak, can be null after Disconnect().
   uint64_t mRestyleGeneration;
   uint64_t mUndisplayedRestyleGeneration;
 
   // Used to keep track of frames that have been destroyed during
   // ProcessRestyledFrames, so we don't try to touch them again even if
   // they're referenced again later in the changelist.
-  mozilla::UniquePtr<nsTHashtable<nsPtrHashKey<const nsIFrame>>> mDestroyedFrames;
+  mozilla::UniquePtr<nsTHashtable<nsPtrHashKey<const nsIFrame>>>
+      mDestroyedFrames;
 
-protected:
+ protected:
   // True if we're in the middle of a nsRefreshDriver refresh
   bool mInStyleRefresh;
 
@@ -532,8 +535,7 @@ protected:
   const SnapshotTable& Snapshots() const { return mSnapshots; }
   void ClearSnapshots();
   ServoElementSnapshot& SnapshotFor(Element&);
-  void TakeSnapshotForAttributeChange(Element&,
-                                      int32_t aNameSpaceID,
+  void TakeSnapshotForAttributeChange(Element&, int32_t aNameSpaceID,
                                       nsAtom* aAttribute);
 
   void DoProcessPendingRestyles(ServoTraversalFlags aFlags);
@@ -574,9 +576,8 @@ protected:
   // A hashtable with the elements that have changed state or attributes, in
   // order to calculate restyle hints during the traversal.
   SnapshotTable mSnapshots;
-
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif

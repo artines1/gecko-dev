@@ -6,81 +6,41 @@
 
 var EXPORTED_SYMBOLS = ["LightweightThemes"];
 
-ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
+const { AddonManager } = ChromeUtils.import(
+  "resource://gre/modules/AddonManager.jsm"
+);
 
 var LightweightThemes = {
-  init(libDir) {
-    // convert -size 3000x200 canvas:#333 black_theme.png
-    let blackImage = libDir.clone();
-    blackImage.append("black_theme.png");
-    this._blackImageURL = Services.io.newFileURI(blackImage).spec;
-
-    // convert -size 3000x200 canvas:#eee white_theme.png
-    let whiteImage = libDir.clone();
-    whiteImage.append("white_theme.png");
-    this._whiteImageURL = Services.io.newFileURI(whiteImage).spec;
-  },
+  init(libDir) {},
 
   configurations: {
     noLWT: {
-      selectors: ["#navigator-toolbox"],
+      selectors: [],
       async applyConfig() {
-        LightweightThemeManager.currentTheme = null;
-      },
-    },
-
-    darkLWT: {
-      selectors: ["#navigator-toolbox"],
-      applyConfig() {
-        LightweightThemeManager.setLocalTheme({
-          id:          "black",
-          name:        "black",
-          headerURL:   LightweightThemes._blackImageURL,
-          textcolor:   "#eeeeee",
-          accentcolor: "#111111",
-        });
-
-        // Wait for LWT listener
-        return new Promise(resolve => {
-          setTimeout(() => {
-            resolve("darkLWT");
-          }, 500);
-        });
-      },
-    },
-
-    lightLWT: {
-      selectors: ["#navigator-toolbox"],
-      applyConfig() {
-        LightweightThemeManager.setLocalTheme({
-          id:          "white",
-          name:        "white",
-          headerURL:   LightweightThemes._whiteImageURL,
-          textcolor:   "#111111",
-          accentcolor: "#eeeeee",
-        });
-        // Wait for LWT listener
-        return new Promise(resolve => {
-          setTimeout(() => {
-            resolve("lightLWT");
-          }, 500);
-        });
+        let addon = await AddonManager.getAddonByID(
+          "default-theme@mozilla.org"
+        );
+        await addon.enable();
       },
     },
 
     compactLight: {
-      selectors: ["#navigator-toolbox"],
-      applyConfig() {
-        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-light@mozilla.org");
+      selectors: [],
+      async applyConfig() {
+        let addon = await AddonManager.getAddonByID(
+          "firefox-compact-light@mozilla.org"
+        );
+        await addon.enable();
       },
     },
 
     compactDark: {
-      selectors: ["#navigator-toolbox"],
-      applyConfig() {
-        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-dark@mozilla.org");
+      selectors: [],
+      async applyConfig() {
+        let addon = await AddonManager.getAddonByID(
+          "firefox-compact-dark@mozilla.org"
+        );
+        await addon.enable();
       },
     },
   },

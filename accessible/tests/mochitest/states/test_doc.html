@@ -5,8 +5,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -24,7 +23,7 @@
       testStates(document, STATE_READONLY, 0); // role=""
 
       document.body.setAttribute("role", "banner"); // no platform mapping
-      testStates(document, STATE_READONLY);
+      testStates(document, 0, 0, STATE_READONLY);
       document.body.setAttribute("role", "foo"); // bogus role
       testStates(document, STATE_READONLY);
       document.body.removeAttribute("role");

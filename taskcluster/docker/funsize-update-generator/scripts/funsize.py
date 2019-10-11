@@ -15,51 +15,45 @@ import logging
 import os
 import shutil
 import tempfile
-import time
 import requests
-import sh
+from distutils.util import strtobool
 
 import redo
 from scriptworker.utils import retry_async
 from mardor.reader import MarReader
 from mardor.signing import get_keysize
 
-from datadog import initialize, ThreadStats
-
 
 log = logging.getLogger(__name__)
 
-# Create this even when not sending metrics, so the context manager
-# statements work.
-ddstats = ThreadStats(namespace='releng.releases.partials')
 
-
-ALLOWED_URL_PREFIXES = [
+ROOT_URL = os.environ['TASKCLUSTER_ROOT_URL']
+QUEUE_PREFIX = ("https://queue.taskcluster.net/"
+                if ROOT_URL == 'https://taskcluster.net'
+                else ROOT_URL + '/api/queue/')
+ALLOWED_URL_PREFIXES = (
     "http://download.cdn.mozilla.net/pub/mozilla.org/firefox/nightly/",
     "http://download.cdn.mozilla.net/pub/firefox/nightly/",
     "https://mozilla-nightly-updates.s3.amazonaws.com",
-    "https://queue.taskcluster.net/",
     "http://ftp.mozilla.org/",
     "http://download.mozilla.org/",
     "https://archive.mozilla.org/",
     "http://archive.mozilla.org/",
-    "https://queue.taskcluster.net/v1/task/",
-]
+    QUEUE_PREFIX,
+)
+STAGING_URL_PREFIXES = (
+    "http://ftp.stage.mozaws.net/",
+    "https://ftp.stage.mozaws.net/",
+)
 
 DEFAULT_FILENAME_TEMPLATE = "{appName}-{branch}-{version}-{platform}-" \
                             "{locale}-{from_buildid}-{to_buildid}.partial.mar"
 
-
-def write_dogrc(api_key):
-    """Datadog .dogrc file for command line interface."""
-    dogrc_path = os.path.join(os.path.expanduser('~'), '.dogrc')
-    config = configparser.ConfigParser()
-    config['Connection'] = {
-        'apikey': api_key,
-        'appkey': '',
-    }
-    with open(dogrc_path, 'w') as f:
-        config.write(f)
+BCJ_OPTIONS = {
+    'x86': ['--x86'],
+    'x86_64': ['--x86'],
+    'aarch64': [],
+}
 
 
 def verify_signature(mar, certs):
@@ -77,6 +71,24 @@ def is_lzma_compressed_mar(mar):
     else:
         log.info("%s is not lzma compressed", mar)
     return result
+
+
+def validate_mar_channel_id(mar, channel_ids):
+    log.info("Checking %s for MAR_CHANNEL_ID %s", mar, channel_ids)
+    # We may get a string with a list representation, or a single entry string.
+    channel_ids = set(channel_ids.split(','))
+
+    product_info = MarReader(open(mar, 'rb')).productinfo
+    if not isinstance(product_info, tuple):
+        raise ValueError("Malformed product information in mar: {}".format(product_info))
+
+    found_channel_ids = set(product_info[1].split(','))
+
+    if not found_channel_ids.issubset(channel_ids):
+        raise ValueError("MAR_CHANNEL_ID mismatch, {} not in {}".format(
+            product_info[1], channel_ids))
+
+    log.info("%s channel %s in %s", mar, product_info[1], channel_ids)
 
 
 @redo.retriable()
@@ -132,10 +144,6 @@ async def download(url, dest, mode=None):  # noqa: E999
                         log_interval = chunk_size * 1024
 
             log.debug('Downloaded %s bytes', bytes_downloaded)
-            if 'content-length' in resp.headers:
-                log.debug('Content-Length: %s bytes', resp.headers['content-length'])
-                if bytes_downloaded != int(resp.headers['content-length']):
-                    raise IOError('Unexpected number of bytes downloaded')
             if mode:
                 log.debug("chmod %o %s", mode, dest)
                 os.chmod(dest, mode)
@@ -146,26 +154,28 @@ async def run_command(cmd, cwd='/', env=None, label=None, silent=False):
         env = dict()
     process = await asyncio.create_subprocess_shell(cmd,
                                                     stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.STDOUT,
+                                                    stderr=asyncio.subprocess.PIPE,
                                                     cwd=cwd, env=env)
-    stdout, stderr = await process.communicate()
+    if label:
+        label = "{}: ".format(label)
+    else:
+        label = ""
 
-    await process.wait()
+    async def read_output(stream, label, printcmd):
+        while True:
+            line = await stream.readline()
+            if line == b'':
+                break
+            printcmd("%s%s", label, line.decode('utf-8').rstrip())
 
     if silent:
-        return
-
-    if not stderr:
-        stderr = ""
-    if not stdout:
-        stdout = ""
-
-    label = "{}: ".format(label)
-
-    for line in stdout.splitlines():
-        log.debug("%s%s", label, line.decode('utf-8'))
-    for line in stderr.splitlines():
-        log.warn("%s%s", label, line.decode('utf-8'))
+        await process.wait()
+    else:
+        await asyncio.gather(
+            read_output(process.stdout, label, log.info),
+            read_output(process.stderr, label, log.warn)
+            )
+        await process.wait()
 
 
 async def unpack(work_env, mar, dest_dir):
@@ -206,7 +216,7 @@ async def generate_partial(work_env, from_dir, to_dir, dest_mar, mar_data,
     log.info("Generating partial %s", dest_mar)
     env = work_env.env
     env["MOZ_PRODUCT_VERSION"] = mar_data['version']
-    env["MOZ_CHANNEL_ID"] = mar_data["ACCEPTED_MAR_CHANNEL_IDS"]
+    env["MAR_CHANNEL_ID"] = mar_data["MAR_CHANNEL_ID"]
     env['BRANCH'] = mar_data['branch']
     env['PLATFORM'] = mar_data['platform']
     if use_old_format:
@@ -218,6 +228,7 @@ async def generate_partial(work_env, from_dir, to_dir, dest_mar, mar_data,
     cmd = " ".join([make_incremental_update, dest_mar, from_dir, to_dir])
 
     await run_command(cmd, cwd=work_env.workdir, env=env, label=dest_mar.split('/')[-1])
+    validate_mar_channel_id(dest_mar, mar_data["MAR_CHANNEL_ID"])
 
 
 def get_hash(path, hash_type="sha512"):
@@ -228,14 +239,8 @@ def get_hash(path, hash_type="sha512"):
 
 
 class WorkEnv(object):
-
-    def __init__(self, mar=None, mbsdiff=None):
-        self.workdir = tempfile.mkdtemp()
-        self.paths = {
-            'unwrap_full_update.pl': os.path.join(self.workdir, 'unwrap_full_update.pl'),
-            'mar': os.path.join(self.workdir, 'mar'),
-            'mbsdiff': os.path.join(self.workdir, 'mbsdiff')
-        }
+    def __init__(self, allowed_url_prefixes, mar=None, mbsdiff=None, arch=None):
+        self.paths = dict()
         self.urls = {
             'unwrap_full_update.pl': 'https://hg.mozilla.org/mozilla-central/raw-file/default/'
             'tools/update-packaging/unwrap_full_update.pl',
@@ -244,16 +249,19 @@ class WorkEnv(object):
             'mbsdiff': 'https://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/'
             'latest-mozilla-central/mar-tools/linux64/mbsdiff'
         }
+        self.allowed_url_prefixes = allowed_url_prefixes
         if mar:
             self.urls['mar'] = mar
         if mbsdiff:
             self.urls['mbsdiff'] = mbsdiff
+        self.arch = arch
 
     async def setup(self, mar=None, mbsdiff=None):
+        self.workdir = tempfile.mkdtemp()
         for filename, url in self.urls.items():
-            if filename not in self.paths:
-                log.info("Been told about %s but don't know where to download it to!", filename)
-                continue
+            if filename in self.paths:
+                os.unlink(self.paths[filename])
+            self.paths[filename] = os.path.join(self.workdir, filename)
             await retry_download(url, dest=self.paths[filename], mode=0o755)
 
     async def download_buildsystem_bits(self, repo, revision):
@@ -272,33 +280,41 @@ class WorkEnv(object):
         my_env['LC_ALL'] = 'C'
         my_env['MAR'] = self.paths['mar']
         my_env['MBSDIFF'] = self.paths['mbsdiff']
+        if self.arch:
+            my_env['BCJ_OPTIONS'] = ' '.join(BCJ_OPTIONS[self.arch])
         return my_env
 
 
-def verify_allowed_url(mar):
-    if not any(mar.startswith(prefix) for prefix in ALLOWED_URL_PREFIXES):
+def verify_allowed_url(mar, allowed_url_prefixes):
+    if not any(mar.startswith(prefix) for prefix in allowed_url_prefixes):
         raise ValueError("{mar} is not in allowed URL prefixes: {p}".format(
-            mar=mar, p=ALLOWED_URL_PREFIXES
+            mar=mar, p=allowed_url_prefixes
         ))
 
 
-async def manage_partial(partial_def, work_env, filename_template, artifacts_dir, signing_certs):
+async def manage_partial(partial_def, filename_template, artifacts_dir,
+                         allowed_url_prefixes, signing_certs, arch=None):
     """Manage the creation of partial mars based on payload."""
+
+    work_env = WorkEnv(
+        allowed_url_prefixes=allowed_url_prefixes,
+        mar=partial_def.get('mar_binary'),
+        mbsdiff=partial_def.get('mbsdiff_binary'),
+        arch=arch,
+    )
+    await work_env.setup()
+
     for mar in (partial_def["from_mar"], partial_def["to_mar"]):
-        verify_allowed_url(mar)
+        verify_allowed_url(mar, allowed_url_prefixes)
 
     complete_mars = {}
     use_old_format = False
-
+    check_channels_in_files = list()
     for mar_type, f in (("from", partial_def["from_mar"]), ("to", partial_def["to_mar"])):
         dest = os.path.join(work_env.workdir, "{}.mar".format(mar_type))
         unpack_dir = os.path.join(work_env.workdir, mar_type)
 
-        metric_tags = [
-            "platform:{}".format(partial_def['platform']),
-        ]
-        with ddstats.timer('mar.download.time', tags=metric_tags):
-            await retry_download(f, dest)
+        await retry_download(f, dest)
 
         if not os.getenv("MOZ_DISABLE_MAR_CERT_VERIFICATION"):
             verify_signature(dest, signing_certs)
@@ -306,8 +322,10 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
         complete_mars["%s_size" % mar_type] = os.path.getsize(dest)
         complete_mars["%s_hash" % mar_type] = get_hash(dest)
 
-        with ddstats.timer('mar.unpack.time'):
-            await unpack(work_env, dest, unpack_dir)
+        await unpack(work_env, dest, unpack_dir)
+
+        if mar_type == 'to':
+            check_channels_in_files.append(dest)
 
         if mar_type == 'from':
             version = get_option(unpack_dir, filename="application.ini",
@@ -319,21 +337,13 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
                 use_old_format = True
                 log.info("Forcing BZ2 compression for %s", f)
 
-        log.info("AV-scanning %s ...", unpack_dir)
-        metric_tags = [
-            "platform:{}".format(partial_def['platform']),
-        ]
-        with ddstats.timer('mar.clamscan.time', tags=metric_tags):
-            await run_command("clamscan -r {}".format(unpack_dir), label='clamscan')
         log.info("Done.")
 
     to_path = os.path.join(work_env.workdir, "to")
     from_path = os.path.join(work_env.workdir, "from")
 
     mar_data = {
-        "ACCEPTED_MAR_CHANNEL_IDS": get_option(
-            to_path, filename="update-settings.ini", section="Settings",
-            option="ACCEPTED_MAR_CHANNEL_IDS"),
+        "MAR_CHANNEL_ID": os.environ["MAR_CHANNEL_ID"],
         "version": get_option(to_path, filename="application.ini",
                               section="App", option="Version"),
         "to_buildid": get_option(to_path, filename="application.ini",
@@ -352,9 +362,10 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
         "platform": partial_def["platform"],
         "locale": partial_def["locale"],
     }
-    # Override ACCEPTED_MAR_CHANNEL_IDS if needed
-    if "ACCEPTED_MAR_CHANNEL_IDS" in os.environ:
-        mar_data["ACCEPTED_MAR_CHANNEL_IDS"] = os.environ["ACCEPTED_MAR_CHANNEL_IDS"]
+
+    for filename in check_channels_in_files:
+        validate_mar_channel_id(filename, mar_data["MAR_CHANNEL_ID"])
+
     for field in ("update_number", "previousVersion", "previousBuildNumber",
                   "toVersion", "toBuildNumber"):
         if field in partial_def:
@@ -377,24 +388,10 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
     await work_env.download_buildsystem_bits(repo=mar_data["repo"],
                                              revision=mar_data["revision"])
 
-    metric_tags = [
-        "branch:{}".format(mar_data['branch']),
-        "platform:{}".format(mar_data['platform']),
-        # If required. Shouldn't add much useful info, but increases
-        # cardinality of metrics substantially, so avoided.
-        # "locale:{}".format(mar_data['locale']),
-    ]
-    with ddstats.timer('generate_partial.time', tags=metric_tags):
-        await generate_partial(work_env, from_path, to_path, dest_mar,
-                               mar_data, use_old_format)
+    await generate_partial(work_env, from_path, to_path, dest_mar,
+                           mar_data, use_old_format)
 
     mar_data["size"] = os.path.getsize(dest_mar)
-
-    metric_tags.append("unit:bytes")
-    # Allows us to find out how many releases there were between the two,
-    # making buckets of the file sizes easier.
-    metric_tags.append("update_number:{}".format(mar_data.get('update_number', 0)))
-    ddstats.gauge('partial_mar_size', mar_data['size'], tags=metric_tags)
 
     mar_data["hash"] = get_hash(dest_mar)
 
@@ -407,14 +404,13 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
 async def async_main(args, signing_certs):
     tasks = []
 
+    allowed_url_prefixes = list(ALLOWED_URL_PREFIXES)
+    if args.allow_staging_prefixes:
+        allowed_url_prefixes += STAGING_URL_PREFIXES
+
     task = json.load(args.task_definition)
     # TODO: verify task["extra"]["funsize"]["partials"] with jsonschema
     for definition in task["extra"]["funsize"]["partials"]:
-        workenv = WorkEnv(
-            mar=definition.get('mar_binary'),
-            mbsdiff=definition.get('mbsdiff_binary')
-        )
-        await workenv.setup()
         tasks.append(asyncio.ensure_future(retry_async(
                                            manage_partial,
                                            retry_exceptions=(
@@ -425,8 +421,9 @@ async def async_main(args, signing_certs):
                                                partial_def=definition,
                                                filename_template=args.filename_template,
                                                artifacts_dir=args.artifacts_dir,
-                                               work_env=workenv,
-                                               signing_certs=signing_certs
+                                               allowed_url_prefixes=allowed_url_prefixes,
+                                               signing_certs=signing_certs,
+                                               arch=args.arch
                                            ))))
     manifest = await asyncio.gather(*tasks)
     return manifest
@@ -434,21 +431,25 @@ async def async_main(args, signing_certs):
 
 def main():
 
-    start = time.time()
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifacts-dir", required=True)
     parser.add_argument("--sha1-signing-cert", required=True)
     parser.add_argument("--sha384-signing-cert", required=True)
     parser.add_argument("--task-definition", required=True,
                         type=argparse.FileType('r'))
+    parser.add_argument("--allow-staging-prefixes",
+                        action="store_true",
+                        default=strtobool(
+                            os.environ.get('FUNSIZE_ALLOW_STAGING_PREFIXES', "false")),
+                        help="Allow files from staging buckets.")
     parser.add_argument("--filename-template",
                         default=DEFAULT_FILENAME_TEMPLATE)
-    parser.add_argument("--no-freshclam", action="store_true", default=False,
-                        help="Do not refresh ClamAV DB")
     parser.add_argument("-q", "--quiet", dest="log_level",
                         action="store_const", const=logging.WARNING,
                         default=logging.DEBUG)
+    parser.add_argument('--arch', type=str, required=True,
+                        choices=BCJ_OPTIONS.keys(),
+                        help='The archtecture you are building.')
     args = parser.parse_args()
 
     logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
@@ -462,35 +463,6 @@ def main():
     assert(get_keysize(signing_certs['sha1']) == 2048)
     assert(get_keysize(signing_certs['sha384']) == 4096)
 
-    # Intended for local testing.
-    dd_api_key = os.environ.get('DATADOG_API_KEY')
-    # Intended for Taskcluster.
-    if not dd_api_key and os.environ.get('DATADOG_API_SECRET'):
-        dd_api_key = get_secret(os.environ.get('DATADOG_API_SECRET')).get('key')
-
-    if dd_api_key:
-        dd_options = {
-            'api_key': dd_api_key,
-        }
-        log.info("Starting metric collection")
-        initialize(**dd_options)
-        ddstats.start(flush_interval=1)
-        # For use in shell scripts.
-        write_dogrc(dd_api_key)
-    else:
-        log.info("No metric collection")
-
-    if args.no_freshclam:
-        log.info("Skipping freshclam")
-    else:
-        log.info("Refreshing clamav db...")
-        try:
-            redo.retry(lambda: sh.freshclam("--stdout", "--verbose",
-                                            _timeout=300, _err_to_out=True))
-            log.info("Done.")
-        except sh.ErrorReturnCode:
-            log.warning("Freshclam failed, skipping DB update")
-
     loop = asyncio.get_event_loop()
     manifest = loop.run_until_complete(async_main(args, signing_certs))
     loop.close()
@@ -500,21 +472,6 @@ def main():
         json.dump(manifest, fp, indent=2, sort_keys=True)
 
     log.debug("{}".format(json.dumps(manifest, indent=2, sort_keys=True)))
-
-    # Warning: Assumption that one partials task will always be for one branch.
-    metric_tags = [
-        "branch:{}".format(manifest[0]['branch']),
-        "platform:{}".format(manifest[0]['platform']),
-    ]
-
-    ddstats.timing('task_duration', time.time() - start,
-                   start, tags=metric_tags)
-
-    # Wait for all the metrics to flush. If the program ends before
-    # they've been sent, they'll be dropped.
-    # Should be more than the flush_interval for the ThreadStats object
-    if dd_api_key:
-        time.sleep(10)
 
 
 if __name__ == '__main__':

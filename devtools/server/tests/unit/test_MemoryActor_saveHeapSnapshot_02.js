@@ -8,13 +8,19 @@
 
 const { OS } = require("resource://gre/modules/osfile.jsm");
 
-const run_test = makeMemoryActorTest(async function(client, memoryFront) {
+add_task(async () => {
+  const { memoryFront } = await createTabMemoryFront();
+
   const snapshotFilePath = await memoryFront.saveHeapSnapshot({
-    forceCopy: true
+    forceCopy: true,
   });
-  ok(!!(await OS.File.stat(snapshotFilePath)),
-     "Should have the heap snapshot file");
+  ok(
+    !!(await OS.File.stat(snapshotFilePath)),
+    "Should have the heap snapshot file"
+  );
   const snapshot = ChromeUtils.readHeapSnapshot(snapshotFilePath);
-  ok(snapshot instanceof HeapSnapshot,
-     "And we should be able to read a HeapSnapshot instance from the file");
+  ok(
+    snapshot instanceof HeapSnapshot,
+    "And we should be able to read a HeapSnapshot instance from the file"
+  );
 });

@@ -19,39 +19,20 @@ assertEq("formatToParts" in Intl.NumberFormat(), true);
 //       properly test the conversion from ICU's nested-field exposure to
 //       ECMA-402's sequential-parts exposure.
 
-function GenericPartCreator(type)
-{
-  return function(str) { return { type, value: str }; };
-}
-
-var Nan = GenericPartCreator("nan");
-var Inf = GenericPartCreator("infinity");
-var Integer = GenericPartCreator("integer");
-var Group = GenericPartCreator("group");
-var Decimal = GenericPartCreator("decimal");
-var Fraction = GenericPartCreator("fraction");
-var MinusSign = GenericPartCreator("minusSign");
-var PlusSign = GenericPartCreator("plusSign");
-var PercentSign = GenericPartCreator("percentSign");
-var Currency = GenericPartCreator("currency");
-var Literal = GenericPartCreator("literal");
-
-function assertParts(nf, x, expected)
-{
-  var parts = nf.formatToParts(x);
-  assertEq(parts.map(part => part.value).join(""), nf.format(x),
-           "formatToParts and format must agree");
-
-  var len = parts.length;
-  assertEq(len, expected.length, "parts count mismatch");
-  for (var i = 0; i < len; i++)
-  {
-    assertEq(parts[i].type, expected[i].type, "type mismatch at " + i);
-    assertEq(parts[i].value, expected[i].value, "value mismatch at " + i);
-  }
-}
+var {
+  Nan, Inf, Integer, Group, Decimal, Fraction,
+  MinusSign, PlusSign, PercentSign, Currency, Literal,
+} = NumberFormatParts;
 
 //-----------------------------------------------------------------------------
+
+// Test -0's partitioning now that it's not treated like +0.
+// https://github.com/tc39/ecma402/pull/232
+
+var deadSimpleFormatter = new Intl.NumberFormat("en-US");
+
+assertParts(deadSimpleFormatter, -0,
+            [MinusSign("-"), Integer("0")]);
 
 // Test behavior of a currency with code formatting.
 var usdCodeOptions =
@@ -148,8 +129,8 @@ var usdNameFractionOptions =
 var usdNameFractionFormatter =
   new Intl.NumberFormat("en-US", usdNameFractionOptions);
 
-// The US national surplus (i.e. debt) as of October 18, 2016.
-// (Replicating data from a comment in Intl.cpp.)
+// The US national surplus (i.e. debt) as of October 18, 2016.  (Replicating
+// data from a comment in builtin/Intl/NumberFormat.cpp.)
 var usNationalSurplus = -19766580028249.41;
 
 assertParts(usdNameFractionFormatter, usNationalSurplus,
@@ -240,13 +221,15 @@ var arPercentFormatter =
   new Intl.NumberFormat("ar-IQ", arPercentOptions);
 
 assertParts(arPercentFormatter, -135.32,
-            [MinusSign("\u{061C}-"),
+            [Literal("\u{061C}"),
+             MinusSign("-"),
              Integer("١٣"),
              Group("٬"),
              Integer("٥٣٢"),
              Decimal("٫"),
              Fraction("٠٠"),
-             PercentSign("٪\u{061C}")]);
+             PercentSign("٪"),
+             Literal("\u{061C}")]);
 
 // Decimals.
 

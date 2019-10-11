@@ -4,7 +4,10 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
@@ -44,24 +47,22 @@ class AnimationList extends PureComponent {
 
     return dom.ul(
       {
-        className: "animation-list"
+        className: "animation-list",
       },
       animations.map(animation =>
-        AnimationItem(
-          {
-            animation,
-            emitEventForTest,
-            getAnimatedPropertyMap,
-            getNodeFromActor,
-            onHideBoxModelHighlighter,
-            onShowBoxModelHighlighterForNode,
-            selectAnimation,
-            setHighlightedNode,
-            setSelectedNode,
-            simulateAnimation,
-            timeScale,
-          }
-        )
+        AnimationItem({
+          animation,
+          emitEventForTest,
+          getAnimatedPropertyMap,
+          getNodeFromActor,
+          onHideBoxModelHighlighter,
+          onShowBoxModelHighlighterForNode,
+          selectAnimation,
+          setHighlightedNode,
+          setSelectedNode,
+          simulateAnimation,
+          timeScale,
+        })
       )
     );
   }

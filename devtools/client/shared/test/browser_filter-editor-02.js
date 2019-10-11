@@ -5,8 +5,9 @@
 
 // Tests that the Filter Editor Widget renders filters correctly
 
-const {CSSFilterEditorWidget} = require("devtools/client/shared/widgets/FilterWidget");
-const {getClientCssProperties} = require("devtools/shared/fronts/css-properties");
+const {
+  CSSFilterEditorWidget,
+} = require("devtools/client/shared/widgets/FilterWidget");
 
 const { LocalizationHelper } = require("devtools/shared/l10n");
 const STRINGS_URI = "devtools/client/locales/filterwidget.properties";
@@ -15,34 +16,34 @@ const L10N = new LocalizationHelper(STRINGS_URI);
 const TEST_URI = CHROME_URL_ROOT + "doc_filter-editor-01.html";
 
 add_task(async function() {
-  const [,, doc] = await createHost("bottom", TEST_URI);
-  const cssIsValid = getClientCssProperties().getValidityChecker(doc);
+  const [, , doc] = await createHost("bottom", TEST_URI);
 
   const TEST_DATA = [
     {
-      cssValue: "blur(2px) contrast(200%) hue-rotate(20.2deg) drop-shadow(5px 5px black)",
+      cssValue:
+        "blur(2px) contrast(200%) hue-rotate(20.2deg) drop-shadow(5px 5px black)",
       expected: [
         {
           label: "blur",
           value: "2",
-          unit: "px"
+          unit: "px",
         },
         {
           label: "contrast",
           value: "200",
-          unit: "%"
+          unit: "%",
         },
         {
           label: "hue-rotate",
           value: "20.2",
-          unit: "deg"
+          unit: "deg",
         },
         {
           label: "drop-shadow",
           value: "5px 5px black",
-          unit: null
-        }
-      ]
+          unit: null,
+        },
+      ],
     },
     {
       cssValue: "hue-rotate(420.2deg)",
@@ -50,9 +51,9 @@ add_task(async function() {
         {
           label: "hue-rotate",
           value: "420.2",
-          unit: "deg"
-        }
-      ]
+          unit: "deg",
+        },
+      ],
     },
     {
       cssValue: "url(example.svg)",
@@ -60,30 +61,34 @@ add_task(async function() {
         {
           label: "url",
           value: "example.svg",
-          unit: null
-        }
-      ]
+          unit: null,
+        },
+      ],
     },
     {
       cssValue: "none",
-      expected: []
-    }
+      expected: [],
+    },
   ];
 
   const container = doc.querySelector("#filter-container");
-  const widget = new CSSFilterEditorWidget(container, "none", cssIsValid);
+  const widget = new CSSFilterEditorWidget(container, "none");
 
   info("Test rendering of different types");
 
-  for (const {cssValue, expected} of TEST_DATA) {
+  for (const { cssValue, expected } of TEST_DATA) {
     widget.setCssValue(cssValue);
 
     if (cssValue === "none") {
       const text = container.querySelector("#filters").textContent;
-      ok(text.indexOf(L10N.getStr("emptyFilterList")) > -1,
-         "Contains |emptyFilterList| string when given value 'none'");
-      ok(text.indexOf(L10N.getStr("addUsingList")) > -1,
-         "Contains |addUsingList| string when given value 'none'");
+      ok(
+        text.indexOf(L10N.getStr("emptyFilterList")) > -1,
+        "Contains |emptyFilterList| string when given value 'none'"
+      );
+      ok(
+        text.indexOf(L10N.getStr("addUsingList")) > -1,
+        "Contains |addUsingList| string when given value 'none'"
+      );
       continue;
     }
     const filters = container.querySelectorAll(".filter");

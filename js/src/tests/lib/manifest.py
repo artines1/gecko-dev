@@ -84,9 +84,10 @@ class XULInfo:
 
 
 class XULInfoTester:
-    def __init__(self, xulinfo, js_bin):
+    def __init__(self, xulinfo, js_bin, js_args):
         self.js_prologue = xulinfo.as_js()
         self.js_bin = js_bin
+        self.js_args = js_args
         # Maps JS expr to evaluation result.
         self.cache = {}
 
@@ -95,11 +96,13 @@ class XULInfoTester:
         ans = self.cache.get(cond, None)
         if ans is None:
             cmd = [
-                self.js_bin,
+                self.js_bin
+            ] + self.js_args + [
                 # run in safe configuration, since it is hard to debug
                 # crashes when running code here. In particular, msan will
                 # error out if the jit is active.
                 '--no-baseline',
+                '--no-blinterp',
                 '-e', self.js_prologue,
                 '-e', 'print(!!({}))'.format(cond)
             ]
@@ -151,6 +154,10 @@ def _parse_one(testcase, terms, xul_tester):
             if xul_tester.test(cond):
                 testcase.expect = testcase.enable = False
             pos += 1
+        elif parts[pos].startswith('ignore-flag'):
+            flag = parts[pos][len('ignore-flag('):-1]
+            testcase.ignoredflags.append(flag)
+            pos += 1
         elif parts[pos].startswith('random-if'):
             cond = parts[pos][len('random-if('):-1]
             if xul_tester.test(cond):
@@ -158,6 +165,11 @@ def _parse_one(testcase, terms, xul_tester):
             pos += 1
         elif parts[pos] == 'slow':
             testcase.slow = True
+            pos += 1
+        elif parts[pos].startswith('slow-if'):
+            cond = parts[pos][len('slow-if('):-1]
+            if xul_tester.test(cond):
+                testcase.slow = True
             pos += 1
         elif parts[pos] == 'silentfail':
             # silentfails use tons of memory, and Darwin doesn't support ulimit.
@@ -173,6 +185,10 @@ def _parse_one(testcase, terms, xul_tester):
             # This directive marks the test as module code.
             testcase.is_module = True
             pos += 1
+        elif parts[pos] == 'async':
+            # This directive marks the test as async.
+            testcase.is_async = True
+            pos += 1
         else:
             print('warning: invalid manifest line element "{}"'.format(
                 parts[pos]))
@@ -185,15 +201,18 @@ def _build_manifest_script_entry(script_name, test):
     if test.terms:
         # Remove jsreftest internal terms.
         terms = " ".join([term for term in test.terms.split()
-                          if not (term == "module" or term.startswith("error:"))])
+                          if not (term == "module" or
+                                  term == "async" or
+                                  term.startswith("error:") or
+                                  term.startswith("ignore-flag("))])
         if terms:
             line.append(terms)
     if test.error:
         properties.append("error=" + test.error)
     if test.is_module:
-        # XXX: Remove when modules are enabled by default in browser.
-        line.append("pref(dom.moduleScripts.enabled,true)")
         properties.append("module")
+    if test.is_async:
+        properties.append("async")
     line.append("script")
     script = script_name
     if properties:
@@ -331,7 +350,8 @@ def _parse_external_manifest(filename, relpath):
     entries = []
 
     with open(filename, 'r') as fp:
-        manifest_re = re.compile(r'^\s*(.*)\s+(include|script)\s+(\S+)$')
+        manifest_re = re.compile(r'^\s*(?P<terms>.*)\s+(?P<type>include|script)\s+(?P<path>\S+)$')
+        include_re = re.compile(r'^\s*include\s+(?P<path>\S+)$')
         for line in fp:
             line, _, comment = line.partition('#')
             line = line.strip()
@@ -339,12 +359,21 @@ def _parse_external_manifest(filename, relpath):
                 continue
             matches = manifest_re.match(line)
             if not matches:
-                print('warning: unrecognized line in jstests.list:'
-                      ' {0}'.format(line))
+                matches = include_re.match(line)
+                if not matches:
+                    print('warning: unrecognized line in jstests.list:'
+                          ' {0}'.format(line))
+                    continue
+
+                include_file = matches.group('path')
+                include_filename = os.path.join(os.path.dirname(filename), include_file)
+                include_relpath = os.path.join(relpath, os.path.dirname(include_file))
+                include_entries = _parse_external_manifest(include_filename, include_relpath)
+                entries.extend(include_entries)
                 continue
 
-            path = os.path.normpath(os.path.join(relpath, matches.group(3)))
-            if matches.group(2) == 'include':
+            path = os.path.normpath(os.path.join(relpath, matches.group('path')))
+            if matches.group('type') == 'include':
                 # The manifest spec wants a reference to another manifest here,
                 # but we need just the directory. We do need the trailing
                 # separator so we don't accidentally match other paths of which
@@ -352,7 +381,7 @@ def _parse_external_manifest(filename, relpath):
                 assert(path.endswith('jstests.list'))
                 path = path[:-len('jstests.list')]
 
-            entries.append({'path': path, 'terms': matches.group(1),
+            entries.append({'path': path, 'terms': matches.group('terms'),
                             'comment': comment.strip()})
 
     # if one directory name is a prefix of another, we want the shorter one

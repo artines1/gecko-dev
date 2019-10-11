@@ -17,25 +17,7 @@ namespace mozilla {
 
 PreloadedStyleSheet::PreloadedStyleSheet(nsIURI* aURI,
                                          css::SheetParsingMode aParsingMode)
-  : mLoaded(false)
-  , mURI(aURI)
-  , mParsingMode(aParsingMode)
-{
-}
-
-/* static */ nsresult
-PreloadedStyleSheet::Create(nsIURI* aURI,
-                            css::SheetParsingMode aParsingMode,
-                            PreloadedStyleSheet** aResult)
-{
-  *aResult = nullptr;
-
-  RefPtr<PreloadedStyleSheet> preloadedSheet =
-    new PreloadedStyleSheet(aURI, aParsingMode);
-
-  preloadedSheet.forget(aResult);
-  return NS_OK;
-}
+    : mLoaded(false), mURI(aURI), mParsingMode(aParsingMode) {}
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PreloadedStyleSheet)
   NS_INTERFACE_MAP_ENTRY(nsIPreloadedStyleSheet)
@@ -47,43 +29,28 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(PreloadedStyleSheet)
 
 NS_IMPL_CYCLE_COLLECTION(PreloadedStyleSheet, mSheet)
 
-nsresult
-PreloadedStyleSheet::GetSheet(StyleSheet** aResult)
-{
+nsresult PreloadedStyleSheet::GetSheet(StyleSheet** aResult) {
   *aResult = nullptr;
 
   MOZ_DIAGNOSTIC_ASSERT(mLoaded);
 
   if (!mSheet) {
     RefPtr<css::Loader> loader = new css::Loader;
-    nsresult rv = loader->LoadSheetSync(mURI, mParsingMode, true, &mSheet);
-    NS_ENSURE_SUCCESS(rv, rv);
-    MOZ_ASSERT(mSheet);
+    auto result = loader->LoadSheetSync(mURI, mParsingMode,
+                                        css::Loader::UseSystemPrincipal::Yes);
+    if (result.isErr()) {
+      return result.unwrapErr();
+    }
+    mSheet = result.unwrap();
   }
 
   *aResult = mSheet;
   return NS_OK;
 }
 
-nsresult
-PreloadedStyleSheet::Preload()
-{
+nsresult PreloadedStyleSheet::Preload() {
   MOZ_DIAGNOSTIC_ASSERT(!mLoaded);
-
-  // The nsIStyleSheetService.preloadSheet API doesn't tell us which backend
-  // the sheet will be used with, and it seems wasteful to eagerly create
-  // both a CSSStyleSheet and a ServoStyleSheet.  So instead, we guess that
-  // the sheet type we will want matches the current value of the stylo pref,
-  // and preload a sheet of that type.
-  //
-  // If we guess wrong, we will re-load the sheet later with the requested type,
-  // and we won't really have front loaded the loading time as the name
-  // "preload" might suggest.  Also, in theory we could get different data from
-  // fetching the URL again, but for the usage patterns of this API this is
-  // unlikely, and it doesn't seem worth trying to store the contents of the URL
-  // and duplicating a bunch of css::Loader's logic.
   mLoaded = true;
-
   StyleSheet* sheet;
   return GetSheet(&sheet);
 }
@@ -93,8 +60,7 @@ NS_IMPL_ISUPPORTS(PreloadedStyleSheet::StylesheetPreloadObserver,
 
 NS_IMETHODIMP
 PreloadedStyleSheet::StylesheetPreloadObserver::StyleSheetLoaded(
-  StyleSheet* aSheet, bool aWasDeferred, nsresult aStatus)
-{
+    StyleSheet* aSheet, bool aWasDeferred, nsresult aStatus) {
   MOZ_DIAGNOSTIC_ASSERT(!mPreloadedSheet->mLoaded);
   mPreloadedSheet->mLoaded = true;
 
@@ -109,17 +75,19 @@ PreloadedStyleSheet::StylesheetPreloadObserver::StyleSheetLoaded(
 
 // Note: After calling this method, the preloaded sheet *must not* be used
 // until the observer is notified that the sheet has finished loading.
-nsresult
-PreloadedStyleSheet::PreloadAsync(NotNull<dom::Promise*> aPromise)
-{
+nsresult PreloadedStyleSheet::PreloadAsync(NotNull<dom::Promise*> aPromise) {
   MOZ_DIAGNOSTIC_ASSERT(!mLoaded);
 
   RefPtr<css::Loader> loader = new css::Loader;
-
   RefPtr<StylesheetPreloadObserver> obs =
-    new StylesheetPreloadObserver(aPromise, this);
-
-  return loader->LoadSheet(mURI, mParsingMode, false, obs, &mSheet);
+      new StylesheetPreloadObserver(aPromise, this);
+  auto result = loader->LoadSheet(mURI, mParsingMode,
+                                  css::Loader::UseSystemPrincipal::No, obs);
+  if (result.isErr()) {
+    return result.unwrapErr();
+  }
+  mSheet = result.unwrap();
+  return NS_OK;
 }
 
-} // namespace mozilla
+}  // namespace mozilla

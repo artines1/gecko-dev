@@ -9,6 +9,7 @@
 
 #include "nsIScreen.h"
 #include "nsCOMPtr.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/VRDisplayBinding.h"
 
@@ -19,24 +20,21 @@ namespace gfx {
 class VRDisplayPresentation;
 class VRManagerChild;
 
-class VRDisplayClient
-{
-public:
+class VRDisplayClient {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRDisplayClient)
 
   explicit VRDisplayClient(const VRDisplayInfo& aDisplayInfo);
 
-  void UpdateDisplayInfo(const VRDisplayInfo& aDisplayInfo);
+  MOZ_CAN_RUN_SCRIPT void UpdateDisplayInfo(const VRDisplayInfo& aDisplayInfo);
   void UpdateSubmitFrameResult(const VRSubmitFrameResultInfo& aResult);
 
   const VRDisplayInfo& GetDisplayInfo() const { return mDisplayInfo; }
-  virtual VRHMDSensorState GetSensorState();
+  virtual const VRHMDSensorState& GetSensorState() const;
   void GetSubmitFrameResult(VRSubmitFrameResultInfo& aResult);
 
-  virtual void ZeroSensor();
-
-  already_AddRefed<VRDisplayPresentation> BeginPresentation(const nsTArray<dom::VRLayer>& aLayers,
-                                                            uint32_t aGroup);
+  already_AddRefed<VRDisplayPresentation> BeginPresentation(
+      const nsTArray<dom::VRLayer>& aLayers, uint32_t aGroup);
   void PresentationDestroyed();
 
   bool GetIsConnected() const;
@@ -50,10 +48,10 @@ public:
   void StartVRNavigation();
   void StopVRNavigation(const TimeDuration& aTimeout);
 
-protected:
+ protected:
   virtual ~VRDisplayClient();
 
-  void FireEvents();
+  MOZ_CAN_RUN_SCRIPT void FireEvents();
   void FireGamepadEvents();
 
   VRDisplayInfo mDisplayInfo;
@@ -65,14 +63,16 @@ protected:
   uint64_t mLastEventFrameId;
   uint32_t mLastPresentingGeneration;
 
-  // Difference between mDisplayInfo.mControllerState and mLastEventControllerState
-  // determines what gamepad events to fire when updated.
+  // Difference between mDisplayInfo.mControllerState and
+  // mLastEventControllerState determines what gamepad events to fire when
+  // updated.
   VRControllerState mLastEventControllerState[kVRControllerMaxCount];
-private:
+
+ private:
   VRSubmitFrameResultInfo mSubmitFrameResult;
 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif /* GFX_VR_DISPLAY_CLIENT_H */

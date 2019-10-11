@@ -5,16 +5,21 @@
 
 "use strict";
 
-const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { require, loader } = ChromeUtils.import(
+  "resource://devtools/shared/Loader.jsm"
+);
 
 try {
   Services.scriptloader.loadSubScript(
-    "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
+    "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js",
+    this
+  );
 } catch (e) {
-  ok(false,
+  ok(
+    false,
     "MISSING DEPENDENCY ON telemetry-test-helpers.js\n" +
-    "Please add the following line in browser.ini:\n" +
-    "  !/devtools/client/shared/test/telemetry-test-helpers.js\n"
+      "Please add the following line in browser.ini:\n" +
+      "  !/devtools/client/shared/test/telemetry-test-helpers.js\n"
   );
   throw e;
 }
@@ -70,16 +75,26 @@ const key = (id, win = window) => {
   const PrefUtils = require("devtools/client/performance/test/helpers/prefs");
 
   // Make sure all the prefs are reverted to their defaults once tests finish.
-  const stopObservingPrefs = PrefUtils.whenUnknownPrefChanged("devtools.performance",
+  const stopObservingPrefs = PrefUtils.whenUnknownPrefChanged(
+    "devtools.performance",
     pref => {
-      ok(false, `Unknown pref changed: ${pref}. Please add it to test/helpers/prefs.js ` +
-        "to make sure it's reverted to its default value when the tests finishes, " +
-        "and avoid interfering with future tests.\n");
-    });
+      ok(
+        false,
+        `Unknown pref changed: ${pref}. Please add it to test/helpers/prefs.js ` +
+          "to make sure it's reverted to its default value when the tests finishes, " +
+          "and avoid interfering with future tests.\n"
+      );
+    }
+  );
 
   // By default, enable memory flame graphs for tests for now.
   // TODO: remove when we have flame charts via bug 1148663.
   Services.prefs.setBoolPref(PrefUtils.UI_ENABLE_MEMORY_FLAME_CHART, true);
+
+  // By default, reduce the default buffer size to reduce the overhead when
+  // transfering the profile data. Hopefully this should help to reduce our
+  // intermittents for the performance tests.
+  Services.prefs.setIntPref(PrefUtils.PROFILER_BUFFER_SIZE_PREF, 100000);
 
   registerCleanupFunction(() => {
     info("finish() was called, cleaning up...");

@@ -18,18 +18,15 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace gfx {
 
-InlineTranslator::InlineTranslator(DrawTarget* aDT, void* aFontContext)
-  : mBaseDT(aDT)
-  , mFontContext(aFontContext)
-{
-}
+InlineTranslator::InlineTranslator() : mFontContext(nullptr) {}
 
-bool
-InlineTranslator::TranslateRecording(char *aData, size_t aLen)
-{
+InlineTranslator::InlineTranslator(DrawTarget* aDT, void* aFontContext)
+    : mBaseDT(aDT), mFontContext(aFontContext) {}
+
+bool InlineTranslator::TranslateRecording(char* aData, size_t aLen) {
   // an istream like class for reading from memory
   struct MemReader {
-    MemReader(char *aData, size_t aLen) : mData(aData), mEnd(aData + aLen) {}
+    MemReader(char* aData, size_t aLen) : mData(aData), mEnd(aData + aLen) {}
     void read(char* s, std::streamsize n) {
       if (n <= (mEnd - mData)) {
         memcpy(s, mData, n);
@@ -37,57 +34,63 @@ InlineTranslator::TranslateRecording(char *aData, size_t aLen)
       } else {
         // We've requested more data than is available
         // set the Reader into an eof state
-        mData = mEnd + 1;
+        SetIsBad();
       }
     }
-    bool eof() {
-      return mData > mEnd;
-    }
-    bool good() {
-      return !eof();
-    }
+    bool eof() { return mData > mEnd; }
+    bool good() { return !eof(); }
+    void SetIsBad() { mData = mEnd + 1; }
 
-    char *mData;
-    char *mEnd;
+    char* mData;
+    char* mEnd;
   };
   MemReader reader(aData, aLen);
-
 
   uint32_t magicInt;
   ReadElement(reader, magicInt);
   if (magicInt != mozilla::gfx::kMagicInt) {
+    mError = "Magic";
     return false;
   }
 
   uint16_t majorRevision;
   ReadElement(reader, majorRevision);
   if (majorRevision != kMajorRevision) {
+    mError = "Major";
     return false;
   }
 
   uint16_t minorRevision;
   ReadElement(reader, minorRevision);
   if (minorRevision > kMinorRevision) {
+    mError = "Minor";
     return false;
   }
 
   int32_t eventType;
   ReadElement(reader, eventType);
   while (reader.good()) {
-    bool success = RecordedEvent::DoWithEvent(reader, static_cast<RecordedEvent::EventType>(eventType),
-                               [&] (RecordedEvent *recordedEvent) {
-                                 // Make sure that the whole event was read from the stream successfully.
-                                 if (!reader.good()) {
-                                     return false;
-                                 }
+    bool success = RecordedEvent::DoWithEvent(
+        reader, static_cast<RecordedEvent::EventType>(eventType),
+        [&](RecordedEvent* recordedEvent) -> bool {
+          // Make sure that the whole event was read from the stream
+          // successfully.
+          if (!reader.good()) {
+            mError = " READ";
+            return false;
+          }
 
-                                 if (!recordedEvent->PlayEvent(this)) {
-                                     return false;
-                                 }
+          if (!recordedEvent->PlayEvent(this)) {
+            mError = " PLAY";
+            return false;
+          }
 
-                                 return true;
-                              });
+          return true;
+        });
     if (!success) {
+      mError = RecordedEvent::GetEventName(
+                   static_cast<RecordedEvent::EventType>(eventType)) +
+               mError;
       return false;
     }
 
@@ -97,15 +100,15 @@ InlineTranslator::TranslateRecording(char *aData, size_t aLen)
   return true;
 }
 
-already_AddRefed<DrawTarget>
-InlineTranslator::CreateDrawTarget(ReferencePtr aRefPtr,
-                                  const gfx::IntSize &aSize,
-                                  gfx::SurfaceFormat aFormat)
-{
+already_AddRefed<DrawTarget> InlineTranslator::CreateDrawTarget(
+    ReferencePtr aRefPtr, const gfx::IntSize& aSize,
+    gfx::SurfaceFormat aFormat) {
+  MOZ_ASSERT(mBaseDT, "mBaseDT has not been initialized.");
+
   RefPtr<DrawTarget> drawTarget = mBaseDT;
   AddDrawTarget(aRefPtr, drawTarget);
   return drawTarget.forget();
 }
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla

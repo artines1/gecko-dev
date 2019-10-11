@@ -59,7 +59,6 @@
 <!ENTITY cmd.properties.accesskey  "i">
 
 <!ENTITY cmd.sortby_name.label              "Sort By Name">
-<!ENTITY cmd.sortby_name.accesskey          "S">
 <!ENTITY cmd.context_sortby_name.accesskey  "r">
 
 <!ENTITY cmd.new_bookmark.label            "New Bookmark…">
@@ -69,9 +68,6 @@
 <!ENTITY cmd.context_new_folder.accesskey  "F">
 <!ENTITY cmd.new_separator.label           "New Separator">
 <!ENTITY cmd.new_separator.accesskey       "S">
-
-<!ENTITY cmd.reloadLivebookmark.label      "Reload Live Bookmark">
-<!ENTITY cmd.reloadLivebookmark.accesskey  "R">
 
 <!ENTITY col.name.label          "Name">
 <!ENTITY col.tags.label          "Tags">

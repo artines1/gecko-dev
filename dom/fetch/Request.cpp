@@ -21,25 +21,27 @@
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(Request)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(Request)
+NS_IMPL_ADDREF_INHERITED(Request, FetchBody<Request>)
+NS_IMPL_RELEASE_INHERITED(Request, FetchBody<Request>)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(Request)
 
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Request)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(Request, FetchBody<Request>)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOwner)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mHeaders)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSignal)
+  tmp->Unfollow();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Request)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(Request, FetchBody<Request>)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mOwner)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mHeaders)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSignal)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFollowingSignal)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(Request)
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(Request, FetchBody<Request>)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mReadableStreamBody)
   MOZ_DIAGNOSTIC_ASSERT(!tmp->mReadableStreamReader);
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mReadableStreamReader)
@@ -48,14 +50,11 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Request)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-NS_INTERFACE_MAP_END
+NS_INTERFACE_MAP_END_INHERITING(FetchBody<Request>)
 
 Request::Request(nsIGlobalObject* aOwner, InternalRequest* aRequest,
                  AbortSignal* aSignal)
-  : FetchBody<Request>(aOwner)
-  , mRequest(aRequest)
-{
+    : FetchBody<Request>(aOwner), mRequest(aRequest) {
   MOZ_ASSERT(aRequest->Headers()->Guard() == HeadersGuardEnum::Immutable ||
              aRequest->Headers()->Guard() == HeadersGuardEnum::Request ||
              aRequest->Headers()->Guard() == HeadersGuardEnum::Request_no_cors);
@@ -64,45 +63,38 @@ Request::Request(nsIGlobalObject* aOwner, InternalRequest* aRequest,
   if (aSignal) {
     // If we don't have a signal as argument, we will create it when required by
     // content, otherwise the Request's signal must follow what has been passed.
-    mSignal = new AbortSignal(aSignal->Aborted());
+    mSignal = new AbortSignal(aOwner, aSignal->Aborted());
     if (!mSignal->Aborted()) {
       mSignal->Follow(aSignal);
     }
   }
 }
 
-Request::~Request()
-{
-}
+Request::~Request() {}
 
-already_AddRefed<InternalRequest>
-Request::GetInternalRequest()
-{
+already_AddRefed<InternalRequest> Request::GetInternalRequest() {
   RefPtr<InternalRequest> r = mRequest;
   return r.forget();
 }
 
 namespace {
-already_AddRefed<nsIURI>
-ParseURLFromDocument(nsIDocument* aDocument, const nsAString& aInput,
-                     ErrorResult& aRv)
-{
+already_AddRefed<nsIURI> ParseURLFromDocument(Document* aDocument,
+                                              const nsAString& aInput,
+                                              ErrorResult& aRv) {
   MOZ_ASSERT(aDocument);
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsCOMPtr<nsIURI> baseURI = aDocument->GetBaseURI();
   nsCOMPtr<nsIURI> resolvedURI;
-  aRv = NS_NewURI(getter_AddRefs(resolvedURI), aInput, nullptr, baseURI);
+  aRv = NS_NewURI(getter_AddRefs(resolvedURI), aInput, nullptr,
+                  aDocument->GetBaseURI());
   if (NS_WARN_IF(aRv.Failed())) {
     aRv.ThrowTypeError<MSG_INVALID_URL>(aInput);
   }
   return resolvedURI.forget();
 }
-void
-GetRequestURLFromDocument(nsIDocument* aDocument, const nsAString& aInput,
-                          nsAString& aRequestURL, nsACString& aURLfragment,
-                          ErrorResult& aRv)
-{
+void GetRequestURLFromDocument(Document* aDocument, const nsAString& aInput,
+                               nsAString& aRequestURL, nsACString& aURLfragment,
+                               ErrorResult& aRv) {
   nsCOMPtr<nsIURI> resolvedURI = ParseURLFromDocument(aDocument, aInput, aRv);
   if (aRv.Failed()) {
     return;
@@ -134,21 +126,18 @@ GetRequestURLFromDocument(nsIDocument* aDocument, const nsAString& aInput,
     return;
   }
 }
-already_AddRefed<nsIURI>
-ParseURLFromChrome(const nsAString& aInput, ErrorResult& aRv)
-{
+already_AddRefed<nsIURI> ParseURLFromChrome(const nsAString& aInput,
+                                            ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
   nsCOMPtr<nsIURI> uri;
-  aRv = NS_NewURI(getter_AddRefs(uri), aInput, nullptr, nullptr);
+  aRv = NS_NewURI(getter_AddRefs(uri), aInput);
   if (aRv.Failed()) {
     aRv.ThrowTypeError<MSG_INVALID_URL>(aInput);
   }
   return uri.forget();
 }
-void
-GetRequestURLFromChrome(const nsAString& aInput, nsAString& aRequestURL,
-                        nsACString& aURLfragment, ErrorResult& aRv)
-{
+void GetRequestURLFromChrome(const nsAString& aInput, nsAString& aRequestURL,
+                             nsACString& aURLfragment, ErrorResult& aRv) {
   nsCOMPtr<nsIURI> uri = ParseURLFromChrome(aInput, aRv);
   if (aRv.Failed()) {
     return;
@@ -180,26 +169,24 @@ GetRequestURLFromChrome(const nsAString& aInput, nsAString& aRequestURL,
     return;
   }
 }
-already_AddRefed<URL>
-ParseURLFromWorker(const GlobalObject& aGlobal, const nsAString& aInput,
-                   ErrorResult& aRv)
-{
+already_AddRefed<URL> ParseURLFromWorker(const GlobalObject& aGlobal,
+                                         const nsAString& aInput,
+                                         ErrorResult& aRv) {
   WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
   MOZ_ASSERT(worker);
   worker->AssertIsOnWorkerThread();
 
   NS_ConvertUTF8toUTF16 baseURL(worker->GetLocationInfo().mHref);
-  RefPtr<URL> url = URL::WorkerConstructor(aGlobal, aInput, baseURL, aRv);
+  RefPtr<URL> url =
+      URL::Constructor(aGlobal.GetAsSupports(), aInput, baseURL, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     aRv.ThrowTypeError<MSG_INVALID_URL>(aInput);
   }
   return url.forget();
 }
-void
-GetRequestURLFromWorker(const GlobalObject& aGlobal, const nsAString& aInput,
-                        nsAString& aRequestURL, nsACString& aURLfragment,
-                        ErrorResult& aRv)
-{
+void GetRequestURLFromWorker(const GlobalObject& aGlobal,
+                             const nsAString& aInput, nsAString& aRequestURL,
+                             nsACString& aURLfragment, ErrorResult& aRv) {
   RefPtr<URL> url = ParseURLFromWorker(aGlobal, aInput, aRv);
   if (aRv.Failed()) {
     return;
@@ -229,23 +216,19 @@ GetRequestURLFromWorker(const GlobalObject& aGlobal, const nsAString& aInput,
   url->Stringify(aRequestURL);
 }
 
-class ReferrerSameOriginChecker final : public WorkerMainThreadRunnable
-{
-public:
+class ReferrerSameOriginChecker final : public WorkerMainThreadRunnable {
+ public:
   ReferrerSameOriginChecker(WorkerPrivate* aWorkerPrivate,
-                            const nsAString& aReferrerURL,
-                            nsresult& aResult)
-    : WorkerMainThreadRunnable(aWorkerPrivate,
-                               NS_LITERAL_CSTRING("Fetch :: Referrer same origin check")),
-      mReferrerURL(aReferrerURL),
-      mResult(aResult)
-  {
+                            const nsAString& aReferrerURL, nsresult& aResult)
+      : WorkerMainThreadRunnable(
+            aWorkerPrivate,
+            NS_LITERAL_CSTRING("Fetch :: Referrer same origin check")),
+        mReferrerURL(aReferrerURL),
+        mResult(aResult) {
     mWorkerPrivate->AssertIsOnWorkerThread();
   }
 
-  bool
-  MainThreadRun() override
-  {
+  bool MainThreadRun() override {
     nsCOMPtr<nsIURI> uri;
     if (NS_SUCCEEDED(NS_NewURI(getter_AddRefs(uri), mReferrerURL))) {
       nsCOMPtr<nsIPrincipal> principal = mWorkerPrivate->GetPrincipal();
@@ -257,18 +240,18 @@ public:
     return true;
   }
 
-private:
+ private:
   const nsString mReferrerURL;
   nsresult& mResult;
 };
 
-} // namespace
+}  // namespace
 
-/*static*/ already_AddRefed<Request>
-Request::Constructor(const GlobalObject& aGlobal,
-                     const RequestOrUSVString& aInput,
-                     const RequestInit& aInit, ErrorResult& aRv)
-{
+/*static*/
+already_AddRefed<Request> Request::Constructor(const GlobalObject& aGlobal,
+                                               const RequestOrUSVString& aInput,
+                                               const RequestInit& aInit,
+                                               ErrorResult& aRv) {
   bool hasCopiedBody = false;
   RefPtr<InternalRequest> request;
 
@@ -280,7 +263,11 @@ Request::Constructor(const GlobalObject& aGlobal,
     RefPtr<Request> inputReq = &aInput.GetAsRequest();
     nsCOMPtr<nsIInputStream> body;
     inputReq->GetBody(getter_AddRefs(body));
-    if (inputReq->BodyUsed()) {
+    bool used = inputReq->GetBodyUsed(aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return nullptr;
+    }
+    if (used) {
       aRv.ThrowTypeError<MSG_FETCH_BODY_CONSUMED_ERROR>();
       return nullptr;
     }
@@ -301,7 +288,7 @@ Request::Constructor(const GlobalObject& aGlobal,
     nsCString fragment;
     if (NS_IsMainThread()) {
       nsCOMPtr<nsPIDOMWindowInner> inner(do_QueryInterface(global));
-      nsIDocument* doc = inner ? inner->GetExtantDoc() : nullptr;
+      Document* doc = inner ? inner->GetExtantDoc() : nullptr;
       if (doc) {
         GetRequestURLFromDocument(doc, input, requestURL, fragment, aRv);
       } else {
@@ -329,13 +316,17 @@ Request::Constructor(const GlobalObject& aGlobal,
     fallbackCache = RequestCache::Default;
   }
 
-  RequestMode mode = aInit.mMode.WasPassed() ? aInit.mMode.Value() : fallbackMode;
-  RequestCredentials credentials =
-    aInit.mCredentials.WasPassed() ? aInit.mCredentials.Value()
-                                   : fallbackCredentials;
+  RequestMode mode =
+      aInit.mMode.WasPassed() ? aInit.mMode.Value() : fallbackMode;
+  RequestCredentials credentials = aInit.mCredentials.WasPassed()
+                                       ? aInit.mCredentials.Value()
+                                       : fallbackCredentials;
 
-  if (mode == RequestMode::Navigate ||
-      (aInit.IsAnyMemberPresent() && request->Mode() == RequestMode::Navigate)) {
+  if (mode == RequestMode::Navigate) {
+    aRv.ThrowTypeError<MSG_INVALID_REQUEST_MODE>(NS_LITERAL_STRING("navigate"));
+    return nullptr;
+  }
+  if (aInit.IsAnyMemberPresent() && request->Mode() == RequestMode::Navigate) {
     mode = RequestMode::Same_origin;
   }
 
@@ -351,12 +342,13 @@ Request::Constructor(const GlobalObject& aGlobal,
       nsAutoString referrerURL;
       if (NS_IsMainThread()) {
         nsCOMPtr<nsPIDOMWindowInner> inner(do_QueryInterface(global));
-        nsIDocument* doc = inner ? inner->GetExtantDoc() : nullptr;
+        Document* doc = inner ? inner->GetExtantDoc() : nullptr;
         nsCOMPtr<nsIURI> uri;
         if (doc) {
           uri = ParseURLFromDocument(doc, referrer, aRv);
         } else {
-          // If we don't have a document, we must assume that this is a full URL.
+          // If we don't have a document, we must assume that this is a full
+          // URL.
           uri = ParseURLFromChrome(referrer, aRv);
         }
         if (NS_WARN_IF(aRv.Failed())) {
@@ -369,8 +361,9 @@ Request::Constructor(const GlobalObject& aGlobal,
         if (!referrerURL.EqualsLiteral(kFETCH_CLIENT_REFERRER_STR)) {
           nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull();
           if (principal) {
-            nsresult rv = principal->CheckMayLoad(uri, /* report */ false,
-                                                  /* allowIfInheritsPrincipal */ false);
+            nsresult rv =
+                principal->CheckMayLoad(uri, /* report */ false,
+                                        /* allowIfInheritsPrincipal */ false);
             if (NS_FAILED(rv)) {
               referrerURL.AssignLiteral(kFETCH_CLIENT_REFERRER_STR);
             }
@@ -392,7 +385,7 @@ Request::Constructor(const GlobalObject& aGlobal,
           // in the future we may want to optimize it all by off-loading all of
           // this work in a single sync loop.
           RefPtr<ReferrerSameOriginChecker> checker =
-            new ReferrerSameOriginChecker(worker, referrerURL, rv);
+              new ReferrerSameOriginChecker(worker, referrerURL, rv);
           IgnoredErrorResult error;
           checker->Dispatch(Canceling, error);
           if (error.Failed() || NS_FAILED(rv)) {
@@ -412,13 +405,23 @@ Request::Constructor(const GlobalObject& aGlobal,
     signal = aInit.mSignal.Value();
   }
 
+  UniquePtr<mozilla::ipc::PrincipalInfo> principalInfo;
+
   if (NS_IsMainThread()) {
     nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(global);
     if (window) {
-      nsCOMPtr<nsIDocument> doc;
+      nsCOMPtr<Document> doc;
       doc = window->GetExtantDoc();
       if (doc) {
         request->SetEnvironmentReferrerPolicy(doc->GetReferrerPolicy());
+
+        principalInfo.reset(new mozilla::ipc::PrincipalInfo());
+        nsresult rv =
+            PrincipalToPrincipalInfo(doc->NodePrincipal(), principalInfo.get());
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          aRv.ThrowTypeError<MSG_FETCH_BODY_CONSUMED_ERROR>();
+          return nullptr;
+        }
       }
     }
   } else {
@@ -426,8 +429,12 @@ Request::Constructor(const GlobalObject& aGlobal,
     if (worker) {
       worker->AssertIsOnWorkerThread();
       request->SetEnvironmentReferrerPolicy(worker->GetReferrerPolicy());
+      principalInfo =
+          MakeUnique<mozilla::ipc::PrincipalInfo>(worker->GetPrincipalInfo());
     }
   }
+
+  request->SetPrincipalInfo(std::move(principalInfo));
 
   if (mode != RequestMode::EndGuard_) {
     request->ClearCreatedByFetchEvent();
@@ -439,8 +446,8 @@ Request::Constructor(const GlobalObject& aGlobal,
     request->SetCredentialsMode(credentials);
   }
 
-  RequestCache cache = aInit.mCache.WasPassed() ?
-                       aInit.mCache.Value() : fallbackCache;
+  RequestCache cache =
+      aInit.mCache.WasPassed() ? aInit.mCache.Value() : fallbackCache;
   if (cache != RequestCache::EndGuard_) {
     if (cache == RequestCache::Only_if_cached &&
         request->Mode() != RequestMode::Same_origin) {
@@ -490,7 +497,8 @@ Request::Constructor(const GlobalObject& aGlobal,
 
   RefPtr<InternalHeaders> headers;
   if (aInit.mHeaders.WasPassed()) {
-    RefPtr<Headers> h = Headers::Constructor(aGlobal, aInit.mHeaders.Value(), aRv);
+    RefPtr<Headers> h =
+        Headers::Constructor(aGlobal, aInit.mHeaders.Value(), aRv);
     if (aRv.Failed()) {
       return nullptr;
     }
@@ -533,22 +541,21 @@ Request::Constructor(const GlobalObject& aGlobal,
     request->GetMethod(method);
     // method is guaranteed to be uppercase due to step 14.2 above.
     if (method.EqualsLiteral("HEAD") || method.EqualsLiteral("GET")) {
-      aRv.ThrowTypeError<MSG_NO_BODY_ALLOWED_FOR_GET_AND_HEAD>();
+      aRv.ThrowTypeError(u"HEAD or GET Request cannot have a body.");
       return nullptr;
     }
   }
 
   if (aInit.mBody.WasPassed()) {
-    const Nullable<fetch::OwningBodyInit>& bodyInitNullable = aInit.mBody.Value();
+    const Nullable<fetch::OwningBodyInit>& bodyInitNullable =
+        aInit.mBody.Value();
     if (!bodyInitNullable.IsNull()) {
       const fetch::OwningBodyInit& bodyInit = bodyInitNullable.Value();
       nsCOMPtr<nsIInputStream> stream;
       nsAutoCString contentTypeWithCharset;
       uint64_t contentLength = 0;
-      aRv = ExtractByteStreamFromBody(bodyInit,
-                                      getter_AddRefs(stream),
-                                      contentTypeWithCharset,
-                                      contentLength);
+      aRv = ExtractByteStreamFromBody(bodyInit, getter_AddRefs(stream),
+                                      contentTypeWithCharset, contentLength);
       if (NS_WARN_IF(aRv.Failed())) {
         return nullptr;
       }
@@ -593,10 +600,12 @@ Request::Constructor(const GlobalObject& aGlobal,
   return domRequest.forget();
 }
 
-already_AddRefed<Request>
-Request::Clone(ErrorResult& aRv)
-{
-  if (BodyUsed()) {
+already_AddRefed<Request> Request::Clone(ErrorResult& aRv) {
+  bool used = GetBodyUsed(aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  if (used) {
     aRv.ThrowTypeError<MSG_FETCH_BODY_CONSUMED_ERROR>();
     return nullptr;
   }
@@ -612,9 +621,7 @@ Request::Clone(ErrorResult& aRv)
   return request.forget();
 }
 
-Headers*
-Request::Headers_()
-{
+Headers* Request::Headers_() {
   if (!mHeaders) {
     mHeaders = new Headers(mOwner, mRequest->Headers());
   }
@@ -622,21 +629,15 @@ Request::Headers_()
   return mHeaders;
 }
 
-AbortSignal*
-Request::GetOrCreateSignal()
-{
+AbortSignal* Request::GetOrCreateSignal() {
   if (!mSignal) {
-    mSignal = new AbortSignal(false);
+    mSignal = new AbortSignal(mOwner, false);
   }
 
   return mSignal;
 }
 
-AbortSignal*
-Request::GetSignal() const
-{
-  return mSignal;
-}
+AbortSignalImpl* Request::GetSignalImpl() const { return mSignal; }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

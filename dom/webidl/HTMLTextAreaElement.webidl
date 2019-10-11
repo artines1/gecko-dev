@@ -14,7 +14,8 @@
 interface nsIEditor;
 interface XULControllers;
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLTextAreaElement : HTMLElement {
   [CEReactions, SetterThrows, Pure]
            attribute DOMString autocomplete;
@@ -49,7 +50,8 @@ interface HTMLTextAreaElement : HTMLElement {
   readonly attribute DOMString type;
   [CEReactions, Throws, Pure]
            attribute DOMString defaultValue;
-  [CEReactions, SetterThrows, TreatNullAs=EmptyString] attribute DOMString value;
+  [CEReactions, SetterThrows] attribute [TreatNullAs=EmptyString] DOMString value;
+  [BinaryName="getTextLength"]
   readonly attribute unsigned long textLength;
 
   readonly attribute boolean willValidate;
@@ -85,7 +87,7 @@ partial interface HTMLTextAreaElement {
   readonly attribute XULControllers controllers;
 };
 
-HTMLTextAreaElement implements MozEditableElement;
+HTMLTextAreaElement includes MozEditableElement;
 
 partial interface HTMLTextAreaElement {
   [ChromeOnly]

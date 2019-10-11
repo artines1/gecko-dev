@@ -4,11 +4,24 @@
 "use strict";
 
 // React
-const { createFactory, Component } = require("devtools/client/shared/vendor/react");
-const { div } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  createFactory,
+  Component,
+} = require("devtools/client/shared/vendor/react");
+const {
+  div,
+  span,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { L10N } = require("../utils/l10n");
-const Button = createFactory(require("./Button"));
+const Button = createFactory(require("./Button").Button);
+const AccessibilityTreeFilter = createFactory(
+  require("./AccessibilityTreeFilter")
+);
+const AccessibilityPrefs = createFactory(require("./AccessibilityPrefs"));
+loader.lazyGetter(this, "SimulationMenuButton", function() {
+  return createFactory(require("./SimulationMenuButton"));
+});
 
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const { disable, updateCanBeDisabled } = require("../actions/ui");
@@ -16,9 +29,11 @@ const { disable, updateCanBeDisabled } = require("../actions/ui");
 class Toolbar extends Component {
   static get propTypes() {
     return {
+      accessibilityWalker: PropTypes.object.isRequired,
       dispatch: PropTypes.func.isRequired,
       accessibility: PropTypes.object.isRequired,
-      canBeDisabled: PropTypes.bool.isRequired
+      canBeDisabled: PropTypes.bool.isRequired,
+      simulator: PropTypes.object,
     };
   }
 
@@ -26,7 +41,7 @@ class Toolbar extends Component {
     super(props);
 
     this.state = {
-      disabling: false
+      disabling: false,
     };
 
     this.onDisable = this.onDisable.bind(this);
@@ -34,13 +49,17 @@ class Toolbar extends Component {
   }
 
   componentWillMount() {
-    this.props.accessibility.on("can-be-disabled-change",
-      this.onCanBeDisabledChange);
+    this.props.accessibility.on(
+      "can-be-disabled-change",
+      this.onCanBeDisabledChange
+    );
   }
 
   componentWillUnmount() {
-    this.props.accessibility.off("can-be-disabled-change",
-      this.onCanBeDisabledChange);
+    this.props.accessibility.off(
+      "can-be-disabled-change",
+      this.onCanBeDisabledChange
+    );
   }
 
   onCanBeDisabledChange(canBeDisabled) {
@@ -57,10 +76,12 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { canBeDisabled } = this.props;
+    const { canBeDisabled, accessibilityWalker, simulator } = this.props;
     const { disabling } = this.state;
-    const disableButtonStr = disabling ?
-      "accessibility.disabling" : "accessibility.disable";
+    const disableButtonStr = disabling
+      ? "accessibility.disabling"
+      : "accessibility.disable";
+    const betaID = "beta";
     let title;
     let isDisabled = false;
 
@@ -71,24 +92,55 @@ class Toolbar extends Component {
       title = L10N.getStr("accessibility.disable.disabledTitle");
     }
 
-    return (
-      div({
+    const optionalSimulationSection = simulator
+      ? [
+          div({
+            role: "separator",
+            className: "devtools-separator",
+          }),
+          SimulationMenuButton({ simulator }),
+        ]
+      : [];
+
+    return div(
+      {
         className: "devtools-toolbar",
-        role: "toolbar"
-      }, Button({
-        className: "disable",
-        id: "accessibility-disable-button",
-        onClick: this.onDisable,
-        disabled: disabling || isDisabled,
-        busy: disabling,
-        title
-      }, L10N.getStr(disableButtonStr)))
+        role: "toolbar",
+      },
+      Button(
+        {
+          className: "disable",
+          id: "accessibility-disable-button",
+          onClick: this.onDisable,
+          disabled: disabling || isDisabled,
+          busy: disabling,
+          title,
+        },
+        L10N.getStr(disableButtonStr)
+      ),
+      div({
+        role: "separator",
+        className: "devtools-separator",
+      }),
+      // @remove after release 68 (See Bug 1551574)
+      span(
+        {
+          className: "beta",
+          role: "presentation",
+          id: betaID,
+        },
+        L10N.getStr("accessibility.beta")
+      ),
+      AccessibilityTreeFilter({ accessibilityWalker, describedby: betaID }),
+      // Simulation section is shown if webrender is enabled
+      ...optionalSimulationSection,
+      AccessibilityPrefs()
     );
   }
 }
 
 const mapStateToProps = ({ ui }) => ({
-  canBeDisabled: ui.canBeDisabled
+  canBeDisabled: ui.canBeDisabled,
 });
 
 // Exports from this module

@@ -4,7 +4,7 @@
 
 interface LoadInfo;
 interface MozChannel;
-interface TabParent;
+interface RemoteTab;
 interface URI;
 interface nsISupports;
 
@@ -38,10 +38,32 @@ enum MozContentPolicyType {
 };
 
 /**
+ * String versions of CLASSIFIED_* tracking flags from nsHttpChannel.idl
+ */
+enum MozUrlClassificationFlags {
+  "fingerprinting",
+  "fingerprinting_content",
+  "cryptomining",
+  "cryptomining_content",
+  "tracking",
+  "tracking_ad",
+  "tracking_analytics",
+  "tracking_social",
+  "tracking_content",
+  "socialtracking",
+  "socialtracking_facebook",
+  "socialtracking_linkedin",
+  "socialtracking_twitter",
+  "any_basic_tracking",
+  "any_strict_tracking",
+  "any_social_tracking"
+};
+
+/**
  * A thin wrapper around nsIChannel and nsIHttpChannel that allows JS
  * callers to access them without XPConnect overhead.
  */
-[ChromeOnly, Exposed=System]
+[ChromeOnly, Exposed=Window]
 interface ChannelWrapper : EventTarget {
   /**
    * Returns the wrapper instance for the given channel. The same wrapper is
@@ -55,7 +77,7 @@ interface ChannelWrapper : EventTarget {
    */
   static ChannelWrapper? getRegisteredChannel(unsigned long long aChannelId,
                                              WebExtensionPolicy extension,
-                                             TabParent? tabParent);
+                                             RemoteTab? remoteTab);
 
   /**
    * A unique ID for for the requests which remains constant throughout the
@@ -149,16 +171,16 @@ interface ChannelWrapper : EventTarget {
    * Returns true if the request matches the given request filter, and the
    * given extension has permission to access it.
    */
-  boolean matches(optional MozRequestFilter filter,
+  boolean matches(optional MozRequestFilter filter = {},
                   optional WebExtensionPolicy? extension = null,
-                  optional MozRequestMatchOptions options);
+                  optional MozRequestMatchOptions options = {});
 
 
   /**
    * Register's this channel as traceable by the given add-on when accessed
-   * via the process of the given TabParent.
+   * via the process of the given RemoteTab.
    */
-  void registerTraceableChannel(WebExtensionPolicy extension, TabParent? tabParent);
+  void registerTraceableChannel(WebExtensionPolicy extension, RemoteTab? remoteTab);
 
   /**
    * The current HTTP status code of the request. This will be 0 if a response
@@ -382,6 +404,20 @@ interface ChannelWrapper : EventTarget {
   void setResponseHeader(ByteString header,
                          ByteString value,
                          optional boolean merge = false);
+
+  /**
+   * Provides the tracking classification data when it is available.
+   */
+  [Cached, Frozen, GetterThrows, Pure]
+  readonly attribute MozUrlClassification? urlClassification;
+};
+
+/**
+ * Wrapper for first and third party tracking classification data.
+ */
+dictionary MozUrlClassification {
+  required sequence<MozUrlClassificationFlags> firstParty;
+  required sequence<MozUrlClassificationFlags> thirdParty;
 };
 
 /**
@@ -417,6 +453,18 @@ dictionary MozProxyInfo {
    * next candidate proxy server if it has not received a response.
    */
   unsigned long failoverTimeout;
+
+  /**
+   * Any non-empty value will be passed directly as Proxy-Authorization header
+   * value for the CONNECT request attempt.  However, this header set on the
+   * resource request itself takes precedence.
+   */
+  ByteString? proxyAuthorizationHeader = null;
+
+  /**
+   * An optional key used for additional isolation of this proxy connection.
+   */
+  ByteString? connectionIsolationKey = null;
 };
 
 /**
@@ -426,7 +474,7 @@ dictionary MozProxyInfo {
  * url represents the parent of the loading window.
  * frameId is the outerWindowID for the parent of the loading window.
  *
- * For further details see nsILoadInfo.idl and nsIDocument::AncestorPrincipals.
+ * For further details see nsILoadInfo.idl and Document::AncestorPrincipals.
  */
 dictionary MozFrameAncestorInfo {
   required ByteString url;
@@ -462,6 +510,12 @@ dictionary MozRequestFilter {
    * match pattern set.
    */
   MatchPatternSet? urls = null;
+
+  /**
+   * If present, the request only matches if the loadInfo privateBrowsingId matches
+   * against the given incognito value.
+   */
+  boolean? incognito = null;
 };
 
 dictionary MozRequestMatchOptions {

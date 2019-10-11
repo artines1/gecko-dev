@@ -8,6 +8,8 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_idle_period.h"
+#include "mozilla/dom/Document.h"
 #include "nsRefreshDriver.h"
 #include "nsThreadUtils.h"
 
@@ -18,34 +20,43 @@ static const double kLongIdlePeriodMS = 50.0;
 // scheduled on the main thread. N.B. layout.idle_period.time_limit adds
 // padding at the end of the idle period, which makes the point in time that we
 // expect to become busy again be:
-//   now + kMinIdlePeriodMS + layout.idle_period.time_limit
-static const double kMinIdlePeriodMS = 3.0;
+//   now + idle_period.min + layout.idle_period.time_limit
+// or during page load
+//   now + idle_period.during_page_load.min + layout.idle_period.time_limit
 
-static const uint32_t kMaxTimerThreadBound = 5;       // milliseconds
-static const uint32_t kMaxTimerThreadBoundClamp = 15; // milliseconds
+static const uint32_t kMaxTimerThreadBound = 5;        // milliseconds
+static const uint32_t kMaxTimerThreadBoundClamp = 15;  // milliseconds
 
 namespace mozilla {
 
 NS_IMETHODIMP
-MainThreadIdlePeriod::GetIdlePeriodHint(TimeStamp* aIdleDeadline)
-{
+MainThreadIdlePeriod::GetIdlePeriodHint(TimeStamp* aIdleDeadline) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aIdleDeadline);
 
   TimeStamp now = TimeStamp::Now();
   TimeStamp currentGuess =
-    now + TimeDuration::FromMilliseconds(kLongIdlePeriodMS);
+      now + TimeDuration::FromMilliseconds(kLongIdlePeriodMS);
 
   currentGuess = nsRefreshDriver::GetIdleDeadlineHint(currentGuess);
-  currentGuess = NS_GetTimerDeadlineHintOnCurrentThread(currentGuess, kMaxTimerThreadBound);
+  currentGuess = NS_GetTimerDeadlineHintOnCurrentThread(currentGuess,
+                                                        kMaxTimerThreadBound);
 
   // If the idle period is too small, then just return a null time
   // to indicate we are busy. Otherwise return the actual deadline.
   TimeDuration minIdlePeriod =
-    TimeDuration::FromMilliseconds(kMinIdlePeriodMS);
+      TimeDuration::FromMilliseconds(StaticPrefs::idle_period_min());
   bool busySoon = currentGuess.IsNull() ||
                   (now >= (currentGuess - minIdlePeriod)) ||
                   currentGuess < mLastIdleDeadline;
+
+  // During page load use higher minimum idle period.
+  if (!busySoon && XRE_IsContentProcess() &&
+      mozilla::dom::Document::HasRecentlyStartedForegroundLoads()) {
+    TimeDuration minIdlePeriod = TimeDuration::FromMilliseconds(
+        StaticPrefs::idle_period_during_page_load_min());
+    busySoon = (now >= (currentGuess - minIdlePeriod));
+  }
 
   if (!busySoon) {
     *aIdleDeadline = mLastIdleDeadline = currentGuess;
@@ -54,10 +65,7 @@ MainThreadIdlePeriod::GetIdlePeriodHint(TimeStamp* aIdleDeadline)
   return NS_OK;
 }
 
-/* static */ float
-MainThreadIdlePeriod::GetLongIdlePeriod()
-{
-  return kLongIdlePeriodMS;
-}
+/* static */
+float MainThreadIdlePeriod::GetLongIdlePeriod() { return kLongIdlePeriodMS; }
 
-} // namespace mozilla
+}  // namespace mozilla

@@ -9,24 +9,28 @@
 
 #include "inLayoutUtils.h"
 
+#include "gfxTextRun.h"
 #include "nsArray.h"
 #include "nsAutoPtr.h"
 #include "nsIServiceManager.h"
 #include "nsString.h"
 #include "nsIStyleSheetLinkingElement.h"
 #include "nsIContentInlines.h"
-#include "nsIDocument.h"
-#include "nsIPresShell.h"
-#include "nsIDOMWindow.h"
-#include "nsXBLBinding.h"
-#include "nsXBLPrototypeBinding.h"
+#include "mozilla/dom/Document.h"
+#ifdef MOZ_XBL
+#  include "nsXBLBinding.h"
+#  include "nsBindingManager.h"
+#  include "nsXBLPrototypeBinding.h"
+#endif
 #include "nsIMutableArray.h"
-#include "nsBindingManager.h"
 #include "ChildIterator.h"
 #include "nsComputedDOMStyle.h"
 #include "mozilla/EventStateManager.h"
 #include "nsAtom.h"
+#include "nsPresContext.h"
 #include "nsRange.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/Element.h"
@@ -42,6 +46,7 @@
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleRuleMap.h"
 #include "mozilla/ServoCSSParser.h"
+#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/dom/InspectorUtils.h"
 #include "mozilla/dom/InspectorFontFace.h"
 
@@ -52,26 +57,24 @@ using namespace mozilla::dom;
 namespace mozilla {
 namespace dom {
 
-/* static */ void
-InspectorUtils::GetAllStyleSheets(GlobalObject& aGlobalObject,
-                                  nsIDocument& aDocument,
-                                  bool aDocumentOnly,
-                                  nsTArray<RefPtr<StyleSheet>>& aResult)
-{
+/* static */
+void InspectorUtils::GetAllStyleSheets(GlobalObject& aGlobalObject,
+                                       Document& aDocument, bool aDocumentOnly,
+                                       nsTArray<RefPtr<StyleSheet>>& aResult) {
   // Get the agent, then user and finally xbl sheets in the style set.
-  nsIPresShell* presShell = aDocument.GetShell();
+  PresShell* presShell = aDocument.GetPresShell();
 
   if (presShell) {
     ServoStyleSet* styleSet = presShell->StyleSet();
 
     if (!aDocumentOnly) {
-      SheetType sheetType = SheetType::Agent;
-      for (int32_t i = 0; i < styleSet->SheetCount(sheetType); i++) {
-        aResult.AppendElement(styleSet->StyleSheetAt(sheetType, i));
-      }
-      sheetType = SheetType::User;
-      for (int32_t i = 0; i < styleSet->SheetCount(sheetType); i++) {
-        aResult.AppendElement(styleSet->StyleSheetAt(sheetType, i));
+      const StyleOrigin kOrigins[] = {StyleOrigin::UserAgent,
+                                      StyleOrigin::User};
+      for (const auto origin : kOrigins) {
+        for (size_t i = 0, count = styleSet->SheetCount(origin); i < count;
+             i++) {
+          aResult.AppendElement(styleSet->SheetAt(origin, i));
+        }
       }
     }
 
@@ -96,9 +99,7 @@ InspectorUtils::GetAllStyleSheets(GlobalObject& aGlobalObject,
   }
 }
 
-bool
-InspectorUtils::IsIgnorableWhitespace(CharacterData& aDataNode)
-{
+bool InspectorUtils::IsIgnorableWhitespace(CharacterData& aDataNode) {
   if (!aDataNode.TextIsOnlyWhitespace()) {
     return false;
   }
@@ -113,10 +114,9 @@ InspectorUtils::IsIgnorableWhitespace(CharacterData& aDataNode)
   return true;
 }
 
-/* static */ nsINode*
-InspectorUtils::GetParentForNode(nsINode& aNode,
-                                 bool aShowingAnonymousContent)
-{
+/* static */
+nsINode* InspectorUtils::GetParentForNode(nsINode& aNode,
+                                          bool aShowingAnonymousContent) {
   // First do the special cases -- document nodes and anonymous content
   nsINode* parent = nullptr;
 
@@ -136,10 +136,9 @@ InspectorUtils::GetParentForNode(nsINode& aNode,
   return parent;
 }
 
-/* static */ already_AddRefed<nsINodeList>
-InspectorUtils::GetChildrenForNode(nsINode& aNode,
-                                   bool aShowingAnonymousContent)
-{
+/* static */
+already_AddRefed<nsINodeList> InspectorUtils::GetChildrenForNode(
+    nsINode& aNode, bool aShowingAnonymousContent) {
   nsCOMPtr<nsINodeList> kids;
 
   if (aShowingAnonymousContent) {
@@ -155,29 +154,32 @@ InspectorUtils::GetChildrenForNode(nsINode& aNode,
   return kids.forget();
 }
 
-/* static */ void
-InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
-                                 Element& aElement,
-                                 const nsAString& aPseudo,
-                                 nsTArray<RefPtr<css::Rule>>& aResult)
-{
+/* static */
+void InspectorUtils::GetCSSStyleRules(
+    GlobalObject& aGlobalObject, Element& aElement, const nsAString& aPseudo,
+    bool aIncludeVisitedStyle, nsTArray<RefPtr<BindingStyleRule>>& aResult) {
   RefPtr<nsAtom> pseudoElt;
   if (!aPseudo.IsEmpty()) {
     pseudoElt = NS_Atomize(aPseudo);
   }
 
   RefPtr<ComputedStyle> computedStyle =
-    GetCleanComputedStyleForElement(&aElement, pseudoElt);
+      GetCleanComputedStyleForElement(&aElement, pseudoElt);
   if (!computedStyle) {
     // This can fail for elements that are not in the document or
     // if the document they're in doesn't have a presshell.  Bail out.
     return;
   }
 
+  if (aIncludeVisitedStyle) {
+    if (ComputedStyle* styleIfVisited = computedStyle->GetStyleIfVisited()) {
+      computedStyle = styleIfVisited;
+    }
+  }
 
-  nsIDocument* doc = aElement.OwnerDoc();
-  nsIPresShell* shell = doc->GetShell();
-  if (!shell) {
+  Document* doc = aElement.OwnerDoc();
+  PresShell* presShell = doc->GetPresShell();
+  if (!presShell) {
     return;
   }
 
@@ -186,25 +188,9 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
 
   AutoTArray<ServoStyleRuleMap*, 1> maps;
   {
-    ServoStyleSet* styleSet = shell->StyleSet();
+    ServoStyleSet* styleSet = presShell->StyleSet();
     ServoStyleRuleMap* map = styleSet->StyleRuleMap();
     maps.AppendElement(map);
-  }
-
-  // Collect style rule maps for bindings.
-  for (nsIContent* bindingContent = &aElement; bindingContent;
-       bindingContent = bindingContent->GetBindingParent()) {
-    for (nsXBLBinding* binding = bindingContent->GetXBLBinding();
-         binding; binding = binding->GetBaseBinding()) {
-      if (auto* map = binding->PrototypeBinding()->GetServoStyleRuleMap()) {
-        maps.AppendElement(map);
-      }
-    }
-    // Note that we intentionally don't cut off here, unlike when we
-    // do styling, because even if style rules from parent binding
-    // do not apply to the element directly in those cases, their
-    // rules may still show up in the list we get above due to the
-    // inheritance in cascading.
   }
 
   // Now shadow DOM stuff...
@@ -212,10 +198,17 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
     maps.AppendElement(&shadow->ServoStyleRuleMap());
   }
 
-  for (auto* shadow = aElement.GetContainingShadow();
-       shadow;
+  for (auto* shadow = aElement.GetContainingShadow(); shadow;
        shadow = shadow->Host()->GetContainingShadow()) {
     maps.AppendElement(&shadow->ServoStyleRuleMap());
+  }
+
+  // Rules from the assigned slot.
+  for (auto* slot = aElement.GetAssignedSlot(); slot;
+       slot = slot->GetAssignedSlot()) {
+    if (auto* shadow = slot->GetContainingShadow()) {
+      maps.AppendElement(&shadow->ServoStyleRuleMap());
+    }
   }
 
   // Find matching rules in the table.
@@ -235,29 +228,26 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
       fprintf(stderr, "%s\n", str.get());
       Servo_StyleRule_Debug(rawRule, &str);
       MOZ_CRASH_UNSAFE_PRINTF(
-        "We should be able to map a raw rule to a rule: %s\n",
-        str.get()
-      );
+          "We should be able to map a raw rule to a rule: %s\n", str.get());
 #endif
     }
   }
 }
 
-/* static */ uint32_t
-InspectorUtils::GetRuleLine(GlobalObject& aGlobal, css::Rule& aRule)
-{
+/* static */
+uint32_t InspectorUtils::GetRuleLine(GlobalObject& aGlobal, css::Rule& aRule) {
   return aRule.GetLineNumber();
 }
 
-/* static */ uint32_t
-InspectorUtils::GetRuleColumn(GlobalObject& aGlobal, css::Rule& aRule)
-{
+/* static */
+uint32_t InspectorUtils::GetRuleColumn(GlobalObject& aGlobal,
+                                       css::Rule& aRule) {
   return aRule.GetColumnNumber();
 }
 
-/* static */ uint32_t
-InspectorUtils::GetRelativeRuleLine(GlobalObject& aGlobal, css::Rule& aRule)
-{
+/* static */
+uint32_t InspectorUtils::GetRelativeRuleLine(GlobalObject& aGlobal,
+                                             css::Rule& aRule) {
   uint32_t lineNumber = aRule.GetLineNumber();
 
   // If aRule was parsed along with its stylesheet, then it will
@@ -286,12 +276,12 @@ InspectorUtils::GetRelativeRuleLine(GlobalObject& aGlobal, css::Rule& aRule)
     nsINode* owningNode = sheet->GetOwnerNode();
     if (owningNode) {
       nsCOMPtr<nsIStyleSheetLinkingElement> link =
-        do_QueryInterface(owningNode);
+          do_QueryInterface(owningNode);
       if (link) {
         // Check for underflow, which is one indication that we're
         // trying to remap an already relative lineNumber.
         uint32_t linkLineIndex0 = link->GetLineNumber() - 1;
-        if (linkLineIndex0 > lineNumber ) {
+        if (linkLineIndex0 > lineNumber) {
           lineNumber = 0;
         } else {
           lineNumber -= linkLineIndex0;
@@ -303,81 +293,72 @@ InspectorUtils::GetRelativeRuleLine(GlobalObject& aGlobal, css::Rule& aRule)
   return lineNumber;
 }
 
-/* static */ bool
-InspectorUtils::HasRulesModifiedByCSSOM(GlobalObject& aGlobal, StyleSheet& aSheet)
-{
+/* static */
+bool InspectorUtils::HasRulesModifiedByCSSOM(GlobalObject& aGlobal,
+                                             StyleSheet& aSheet) {
   return aSheet.HasModifiedRules();
 }
 
-/* static */ uint32_t
-InspectorUtils::GetSelectorCount(GlobalObject& aGlobal,
-                                 BindingStyleRule& aRule)
-{
+/* static */
+uint32_t InspectorUtils::GetSelectorCount(GlobalObject& aGlobal,
+                                          BindingStyleRule& aRule) {
   return aRule.GetSelectorCount();
 }
 
-/* static */ void
-InspectorUtils::GetSelectorText(GlobalObject& aGlobal,
-                                BindingStyleRule& aRule,
-                                uint32_t aSelectorIndex,
-                                nsString& aText,
-                                ErrorResult& aRv)
-{
+/* static */
+void InspectorUtils::GetSelectorText(GlobalObject& aGlobal,
+                                     BindingStyleRule& aRule,
+                                     uint32_t aSelectorIndex, nsString& aText,
+                                     ErrorResult& aRv) {
   aRv = aRule.GetSelectorText(aSelectorIndex, aText);
 }
 
-/* static */ uint64_t
-InspectorUtils::GetSpecificity(GlobalObject& aGlobal,
-                               BindingStyleRule& aRule,
-                               uint32_t aSelectorIndex,
-                               ErrorResult& aRv)
-{
+/* static */
+uint64_t InspectorUtils::GetSpecificity(GlobalObject& aGlobal,
+                                        BindingStyleRule& aRule,
+                                        uint32_t aSelectorIndex,
+                                        ErrorResult& aRv) {
   uint64_t s;
   aRv = aRule.GetSpecificity(aSelectorIndex, &s);
   return s;
 }
 
-/* static */ bool
-InspectorUtils::SelectorMatchesElement(GlobalObject& aGlobalObject,
-                                       Element& aElement,
-                                       BindingStyleRule& aRule,
-                                       uint32_t aSelectorIndex,
-                                       const nsAString& aPseudo,
-                                       ErrorResult& aRv)
-{
+/* static */
+bool InspectorUtils::SelectorMatchesElement(
+    GlobalObject& aGlobalObject, Element& aElement, BindingStyleRule& aRule,
+    uint32_t aSelectorIndex, const nsAString& aPseudo,
+    bool aRelevantLinkVisited, ErrorResult& aRv) {
   bool result = false;
   aRv = aRule.SelectorMatchesElement(&aElement, aSelectorIndex, aPseudo,
-                                     &result);
+                                     aRelevantLinkVisited, &result);
   return result;
 }
 
-/* static */ bool
-InspectorUtils::IsInheritedProperty(GlobalObject& aGlobalObject,
-                                    const nsAString& aPropertyName)
-{
+/* static */
+bool InspectorUtils::IsInheritedProperty(GlobalObject& aGlobalObject,
+                                         const nsAString& aPropertyName) {
   NS_ConvertUTF16toUTF8 propName(aPropertyName);
   return Servo_Property_IsInherited(&propName);
 }
 
-/* static */ void
-InspectorUtils::GetCSSPropertyNames(GlobalObject& aGlobalObject,
-                                    const PropertyNamesOptions& aOptions,
-                                    nsTArray<nsString>& aResult)
-{
+/* static */
+void InspectorUtils::GetCSSPropertyNames(GlobalObject& aGlobalObject,
+                                         const PropertyNamesOptions& aOptions,
+                                         nsTArray<nsString>& aResult) {
   CSSEnabledState enabledState = aOptions.mIncludeExperimentals
-    ? CSSEnabledState::eIgnoreEnabledState
-    : CSSEnabledState::eForAllContent;
+                                     ? CSSEnabledState::IgnoreEnabledState
+                                     : CSSEnabledState::ForAllContent;
 
   auto appendProperty = [enabledState, &aResult](uint32_t prop) {
     nsCSSPropertyID cssProp = nsCSSPropertyID(prop);
     if (nsCSSProps::IsEnabled(cssProp, enabledState)) {
-      aResult.AppendElement(NS_ConvertASCIItoUTF16(
-        nsCSSProps::GetStringValue(cssProp)));
+      aResult.AppendElement(
+          NS_ConvertASCIItoUTF16(nsCSSProps::GetStringValue(cssProp)));
     }
   };
 
   uint32_t prop = 0;
-  for ( ; prop < eCSSProperty_COUNT_no_shorthands; ++prop) {
+  for (; prop < eCSSProperty_COUNT_no_shorthands; ++prop) {
     if (!nsCSSProps::PropHasFlags(nsCSSPropertyID(prop),
                                   CSSPropFlags::Inaccessible)) {
       appendProperty(prop);
@@ -385,36 +366,36 @@ InspectorUtils::GetCSSPropertyNames(GlobalObject& aGlobalObject,
   }
 
   if (aOptions.mIncludeShorthands) {
-    for ( ; prop < eCSSProperty_COUNT; ++prop) {
+    for (; prop < eCSSProperty_COUNT; ++prop) {
       appendProperty(prop);
     }
   }
 
   if (aOptions.mIncludeAliases) {
-    for (prop = eCSSProperty_COUNT; prop < eCSSProperty_COUNT_with_aliases; ++prop) {
+    for (prop = eCSSProperty_COUNT; prop < eCSSProperty_COUNT_with_aliases;
+         ++prop) {
       appendProperty(prop);
     }
   }
 }
 
-/* static */ void
-InspectorUtils::GetCSSPropertyPrefs(GlobalObject& aGlobalObject,
-                                    nsTArray<PropertyPref>& aResult)
-{
+/* static */
+void InspectorUtils::GetCSSPropertyPrefs(GlobalObject& aGlobalObject,
+                                         nsTArray<PropertyPref>& aResult) {
   for (const auto* src = nsCSSProps::kPropertyPrefTable;
        src->mPropID != eCSSProperty_UNKNOWN; src++) {
     PropertyPref& dest = *aResult.AppendElement();
-    dest.mName.Assign(NS_ConvertASCIItoUTF16(nsCSSProps::GetStringValue(src->mPropID)));
+    dest.mName.Assign(
+        NS_ConvertASCIItoUTF16(nsCSSProps::GetStringValue(src->mPropID)));
     dest.mPref.AssignASCII(src->mPref);
   }
 }
 
-/* static */ void
-InspectorUtils::GetSubpropertiesForCSSProperty(GlobalObject& aGlobal,
-                                               const nsAString& aProperty,
-                                               nsTArray<nsString>& aResult,
-                                               ErrorResult& aRv)
-{
+/* static */
+void InspectorUtils::GetSubpropertiesForCSSProperty(GlobalObject& aGlobal,
+                                                    const nsAString& aProperty,
+                                                    nsTArray<nsString>& aResult,
+                                                    ErrorResult& aRv) {
   nsCSSPropertyID propertyID = nsCSSProps::LookupProperty(aProperty);
 
   if (propertyID == eCSSProperty_UNKNOWN) {
@@ -433,18 +414,18 @@ InspectorUtils::GetSubpropertiesForCSSProperty(GlobalObject& aGlobal,
     return;
   }
 
-  for (const nsCSSPropertyID* props = nsCSSProps::SubpropertyEntryFor(propertyID);
+  for (const nsCSSPropertyID* props =
+           nsCSSProps::SubpropertyEntryFor(propertyID);
        *props != eCSSProperty_UNKNOWN; ++props) {
     nsString* name = aResult.AppendElement();
     CopyASCIItoUTF16(nsCSSProps::GetStringValue(*props), *name);
   }
 }
 
-/* static */ bool
-InspectorUtils::CssPropertyIsShorthand(GlobalObject& aGlobalObject,
-                                       const nsAString& aProperty,
-                                       ErrorResult& aRv)
-{
+/* static */
+bool InspectorUtils::CssPropertyIsShorthand(GlobalObject& aGlobalObject,
+                                            const nsAString& aProperty,
+                                            ErrorResult& aRv) {
   NS_ConvertUTF16toUTF8 prop(aProperty);
   bool found;
   bool isShorthand = Servo_Property_IsShorthand(&prop, &found);
@@ -454,15 +435,32 @@ InspectorUtils::CssPropertyIsShorthand(GlobalObject& aGlobalObject,
   return isShorthand;
 }
 
-bool
-InspectorUtils::CssPropertySupportsType(GlobalObject& aGlobalObject,
-                                        const nsAString& aProperty,
-                                        uint32_t aType,
-                                        ErrorResult& aRv)
-{
+// This should match the constants in specified_value_info.rs
+//
+// Once we can use bitflags in consts, we can also cbindgen that and use them
+// here instead.
+static uint8_t ToServoCssType(InspectorPropertyType aType) {
+  switch (aType) {
+    case InspectorPropertyType::Color:
+      return 1;
+    case InspectorPropertyType::Gradient:
+      return 1 << 1;
+    case InspectorPropertyType::Timing_function:
+      return 1 << 2;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unknown property type?");
+      return 0;
+  }
+}
+
+bool InspectorUtils::CssPropertySupportsType(GlobalObject& aGlobalObject,
+                                             const nsAString& aProperty,
+                                             InspectorPropertyType aType,
+                                             ErrorResult& aRv) {
   NS_ConvertUTF16toUTF8 property(aProperty);
   bool found;
-  bool result = Servo_Property_SupportsType(&property, aType, &found);
+  bool result =
+      Servo_Property_SupportsType(&property, ToServoCssType(aType), &found);
   if (!found) {
     aRv.Throw(NS_ERROR_FAILURE);
     return false;
@@ -470,12 +468,11 @@ InspectorUtils::CssPropertySupportsType(GlobalObject& aGlobalObject,
   return result;
 }
 
-/* static */ void
-InspectorUtils::GetCSSValuesForProperty(GlobalObject& aGlobalObject,
-                                        const nsAString& aProperty,
-                                        nsTArray<nsString>& aResult,
-                                        ErrorResult& aRv)
-{
+/* static */
+void InspectorUtils::GetCSSValuesForProperty(GlobalObject& aGlobalObject,
+                                             const nsAString& aProperty,
+                                             nsTArray<nsString>& aResult,
+                                             ErrorResult& aRv) {
   NS_ConvertUTF16toUTF8 property(aProperty);
   bool found;
   Servo_Property_GetCSSValuesForProperty(&property, &found, &aResult);
@@ -485,12 +482,10 @@ InspectorUtils::GetCSSValuesForProperty(GlobalObject& aGlobalObject,
   return;
 }
 
-/* static */ void
-InspectorUtils::RgbToColorName(GlobalObject& aGlobalObject,
-                               uint8_t aR, uint8_t aG, uint8_t aB,
-                               nsAString& aColorName,
-                               ErrorResult& aRv)
-{
+/* static */
+void InspectorUtils::RgbToColorName(GlobalObject& aGlobalObject, uint8_t aR,
+                                    uint8_t aG, uint8_t aB,
+                                    nsAString& aColorName, ErrorResult& aRv) {
   const char* color = NS_RGBToColorName(NS_RGB(aR, aG, aB));
   if (!color) {
     aColorName.Truncate();
@@ -501,11 +496,10 @@ InspectorUtils::RgbToColorName(GlobalObject& aGlobalObject,
   aColorName.AssignASCII(color);
 }
 
-/* static */ void
-InspectorUtils::ColorToRGBA(GlobalObject& aGlobalObject,
-                            const nsAString& aColorString,
-                            Nullable<InspectorRGBATuple>& aResult)
-{
+/* static */
+void InspectorUtils::ColorToRGBA(GlobalObject& aGlobalObject,
+                                 const nsAString& aColorString,
+                                 Nullable<InspectorRGBATuple>& aResult) {
   nscolor color = NS_RGB(0, 0, 0);
 
   if (!ServoCSSParser::ComputeColor(nullptr, NS_RGB(0, 0, 0), aColorString,
@@ -521,18 +515,16 @@ InspectorUtils::ColorToRGBA(GlobalObject& aGlobalObject,
   tuple.mA = nsStyleUtil::ColorComponentToFloat(NS_GET_A(color));
 }
 
-/* static */ bool
-InspectorUtils::IsValidCSSColor(GlobalObject& aGlobalObject,
-                                const nsAString& aColorString)
-{
+/* static */
+bool InspectorUtils::IsValidCSSColor(GlobalObject& aGlobalObject,
+                                     const nsAString& aColorString) {
   return ServoCSSParser::IsValidCSSColor(aColorString);
 }
 
-void
-InspectorUtils::GetBindingURLs(GlobalObject& aGlobalObject,
-                               Element& aElement,
-                               nsTArray<nsString>& aResult)
-{
+void InspectorUtils::GetBindingURLs(GlobalObject& aGlobalObject,
+                                    Element& aElement,
+                                    nsTArray<nsString>& aResult) {
+#ifdef MOZ_XBL
   nsXBLBinding* binding = aElement.GetXBLBinding();
 
   while (binding) {
@@ -543,43 +535,41 @@ InspectorUtils::GetBindingURLs(GlobalObject& aGlobalObject,
     CopyASCIItoUTF16(spec, *resultURI);
     binding = binding->GetBaseBinding();
   }
+#endif
 }
 
-/* static */ bool
-InspectorUtils::SetContentState(GlobalObject& aGlobalObject,
-                                Element& aElement,
-                                uint64_t aState,
-                                ErrorResult& aRv)
-{
+/* static */
+bool InspectorUtils::SetContentState(GlobalObject& aGlobalObject,
+                                     Element& aElement, uint64_t aState,
+                                     ErrorResult& aRv) {
   RefPtr<EventStateManager> esm =
-    inLayoutUtils::GetEventStateManagerFor(aElement);
-  if (!esm) {
+      inLayoutUtils::GetEventStateManagerFor(aElement);
+  EventStates state(aState);
+  if (!esm || !EventStateManager::ManagesState(state)) {
+    aRv.Throw(NS_ERROR_INVALID_ARG);
+    return false;
+  }
+  return esm->SetContentState(&aElement, state);
+}
+
+/* static */
+bool InspectorUtils::RemoveContentState(GlobalObject& aGlobalObject,
+                                        Element& aElement, uint64_t aState,
+                                        bool aClearActiveDocument,
+                                        ErrorResult& aRv) {
+  RefPtr<EventStateManager> esm =
+      inLayoutUtils::GetEventStateManagerFor(aElement);
+  EventStates state(aState);
+  if (!esm || !EventStateManager::ManagesState(state)) {
     aRv.Throw(NS_ERROR_INVALID_ARG);
     return false;
   }
 
-  return esm->SetContentState(&aElement, EventStates(aState));
-}
+  bool result = esm->SetContentState(nullptr, state);
 
-/* static */ bool
-InspectorUtils::RemoveContentState(GlobalObject& aGlobalObject,
-                                   Element& aElement,
-                                   uint64_t aState,
-                                   bool aClearActiveDocument,
-                                   ErrorResult& aRv)
-{
-  RefPtr<EventStateManager> esm =
-    inLayoutUtils::GetEventStateManagerFor(aElement);
-  if (!esm) {
-    aRv.Throw(NS_ERROR_INVALID_ARG);
-    return false;
-  }
-
-  bool result = esm->SetContentState(nullptr, EventStates(aState));
-
-  if (aClearActiveDocument && EventStates(aState) == NS_EVENT_STATE_ACTIVE) {
+  if (aClearActiveDocument && state == NS_EVENT_STATE_ACTIVE) {
     EventStateManager* activeESM = static_cast<EventStateManager*>(
-      EventStateManager::GetActiveEventStateManager());
+        EventStateManager::GetActiveEventStateManager());
     if (activeESM == esm) {
       EventStateManager::ClearGlobalActiveContent(nullptr);
     }
@@ -588,32 +578,30 @@ InspectorUtils::RemoveContentState(GlobalObject& aGlobalObject,
   return result;
 }
 
-/* static */ uint64_t
-InspectorUtils::GetContentState(GlobalObject& aGlobalObject,
-                                Element& aElement)
-{
+/* static */
+uint64_t InspectorUtils::GetContentState(GlobalObject& aGlobalObject,
+                                         Element& aElement) {
   // NOTE: if this method is removed,
   // please remove GetInternalValue from EventStates
   return aElement.State().GetInternalValue();
 }
 
-/* static */ already_AddRefed<ComputedStyle>
-InspectorUtils::GetCleanComputedStyleForElement(dom::Element* aElement,
-                                               nsAtom* aPseudo)
-{
+/* static */
+already_AddRefed<ComputedStyle> InspectorUtils::GetCleanComputedStyleForElement(
+    dom::Element* aElement, nsAtom* aPseudo) {
   MOZ_ASSERT(aElement);
 
-  nsIDocument* doc = aElement->GetComposedDoc();
+  Document* doc = aElement->GetComposedDoc();
   if (!doc) {
     return nullptr;
   }
 
-  nsIPresShell *presShell = doc->GetShell();
+  PresShell* presShell = doc->GetPresShell();
   if (!presShell) {
     return nullptr;
   }
 
-  nsPresContext *presContext = presShell->GetPresContext();
+  nsPresContext* presContext = presShell->GetPresContext();
   if (!presContext) {
     return nullptr;
   }
@@ -623,24 +611,19 @@ InspectorUtils::GetCleanComputedStyleForElement(dom::Element* aElement,
   return nsComputedDOMStyle::GetComputedStyle(aElement, aPseudo);
 }
 
-/* static */ void
-InspectorUtils::GetUsedFontFaces(GlobalObject& aGlobalObject,
-                                 nsRange& aRange,
-                                 uint32_t aMaxRanges,
-                                 bool aSkipCollapsedWhitespace,
-                                 nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
-                                 ErrorResult& aRv)
-{
-  nsresult rv = aRange.GetUsedFontFaces(aResult, aMaxRanges,
-                                        aSkipCollapsedWhitespace);
+/* static */
+void InspectorUtils::GetUsedFontFaces(
+    GlobalObject& aGlobalObject, nsRange& aRange, uint32_t aMaxRanges,
+    bool aSkipCollapsedWhitespace,
+    nsTArray<nsAutoPtr<InspectorFontFace>>& aResult, ErrorResult& aRv) {
+  nsresult rv =
+      aRange.GetUsedFontFaces(aResult, aMaxRanges, aSkipCollapsedWhitespace);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
   }
 }
 
-static EventStates
-GetStatesForPseudoClass(const nsAString& aStatePseudo)
-{
+static EventStates GetStatesForPseudoClass(const nsAString& aStatePseudo) {
   if (aStatePseudo.IsEmpty() || aStatePseudo[0] != u':') {
     return EventStates();
   }
@@ -648,27 +631,25 @@ GetStatesForPseudoClass(const nsAString& aStatePseudo)
   return EventStates(Servo_PseudoClass_GetStates(&statePseudo));
 }
 
-/* static */ void
-InspectorUtils::GetCSSPseudoElementNames(GlobalObject& aGlobalObject,
-                                         nsTArray<nsString>& aResult)
-{
-  const CSSPseudoElementTypeBase pseudoCount =
-    static_cast<CSSPseudoElementTypeBase>(CSSPseudoElementType::Count);
-  for (CSSPseudoElementTypeBase i = 0; i < pseudoCount; ++i) {
-    CSSPseudoElementType type = static_cast<CSSPseudoElementType>(i);
-    if (nsCSSPseudoElements::IsEnabled(type, CSSEnabledState::eForAllContent)) {
+/* static */
+void InspectorUtils::GetCSSPseudoElementNames(GlobalObject& aGlobalObject,
+                                              nsTArray<nsString>& aResult) {
+  const auto kPseudoCount =
+      static_cast<size_t>(PseudoStyleType::CSSPseudoElementsEnd);
+  for (size_t i = 0; i < kPseudoCount; ++i) {
+    PseudoStyleType type = static_cast<PseudoStyleType>(i);
+    if (nsCSSPseudoElements::IsEnabled(type, CSSEnabledState::ForAllContent)) {
       nsAtom* atom = nsCSSPseudoElements::GetPseudoAtom(type);
       aResult.AppendElement(nsDependentAtomString(atom));
     }
   }
 }
 
-/* static */ void
-InspectorUtils::AddPseudoClassLock(GlobalObject& aGlobalObject,
-                                   Element& aElement,
-                                   const nsAString& aPseudoClass,
-                                   bool aEnabled)
-{
+/* static */
+void InspectorUtils::AddPseudoClassLock(GlobalObject& aGlobalObject,
+                                        Element& aElement,
+                                        const nsAString& aPseudoClass,
+                                        bool aEnabled) {
   EventStates state = GetStatesForPseudoClass(aPseudoClass);
   if (state.IsEmpty()) {
     return;
@@ -677,11 +658,10 @@ InspectorUtils::AddPseudoClassLock(GlobalObject& aGlobalObject,
   aElement.LockStyleStates(state, aEnabled);
 }
 
-/* static */ void
-InspectorUtils::RemovePseudoClassLock(GlobalObject& aGlobal,
-                                      Element& aElement,
-                                      const nsAString& aPseudoClass)
-{
+/* static */
+void InspectorUtils::RemovePseudoClassLock(GlobalObject& aGlobal,
+                                           Element& aElement,
+                                           const nsAString& aPseudoClass) {
   EventStates state = GetStatesForPseudoClass(aPseudoClass);
   if (state.IsEmpty()) {
     return;
@@ -690,11 +670,10 @@ InspectorUtils::RemovePseudoClassLock(GlobalObject& aGlobal,
   aElement.UnlockStyleStates(state);
 }
 
-/* static */ bool
-InspectorUtils::HasPseudoClassLock(GlobalObject& aGlobalObject,
-                                   Element& aElement,
-                                   const nsAString& aPseudoClass)
-{
+/* static */
+bool InspectorUtils::HasPseudoClassLock(GlobalObject& aGlobalObject,
+                                        Element& aElement,
+                                        const nsAString& aPseudoClass) {
   EventStates state = GetStatesForPseudoClass(aPseudoClass);
   if (state.IsEmpty()) {
     return false;
@@ -704,58 +683,44 @@ InspectorUtils::HasPseudoClassLock(GlobalObject& aGlobalObject,
   return locks.HasAllStates(state);
 }
 
-/* static */ void
-InspectorUtils::ClearPseudoClassLocks(GlobalObject& aGlobalObject,
-                                      Element& aElement)
-{
+/* static */
+void InspectorUtils::ClearPseudoClassLocks(GlobalObject& aGlobalObject,
+                                           Element& aElement) {
   aElement.ClearStyleStateLocks();
 }
 
-/* static */ void
-InspectorUtils::ParseStyleSheet(GlobalObject& aGlobalObject,
-                                StyleSheet& aSheet,
-                                const nsAString& aInput,
-                                ErrorResult& aRv)
-{
-
+/* static */
+void InspectorUtils::ParseStyleSheet(GlobalObject& aGlobalObject,
+                                     StyleSheet& aSheet,
+                                     const nsAString& aInput,
+                                     ErrorResult& aRv) {
   aRv = aSheet.ReparseSheet(aInput);
 }
 
-void
-InspectorUtils::ScrollElementIntoView(GlobalObject& aGlobalObject,
-                                      Element& aElement)
-{
-  nsIPresShell* presShell = aElement.OwnerDoc()->GetShell();
-  if (!presShell) {
-    return;
-  }
-
-  presShell->ScrollContentIntoView(&aElement,
-                                   nsIPresShell::ScrollAxis(),
-                                   nsIPresShell::ScrollAxis(),
-                                   nsIPresShell::SCROLL_OVERFLOW_HIDDEN);
-}
-
-
-bool
-InspectorUtils::IsCustomElementName(GlobalObject&,
-                                    const nsAString& aName,
-                                    const nsAString& aNamespaceURI)
-{
+bool InspectorUtils::IsCustomElementName(GlobalObject&, const nsAString& aName,
+                                         const nsAString& aNamespaceURI) {
   if (aName.IsEmpty()) {
     return false;
   }
 
   int32_t namespaceID;
-  nsContentUtils::NameSpaceManager()->RegisterNameSpace(
-    aNamespaceURI,
-    namespaceID);
+  nsContentUtils::NameSpaceManager()->RegisterNameSpace(aNamespaceURI,
+                                                        namespaceID);
 
   RefPtr<nsAtom> nameElt = NS_Atomize(aName);
-  return nsContentUtils::IsCustomElementName(
-    nameElt,
-    namespaceID);
+  return nsContentUtils::IsCustomElementName(nameElt, namespaceID);
 }
 
-} // namespace dom
-} // namespace mozilla
+/* static */
+bool InspectorUtils::IsElementThemed(GlobalObject&, Element& aElement) {
+  // IsThemed will check if the native theme supports the widget using
+  // ThemeSupportsWidget which in turn will check that the widget is not
+  // already styled by content through nsNativeTheme::IsWidgetStyled. We
+  // assume that if the native theme styles the widget and the author did not
+  // override the appropriate styles, the theme will provide focus styling.
+  nsIFrame* frame = aElement.GetPrimaryFrame(FlushType::Frames);
+  return frame && frame->IsThemed();
+}
+
+}  // namespace dom
+}  // namespace mozilla

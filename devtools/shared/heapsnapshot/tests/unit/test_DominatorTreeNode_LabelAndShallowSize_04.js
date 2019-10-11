@@ -38,19 +38,15 @@ const stack = saveStack();
 const description = {
   objects: {
     Array: new Map([[stack, { count: 1, bytes: 512 }]]),
-    other: { count: 0, bytes: 0 }
+    other: { count: 0, bytes: 0 },
   },
   strings: {},
   scripts: {},
   other: {},
-  domNode: {}
+  domNode: {},
 };
 
-const expected = [
-  "objects",
-  "Array",
-  stack
-];
+const expected = ["objects", "Array", stack];
 
 const shallowSize = 512;
 

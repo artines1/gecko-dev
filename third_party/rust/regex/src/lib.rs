@@ -29,7 +29,7 @@ used by adding `regex` to your dependencies in your project's `Cargo.toml`.
 
 ```toml
 [dependencies]
-regex = "0.2"
+regex = "1"
 ```
 
 and this to your crate root:
@@ -143,7 +143,7 @@ provides more flexibility than is seen here. (See the documentation for
 `Regex::replace` for more details.)
 
 Note that if your regex gets complicated, you can use the `x` flag to
-enable insigificant whitespace mode, which also lets you write comments:
+enable insignificant whitespace mode, which also lets you write comments:
 
 ```rust
 # extern crate regex; use regex::Regex;
@@ -287,7 +287,7 @@ regexes.
 The syntax supported in this crate is documented below.
 
 Note that the regular expression parser and abstract syntax are exposed in
-a separate crate, [`regex-syntax`](../regex_syntax/index.html).
+a separate crate, [`regex-syntax`](https://docs.rs/regex-syntax).
 
 ## Matching one character
 
@@ -504,10 +504,10 @@ text`), which means there's no way to cause exponential blow-up like with
 some other regular expression engines. (We pay for this by disallowing
 features like arbitrary look-ahead and backreferences.)
 
-When a DFA is used, pathological cases with exponential state blow up are
+When a DFA is used, pathological cases with exponential state blow-up are
 avoided by constructing the DFA lazily or in an "online" manner. Therefore,
 at most one new state can be created for each byte of input. This satisfies
-our time complexity guarantees, but can lead to unbounded memory growth
+our time complexity guarantees, but can lead to memory growth
 proportional to the size of the input. As a stopgap, the DFA is only
 allowed to store a fixed number of states. When the limit is reached, its
 states are wiped and continues on, possibly duplicating previous work. If
@@ -518,8 +518,12 @@ another matching engine with fixed memory requirements.
 */
 
 #![deny(missing_docs)]
+#![allow(ellipsis_inclusive_range_patterns)]
 #![cfg_attr(test, deny(warnings))]
 #![cfg_attr(feature = "pattern", feature(pattern))]
+
+#[cfg(not(feature = "use_std"))]
+compile_error!("`use_std` feature is currently required to build this crate");
 
 extern crate aho_corasick;
 extern crate memchr;
@@ -529,6 +533,11 @@ extern crate thread_local;
 extern crate quickcheck;
 extern crate regex_syntax as syntax;
 extern crate utf8_ranges;
+#[cfg(test)]
+extern crate doc_comment;
+
+#[cfg(test)]
+doc_comment::doctest!("../README.md");
 
 #[cfg(feature = "use_std")]
 pub use error::Error;
@@ -539,11 +548,11 @@ pub use re_builder::set_unicode::*;
 #[cfg(feature = "use_std")]
 pub use re_set::unicode::*;
 #[cfg(feature = "use_std")]
-pub use re_trait::Locations;
 #[cfg(feature = "use_std")]
 pub use re_unicode::{
     Regex, Match, Captures,
     CaptureNames, Matches, CaptureMatches, SubCaptureMatches,
+    CaptureLocations, Locations,
     Replacer, ReplacerRef, NoExpand, Split, SplitN,
     escape,
 };
@@ -641,7 +650,6 @@ pub mod bytes {
     pub use re_builder::set_bytes::*;
     pub use re_bytes::*;
     pub use re_set::bytes::*;
-    pub use re_trait::Locations;
 }
 
 mod backtrack;
@@ -664,7 +672,7 @@ mod re_set;
 mod re_trait;
 mod re_unicode;
 mod sparse;
-#[cfg(feature = "unstable")]
+#[cfg(any(regex_runtime_teddy_ssse3, regex_runtime_teddy_avx2))]
 mod vector;
 
 /// The `internal` module exists to support suspicious activity, such as

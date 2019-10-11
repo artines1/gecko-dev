@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import textwrap
 
 import fluent.syntax.ast as FTL
-from fluent.syntax.parser import FluentParser, FTLParserStream
+from fluent.syntax.parser import FluentParser, FluentParserStream
 
 
 fluent_parser = FluentParser(with_spans=False)
@@ -34,8 +34,8 @@ def ftl_resource_to_json(code):
 
 
 def ftl_pattern_to_json(code):
-    ps = FTLParserStream(ftl(code))
-    return fluent_parser.get_pattern(ps).to_json()
+    ps = FluentParserStream(ftl(code))
+    return fluent_parser.maybe_get_pattern(ps).to_json()
 
 
 def to_json(merged_iter):

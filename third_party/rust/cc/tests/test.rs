@@ -1,6 +1,7 @@
 extern crate cc;
 extern crate tempdir;
 
+use std::env;
 use support::Test;
 
 mod support;
@@ -111,6 +112,30 @@ fn gnu_warnings_overridable() {
 }
 
 #[test]
+fn gnu_no_warnings_if_cflags() {
+    env::set_var("CFLAGS", "-Wflag-does-not-exist");
+    let test = Test::gnu();
+    test.gcc()
+        .file("foo.c")
+        .compile("foo");
+
+    test.cmd(0).must_not_have("-Wall").must_not_have("-Wextra");
+    env::set_var("CFLAGS", "");
+}
+
+#[test]
+fn gnu_no_warnings_if_cxxflags() {
+    env::set_var("CXXFLAGS", "-Wflag-does-not-exist");
+    let test = Test::gnu();
+    test.gcc()
+        .file("foo.c")
+        .compile("foo");
+
+    test.cmd(0).must_not_have("-Wall").must_not_have("-Wextra");
+    env::set_var("CXXFLAGS", "");
+}
+
+#[test]
 fn gnu_x86_64() {
     for vendor in &["unknown-linux-gnu", "apple-darwin"] {
         let target = format!("x86_64-{}", vendor);
@@ -173,6 +198,20 @@ fn gnu_i686_pic() {
 }
 
 #[test]
+fn gnu_x86_64_no_plt() {
+    let target = "x86_64-unknown-linux-gnu";
+    let test = Test::gnu();
+    test.gcc()
+        .pic(true)
+        .use_plt(false)
+        .target(&target)
+        .host(&target)
+        .file("foo.c")
+        .compile("foo");
+    test.cmd(0).must_have("-fno-plt");
+}
+
+#[test]
 fn gnu_set_stdlib() {
     let test = Test::gnu();
     test.gcc()
@@ -230,12 +269,14 @@ fn gnu_flag_if_supported() {
     let test = Test::gnu();
     test.gcc()
         .file("foo.c")
+        .flag("-v")
         .flag_if_supported("-Wall")
         .flag_if_supported("-Wflag-does-not-exist")
         .flag_if_supported("-std=c++11")
         .compile("foo");
 
     test.cmd(0)
+        .must_have("-v")
         .must_have("-Wall")
         .must_not_have("-Wflag-does-not-exist")
         .must_not_have("-std=c++11");

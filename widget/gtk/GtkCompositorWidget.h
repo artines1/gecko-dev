@@ -6,6 +6,7 @@
 #ifndef widget_gtk_GtkCompositorWidget_h
 #define widget_gtk_GtkCompositorWidget_h
 
+#include "GLDefs.h"
 #include "mozilla/widget/CompositorWidget.h"
 #include "WindowSurfaceProvider.h"
 
@@ -15,11 +16,14 @@ class nsWindow;
 namespace mozilla {
 namespace widget {
 
-class PlatformCompositorWidgetDelegate
-  : public CompositorWidgetDelegate
-{
-public:
-  virtual void NotifyClientSizeChanged(const LayoutDeviceIntSize& aClientSize) = 0;
+class PlatformCompositorWidgetDelegate : public CompositorWidgetDelegate {
+ public:
+  virtual void NotifyClientSizeChanged(
+      const LayoutDeviceIntSize& aClientSize) = 0;
+
+#ifdef MOZ_WAYLAND
+  virtual void RequestsUpdatingEGLSurface() = 0;
+#endif
 
   // CompositorWidgetDelegate Overrides
 
@@ -30,11 +34,9 @@ public:
 
 class GtkCompositorWidgetInitData;
 
-class GtkCompositorWidget
- : public CompositorWidget
- , public PlatformCompositorWidgetDelegate
-{
-public:
+class GtkCompositorWidget : public CompositorWidget,
+                            public PlatformCompositorWidgetDelegate {
+ public:
   GtkCompositorWidget(const GtkCompositorWidgetInitData& aInitData,
                       const layers::CompositorOptions& aOptions,
                       nsWindow* aWindow = nullptr);
@@ -45,11 +47,12 @@ public:
   already_AddRefed<gfx::DrawTarget> StartRemoteDrawing() override;
   void EndRemoteDrawing() override;
 
-  already_AddRefed<gfx::DrawTarget>
-  StartRemoteDrawingInRegion(LayoutDeviceIntRegion& aInvalidRegion,
-                             layers::BufferMode* aBufferMode) override;
-  void EndRemoteDrawingInRegion(gfx::DrawTarget* aDrawTarget,
-                                LayoutDeviceIntRegion& aInvalidRegion) override;
+  already_AddRefed<gfx::DrawTarget> StartRemoteDrawingInRegion(
+      LayoutDeviceIntRegion& aInvalidRegion,
+      layers::BufferMode* aBufferMode) override;
+  void EndRemoteDrawingInRegion(
+      gfx::DrawTarget* aDrawTarget,
+      const LayoutDeviceIntRegion& aInvalidRegion) override;
   uintptr_t GetWidgetKey() override;
 
   LayoutDeviceIntSize GetClientSize() override;
@@ -61,22 +64,31 @@ public:
   Display* XDisplay() const { return mXDisplay; }
   Window XWindow() const { return mXWindow; }
 
+  EGLNativeWindowType GetEGLNativeWindow();
+
   // PlatformCompositorWidgetDelegate Overrides
 
   void NotifyClientSizeChanged(const LayoutDeviceIntSize& aClientSize) override;
 
-protected:
+#ifdef MOZ_WAYLAND
+  void RequestsUpdatingEGLSurface() override;
+  bool WaylandRequestsUpdatingEGLSurface();
+#endif
+ protected:
   nsWindow* mWidget;
 
-private:
+ private:
   LayoutDeviceIntSize mClientSize;
+#ifdef MOZ_WAYLAND
+  bool mWaylandRequestsUpdatingEGLSurface = false;
+#endif
 
   Display* mXDisplay;
-  Window   mXWindow;
+  Window mXWindow;
   WindowSurfaceProvider mProvider;
 };
 
-} // namespace widget
-} // namespace mozilla
+}  // namespace widget
+}  // namespace mozilla
 
-#endif // widget_gtk_GtkCompositorWidget_h
+#endif  // widget_gtk_GtkCompositorWidget_h

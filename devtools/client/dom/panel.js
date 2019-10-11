@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,9 +6,13 @@
 const { Cu } = require("chrome");
 const ObjectClient = require("devtools/shared/client/object-client");
 
-const defer = require("devtools/shared/defer");
 const EventEmitter = require("devtools/shared/event-emitter");
-loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(
+  this,
+  "openContentLink",
+  "devtools/client/shared/link",
+  true
+);
 
 /**
  * This object represents DOM panel. It's responsibility is to
@@ -37,40 +39,46 @@ DomPanel.prototype = {
    *         A promise that is resolved when the DOM panel completes opening.
    */
   async open() {
-    if (this._opening) {
-      return this._opening;
-    }
-
-    const deferred = defer();
-    this._opening = deferred.promise;
-
-    // Local monitoring needs to make the target remote.
-    if (!this.target.isRemote) {
-      await this.target.makeRemote();
-    }
+    // Wait for the retrieval of root object properties before resolving open
+    const onGetProperties = new Promise(resolve => {
+      this._resolveOpen = resolve;
+    });
 
     this.initialize();
+    this.refresh();
+
+    await onGetProperties;
 
     this.isReady = true;
     this.emit("ready");
-    deferred.resolve(this);
 
-    return this._opening;
+    return this;
   },
 
   // Initialization
 
   initialize: function() {
-    this.panelWin.addEventListener("devtools/content/message",
-      this.onContentMessage, true);
+    this.panelWin.addEventListener(
+      "devtools/content/message",
+      this.onContentMessage,
+      true
+    );
 
     this.target.on("navigate", this.onTabNavigated);
     this._toolbox.on("select", this.onPanelVisibilityChange);
 
     // Export provider object with useful API for DOM panel.
     const provider = {
+      getToolbox: this.getToolbox.bind(this),
       getPrototypeAndProperties: this.getPrototypeAndProperties.bind(this),
       openLink: this.openLink.bind(this),
+      // Resolve DomPanel.open once the object properties are fetched
+      onPropertiesFetched: () => {
+        if (this._resolveOpen) {
+          this._resolveOpen();
+          this._resolveOpen = null;
+        }
+      },
     };
 
     exportIntoContentScope(this.panelWin, provider, "DomProvider");
@@ -78,21 +86,16 @@ DomPanel.prototype = {
     this.shouldRefresh = true;
   },
 
-  async destroy() {
-    if (this._destroying) {
-      return this._destroying;
+  destroy() {
+    if (this._destroyed) {
+      return;
     }
-
-    const deferred = defer();
-    this._destroying = deferred.promise;
+    this._destroyed = true;
 
     this.target.off("navigate", this.onTabNavigated);
     this._toolbox.off("select", this.onPanelVisibilityChange);
 
     this.emit("destroyed");
-
-    deferred.resolve();
-    return this._destroying;
   },
 
   // Events
@@ -142,57 +145,49 @@ DomPanel.prototype = {
     return this._toolbox.currentToolId === "dom";
   },
 
-  getPrototypeAndProperties: function(grip) {
-    const deferred = defer();
-
+  getPrototypeAndProperties: async function(grip) {
     if (!grip.actor) {
       console.error("No actor!", grip);
-      deferred.reject(new Error("Failed to get actor from grip."));
-      return deferred.promise;
+      throw new Error("Failed to get actor from grip.");
     }
 
     // Bail out if target doesn't exist (toolbox maybe closed already).
     if (!this.target) {
-      return deferred.promise;
+      return null;
     }
 
-    // If a request for the grips is already in progress
-    // use the same promise.
-    const request = this.pendingRequests.get(grip.actor);
-    if (request) {
-      return request;
+    // Check for a previously stored request for grip.
+    let request = this.pendingRequests.get(grip.actor);
+
+    // If no request is in progress create a new one.
+    if (!request) {
+      const client = new ObjectClient(this.target.client, grip);
+      request = client.getPrototypeAndProperties();
+      this.pendingRequests.set(grip.actor, request);
     }
 
-    const client = new ObjectClient(this.target.client, grip);
-    client.getPrototypeAndProperties(response => {
-      this.pendingRequests.delete(grip.actor, deferred.promise);
-      deferred.resolve(response);
+    const response = await request;
+    this.pendingRequests.delete(grip.actor);
 
-      // Fire an event about not having any pending requests.
-      if (!this.pendingRequests.size) {
-        this.emit("no-pending-requests");
-      }
-    });
+    // Fire an event about not having any pending requests.
+    if (!this.pendingRequests.size) {
+      this.emit("no-pending-requests");
+    }
 
-    this.pendingRequests.set(grip.actor, deferred.promise);
-
-    return deferred.promise;
+    return response;
   },
 
   openLink: function(url) {
     openContentLink(url);
   },
 
-  getRootGrip: function() {
-    const deferred = defer();
-
+  getRootGrip: async function() {
     // Attach Console. It might involve RDP communication, so wait
     // asynchronously for the result
-    this.target.activeConsole.evaluateJSAsync("window", res => {
-      deferred.resolve(res.result);
-    });
-
-    return deferred.promise;
+    const { result } = await this.target.activeConsole.evaluateJSAsync(
+      "window"
+    );
+    return result;
   },
 
   postContentMessage: function(type, args) {
@@ -218,6 +213,10 @@ DomPanel.prototype = {
     }
   },
 
+  getToolbox: function() {
+    return this._toolbox;
+  },
+
   get target() {
     return this._toolbox.target;
   },
@@ -227,7 +226,7 @@ DomPanel.prototype = {
 
 function exportIntoContentScope(win, obj, defineAs) {
   const clone = Cu.createObjectIn(win, {
-    defineAs: defineAs
+    defineAs: defineAs,
   });
 
   const props = Object.getOwnPropertyNames(obj);
@@ -236,7 +235,7 @@ function exportIntoContentScope(win, obj, defineAs) {
     const propValue = obj[propName];
     if (typeof propValue == "function") {
       Cu.exportFunction(propValue, clone, {
-        defineAs: propName
+        defineAs: propName,
       });
     }
   }

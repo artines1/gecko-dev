@@ -1,18 +1,21 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-var Startup = Cc["@mozilla.org/devtools/startup-clh;1"].getService(Ci.nsISupports)
-  .wrappedJSObject;
-var {Toolbox} = require("devtools/client/framework/toolbox");
+var Startup = Cc["@mozilla.org/devtools/startup-clh;1"].getService(
+  Ci.nsISupports
+).wrappedJSObject;
+var { Toolbox } = require("devtools/client/framework/toolbox");
 
-var toolbox, toolIDs, toolShortcuts = [], idIndex, modifiedPrefs = [];
+var toolbox,
+  toolIDs,
+  toolShortcuts = [],
+  idIndex,
+  modifiedPrefs = [];
 
-function test() {
-  addTab("about:blank").then(function() {
+async function test() {
+  addTab("about:blank").then(async function() {
     toolIDs = [];
     for (const [id, definition] of gDevTools._tools) {
       const shortcut = Startup.KeyShortcuts.filter(s => s.toolId == id)[0];
@@ -32,10 +35,11 @@ function test() {
         }
       }
     }
-    const target = TargetFactory.forTab(gBrowser.selectedTab);
+    const target = await TargetFactory.forTab(gBrowser.selectedTab);
     idIndex = 0;
-    gDevTools.showToolbox(target, toolIDs[0], Toolbox.HostType.WINDOW)
-             .then(testShortcuts);
+    gDevTools
+      .showToolbox(target, toolIDs[0], Toolbox.HostType.WINDOW)
+      .then(testShortcuts);
   });
 }
 
@@ -61,16 +65,25 @@ function testShortcuts(aToolbox, aIndex) {
     shiftKey: toolModifiers.includes("shift"),
   };
   idIndex = aIndex;
-  info("Testing shortcut for tool " + aIndex + ":" + toolIDs[aIndex] +
-       " using key " + key);
+  info(
+    "Testing shortcut for tool " +
+      aIndex +
+      ":" +
+      toolIDs[aIndex] +
+      " using key " +
+      key
+  );
   EventUtils.synthesizeKey(key, modifiers, toolbox.win.parent);
 }
 
 function selectCB(id) {
   info("toolbox-select event from " + id);
 
-  is(toolIDs.indexOf(id), idIndex,
-     "Correct tool is selected on pressing the shortcut for " + id);
+  is(
+    toolIDs.indexOf(id),
+    idIndex,
+    "Correct tool is selected on pressing the shortcut for " + id
+  );
 
   testShortcuts(toolbox, idIndex + 1);
 }

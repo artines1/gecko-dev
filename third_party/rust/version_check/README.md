@@ -8,10 +8,10 @@ determination is made, and calls return `None`.
 
 ## Usage
 
-Add to your `Cargo.toml` file:
+Add to your `Cargo.toml` file, typically as a build dependency:
 
 ```toml
-[dependencies]
+[build-dependencies]
 version_check = "0.1"
 ```
 
@@ -61,4 +61,7 @@ dependencies, see [rustc_version](https://crates.io/crates/rustc_version).
 
 ## License
 
-MIT. Have fun!
+`version_check` is licensed under either of the following, at your option:
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)

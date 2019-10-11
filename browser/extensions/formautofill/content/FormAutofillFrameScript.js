@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*
+/**
  * Form Autofill frame script.
  */
 
@@ -10,25 +10,73 @@
 
 /* eslint-env mozilla/frame-script */
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://formautofill/FormAutofillContent.jsm");
-ChromeUtils.defineModuleGetter(this, "setTimeout",
-                               "resource://gre/modules/Timer.jsm");
-ChromeUtils.defineModuleGetter(this, "FormAutofill",
-                               "resource://formautofill/FormAutofill.jsm");
-ChromeUtils.defineModuleGetter(this, "FormAutofillUtils",
-                               "resource://formautofill/FormAutofillUtils.jsm");
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "setTimeout",
+  "resource://gre/modules/Timer.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormAutofill",
+  "resource://formautofill/FormAutofill.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormAutofillContent",
+  "resource://formautofill/FormAutofillContent.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormAutofillUtils",
+  "resource://formautofill/FormAutofillUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AutoCompleteChild",
+  "resource://gre/actors/AutoCompleteChild.jsm"
+);
 
 /**
  * Handles content's interactions for the frame.
- *
- * NOTE: Declares it by "var" to make it accessible in unit tests.
  */
 var FormAutofillFrameScript = {
   _nextHandleElement: null,
   _alreadyDOMContentLoaded: false,
   _hasDOMContentLoadedHandler: false,
   _hasPendingTask: false,
+
+  popupStateListener(messageName, data, target) {
+    if (!content || !FormAutofill.isAutofillEnabled) {
+      return;
+    }
+
+    const doc = target.document;
+    const { chromeEventHandler } = doc.ownerGlobal.docShell;
+
+    switch (messageName) {
+      case "FormAutoComplete:PopupClosed": {
+        FormAutofillContent.onPopupClosed(data.selectedRowStyle);
+        Services.tm.dispatchToMainThread(() => {
+          chromeEventHandler.removeEventListener(
+            "keydown",
+            FormAutofillContent._onKeyDown,
+            true
+          );
+        });
+
+        break;
+      }
+      case "FormAutoComplete:PopupOpened": {
+        chromeEventHandler.addEventListener(
+          "keydown",
+          FormAutofillContent._onKeyDown,
+          true
+        );
+        break;
+      }
+    }
+  },
 
   _doIdentifyAutofillFields() {
     if (this._hasPendingTask) {
@@ -49,16 +97,44 @@ var FormAutofillFrameScript = {
 
   init() {
     addEventListener("focusin", this);
+    addEventListener("DOMFormBeforeSubmit", this);
+    addEventListener("unload", this, { once: true });
     addMessageListener("FormAutofill:PreviewProfile", this);
     addMessageListener("FormAutofill:ClearForm", this);
-    addMessageListener("FormAutoComplete:PopupClosed", this);
-    addMessageListener("FormAutoComplete:PopupOpened", this);
+
+    AutoCompleteChild.addPopupStateListener(this.popupStateListener);
   },
 
   handleEvent(evt) {
-    if (!evt.isTrusted || !FormAutofill.isAutofillEnabled) {
+    if (!evt.isTrusted) {
       return;
     }
+
+    switch (evt.type) {
+      case "focusin": {
+        if (FormAutofill.isAutofillEnabled) {
+          this.onFocusIn(evt);
+        }
+        break;
+      }
+      case "DOMFormBeforeSubmit": {
+        if (FormAutofill.isAutofillEnabled) {
+          this.onDOMFormBeforeSubmit(evt);
+        }
+        break;
+      }
+      case "unload": {
+        AutoCompleteChild.removePopupStateListener(this.popupStateListener);
+        break;
+      }
+
+      default: {
+        throw new Error("Unexpected event type");
+      }
+    }
+  },
+
+  onFocusIn(evt) {
     FormAutofillContent.updateActiveInput();
 
     let element = evt.target;
@@ -72,7 +148,11 @@ var FormAutofillFrameScript = {
       if (doc.readyState === "loading") {
         if (!this._hasDOMContentLoadedHandler) {
           this._hasDOMContentLoadedHandler = true;
-          doc.addEventListener("DOMContentLoaded", () => this._doIdentifyAutofillFields(), {once: true});
+          doc.addEventListener(
+            "DOMContentLoaded",
+            () => this._doIdentifyAutofillFields(),
+            { once: true }
+          );
         }
         return;
       }
@@ -82,13 +162,26 @@ var FormAutofillFrameScript = {
     this._doIdentifyAutofillFields();
   },
 
+  /**
+   * Handle the DOMFormBeforeSubmit event.
+   * @param {Event} evt
+   */
+  onDOMFormBeforeSubmit(evt) {
+    let formElement = evt.target;
+
+    if (!FormAutofill.isAutofillEnabled) {
+      return;
+    }
+
+    FormAutofillContent.formSubmitted(formElement);
+  },
+
   receiveMessage(message) {
     if (!FormAutofill.isAutofillEnabled) {
       return;
     }
 
     const doc = content.document;
-    const {chromeEventHandler} = doc.ownerGlobal.docShell;
 
     switch (message.name) {
       case "FormAutofill:PreviewProfile": {
@@ -97,20 +190,6 @@ var FormAutofillFrameScript = {
       }
       case "FormAutofill:ClearForm": {
         FormAutofillContent.clearForm();
-        break;
-      }
-      case "FormAutoComplete:PopupClosed": {
-        FormAutofillContent.onPopupClosed(message.data.selectedRowStyle);
-        Services.tm.dispatchToMainThread(() => {
-          chromeEventHandler.removeEventListener("keydown", FormAutofillContent._onKeyDown,
-                                                 true);
-        });
-
-        break;
-      }
-      case "FormAutoComplete:PopupOpened": {
-        chromeEventHandler.addEventListener("keydown", FormAutofillContent._onKeyDown,
-                                            true);
         break;
       }
     }

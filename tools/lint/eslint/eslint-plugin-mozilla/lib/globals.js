@@ -45,8 +45,8 @@ function parseBooleanConfig(string, comment) {
     }
 
     items[name] = {
-      value: (value === "true"),
-      comment
+      value: value === "true",
+      comment,
     };
   });
 
@@ -105,7 +105,7 @@ GlobalsForNode.prototype = {
         for (let name of Object.keys(values)) {
           globals.push({
             name,
-            writable: values[name].value
+            writable: values[name].value,
           });
         }
         // We matched globals, so we won't match import-globals-from.
@@ -135,7 +135,10 @@ GlobalsForNode.prototype = {
     // Note: We check the expression types here and only call the necessary
     // functions to aid performance.
     if (node.expression.type === "AssignmentExpression") {
-      globals = helpers.convertThisAssignmentExpressionToGlobals(node, isGlobal);
+      globals = helpers.convertThisAssignmentExpressionToGlobals(
+        node,
+        isGlobal
+      );
     } else if (node.expression.type === "CallExpression") {
       globals = helpers.convertCallExpressionToGlobals(node, isGlobal);
     }
@@ -144,13 +147,16 @@ GlobalsForNode.prototype = {
     // this is a worker. It would be nice if eslint gave us a way of getting
     // the environment directly.
     if (globalScope && globalScope.set.get("importScripts")) {
-      let workerDetails = helpers.convertWorkerExpressionToGlobals(node,
-        isGlobal, this.dirname);
+      let workerDetails = helpers.convertWorkerExpressionToGlobals(
+        node,
+        isGlobal,
+        this.dirname
+      );
       globals = globals.concat(workerDetails);
     }
 
     return globals;
-  }
+  },
 };
 
 module.exports = {
@@ -161,6 +167,8 @@ module.exports = {
    *
    * @param  {String} filePath
    *         The absolute path of the file to be parsed.
+   * @param  {Object} astOptions
+   *         Extra options to pass to the parser.
    * @return {Array}
    *         An array of objects that contain details about the globals:
    *         - {String} name
@@ -168,7 +176,7 @@ module.exports = {
    *         - {Boolean} writable
    *                     If the global is writeable or not.
    */
-  getGlobalsForFile(filePath) {
+  getGlobalsForFile(filePath, astOptions = {}) {
     if (globalCache.has(filePath)) {
       return globalCache.get(filePath);
     }
@@ -183,16 +191,15 @@ module.exports = {
     let content = fs.readFileSync(filePath, "utf8");
 
     // Parse the content into an AST
-    let ast = helpers.getAST(content);
+    let ast = helpers.getAST(content, astOptions);
 
     // Discover global declarations
-    // The second parameter works around https://github.com/babel/babel-eslint/issues/470
-    let scopeManager = eslintScope.analyze(ast, {});
+    let scopeManager = eslintScope.analyze(ast, astOptions);
     let globalScope = scopeManager.acquire(ast);
 
     let globals = Object.keys(globalScope.variables).map(v => ({
       name: globalScope.variables[v].name,
-      writable: true
+      writable: true,
     }));
 
     // Walk over the AST to find any of our custom globals
@@ -243,34 +250,55 @@ module.exports = {
     let parser = new htmlparser.Parser({
       onopentag(name, attribs) {
         if (name === "script" && "src" in attribs) {
-          scriptSrcs.push(attribs.src);
+          scriptSrcs.push({
+            src: attribs.src,
+            type:
+              "type" in attribs && attribs.type == "module"
+                ? "module"
+                : "script",
+          });
         }
-      }
+      },
     });
 
     parser.parseComplete(content);
 
-    for (let scriptSrc of scriptSrcs) {
+    for (let script of scriptSrcs) {
       // Ensure that the script src isn't just "".
-      if (!scriptSrc) {
+      if (!script.src) {
         continue;
       }
       let scriptName;
-      if (scriptSrc.includes("http:")) {
+      if (script.src.includes("http:")) {
         // We don't handle this currently as the paths are complex to match.
-      } else if (scriptSrc.includes("chrome")) {
+      } else if (script.src.includes("chrome")) {
         // This is one way of referencing test files.
-        scriptSrc = scriptSrc.replace("chrome://mochikit/content/", "/");
-        scriptName = path.join(helpers.rootDir, "testing", "mochitest", scriptSrc);
-      } else if (scriptSrc.includes("SimpleTest")) {
+        script.src = script.src.replace("chrome://mochikit/content/", "/");
+        scriptName = path.join(
+          helpers.rootDir,
+          "testing",
+          "mochitest",
+          script.src
+        );
+      } else if (script.src.includes("SimpleTest")) {
         // This is another way of referencing test files...
-        scriptName = path.join(helpers.rootDir, "testing", "mochitest", scriptSrc);
+        scriptName = path.join(
+          helpers.rootDir,
+          "testing",
+          "mochitest",
+          script.src
+        );
       } else {
         // Fallback to hoping this is a relative path.
-        scriptName = path.join(dir, scriptSrc);
+        scriptName = path.join(dir, script.src);
       }
       if (scriptName && fs.existsSync(scriptName)) {
-        globals.push(...module.exports.getGlobalsForFile(scriptName));
+        globals.push(
+          ...module.exports.getGlobalsForFile(scriptName, {
+            ecmaVersion: helpers.getECMAVersion(),
+            sourceType: script.type,
+          })
+        );
       }
     }
 
@@ -291,7 +319,7 @@ module.exports = {
     let parser = {
       Program(node) {
         globalScope = context.getScope();
-      }
+      },
     };
     let filename = context.getFilename();
 
@@ -310,10 +338,14 @@ module.exports = {
           helpers.addGlobals(extraHTMLGlobals, globalScope);
         }
         let globals = handler[type](node, context.getAncestors(), globalScope);
-        helpers.addGlobals(globals, globalScope, node.type !== "Program" && node);
+        helpers.addGlobals(
+          globals,
+          globalScope,
+          node.type !== "Program" && node
+        );
       };
     }
 
     return parser;
-  }
+  },
 };

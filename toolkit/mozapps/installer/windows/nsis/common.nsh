@@ -74,7 +74,11 @@
   !include WinVer.nsh
 !endif
 
-!include x64.nsh
+; When including x64.nsh check if ___X64__NSH___ is defined to prevent
+; loading the file a second time.
+!ifndef ___X64__NSH___
+  !include x64.nsh
+!endif
 
 ; NSIS provided macros that we have overridden.
 !include overrides.nsh
@@ -1141,6 +1145,93 @@
   !verbose pop
 !macroend
 
+/**
+ * Read the value of an installer pref that's been set by the product.
+ *
+ * @param   _KEY ($R1)
+ *          Sub key containing all the installer prefs
+ *          Usually "Software\Mozilla\${AppName}"
+ * @param   _PREF ($R2)
+ *          Name of the pref to look up
+ * @return  _RESULT ($R3)
+ *          'true' or 'false' (only boolean prefs are supported)
+ *          If no value exists for the requested pref, the result is 'false'
+ */
+!macro GetInstallerRegistryPref
+  !ifndef ${_MOZFUNC_UN}GetInstallerRegistryPref
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !define ${_MOZFUNC_UN}GetInstallerRegistryPref "!insertmacro GetInstallerRegistryPrefCall"
+
+    Function ${_MOZFUNC_UN}GetInstallerRegistryPref
+      ; stack: key, pref
+      Exch $R1 ; key, stack: old R1, pref
+      Exch 1   ; stack: pref, old R1
+      Exch $R2 ; pref, stack: old R2, old R1
+      Push $R3
+
+      StrCpy $R3 0
+
+      ; These prefs are always stored in the native registry.
+      SetRegView 64
+
+      ClearErrors
+      ReadRegDWORD $R3 HKCU "$R1\Installer\$AppUserModelID" "$R2"
+
+      SetRegView lastused
+
+      ${IfNot} ${Errors}
+      ${AndIf} $R3 != 0
+        StrCpy $R1 "true"
+      ${Else}
+        StrCpy $R1 "false"
+      ${EndIf}
+
+      ; stack: old R3, old R2, old R1
+      Pop $R3 ; stack: old R2, old R1
+      Pop $R2 ; stack: old R1
+      Exch $R1 ; stack: result
+    FunctionEnd
+
+    !verbose pop
+  !endif
+!macroend
+
+!macro GetInstallerRegistryPrefCall _KEY _PREF _RESULT
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_PREF}"
+  Push "${_KEY}"
+  Call GetInstallerRegistryPref
+  Pop ${_RESULT}
+  !verbose pop
+!macroend
+
+!macro un.GetInstallerRegistryPrefCall _KEY _PREF _RESULT
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_PREF}"
+  Push "${_KEY}"
+  Call un.GetInstallerRegistryPref
+  Pop ${_RESULT}
+  !verbose pop
+!macroend
+
+!macro un.GetInstallerRegistryPref
+  !ifndef un.GetInstallerRegistryPref
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN "un."
+
+    !insertmacro GetInstallerRegistryPref
+
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN
+    !verbose pop
+  !endif
+!macroend
+
 ################################################################################
 # Macros for adding file and protocol handlers
 
@@ -1450,6 +1541,7 @@
   ; The x64 regsvr32.exe registers x86 DLL's properly so just use it
   ; when installing on an x64 systems even when installing an x86 application.
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     ${DisableX64FSRedirection}
     ExecWait '"$SYSDIR\regsvr32.exe" /s "${DLL}"'
     ${EnableX64FSRedirection}
@@ -1464,6 +1556,7 @@
   ; The x64 regsvr32.exe registers x86 DLL's properly so just use it
   ; when installing on an x64 systems even when installing an x86 application.
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     ${DisableX64FSRedirection}
     ExecWait '"$SYSDIR\regsvr32.exe" /s /u "${DLL}"'
     ${EnableX64FSRedirection}
@@ -1705,6 +1798,124 @@
     !define _MOZFUNC_UN "un."
 
     !insertmacro GetSingleInstallPath
+
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN
+    !verbose pop
+  !endif
+!macroend
+
+/**
+ * Find the first existing installation for the application.
+ * This is similar to GetSingleInstallPath, except that it always returns the
+ * first path it finds, instead of an error when more than one path exists.
+ *
+ * The shell context and the registry view should already have been set.
+ *
+ * @param   _KEY
+ *          The registry subkey (typically Software\Mozilla\App Name).
+ * @return  _RESULT
+ *          path to the install directory of the first location found, or
+ *          the string "false" if no existing installation was found.
+ *
+ * $R5 = counter for the loop's EnumRegKey
+ * $R6 = return value from EnumRegKey
+ * $R7 = return value from ReadRegStr
+ * $R8 = storage for _KEY
+ * $R9 = _KEY and _RESULT
+ */
+!macro GetFirstInstallPath
+  !ifndef ${_MOZFUNC_UN}GetFirstInstallPath
+    !define _MOZFUNC_UN_TMP ${_MOZFUNC_UN}
+    !insertmacro ${_MOZFUNC_UN_TMP}GetLongPath
+    !insertmacro ${_MOZFUNC_UN_TMP}GetParent
+    !insertmacro ${_MOZFUNC_UN_TMP}RemoveQuotesFromPath
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN ${_MOZFUNC_UN_TMP}
+    !undef _MOZFUNC_UN_TMP
+
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !define ${_MOZFUNC_UN}GetFirstInstallPath "!insertmacro ${_MOZFUNC_UN}__GetFirstInstallPathCall"
+
+    Function ${_MOZFUNC_UN}__GetFirstInstallPath
+      Exch $R9
+      Push $R8
+      Push $R7
+      Push $R6
+      Push $R5
+
+      StrCpy $R8 $R9
+      StrCpy $R9 "false"
+      StrCpy $R5 0
+
+      ${Do}
+        ClearErrors
+        EnumRegKey $R6 SHCTX $R8 $R5
+        ${If} ${Errors}
+        ${OrIf} $R6 == ""
+          ${Break}
+        ${EndIf}
+
+        IntOp $R5 $R5 + 1
+
+        ReadRegStr $R7 SHCTX "$R8\$R6\Main" "PathToExe"
+        ${If} ${Errors}
+          ${Continue}
+        ${EndIf}
+
+        ${${_MOZFUNC_UN}RemoveQuotesFromPath} "$R7" $R7
+        GetFullPathName $R7 "$R7"
+        ${If} ${Errors}
+          ${Continue}
+        ${EndIf}
+
+        StrCpy $R9 "$R7"
+        ${Break}
+      ${Loop}
+
+      ${If} $R9 != "false"
+        ${${_MOZFUNC_UN}GetLongPath} "$R9" $R9
+        ${${_MOZFUNC_UN}GetParent} "$R9" $R9
+      ${EndIf}
+
+      Pop $R5
+      Pop $R6
+      Pop $R7
+      Pop $R8
+      Exch $R9
+    FunctionEnd
+
+    !verbose pop
+  !endif
+!macroend
+
+!macro __GetFirstInstallPathCall _KEY _RESULT
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_KEY}"
+  Call __GetFirstInstallPath
+  Pop ${_RESULT}
+  !verbose pop
+!macroend
+
+!macro un.__GetFirstInstallPathCall _KEY _RESULT
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_KEY}"
+  Call un.__GetFirstInstallPath
+  Pop ${_RESULT}
+  !verbose pop
+!macroend
+
+!macro un.__GetFirstInstallPath
+  !ifndef un.__GetFirstInstallPath
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN "un."
+
+    !insertmacro __GetFirstInstallPath
 
     !undef _MOZFUNC_UN
     !define _MOZFUNC_UN
@@ -2203,11 +2414,12 @@
       GetFullPathName $R8 "$R9"
       IfErrors end_GetLongPath +1 ; If the path doesn't exist return an empty string.
 
-      System::Call 'kernel32::GetLongPathNameW(w R8, w .R7, i 1024)i .R6'
-      StrCmp "$R7" "" +4 +1 ; Empty string when GetLongPathNameW is not present.
-      StrCmp $R6 0 +3 +1    ; Should never equal 0 since the path exists.
-      StrCpy $R9 "$R7"
-      GoTo end_GetLongPath
+      ; Make the drive letter uppercase.
+      StrCpy $R9 "$R8" 1    ; Copy the first char.
+      StrCpy $R8 "$R8" "" 1 ; Copy everything after the first char.
+      ; Convert the first char to uppercase.
+      System::Call "User32::CharUpper(w R9 R9)i"
+      StrCpy $R8 "$R9$R8"   ; Copy the uppercase char and the rest of the chars.
 
       ; Do it the hard way.
       StrCpy $R4 0     ; Stores the position in the string of the last \ found.
@@ -2305,18 +2517,14 @@
  * @param   _KEY
  *          The registry subkey (typically this will be Software\Mozilla).
  *
- * XXXrstrong - there is the potential for Key: Software/Mozilla/AppName,
- * ValueName: CurrentVersion, ValueData: AppVersion to reference a key that is
- * no longer available due to this cleanup. This should be no worse than prior
- * to this reg cleanup since the referenced key would be for an app that is no
- * longer installed on the system.
- *
+ * $0  = loop counter
+ * $1  = temporary value used for string searches
  * $R0 = on x64 systems set to 'false' at the beginning of the macro when
  *       enumerating the x86 registry view and set to 'true' when enumerating
  *       the x64 registry view.
  * $R1 = stores the long path to $INSTDIR
  * $R2 = return value from the stack from the GetParent and GetLongPath macros
- * $R3 = return value from the outer loop's EnumRegKey
+ * $R3 = return value from the outer loop's EnumRegKey and ESR string
  * $R4 = return value from the inner loop's EnumRegKey
  * $R5 = return value from ReadRegStr
  * $R6 = counter for the outer loop's EnumRegKey
@@ -2350,11 +2558,14 @@
       Push $R2
       Push $R1
       Push $R0
+      Push $0
+      Push $1
 
       ${${_MOZFUNC_UN}GetLongPath} "$INSTDIR" $R1
       StrCpy $R6 0  ; set the counter for the outer loop to 0
 
       ${If} ${RunningX64}
+      ${OrIf} ${IsNativeARM64}
         StrCpy $R0 "false"
         ; Set the registry to the 32 bit registry for 64 bit installations or to
         ; the 64 bit registry for 32 bit installations at the beginning so it can
@@ -2413,22 +2624,90 @@
       GoTo outerloop
 
       end:
-      ${If} ${RunningX64}
-      ${AndIf} "$R0" == "false"
-        ; Set the registry to the correct view.
-        !ifdef HAVE_64BIT_BUILD
-          SetRegView 64
-        !else
-          SetRegView 32
-        !endif
+      ; Check if _KEY\${BrandFullNameInternal} refers to a key that's been
+      ; removed, either just now by this function or earlier by something else,
+      ; and if so either update it to a key that does exist or remove it if we
+      ; can't find anything to update it to.
+      ; We'll run this check twice, once looking for non-ESR keys and then again
+      ; looking specifically for the separate ESR keys.
+      StrCpy $R3 ""
+      ${For} $0 0 1
+        ClearErrors
+        ReadRegStr $R5 SHCTX "$R9\${BrandFullNameInternal}$R3" "CurrentVersion"
+        ${IfNot} ${Errors}
+          ReadRegStr $R5 SHCTX "$R9\${BrandFullNameInternal}\$R5" ""
+          ${If} ${Errors}
+            ; Key doesn't exist, update or remove CurrentVersion and default.
+            StrCpy $R5 ""
+            StrCpy $R6 0
+            EnumRegKey $R4 SHCTX "$R9\${BrandFullNameInternal}" $R6
+            ${While} $R4 != ""
+              ClearErrors
+              ${WordFind} "$R4" "esr" "E#" $1
+              ${If} $R3 == ""
+                ; The key we're looking to update is a non-ESR, so we need to
+                ; select only another non-ESR to update it with.
+                ${If} ${Errors}
+                  StrCpy $R5 "$R4"
+                  ${Break}
+                ${EndIf}
+              ${Else}
+                ; The key we're looking to update is an ESR, so we need to
+                ; select only another ESR to update it with.
+                ${IfNot} ${Errors}
+                  StrCpy $R5 "$R4"
+                  ${Break}
+                ${EndIf}
+              ${EndIf}
 
-        StrCpy $R6 0  ; set the counter for the outer loop to 0
-        StrCpy $R0 "true"
-        GoTo outerloop
+              IntOp $R6 $R6 + 1
+              EnumRegKey $R4 SHCTX "$R9\${BrandFullNameInternal}" $R6
+            ${EndWhile}
+
+            ${If} $R5 == ""
+              ; We didn't find an install to update the key with, so delete the
+              ; CurrentVersion value and the entire key if it has no subkeys.
+              DeleteRegValue SHCTX "$R9\${BrandFullNameInternal}$R3" "CurrentVersion"
+              DeleteRegValue SHCTX "$R9\${BrandFullNameInternal}$R3" ""
+              DeleteRegKey /ifempty SHCTX "$R9\${BrandFullNameInternal}$R3"
+            ${Else}
+              ; We do have another still-existing install, so update the key to
+              ; that version.
+              WriteRegStr SHCTX "$R9\${BrandFullNameInternal}$R3" \
+                                "CurrentVersion" "$R5"
+              ${WordFind} "$R5" " " "+1{" $R5
+              WriteRegStr SHCTX "$R9\${BrandFullNameInternal}$R3" "" "$R5"
+            ${EndIf}
+          ${EndIf}
+          ; Else, the key referenced in CurrentVersion still exists,
+          ; so there's nothing to update or remove.
+        ${EndIf}
+
+        ; Set up for the second iteration of the loop, where we'll be looking
+        ; for the separate ESR keys.
+        StrCpy $R3 " ESR"
+      ${Next}
+
+      ${If} ${RunningX64}
+      ${OrIf} ${IsNativeARM64}
+        ${If} "$R0" == "false"
+          ; Set the registry to the correct view.
+          !ifdef HAVE_64BIT_BUILD
+            SetRegView 64
+          !else
+            SetRegView 32
+          !endif
+
+          StrCpy $R6 0  ; set the counter for the outer loop to 0
+          StrCpy $R0 "true"
+          GoTo outerloop
+        ${EndIf}
       ${EndIf}
 
       ClearErrors
 
+      Pop $1
+      Pop $0
       Pop $R0
       Pop $R1
       Pop $R2
@@ -2469,6 +2748,73 @@
     !define _MOZFUNC_UN "un."
 
     !insertmacro RegCleanMain
+
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN
+    !verbose pop
+  !endif
+!macroend
+
+
+/**
+ * Removes registry keys that reference this install location and for paths that
+ * no longer exist.
+ *
+ * @param   _KEY ($R1)
+ *          The registry subkey
+ *          (typically this will be Software\Mozilla\${AppName}).
+ */
+!macro RegCleanPrefs
+  !ifndef ${_MOZFUNC_UN}RegCleanPrefs
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !define ${_MOZFUNC_UN}RegCleanPrefs "!insertmacro ${_MOZFUNC_UN}RegCleanPrefsCall"
+
+    Function ${_MOZFUNC_UN}RegCleanPrefs
+      Exch $R1 ; get _KEY from the stack
+
+      ; These prefs are always stored in the native registry.
+      SetRegView 64
+
+      ; Delete the installer prefs key for this installation, if one exists.
+      DeleteRegKey HKCU "$R1\Installer\$AppUserModelID"
+
+      ; If there aren't any more installer prefs keys, delete the parent key.
+      DeleteRegKey /ifempty HKCU "$R1\Installer"
+
+      SetRegView lastused
+
+      Pop $R1 ; restore the previous $R1
+    FunctionEnd
+
+    !verbose pop
+  !endif
+!macroend
+
+!macro RegCleanPrefsCall _KEY
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_KEY}"
+  Call RegCleanPrefs
+  !verbose pop
+!macroend
+
+!macro un.RegCleanPrefsCall _KEY
+  !verbose push
+  !verbose ${_MOZFUNC_VERBOSE}
+  Push "${_KEY}"
+  Call un.RegCleanPrefs
+  !verbose pop
+!macroend
+
+!macro un.RegCleanPrefs
+  !ifndef un.RegCleanPrefs
+    !verbose push
+    !verbose ${_MOZFUNC_VERBOSE}
+    !undef _MOZFUNC_UN
+    !define _MOZFUNC_UN "un."
+
+    !insertmacro RegCleanPrefs
 
     !undef _MOZFUNC_UN
     !define _MOZFUNC_UN
@@ -2521,6 +2867,7 @@
       StrCpy $R8 0
 
       ${If} ${RunningX64}
+      ${OrIf} ${IsNativeARM64}
         StrCpy $R3 "false"
         ; Set the registry to the 32 bit registry for 64 bit installations or to
         ; the 64 bit registry for 32 bit installations at the beginning so it can
@@ -2566,18 +2913,20 @@
 
       end:
       ${If} ${RunningX64}
-      ${AndIf} "$R3" == "false"
-        ; Set the registry to the correct view.
-        !ifdef HAVE_64BIT_BUILD
-          SetRegView 64
-        !else
-          SetRegView 32
-        !endif
+      ${OrIf} ${IsNativeARM64}
+        ${If} "$R3" == "false"
+          ; Set the registry to the correct view.
+          !ifdef HAVE_64BIT_BUILD
+            SetRegView 64
+          !else
+            SetRegView 32
+          !endif
 
-        StrCpy $R7 ""
-        StrCpy $R8 0
-        StrCpy $R3 "true"
-        GoTo loop
+          StrCpy $R7 ""
+          StrCpy $R8 0
+          StrCpy $R3 "true"
+          GoTo loop
+        ${EndIf}
       ${EndIf}
 
       ClearErrors
@@ -3025,6 +3374,7 @@
         Call ${_MOZFUNC_UN}CleanVirtualStore_Internal
 
         ${If} ${RunningX64}
+        ${OrIf} ${IsNativeARM64}
           StrCpy $R4 $PROGRAMFILES64
           Call ${_MOZFUNC_UN}CleanVirtualStore_Internal
         ${EndIf}
@@ -3285,41 +3635,68 @@
           ${If} $R2 != ""
             ; Backup the old update directory logs and delete the directory
             ${If} ${FileExists} "$R2\updates\last-update.log"
-              Rename "$R2\updates\last-update.log" "$TEMP\moz-update-old-last-update.log"
+              Rename "$R2\updates\last-update.log" "$TEMP\moz-update-oldest-last-update.log"
             ${EndIf}
 
             ${If} ${FileExists} "$R2\updates\backup-update.log"
-              Rename "$R2\updates\backup-update.log" "$TEMP\moz-update-old-backup-update.log"
+              Rename "$R2\updates\backup-update.log" "$TEMP\moz-update-oldest-backup-update.log"
             ${EndIf}
 
             ${If} ${FileExists} "$R2\updates"
                 RmDir /r "$R2"
             ${EndIf}
           ${EndIf}
+        ${EndIf}
 
-          ; Get the taskbar ID hash for this installation path
-          ReadRegStr $R1 HKLM "SOFTWARE\$R7\TaskBarIDs" $R6
-          ${If} $R1 == ""
-            ReadRegStr $R1 HKCU "SOFTWARE\$R7\TaskBarIDs" $R6
+        ; Get the taskbar ID hash for this installation path
+        ReadRegStr $R1 HKLM "SOFTWARE\$R7\TaskBarIDs" $R6
+        ${If} $R1 == ""
+          ReadRegStr $R1 HKCU "SOFTWARE\$R7\TaskBarIDs" $R6
+        ${EndIf}
+
+        ; If the taskbar ID hash exists then delete the new update directory
+        ; Backup its logs before deleting it.
+        ${If} $R1 != ""
+          StrCpy $R0 "$LOCALAPPDATA\$R8\$R1"
+
+          ${If} ${FileExists} "$R0\updates\last-update.log"
+            Rename "$R0\updates\last-update.log" "$TEMP\moz-update-older-last-update.log"
           ${EndIf}
 
-          ; If the taskbar ID hash exists then delete the new update directory
-          ; Backup its logs before deleting it.
-          ${If} $R1 != ""
-            StrCpy $R0 "$LOCALAPPDATA\$R8\$R1"
+          ${If} ${FileExists} "$R0\updates\backup-update.log"
+            Rename "$R0\updates\backup-update.log" "$TEMP\moz-update-older-backup-update.log"
+          ${EndIf}
 
-            ${If} ${FileExists} "$R0\updates\last-update.log"
-              Rename "$R0\updates\last-update.log" "$TEMP\moz-update-new-last-update.log"
-            ${EndIf}
+          ; Remove the old updates directory, located in the user's Windows profile directory
+          ${If} ${FileExists} "$R0\updates"
+            RmDir /r "$R0"
+          ${EndIf}
 
-            ${If} ${FileExists} "$R0\updates\backup-update.log"
-              Rename "$R0\updates\backup-update.log" "$TEMP\moz-update-new-backup-update.log"
-            ${EndIf}
+          ; Get the new updates directory so we can remove that too
+          ; The new update directory is in the Program Data directory
+          ; (currently C:\ProgramData).
+          ; This system call gets that directory path. The arguments are:
+          ;   A null ptr for hwnd
+          ;   $R0 for the output string
+          ;   CSIDL_COMMON_APPDATA == 0x0023 == 35 for the csidl indicating which dir to get
+          ;   false for fCreate (i.e. Do not create the folder if it doesn't exist)
+          ; We could use %APPDATA% for this instead, but that requires state: the shell
+          ; var context would need to be saved, set, and reset. It is easier just to use
+          ; the system call.
+          System::Call "Shell32::SHGetSpecialFolderPathW(p 0, t.R0, i 35, i 0)"
+          StrCpy $R0 "$R0\$R8\$R1"
 
-            ; Remove the old updates directory
-            ${If} ${FileExists} "$R0\updates"
-              RmDir /r "$R0"
-            ${EndIf}
+          ${If} ${FileExists} "$R0\updates\last-update.log"
+            Rename "$R0\updates\last-update.log" "$TEMP\moz-update-newest-last-update.log"
+          ${EndIf}
+
+          ${If} ${FileExists} "$R0\updates\backup-update.log"
+            Rename "$R0\updates\backup-update.log" "$TEMP\moz-update-newest-backup-update.log"
+          ${EndIf}
+
+          ; Remove the new updates directory, which is shared by all users of the installation
+          ${If} ${FileExists} "$R0\updates"
+            RmDir /r "$R0"
           ${EndIf}
         ${EndIf}
       ${EndIf}
@@ -3374,6 +3751,92 @@
     !verbose pop
   !endif
 !macroend
+
+/**
+ * Create the update directory and sets the permissions correctly
+ *
+ * @param   ROOT_DIR_NAME
+ *          The name of the update directory to be created in the common
+ *          application directory. For example, if ROOT_DIR_NAME is "Mozilla",
+ *          the created directory will be "C:\ProgramData\Mozilla".
+ *
+ * $R0 = Used for checking errors
+ * $R1 = The common application directory path
+ * $R9 = An error message to be returned on the stack
+ */
+!macro CreateUpdateDir ROOT_DIR_NAME
+  Push $R9
+  Push $R0
+  Push $R1
+
+  ; The update directory is in the Program Data directory
+  ; (currently C:\ProgramData).
+  ; This system call gets that directory path. The arguments are:
+  ;   A null ptr for hwnd
+  ;   $R1 for the output string
+  ;   CSIDL_COMMON_APPDATA == 0x0023 == 35 for the csidl indicating which dir to get
+  ;   true for fCreate (i.e. Do create the folder if it doesn't exist)
+  ; We could use %APPDATA% for this instead, but that requires state: the shell
+  ; var context would need to be saved, set, and reset. It is easier just to use
+  ; the system call.
+  System::Call "Shell32::SHGetSpecialFolderPathW(p 0, t.R1, i 35, i 1)"
+  StrCpy $R1 "$R1\${ROOT_DIR_NAME}"
+
+  ClearErrors
+  ${IfNot} ${FileExists} "$R1"
+    CreateDirectory "$R1"
+    ${If} ${Errors}
+      StrCpy $R9 "Unable to create directory: $R1"
+      GoTo end
+    ${EndIf}
+  ${EndIf}
+
+  ; Grant Full Access to the Builtin User group
+  AccessControl::SetOnFile "$R1" "(BU)" "FullAccess"
+  Pop $R0
+  ${If} $R0 == error
+    Pop $R9  ; Get AccessControl's Error Message
+    SetErrors
+    GoTo end
+  ${EndIf}
+
+  ; Grant Full Access to the Builtin Administrator group
+  AccessControl::SetOnFile "$R1" "(BA)" "FullAccess"
+  Pop $R0
+  ${If} $R0 == error
+    Pop $R9  ; Get AccessControl's Error Message
+    SetErrors
+    GoTo end
+  ${EndIf}
+
+  ; Grant Full Access to the SYSTEM user
+  AccessControl::SetOnFile "$R1" "(SY)" "FullAccess"
+  Pop $R0
+  ${If} $R0 == error
+    Pop $R9  ; Get AccessControl's Error Message
+    SetErrors
+    GoTo end
+  ${EndIf}
+
+  ; Remove inherited permissions
+  AccessControl::DisableFileInheritance "$R1"
+  Pop $R0
+  ${If} $R0 == error
+    Pop $R9  ; Get AccessControl's Error Message
+    SetErrors
+    GoTo end
+  ${EndIf}
+
+end:
+  Pop $R1
+  Pop $R0
+  ${If} ${Errors}
+    Exch $R9
+  ${Else}
+    Pop $R9
+  ${EndIf}
+!macroend
+!define CreateUpdateDir "!insertmacro CreateUpdateDir"
 
 /**
  * Deletes all relative profiles specified in an application's profiles.ini and
@@ -4681,6 +5144,7 @@
       Var BrandFullName
       Var BrandFullNameDA
       Var BrandShortName
+      Var BrandProductName
     !endif
 
     !verbose push
@@ -4692,28 +5156,37 @@
       Push $R8
       Push $R7
       Push $R6
+      Push $R5
 
       StrCpy $R8 "${BrandFullName}"
       StrCpy $R7 "${BrandShortName}"
+      StrCpy $R6 "${BrandProductName}"
 
       IfFileExists "$R9" +1 finish
 
       ClearErrors
-      ReadINIStr $R6 $R9 "Branding" "BrandFullName"
+      ReadINIStr $R5 $R9 "Branding" "BrandFullName"
       IfErrors +2 +1
-      StrCpy $R8 "$R6"
+      StrCpy $R8 "$R5"
 
       ClearErrors
-      ReadINIStr $R6 $R9 "Branding" "BrandShortName"
+      ReadINIStr $R5 $R9 "Branding" "BrandShortName"
       IfErrors +2 +1
-      StrCpy $R7 "$R6"
+      StrCpy $R7 "$R5"
+
+      ClearErrors
+      ReadINIStr $R5 $R9 "Branding" "BrandProductName"
+      IfErrors +2 +1
+      StrCpy $R6 "$R5"
 
       finish:
       StrCpy $BrandFullName "$R8"
       ${${_MOZFUNC_UN}WordReplace} "$R8" "&" "&&" "+" $R8
       StrCpy $BrandFullNameDA "$R8"
       StrCpy $BrandShortName "$R7"
+      StrCpy $BrandProductName "$R6"
 
+      Pop $R5
       Pop $R6
       Pop $R7
       Pop $R8
@@ -5092,10 +5565,11 @@
 
             ; We still accept the plural version for backwards compatibility,
             ; but the singular version takes priority.
+            ClearErrors
             ReadINIStr $R8 $R7 "Install" "StartMenuShortcut"
             ${If} $R8 == "false"
               StrCpy $AddStartMenuSC "0"
-            ${Else}
+            ${ElseIfNot} ${Errors}
               StrCpy $AddStartMenuSC "1"
             ${EndIf}
 
@@ -5518,35 +5992,28 @@
     Function LeaveOptionsCommon
       Push $R9
 
+      StrCpy $R9 "false"
+
 !ifndef NO_INSTDIR_FROM_REG
       SetShellVarContext all      ; Set SHCTX to HKLM
+
+      ${If} ${IsNativeAMD64}
+      ${OrIf} ${IsNativeARM64}
+        SetRegView 64
+        ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+        SetRegView lastused
+      ${EndIf}
+
+      StrCmp "$R9" "false" +1 finish_get_install_dir
+
+      SetRegView 32
       ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+      SetRegView lastused
 
       StrCmp "$R9" "false" +1 finish_get_install_dir
 
       SetShellVarContext current  ; Set SHCTX to HKCU
       ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
-
-      ${If} ${RunningX64}
-        ; In HKCU there is no WOW64 redirection, which means we may have gotten
-        ; the path to a 32-bit install even though we're 64-bit, or vice-versa.
-        ; In that case, just use the default path instead of offering an upgrade.
-        ; But only do that override if the existing install is in Program Files,
-        ; because that's the only place we can be sure is specific
-        ; to either 32 or 64 bit applications.
-        ; The WordFind syntax below searches for the first occurence of the
-        ; "delimiter" (the Program Files path) in the install path and returns
-        ; anything that appears before that. If nothing appears before that,
-        ; then the install is under Program Files (32 or 64).
-!ifdef HAVE_64BIT_BUILD
-        ${WordFind} $R9 $PROGRAMFILES32 "+1{" $0
-!else
-        ${WordFind} $R9 $PROGRAMFILES64 "+1{" $0
-!endif
-        ${If} $0 == ""
-          StrCpy $R9 "false"
-        ${EndIf}
-      ${EndIf}
 
       finish_get_install_dir:
       StrCmp "$R9" "false" +2 +1
@@ -6112,11 +6579,7 @@
         ${LogMsg} "OS Name    : Unable to detect"
       ${EndIf}
 
-      !ifdef HAVE_64BIT_BUILD
-        ${LogMsg} "Target CPU : x64"
-      !else
-        ${LogMsg} "Target CPU : x86"
-      !endif
+      ${LogMsg} "Target CPU : ${ARCH}"
 
       Pop $9
       Pop $R0
@@ -7036,7 +7499,7 @@
               Pop $R4
               ${GetLongPath} "$R4" $R4
               ${If} "$R4" == "$R9" ; link path == install path
-                ApplicationID::Set "$SMPROGRAMS\$R5" "$R8"
+                ApplicationID::Set "$SMPROGRAMS\$R5" "$R8" "true"
                 Pop $R4
               ${EndIf}
             ${EndIf}
@@ -7057,7 +7520,7 @@
               Pop $R4
               ${GetLongPath} "$R4" $R4
               ${If} "$R4" == "$R9" ; link path == install path
-                ApplicationID::Set "$QUICKLAUNCH\$R5" "$R8"
+                ApplicationID::Set "$QUICKLAUNCH\$R5" "$R8" "true"
                 Pop $R4
               ${EndIf}
             ${EndIf}
@@ -7083,7 +7546,7 @@
                   Pop $R4
                   ${GetLongPath} "$R4" $R4
                   ${If} "$R4" == "$R9" ; link path == install path
-                    ApplicationID::Set "$R7\$R5" "$R8"
+                    ApplicationID::Set "$R7\$R5" "$R8" "true"
                     Pop $R4
                   ${EndIf}
                 ${EndIf}
@@ -7109,7 +7572,7 @@
             ShellLink::GetShortCutTarget "$R7\TaskBar\$R5"
             Pop $R4
             ${If} "$R4" == "$R9" ; link path == install path
-              ApplicationID::Set "$R7\TaskBar\$R5" "$R8"
+              ApplicationID::Set "$R7\TaskBar\$R5" "$R8" "true"
               Pop $R4 ; pop Set result off the stack
               StrCpy $R3 "true"
             ${EndIf}
@@ -7129,7 +7592,7 @@
             ShellLink::GetShortCutTarget "$R7\StartMenu\$R5"
             Pop $R4
             ${If} "$R4" == "$R9" ; link path == install path
-              ApplicationID::Set "$R7\StartMenu\$R5" "$R8"
+              ApplicationID::Set "$R7\StartMenu\$R5" "$R8" "true"
               Pop $R4 ; pop Set result off the stack
               StrCpy $R3 "true"
             ${EndIf}
@@ -7871,40 +8334,34 @@
 !macroend
 
 /**
- * Gets the number of dialog units from the top of a dialog to the bottom of a
- * control
+ * Gets the number of pixels from the top of a dialog to the bottom of a control
  *
- * _DIALOG the handle of the dialog
  * _CONTROL the handle of the control
- * _RES_DU return value - dialog units from the top of the dialog to the bottom
- *         of the control
+ * _RES_PX  return value - pixels from the top of the dialog to the bottom
+ *          of the control
  */
-!macro GetDlgItemBottomDUCall _DIALOG _CONTROL _RES_DU
-  Push "${_DIALOG}"
+!macro GetDlgItemBottomPXCall _CONTROL _RES_PX
   Push "${_CONTROL}"
-  ${CallArtificialFunction} GetDlgItemBottomDU_
-  Pop ${_RES_DU}
+  ${CallArtificialFunction} GetDlgItemBottomPX_
+  Pop ${_RES_PX}
 !macroend
 
-!define GetDlgItemBottomDU "!insertmacro GetDlgItemBottomDUCall"
-!define un.GetDlgItemBottomDU "!insertmacro GetDlgItemBottomDUCall"
+!define GetDlgItemBottomPX "!insertmacro GetDlgItemBottomPXCall"
+!define un.GetDlgItemBottomPX "!insertmacro GetDlgItemBottomPXCall"
 
-!macro GetDlgItemBottomDU_
+!macro GetDlgItemBottomPX_
   Exch $0 ; handle of the control
-  Exch $1 ; handle of the dialog
+  Push $1
   Push $2
-  Push $3
 
   ; #32770 is the dialog class
-  FindWindow $2 "#32770" "" $HWNDPARENT
-  System::Call '*(i, i, i, i) i .r3'
-  System::Call 'user32::GetWindowRect(i r0, i r3)'
-  System::Call 'user32::MapWindowPoints(i 0, i r2, i r3, i 2)'
-  System::Call 'user32::MapDialogRect(i r1, i r3)'
-  System::Call '*$3(i, i, i, i .r0)'
-  System::Free $3
+  FindWindow $1 "#32770" "" $HWNDPARENT
+  System::Call '*(i, i, i, i) i .r2'
+  System::Call 'user32::GetWindowRect(i r0, i r2)'
+  System::Call 'user32::MapWindowPoints(i 0, i r1, i r2, i 2)'
+  System::Call '*$2(i, i, i, i .r0)'
+  System::Free $2
 
-  Pop $3
   Pop $2
   Pop $1
   Exch $0 ; pixels from the top of the dialog to the bottom of the control
@@ -7912,17 +8369,17 @@
 
 /**
  * Gets the width and height for sizing a control that has the specified text.
- * If the text has embedded newlines then the width and height will be
- * determined without trying to optimize the control's width and height. If the
- * text doesn't contain newlines the control's height and width will be
- * dynamically determined using a minimum of 3 lines (incrementing the
- * number of lines if necessary) for the height and the maximum width specified.
+ * The control's height and width will be dynamically determined for the maximum
+ * width specified.
  *
  * _TEXT       the text
  * _FONT       the font to use when getting the width and height
- * _MAX_WIDTH  the maximum width for the control
- * _RES_WIDTH  return value - control width for the text
- * _RES_HEIGHT return value - control height for the text
+ * _MAX_WIDTH  the maximum width for the control in pixels
+ * _RES_WIDTH  return value - control width for the text in pixels.
+ *             This might be larger than _MAX_WIDTH if that constraint couldn't
+ *             be satisfied, e.g. a single word that couldn't be broken up is
+ *             longer than _MAX_WIDTH by itself.
+ * _RES_HEIGHT return value - control height for the text in pixels
  */
 !macro GetTextWidthHeight
 
@@ -7938,25 +8395,25 @@
     !define ${_MOZFUNC_UN}GetTextWidthHeight "!insertmacro ${_MOZFUNC_UN}GetTextWidthHeightCall"
 
     Function ${_MOZFUNC_UN}GetTextWidthHeight
-      Exch $0  ; maximum width use to calculate the control's width and height
-      Exch 1
-      Exch $1  ; font
-      Exch 2
-      Exch $2  ; text
-      Push $3
-      Push $4
-      Push $5
-      Push $6
-      Push $7
-      Push $8
-      Push $9
-      Push $R0
-      Push $R1
-      Push $R2
+      ; Stack contents after each instruction (top of the stack on the left):
+      ;          _MAX_WIDTH _FONT _TEXT
+      Exch $0  ; $0 _FONT _TEXT
+      Exch 1   ; _FONT $0 _TEXT
+      Exch $1  ; $1 $0 _TEXT
+      Exch 2   ; _TEXT $0 $1
+      Exch $2  ; $2 $0 $1
+      ; That's all the parameters, now save our scratch registers.
+      Push $3  ; handle to a temporary control for drawing the text into
+      Push $4  ; DC handle
+      Push $5  ; string length of the text argument
+      Push $6  ; RECT struct to call DrawText with
+      Push $7  ; width returned from DrawText
+      Push $8  ; height returned from DrawText
+      Push $9  ; flags to pass to DrawText
 
-      StrCpy $R2 "${DT_NOCLIP}|${DT_CALCRECT}"
+      StrCpy $9 "${DT_NOCLIP}|${DT_CALCRECT}|${DT_WORDBREAK}"
       !ifdef ${AB_CD}_rtl
-        StrCpy $R2 "$R2|${DT_RTLREADING}"
+        StrCpy $9 "$9|${DT_RTLREADING}"
       !endif
 
       ; Reuse the existing NSIS control which is used for BrandingText instead
@@ -7967,56 +8424,18 @@
       System::Call 'gdi32::SelectObject(i r4, i r1)'
 
       StrLen $5 "$2" ; text length
-      System::Call '*(i, i, i, i) i .r6'
+      System::Call '*(i, i, i r0, i) i .r6'
 
-      ClearErrors
-      ${${_MOZFUNC_UN}WordFind} "$2" "$\n" "E#" $R0
-      ${If} ${Errors}
-        ; When there aren't newlines in the text calculate the size of the
-        ; rectangle needed for the text with a minimum of three lines of text.
-        ClearErrors
-        System::Call 'user32::DrawTextW(i r4, t $\"$2$\", i r5, i r6, \
-                                        i $R2|${DT_SINGLELINE})'
-        System::Call '*$6(i, i, i .r8, i .r7)'
-        System::Free $6
+      System::Call 'user32::DrawTextW(i r4, t $\"$2$\", i r5, i r6, i r9)'
+      System::Call '*$6(i, i, i .r7, i .r8)'
+      System::Free $6
 
-        ; Get the approximate number height needed to display the text starting
-        ; with a minimum of 3 lines of text.
-        StrCpy $9 $8
-        StrCpy $R1 2 ; set the number of lines initially to 2
-        ${Do}
-          IntOp $R1 $R1 + 1 ; increment the number of lines
-          IntOp $9 $8 / $R1
-        ${LoopUntil} $9 < $0
-        IntOp $7 $7 * $R1
-
-        StrCpy $R0 $9
-        ${Do}
-          IntOp $R0 $R0 + 20
-          System::Call '*(i, i, i R0, i r7) i .r6'
-          System::Call 'user32::DrawTextW(i r4, t $\"$2$\", i r5, i r6, \
-                                          i $R2|${DT_WORDBREAK}) i .R1'
-          System::Call '*$6(i, i, i .r8, i .r9)'
-          System::Free $6
-        ${LoopUntil} $7 >= $R1
-      ${Else}
-        ; When there are newlines in the text just return the size of the
-        ; rectangle for the text.
-        System::Call 'user32::DrawTextW(i r4, t $\"$2$\", i r5, i r6, i $R2)'
-        System::Call '*$6(i, i, i .r8, i .r9)'
-        System::Free $6
-      ${EndIf}
-
-      ; Reselect the original DC
-      System::Call 'gdi32::SelectObject(i r4, i r1)'
       System::Call 'user32::ReleaseDC(i r3, i r4)'
 
-      StrCpy $1 $9
-      StrCpy $0 $8
+      StrCpy $1 $8
+      StrCpy $0 $7
 
-      Pop $R2
-      Pop $R1
-      Pop $R0
+      ; Restore the values that were in our scratch registers.
       Pop $9
       Pop $8
       Pop $7
@@ -8024,11 +8443,14 @@
       Pop $5
       Pop $4
       Pop $3
-      Exch $2
-      Exch 2
-      Exch $1 ; return height
-      Exch 1
-      Exch $0 ; return width
+      ; Restore our parameter registers and return our results.
+      ; Stack contents after each instruction (top of the stack on the left):
+      ;         $2 $0 $1
+      Pop $2  ; $0 $1
+      Exch 1  ; $1 $0
+      Exch $1 ; _RES_HEIGHT $0
+      Exch 1  ; $0 _RES_HEIGHT
+      Exch $0 ; _RES_WIDTH _RES_HEIGHT
     FunctionEnd
 
     !verbose pop
@@ -8072,6 +8494,99 @@
     !define _MOZFUNC_UN
     !verbose pop
   !endif
+!macroend
+
+/**
+ * Convert a number of dialog units to a number of pixels.
+ *
+ * _DU    Number of dialog units to convert
+ * _AXIS  Which axis you want to convert a value along, X or Y
+ * _RV    Register or variable to return the number of pixels in
+ */
+!macro _DialogUnitsToPixels _DU _AXIS _RV
+  Push $0
+  Push $1
+
+  ; The dialog units value might be a string ending with a 'u',
+  ; so convert it to a number.
+  IntOp $0 "${_DU}" + 0
+
+  !if ${_AXIS} == 'Y'
+    System::Call '*(i 0, i 0, i 0, i r0) i .r1'
+    System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r1)'
+    System::Call '*$1(i, i, i, i . r0)'
+  !else if ${_AXIS} == 'X'
+    System::Call '*(i 0, i 0, i r0, i 0) i .r1'
+    System::Call 'user32::MapDialogRect(p $HWNDPARENT, p r1)'
+    System::Call '*$1(i, i, i . r0, i)'
+  !else
+    !error "Invalid axis ${_AXIS} passed to DialogUnitsToPixels; please use X or Y"
+  !endif
+  System::Free $1
+
+  Pop $1
+  Exch $0
+  Pop ${_RV}
+!macroend
+!define DialogUnitsToPixels "!insertmacro _DialogUnitsToPixels"
+
+/**
+ * Convert a given left coordinate for a dialog control to flip the control to
+ * the other side of the dialog if we're using an RTL locale.
+ *
+ * _LEFT_DU   Number of dialog units to convert
+ * _WIDTH     Width of the control in either pixels or DU's
+ *            If the string has a 'u' on the end, it will be interpreted as
+ *            dialog units, otherwise it will be interpreted as pixels.
+ * _RV        Register or variable to return converted coordinate, in pixels
+ */
+!macro _ConvertLeftCoordForRTLCall _LEFT_DU _WIDTH _RV
+  Push "${_LEFT_DU}"
+  Push "${_WIDTH}"
+  ${CallArtificialFunction} _ConvertLeftCoordForRTL
+  Pop ${_RV}
+!macroend
+
+!define ConvertLeftCoordForRTL "!insertmacro _ConvertLeftCoordForRTLCall"
+!define un.ConvertLeftCoordForRTL "!insertmacro _ConvertLeftCoordForRTLCall"
+
+!macro _ConvertLeftCoordForRTL
+  ; Stack contents after each instruction (top of the stack on the left):
+  ;         _WIDTH _LEFT_DU
+  Exch $0 ; $0 _LEFT_DU
+  Exch 1  ; _LEFT_DU $0
+  Exch $1 ; $1 $0
+  ; That's all the parameters, now save our scratch registers.
+  Push $2 ; width of the entire dialog, in pixels
+  Push $3 ; _LEFT_DU converted to pixels
+  Push $4 ; temp string search result
+
+  !ifndef ${AB_CD}_rtl
+    StrCpy $0 "$1"
+  !else
+    ${GetDlgItemWidthHeight} $HWNDPARENT $2 $3
+    ${DialogUnitsToPixels} $1 X $3
+
+    ClearErrors
+    ${${_MOZFUNC_UN}WordFind} "$0" "u" "E+1{" $4
+    ${IfNot} ${Errors}
+      ${DialogUnitsToPixels} $4 X $0
+    ${EndIf}
+
+    IntOp $1 $2 - $3
+    IntOp $1 $1 - $0
+    StrCpy $0 $1
+  !endif
+
+  ; Restore the values that were in our scratch registers.
+  Pop $4
+  Pop $3
+  Pop $2
+  ; Restore our parameter registers and return our result.
+  ; Stack contents after each instruction (top of the stack on the left):
+  ;         $1 $0
+  Pop $1  ; $0
+  Exch $0 ; _RV
 !macroend
 
 /**
@@ -8132,7 +8647,7 @@
   Push $2
 
   ; Command line
-  StrCpy $0 ${CMDLINE}
+  StrCpy $0 "${CMDLINE}"
 
   ; STARTUPINFO
   System::Alloc 68
@@ -8160,3 +8675,71 @@
   Pop $1
   Pop $0
 !macroend
+
+Function WriteRegQWORD
+          ; Stack contents:
+          ; VALUE, VALUE_NAME, SUBKEY, ROOTKEY
+  Exch $3 ; $3, VALUE_NAME, SUBKEY, ROOTKEY
+  Exch 1  ; VALUE_NAME, $3, SUBKEY, ROOTKEY
+  Exch $2 ; $2, $3, SUBKEY, ROOTKEY
+  Exch 2  ; SUBKEY, $3, $2, ROOTKEY
+  Exch $1 ; $1, $3, $2, ROOTKEY
+  Exch 3  ; ROOTKEY, $3, $2, $1
+  Exch $0 ; $0, $3, $2, $1
+  System::Call "advapi32::RegSetKeyValueW(p r0, w r1, w r2, i 11, *l r3, i 8) i.r0"
+  ${IfNot} $0 = 0
+    SetErrors
+  ${EndIf}
+  Pop $0
+  Pop $3
+  Pop $2
+  Pop $1
+FunctionEnd
+!macro WriteRegQWORD ROOTKEY SUBKEY VALUE_NAME VALUE
+  ${If} "${ROOTKEY}" == "HKCR"
+    Push 0x80000000
+  ${ElseIf} "${ROOTKEY}" == "HKCU"
+    Push 0x80000001
+  ${ElseIf} "${ROOTKEY}" == "HKLM"
+    Push 0x80000002
+  ${Endif}
+  Push "${SUBKEY}"
+  Push "${VALUE_NAME}"
+  System::Int64Op ${VALUE} + 0 ; The result is pushed on the stack
+  Call WriteRegQWORD
+!macroend
+!define WriteRegQWORD "!insertmacro WriteRegQWORD"
+
+Function ReadRegQWORD
+          ; Stack contents:
+          ; VALUE_NAME, SUBKEY, ROOTKEY
+  Exch $2 ; $2, SUBKEY, ROOTKEY
+  Exch 1  ; SUBKEY, $2, ROOTKEY
+  Exch $1 ; $1, $2, ROOTKEY
+  Exch 2  ; ROOTKEY, $2, $1
+  Exch $0 ; $0, $2, $1
+  System::Call "advapi32::RegGetValueW(p r0, w r1, w r2, i 0x48, p 0, *l s, *i 8) i.r0"
+  ${IfNot} $0 = 0
+    SetErrors
+  ${EndIf}
+          ; VALUE, $0, $2, $1
+  Exch 3  ; $1, $0, $2, VALUE
+  Pop $1  ; $0, $2, VALUE
+  Pop $0  ; $2, VALUE
+  Pop $2  ; VALUE
+FunctionEnd
+!macro ReadRegQWORD DEST ROOTKEY SUBKEY VALUE_NAME
+  ${If} "${ROOTKEY}" == "HKCR"
+    Push 0x80000000
+  ${ElseIf} "${ROOTKEY}" == "HKCU"
+    Push 0x80000001
+  ${ElseIf} "${ROOTKEY}" == "HKLM"
+    Push 0x80000002
+  ${Endif}
+  Push "${SUBKEY}"
+  Push "${VALUE_NAME}"
+  Call ReadRegQWORD
+  Pop ${DEST}
+!macroend
+!define ReadRegQWORD "!insertmacro ReadRegQWORD"
+

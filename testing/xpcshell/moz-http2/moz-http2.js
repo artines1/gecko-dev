@@ -11,8 +11,18 @@ if (process.env.NODE_HTTP2_ROOT) {
 }
 var http2 = require(node_http2_root);
 var fs = require('fs');
+var net = require('net');
 var url = require('url');
 var crypto = require('crypto');
+const dnsPacket = require(`${node_http2_root}/../dns-packet`);
+const ip = require(`${node_http2_root}/../node-ip`);
+
+let http2_internal = null;
+try {
+  http2_internal = require('http2');
+} catch (_) {
+  // silently ignored
+}
 
 // Hook into the decompression code to log the decompressed name-value pairs
 var compression_module = node_http2_root + "/lib/protocol/compressor";
@@ -54,7 +64,7 @@ var newTransform = function (frame, encoding, done) {
     // Insert our empty DATA frame
     emptyFrame = {};
     emptyFrame.type = 'DATA';
-    emptyFrame.data = new Buffer(0);
+    emptyFrame.data = Buffer.alloc(0);
     emptyFrame.flags = [];
     emptyFrame.stream = frame.stream;
     var buffers = [];
@@ -74,6 +84,7 @@ function getHttpContent(path) {
   var content = '<!doctype html>' +
                 '<html>' +
                 '<head><title>HOORAY!</title></head>' +
+                // 'You Win!' used in tests to check we reached this server
                 '<body>You Win! (by requesting' + path + ')</body>' +
                 '</html>';
   return content;
@@ -157,7 +168,7 @@ var originalCompressHeaders = Compressor.prototype.compress;
 
 function insertSoftIllegalHpack(headers) {
   var originalCompressed = originalCompressHeaders.apply(this, headers);
-  var illegalLiteral = new Buffer([
+  var illegalLiteral = Buffer.from([
       0x00, // Literal, no index
       0x08, // Name: not huffman encoded, 8 bytes long
       0x3a, 0x69, 0x6c, 0x6c, 0x65, 0x67, 0x61, 0x6c, // :illegal
@@ -166,7 +177,7 @@ function insertSoftIllegalHpack(headers) {
       0x52, 0x45, 0x41, 0x4c, 0x4c, 0x59, 0x20, 0x4e, 0x4f, 0x54, 0x20, 0x4c, 0x45, 0x47, 0x41, 0x4c
   ]);
   var newBufferLength = originalCompressed.length + illegalLiteral.length;
-  var concatenated = new Buffer(newBufferLength);
+  var concatenated = Buffer.alloc(newBufferLength);
   originalCompressed.copy(concatenated, 0);
   illegalLiteral.copy(concatenated, originalCompressed.length);
   return concatenated;
@@ -182,7 +193,7 @@ function insertHardIllegalHpack(headers) {
   // Set the first bit to 1 to signal this is an indexed representation
   illegalIndexed[0] |= 0x80;
   var newBufferLength = originalCompressed.length + illegalIndexed.length;
-  var concatenated = new Buffer(newBufferLength);
+  var concatenated = Buffer.alloc(newBufferLength);
   originalCompressed.copy(concatenated, 0);
   illegalIndexed.copy(concatenated, originalCompressed.length);
   return concatenated;
@@ -194,7 +205,6 @@ var didRst = false;
 var rstConnection = null;
 var illegalheader_conn = null;
 
-var ns_confirm = 0;
 var cname_confirm = 0;
 
 function handleRequest(req, res) {
@@ -202,7 +212,7 @@ function handleRequest(req, res) {
   // the headers to have something illegal in them
   Compressor.prototype.compress = originalCompressHeaders;
 
-  var u = url.parse(req.url);
+  var u = url.parse(req.url, true);
   var content = getHttpContent(u.pathname);
   var push, push1, push1a, push2, push3;
 
@@ -355,7 +365,7 @@ function handleRequest(req, res) {
       'content-encoding' : 'br',
       'X-Connection-Http2': 'yes'
     });
-    push3.end(new Buffer([0x8b, 0x00, 0x80, 0x33, 0x0a, 0x03])); // '3\n'
+    push3.end(Buffer.from([0x8b, 0x00, 0x80, 0x33, 0x0a, 0x03])); // '3\n'
 
     content = '0';
   }
@@ -535,14 +545,14 @@ function handleRequest(req, res) {
     var content;
     if(0 == cname_confirm) {
       // ... this sends a CNAME back to pointing-elsewhere.example.com
-      content = new Buffer("00000100000100010000000005636E616D65076578616D706C6503636F6D0000050001C00C0005000100000037002012706F696E74696E672D656C73657768657265076578616D706C6503636F6D00", "hex");
+      content = Buffer.from("00000100000100010000000005636E616D65076578616D706C6503636F6D0000050001C00C0005000100000037002012706F696E74696E672D656C73657768657265076578616D706C6503636F6D00", "hex");
       cname_confirm++;
     }
     else {
       // ... this sends an A 99.88.77.66 entry back for pointing-elsewhere.example.com
-      content = new Buffer("00000100000100010000000012706F696E74696E672D656C73657768657265076578616D706C6503636F6D0000010001C00C0001000100000037000463584D42", "hex");
+      content = Buffer.from("00000100000100010000000012706F696E74696E672D656C73657768657265076578616D706C6503636F6D0000010001C00C0001000100000037000463584D42", "hex");
     }
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
+    res.setHeader('Content-Type', 'application/dns-message');
     res.setHeader('Content-Length', content.length);
     res.writeHead(200);
     res.write(content);
@@ -550,13 +560,163 @@ function handleRequest(req, res) {
     return;
 
   }
+  else if (u.pathname == "/doh") {
+    cname_confirm = 0; // back to first reply for dns-cname
+
+    let responseIP = u.query["responseIP"];
+    if (!responseIP) {
+      responseIP = "5.5.5.5";
+    }
+
+    if (u.query["auth"]) {
+      // There's a Set-Cookie: header in the response for "/dns" , which this
+      // request subsequently would include if the http channel wasn't
+      // anonymous. Thus, if there's a cookie in this request, we know Firefox
+      // mishaved. If there's not, we're fine.
+      if (req.headers['cookie']) {
+        res.writeHead(403);
+        res.end("cookie for me, not for you");
+        return;
+      }
+      if (req.headers['authorization'] != "user:password") {
+        res.writeHead(401);
+        res.end("bad boy!");
+        return;
+      }
+    }
+
+    if (u.query["push"]) {
+      // push.example.com has AAAA entry 2018::2018
+      var pcontent= Buffer.from("0000010000010001000000000470757368076578616D706C6503636F6D00001C0001C00C001C000100000037001020180000000000000000000000002018", "hex");
+      push = res.push({
+        hostname: 'foo.example.com:' + serverPort,
+        port: serverPort,
+        path: '/dns-pushed-response?dns=AAAAAAABAAAAAAAABHB1c2gHZXhhbXBsZQNjb20AABwAAQ',
+        method: 'GET',
+        headers: {
+          'accept' : 'application/dns-message'
+        }
+      });
+      push.writeHead(200, {
+        'content-type': 'application/dns-message',
+        'pushed' : 'yes',
+        'content-length' : pcontent.length,
+        'X-Connection-Http2': 'yes'
+      });
+      push.end(pcontent);
+    }
+
+    let payload = Buffer.from("");
+
+    function emitResponse(response, requestPayload) {
+      let packet = dnsPacket.decode(requestPayload);
+
+      // This shuts down the connection so we can test if the client reconnects
+      if (packet.questions.length > 0 &&
+        packet.questions[0].name == "closeme.com") {
+        response.stream.connection.close('INTERNAL_ERROR', response.stream.id);
+        return;
+      }
+
+      function responseType() {
+        if (packet.questions.length > 0 &&
+          packet.questions[0].name == "confirm.example.com" &&
+          packet.questions[0].type == "NS") {
+          return "NS";
+        }
+
+        return ip.isV4Format(responseIP) ? "A" : "AAAA";
+      }
+
+      function responseData() {
+        if (packet.questions.length > 0 &&
+          packet.questions[0].name == "confirm.example.com" &&
+          packet.questions[0].type == "NS") {
+          return "ns.example.com";
+        }
+
+        return responseIP;
+      }
+
+      let answers = [];
+      if (responseIP != "none" && responseType() == packet.questions[0].type) {
+        answers.push({
+          name: u.query["hostname"] ? u.query["hostname"] : packet.questions[0].name,
+          ttl: 55,
+          type: responseType(),
+          flush: false,
+          data: responseData(),
+        });
+      }
+
+      if (u.query["cnameloop"]) {
+        answers.push({
+          name: "cname.example.com",
+          type: "CNAME",
+          ttl: 55,
+          class: "IN",
+          flush: false,
+          data: "pointing-elsewhere.example.com",
+        });
+      }
+
+      let buf = dnsPacket.encode({
+        type: 'response',
+        id: packet.id,
+        flags: dnsPacket.RECURSION_DESIRED,
+        questions: packet.questions,
+        answers: answers,
+      });
+
+      function writeResponse(response, buf) {
+        response.setHeader('Content-Length', buf.length);
+        response.setHeader('Set-Cookie', 'trackyou=yes; path=/; max-age=100000;');
+        response.setHeader('Content-Type', 'application/dns-message');
+        response.writeHead(200);
+        response.write(buf);
+        response.end("");
+      }
+
+      let delay = undefined;
+      if (packet.questions[0].type == "A") {
+        delay = u.query["delayIPv4"];
+      } else if (packet.questions[0].type == "AAAA") {
+        delay = u.query["delayIPv6"];
+      }
+
+      if (delay) {
+        setTimeout((arg) => {
+          writeResponse(arg[0], arg[1]);
+        }, parseInt(delay), [response, buf]);
+        return;
+      }
+
+      writeResponse(response, buf);
+      return;
+    }
+
+    if (u.query["dns"]) {
+      payload = Buffer.from(u.query["dns"], 'base64');
+      emitResponse(res, payload);
+      return;
+    }
+
+    req.on('data', function receiveData(chunk) {
+      payload = Buffer.concat([payload, chunk]);
+    });
+    req.on('end', function finishedData() {
+      emitResponse(res, payload);
+      return;
+    });
+    return;
+  }
   else if (u.pathname === "/dns-cname-a") {
     // test23 asks for cname-a.example.com
     // this responds with a CNAME to here.example.com *and* an A record
     // for here.example.com
     var content;
 
-    content = new Buffer("0000" +
+    content = Buffer.from("0000" +
                          "0100" +
                          "0001" + // QDCOUNT
                          "0002" + // ANCOUNT
@@ -583,163 +743,69 @@ function handleRequest(req, res) {
                          "0004" + // RDLENGTH
                          "09080706", // IPv4 address
                          "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
+    res.setHeader('Content-Type', 'application/dns-message');
     res.setHeader('Content-Length', content.length);
     res.writeHead(200);
     res.write(content);
     res.end("");
     return;
 
-  }
-  else if (u.pathname === "/dns-cname-loop") {
-    // asking for cname.example.com
-    var content;
-    // ... this always sends a CNAME back to pointing-elsewhere.example.com. Loop time!
-    content = new Buffer("00000100000100010000000005636E616D65076578616D706C6503636F6D0000050001C00C0005000100000037002012706F696E74696E672D656C73657768657265076578616D706C65C01A00", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
-
-  }
-
-  // for use with test_trr.js
-  else if (u.path === "/dns-get?ct&dns=AAABAAABAAAAAAAAA2dldAdleGFtcGxlA2NvbQAAAQAB") {
-    // the query string asks for an A entry for get.example.com
-    // get.example.com has A entry 1.2.3.4
-    var content= new Buffer("00000100000100010000000003676574076578616D706C6503636F6D0000010001C00C0001000100000037000401020304", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    ns_confirm = 0; // back to first reply for dns-confirm
-    cname_confirm = 0; // back to first reply for dns-cname
-    return;
-  }
-  // for use with test_trr.js
-  else if (u.pathname === "/dns") {
-    // bar.example.com has A entry 127.0.0.1
-    var content= new Buffer("00000100000100010000000003626172076578616D706C6503636F6D0000010001C00C000100010000003700047F000001", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    // pass back a cookie here, check it in /dns-auth
-    res.setHeader('Set-Cookie', 'trackyou=yes; path=/; max-age=100000;');
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
-  }
-  else if (u.pathname === "/dns-ns") {
-    // confirm.example.com has NS entry ns.example.com
-    var content= new Buffer("00000100000100010000000007636F6E6669726D076578616D706C6503636F6D0000020001C00C00020001000000370012026E73076578616D706C6503636F6D010A00", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
   }
   else if (u.pathname === '/dns-750ms') {
     // it's just meant to be this slow - the test doesn't care about the actual response
     return;
   }
-  // for use with test_trr.js
-  else if (u.pathname === "/dns-confirm") {
-    if (0 == ns_confirm) {
-      // confirm.example.com has NS entry ns.example.com
-      var content= new Buffer("00000100000100010000000007636F6E6669726D076578616D706C6503636F6D0000020001C00C00020001000000370012026E73076578616D706C6503636F6D010A00", "hex");
-      ns_confirm++;
-    } else if (2 >= ns_confirm) {
-      // next response: 10b-100.example.com has AAAA entry 1::FFFF
+  // for use with test_esni_dns_fetch.js
+  else if (u.pathname === "/esni-dns") {
+    content = Buffer.from("0000" +
+                         "8180" +
+                         "0001" + // QDCOUNT
+                         "0001" + // ANCOUNT
+                         "00000000" + // NSCOUNT + ARCOUNT
+                         "055F65736E69076578616D706C6503636F6D00" + // _esni.example.com
+                         "00100001" + // question type (TXT) + question class (IN)
 
-      // we expect two requests for this name (A + AAAA), respond identically
-      // for both and expect the client to reject the wrong one
-      var content= new Buffer("000001000001000100000000" + "073130622d313030" +
-                              "076578616D706C6503636F6D00001C0001C00C001C00010000003700100001000000000000000000000000FFFF", "hex");
-      ns_confirm++;
-    } else {
-      // everything else is just wrong
-      return;
-    }
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
+                         "C00C" + // name pointer to .example.com
+                         "0010" + // type (TXT)
+                         "0001" + // class
+                         "00000037" + // TTL
+                         "0021" + // RDLENGTH
+                         "2062586B67646D39705932556761584D6762586B676347467A63336476636D513D", // esni keys.
+                         "hex");
+
+    res.setHeader('Content-Type', 'application/dns-message');
     res.setHeader('Content-Length', content.length);
     res.writeHead(200);
     res.write(content);
     res.end("");
     return;
   }
-  // for use with test_trr.js
-  else if (u.pathname === "/dns-aaaa") {
-    // aaaa.example.com has AAAA entry 2020:2020::2020
-    var content= new Buffer("0000010000010001000000000461616161076578616D706C6503636F6D00001C0001C00C001C000100000037001020202020000000000000000000002020", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
-  }
-  else if (u.pathname === "/dns-rfc1918") {
-    // rfc1918.example.com has A entry 192.168.0.1
-    var content= new Buffer("0000010000010001000000000772666331393138076578616D706C6503636F6D0000010001C00C00010001000000370004C0A80001", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
-  }
-  // for use with test_trr.js
-  else if (u.pathname === "/dns-push") {
-    // first.example.com has A entry 127.0.0.1
-    var content= new Buffer("000001000001000100000000056669727374076578616D706C6503636F6D0000010001C00C000100010000003700047F000001", "hex");
-    // push.example.com has AAAA entry 2018::2018
-    var pcontent= new Buffer("0000010000010001000000000470757368076578616D706C6503636F6D00001C0001C00C001C000100000037001020180000000000000000000000002018", "hex");
+
+  // for use with test_esni_dns_fetch.js
+  else if (u.pathname === "/esni-dns-push") {
+    // _esni_push.example.com has A entry 127.0.0.1
+    var content= Buffer.from("0000010000010001000000000A5F65736E695F70757368076578616D706C6503636F6D0000010001C00C000100010000003700047F000001", "hex");
+
+    // _esni_push.example.com has TXT entry 2062586B67646D39705932556761584D6762586B676347467A63336476636D513D
+    var pcontent= Buffer.from("0000818000010001000000000A5F65736E695F70757368076578616D706C6503636F6D0000100001C00C001000010000003700212062586B67646D39705932556761584D6762586B676347467A63336476636D513D", "hex");
+
     push = res.push({
       hostname: 'foo.example.com:' + serverPort,
       port: serverPort,
-      path: '/dns-pushed-response?ct&dns=AAAAAAABAAAAAAAABHB1c2gHZXhhbXBsZQNjb20AABwAAQ',
+      path: '/dns-pushed-response?dns=AAABAAABAAAAAAABCl9lc25pX3B1c2gHZXhhbXBsZQNjb20AABAAAQAAKRAAAAAAAAAIAAgABAABAAA',
       method: 'GET',
       headers: {
-        'accept' : 'application/dns-udpwireformat'
+        'accept' : 'application/dns-message'
       }
     });
     push.writeHead(200, {
-      'content-type': 'application/dns-udpwireformat',
+      'content-type': 'application/dns-message',
       'pushed' : 'yes',
       'content-length' : pcontent.length,
       'X-Connection-Http2': 'yes'
     });
     push.end(pcontent);
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
-    res.setHeader('Content-Length', content.length);
-    res.writeHead(200);
-    res.write(content);
-    res.end("");
-    return;
-  }
-  // for use with test_trr.js
-  else if (u.pathname === "/dns-auth") {
-    // There's a Set-Cookie: header in the response for "/dns" , which this
-    // request subsequently would include if the http channel wasn't
-    // anonymous. Thus, if there's a cookie in this request, we know Firefox
-    // mishaved. If there's not, we're fine.
-    if (req.headers['cookie']) {
-      res.writeHead(403);
-      res.end("cookie for me, not for you");
-      return;
-    }
-    if (req.headers['authorization'] != "user:password") {
-      res.writeHead(401);
-      res.end("bad boy!");
-      return;
-    }
-    // bar.example.com has A entry 127.0.0.1
-    var content= new Buffer("00000100000100010000000003626172076578616D706C6503636F6D0000010001C00C000100010000003700047F000001", "hex");
-    res.setHeader('Content-Type', 'application/dns-udpwireformat');
+    res.setHeader('Content-Type', 'application/dns-message');
     res.setHeader('Content-Length', content.length);
     res.writeHead(200);
     res.write(content);
@@ -751,7 +817,7 @@ function handleRequest(req, res) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Content-Type', 'application/json');
     res.writeHead(200, "OK");
-    res.end('{"http://' + req.headers['host'] + '": { "tls-ports": [' + serverPort + '] }}');
+    res.end('["http://' + req.headers['host'] + '"]');
     return;
   }
 
@@ -1088,9 +1154,9 @@ function handleRequest(req, res) {
 }
 
 // Set up the SSL certs for our server - this server has a cert for foo.example.com
-// signed by netwerk/tests/unit/CA.cert.der
+// signed by netwerk/tests/unit/http2-ca.pem
 var options = {
-  key: fs.readFileSync(__dirname + '/http2-key.pem'),
+  key: fs.readFileSync(__dirname + '/http2-cert.key'),
   cert: fs.readFileSync(__dirname + '/http2-cert.pem'),
 };
 
@@ -1109,18 +1175,216 @@ server.on('connection', function(socket) {
   });
 });
 
-var serverPort;
-function listenok() {
-  serverPort = server._server.address().port;
-  console.log('HTTP2 server listening on port ' + serverPort);
+function makeid(length) {
+   var result           = '';
+   var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+   var charactersLength = characters.length;
+   for ( var i = 0; i < length; i++ ) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+   }
+   return result;
 }
-var portSelection = 0;
-var envport = process.env.MOZHTTP2_PORT;
-if (envport !== undefined) {
-  try {
-    portSelection = parseInt(envport, 10);
-  } catch (e) {
-    portSelection = -1;
+
+let globalObjects = {}
+function startNewProxy() {
+  if (!http2_internal) {
+    throw new Error("http2_internal is null");
   }
+  let myProxy = http2_internal ? http2_internal.createSecureServer(options) : null;
+  if (!myProxy) {
+    throw new Error("proxy creation failed");
+  }
+  setupProxy(myProxy);
+  return listen(myProxy).then(port => {
+    let serverId = makeid(6);
+    globalObjects[serverId] = myProxy;
+    return {name: serverId, port: port, success: true};
+  });
 }
-server.listen(portSelection, "0.0.0.0", 200, listenok);
+
+function closeProxy(id) {
+  let proxy = globalObjects[id];
+  if (!proxy) {
+    return;
+  }
+  delete globalObjects[id];
+  proxy.closeSockets();
+  return new Promise(resolve => {
+    proxy.close(resolve);
+  });
+}
+
+function proxySessionCount(id) {
+  let proxy = globalObjects[id];
+  if (!proxy) {
+    return 0;
+  }
+  return proxy.proxy_session_count;
+}
+
+function setupProxy(proxy) {
+  if (!http2_internal) {
+    throw new Error("http2_internal is null");
+  }
+  if (!proxy) {
+    throw new Error("proxy is null");
+  }
+  proxy.proxy_session_count = 0;
+  proxy.on('session', () => {
+    ++proxy.proxy_session_count;
+  });
+
+  // We need to track active connections so we can forcefully close keep-alive
+  // connections when shutting down the proxy.
+  proxy.socketIndex = 0;
+  proxy.socketMap = {};
+  proxy.on('connection', function(socket) {
+    let index = proxy.socketIndex++;
+    proxy.socketMap[index] = socket;
+    socket.on('close', function() {
+        delete proxy.socketMap[index];
+    });
+  });
+  proxy.closeSockets = function() {
+    for (let i in proxy.socketMap) {
+      proxy.socketMap[i].destroy();
+    }
+  }
+
+  proxy.on('stream', (stream, headers) => {
+    if (headers[':method'] !== 'CONNECT') {
+      // Only accept CONNECT requests
+      stream.respond({ ':status': 405 });
+      stream.end();
+      return;
+    }
+
+    const target = headers[':authority'];
+
+    const authorization_token = headers['proxy-authorization'];
+    if ('authorization-token' != authorization_token || target == '407.example.com:443') {
+      stream.respond({ ':status': 407 });
+      // Deliberately send no Proxy-Authenticate header
+      stream.end();
+      return;
+    }
+    if (target == '404.example.com:443') {
+      // 404 Not Found, a response code that a proxy should return when the host can't be found
+      stream.respond({ ':status': 404 });
+      stream.end();
+      return;
+    }
+    if (target == '429.example.com:443') {
+      // 429 Too Many Requests, a response code that a proxy should return when receiving too many requests
+      stream.respond({ ':status': 429 });
+      stream.end();
+      return;
+    }
+    if (target == '502.example.com:443') {
+      // 502 Bad Gateway, a response code mostly resembling immediate connection error
+      stream.respond({ ':status': 502 });
+      stream.end();
+      return;
+    }
+    if (target == '504.example.com:443') {
+      // 504 Gateway Timeout, did not receive a timely response from an upstream server
+      stream.respond({ ':status': 504 });
+      stream.end();
+      return;
+    }
+
+    const socket = net.connect(serverPort, '127.0.0.1', () => {
+      try {
+        stream.respond({ ':status': 200 });
+        socket.pipe(stream);
+        stream.pipe(socket);
+      } catch (exception) {
+        console.log(exception);
+        stream.close(http2_internal.constants.NGHTTP2_STREAM_CLOSED);
+      }
+    });
+    socket.on('error', (error) => {
+      throw `Unxpected error when conneting the HTTP/2 server from the HTTP/2 proxy during CONNECT handling: '${error}'`;
+    });
+  });
+}
+
+var serverPort;
+
+const listen = (server, envport) => {
+  if (!server) {
+    return Promise.resolve(0);
+  }
+
+  let portSelection = 0;
+  if (envport !== undefined) {
+    try {
+      portSelection = parseInt(envport, 10);
+    } catch (e) {
+      portSelection = -1;
+    }
+  }
+  return new Promise(resolve => {
+    server.listen(portSelection, "0.0.0.0", 2000, () => {
+      resolve(server.address().port);
+    });
+  });
+}
+
+const http = require("http");
+let httpServer = http.createServer((req, res) => {
+  if (req.method != "POST") {
+    res.writeHead(405);
+    res.end('Unexpected method: ' + req.method);
+    return;
+  }
+
+  let code = "";
+  req.on('data', function receivePostData(chunk) {
+    code += chunk;
+  });
+  req.on('end', function finishPost() {
+    let output =  "";
+    let evalResult = null;
+    try {
+      evalResult = eval(code);
+
+      if (evalResult instanceof Promise) {
+        evalResult
+          .then(x => sendBackResponse(x))
+          .catch(e => sendBackResponse(undefined, e));
+        return;
+      }
+    } catch (e) {
+      sendBackResponse(undefined, e);
+      return;
+    }
+
+
+    function sendBackResponse(evalResult, e) {
+      let output = { result: evalResult, error: "", errorStack: ""};
+      if (e) {
+        output.error = e.toString();
+        output.errorStack = e.stack;
+      }
+      output = JSON.stringify(output);
+
+      res.setHeader('Content-Length', output.length);
+      res.setHeader('Content-Type', 'application/json');
+      res.writeHead(200);
+      res.write(output);
+      res.end("");
+    }
+
+    sendBackResponse(evalResult);
+  });
+
+  return;
+});
+
+Promise.all([
+  listen(server, process.env.MOZHTTP2_PORT).then(port => serverPort = port),
+  listen(httpServer, process.env.MOZNODE_EXEC_PORT)
+]).then(([serverPort, nodeExecPort]) => {
+  console.log(`HTTP2 server listening on ports ${serverPort},${nodeExecPort}`);
+});

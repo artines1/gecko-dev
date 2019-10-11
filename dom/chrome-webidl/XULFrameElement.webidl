@@ -6,7 +6,8 @@
 interface nsIDocShell;
 interface nsIWebNavigation;
 
-[HTMLConstructor, Func="IsChromeOrXBL"]
+[HTMLConstructor, Func="IsChromeOrXBL",
+ Exposed=Window]
 interface XULFrameElement : XULElement
 {
   readonly attribute nsIDocShell? docShell;
@@ -16,4 +17,4 @@ interface XULFrameElement : XULElement
   readonly attribute Document? contentDocument; 
 };
 
-XULFrameElement implements MozFrameLoaderOwner;
+XULFrameElement includes MozFrameLoaderOwner;

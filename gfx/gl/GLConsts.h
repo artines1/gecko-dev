@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// clang-format off
+
 #ifndef GLCONSTS_H_
 #define GLCONSTS_H_
 
@@ -193,11 +195,15 @@
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_COMPUTE_SHADER  0x90ED
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_FRAGMENT_SHADER 0x92CB
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_GEOMETRY_SHADER 0x92CA
+#define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_MESH_SHADER_NV  0x959E
+#define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_TASK_SHADER_NV  0x959F
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_TESS_CONTROL_SHADER     0x92C8
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_TESS_EVALUATION_SHADER  0x92C9
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_REFERENCED_BY_VERTEX_SHADER   0x92C7
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_SIZE                  0x92C3
 #define LOCAL_GL_ATOMIC_COUNTER_BUFFER_START                 0x92C2
+#define LOCAL_GL_ATTACHED_MEMORY_OBJECT_NV                   0x95A4
+#define LOCAL_GL_ATTACHED_MEMORY_OFFSET_NV                   0x95A5
 #define LOCAL_GL_ATTACHED_SHADERS                            0x8B85
 #define LOCAL_GL_ATTENUATION_EXT                             0x834D
 #define LOCAL_GL_ATTRIBUTE_ADDRESS_COMMAND_NV                0x0009
@@ -242,6 +248,7 @@
 #define LOCAL_GL_BINORMAL_ARRAY_TYPE_EXT                     0x8440
 #define LOCAL_GL_BITMAP                                      0x1A00
 #define LOCAL_GL_BITMAP_TOKEN                                0x0704
+#define LOCAL_GL_BLACKHOLE_RENDER_INTEL                      0x83FC
 #define LOCAL_GL_BLEND                                       0x0BE2
 #define LOCAL_GL_BLEND_ADVANCED_COHERENT_KHR                 0x9285
 #define LOCAL_GL_BLEND_ADVANCED_COHERENT_NV                  0x9285
@@ -373,9 +380,12 @@
 #define LOCAL_GL_CLIENT_STORAGE_BIT                          0x0200
 #define LOCAL_GL_CLIENT_STORAGE_BIT_EXT                      0x0200
 #define LOCAL_GL_CLIENT_VERTEX_ARRAY_BIT                     0x00000002
+#define LOCAL_GL_CLIPPING_INPUT_PRIMITIVES                   0x82F6
 #define LOCAL_GL_CLIPPING_INPUT_PRIMITIVES_ARB               0x82F6
+#define LOCAL_GL_CLIPPING_OUTPUT_PRIMITIVES                  0x82F7
 #define LOCAL_GL_CLIPPING_OUTPUT_PRIMITIVES_ARB              0x82F7
 #define LOCAL_GL_CLIP_DEPTH_MODE                             0x935D
+#define LOCAL_GL_CLIP_DEPTH_MODE_EXT                         0x935D
 #define LOCAL_GL_CLIP_DISTANCE0                              0x3000
 #define LOCAL_GL_CLIP_DISTANCE0_APPLE                        0x3000
 #define LOCAL_GL_CLIP_DISTANCE0_EXT                          0x3000
@@ -404,6 +414,7 @@
 #define LOCAL_GL_CLIP_FAR_HINT_PGI                           0x1A221
 #define LOCAL_GL_CLIP_NEAR_HINT_PGI                          0x1A220
 #define LOCAL_GL_CLIP_ORIGIN                                 0x935C
+#define LOCAL_GL_CLIP_ORIGIN_EXT                             0x935C
 #define LOCAL_GL_CLIP_PLANE0                                 0x3000
 #define LOCAL_GL_CLIP_PLANE0_IMG                             0x3000
 #define LOCAL_GL_CLIP_PLANE1                                 0x3001
@@ -618,6 +629,7 @@
 #define LOCAL_GL_COMPILE_AND_EXECUTE                         0x1301
 #define LOCAL_GL_COMPILE_STATUS                              0x8B81
 #define LOCAL_GL_COMPLETION_STATUS_ARB                       0x91B1
+#define LOCAL_GL_COMPLETION_STATUS_KHR                       0x91B1
 #define LOCAL_GL_COMPRESSED_ALPHA                            0x84E9
 #define LOCAL_GL_COMPRESSED_ALPHA_ARB                        0x84E9
 #define LOCAL_GL_COMPRESSED_INTENSITY                        0x84EC
@@ -687,6 +699,7 @@
 #define LOCAL_GL_COMPRESSED_RGBA_ASTC_8x8_KHR                0x93B7
 #define LOCAL_GL_COMPRESSED_RGBA_BPTC_UNORM                  0x8E8C
 #define LOCAL_GL_COMPRESSED_RGBA_BPTC_UNORM_ARB              0x8E8C
+#define LOCAL_GL_COMPRESSED_RGBA_BPTC_UNORM_EXT              0x8E8C
 #define LOCAL_GL_COMPRESSED_RGBA_FXT1_3DFX                   0x86B1
 #define LOCAL_GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG            0x8C03
 #define LOCAL_GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG            0x9137
@@ -700,8 +713,10 @@
 #define LOCAL_GL_COMPRESSED_RGB_ARB                          0x84ED
 #define LOCAL_GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT            0x8E8E
 #define LOCAL_GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB        0x8E8E
+#define LOCAL_GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT        0x8E8E
 #define LOCAL_GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT          0x8E8F
 #define LOCAL_GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB      0x8E8F
+#define LOCAL_GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT      0x8E8F
 #define LOCAL_GL_COMPRESSED_RGB_FXT1_3DFX                    0x86B0
 #define LOCAL_GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG             0x8C01
 #define LOCAL_GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG             0x8C00
@@ -769,6 +784,7 @@
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA                       0x8C49
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM            0x8E8D
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB        0x8E8D
+#define LOCAL_GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT        0x8E8D
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA_EXT                   0x8C49
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV1_EXT      0x8A56
 #define LOCAL_GL_COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV2_IMG      0x93F0
@@ -791,6 +807,7 @@
 #define LOCAL_GL_COMPUTE_PROGRAM_PARAMETER_BUFFER_NV         0x90FC
 #define LOCAL_GL_COMPUTE_SHADER                              0x91B9
 #define LOCAL_GL_COMPUTE_SHADER_BIT                          0x00000020
+#define LOCAL_GL_COMPUTE_SHADER_INVOCATIONS                  0x82F5
 #define LOCAL_GL_COMPUTE_SHADER_INVOCATIONS_ARB              0x82F5
 #define LOCAL_GL_COMPUTE_SUBROUTINE                          0x92ED
 #define LOCAL_GL_COMPUTE_SUBROUTINE_UNIFORM                  0x92F3
@@ -809,6 +826,7 @@
 #define LOCAL_GL_CONSERVATIVE_RASTER_DILATE_RANGE_NV         0x937A
 #define LOCAL_GL_CONSERVATIVE_RASTER_MODE_NV                 0x954D
 #define LOCAL_GL_CONSERVATIVE_RASTER_MODE_POST_SNAP_NV       0x954E
+#define LOCAL_GL_CONSERVATIVE_RASTER_MODE_PRE_SNAP_NV        0x9550
 #define LOCAL_GL_CONSERVATIVE_RASTER_MODE_PRE_SNAP_TRIANGLES_NV      0x954F
 #define LOCAL_GL_CONSERVE_MEMORY_HINT_PGI                    0x1A1FD
 #define LOCAL_GL_CONSTANT                                    0x8576
@@ -831,6 +849,7 @@
 #define LOCAL_GL_CONTEXT_FLAG_DEBUG_BIT                      0x00000002
 #define LOCAL_GL_CONTEXT_FLAG_DEBUG_BIT_KHR                  0x00000002
 #define LOCAL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT         0x00000001
+#define LOCAL_GL_CONTEXT_FLAG_NO_ERROR_BIT                   0x00000008
 #define LOCAL_GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR               0x00000008
 #define LOCAL_GL_CONTEXT_FLAG_PROTECTED_CONTENT_BIT_EXT      0x00000010
 #define LOCAL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT              0x00000004
@@ -1114,6 +1133,7 @@
 #define LOCAL_GL_DEPTH_BUFFER_BIT7_QCOM                      0x00008000
 #define LOCAL_GL_DEPTH_BUFFER_FLOAT_MODE_NV                  0x8DAF
 #define LOCAL_GL_DEPTH_CLAMP                                 0x864F
+#define LOCAL_GL_DEPTH_CLAMP_EXT                             0x864F
 #define LOCAL_GL_DEPTH_CLAMP_FAR_AMD                         0x901F
 #define LOCAL_GL_DEPTH_CLAMP_NEAR_AMD                        0x901E
 #define LOCAL_GL_DEPTH_CLAMP_NV                              0x864F
@@ -1157,6 +1177,9 @@
 #define LOCAL_GL_DEPTH_TEXTURE_MODE                          0x884B
 #define LOCAL_GL_DEPTH_TEXTURE_MODE_ARB                      0x884B
 #define LOCAL_GL_DEPTH_WRITEMASK                             0x0B72
+#define LOCAL_GL_DETACHED_BUFFERS_NV                         0x95AB
+#define LOCAL_GL_DETACHED_MEMORY_INCARNATION_NV              0x95A9
+#define LOCAL_GL_DETACHED_TEXTURES_NV                        0x95AA
 #define LOCAL_GL_DETAIL_TEXTURE_2D_BINDING_SGIS              0x8096
 #define LOCAL_GL_DETAIL_TEXTURE_2D_SGIS                      0x8095
 #define LOCAL_GL_DETAIL_TEXTURE_FUNC_POINTS_SGIS             0x809C
@@ -1455,6 +1478,7 @@
 #define LOCAL_GL_EXPAND_NEGATE_NV                            0x8539
 #define LOCAL_GL_EXPAND_NORMAL_NV                            0x8538
 #define LOCAL_GL_EXTENSIONS                                  0x1F03
+#define LOCAL_GL_EXTERNAL_STORAGE_BIT_NVX                    0x2000
 #define LOCAL_GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD          0x9160
 #define LOCAL_GL_EYE_DISTANCE_TO_LINE_SGIS                   0x81F2
 #define LOCAL_GL_EYE_DISTANCE_TO_POINT_SGIS                  0x81F0
@@ -1615,6 +1639,7 @@
 #define LOCAL_GL_FORMAT_SUBSAMPLE_24_24_OML                  0x8982
 #define LOCAL_GL_FOVEATION_ENABLE_BIT_QCOM                   0x00000001
 #define LOCAL_GL_FOVEATION_SCALED_BIN_METHOD_BIT_QCOM        0x00000002
+#define LOCAL_GL_FOVEATION_SUBSAMPLED_LAYOUT_METHOD_BIT_QCOM 0x00000004
 #define LOCAL_GL_FRACTIONAL_EVEN                             0x8E7C
 #define LOCAL_GL_FRACTIONAL_EVEN_EXT                         0x8E7C
 #define LOCAL_GL_FRACTIONAL_EVEN_OES                         0x8E7C
@@ -1670,6 +1695,7 @@
 #define LOCAL_GL_FRAGMENT_SHADER_DERIVATIVE_HINT_OES         0x8B8B
 #define LOCAL_GL_FRAGMENT_SHADER_DISCARDS_SAMPLES_EXT        0x8A52
 #define LOCAL_GL_FRAGMENT_SHADER_FRAMEBUFFER_FETCH_MRT_ARM   0x8F66
+#define LOCAL_GL_FRAGMENT_SHADER_INVOCATIONS                 0x82F4
 #define LOCAL_GL_FRAGMENT_SHADER_INVOCATIONS_ARB             0x82F4
 #define LOCAL_GL_FRAGMENT_SUBROUTINE                         0x92EC
 #define LOCAL_GL_FRAGMENT_SUBROUTINE_UNIFORM                 0x92F2
@@ -1730,6 +1756,7 @@
 #define LOCAL_GL_FRAMEBUFFER_DEFAULT_WIDTH                   0x9310
 #define LOCAL_GL_FRAMEBUFFER_EXT                             0x8D40
 #define LOCAL_GL_FRAMEBUFFER_FETCH_NONCOHERENT_QCOM          0x96A2
+#define LOCAL_GL_FRAMEBUFFER_FLIP_Y_MESA                     0x8BBB
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT           0x8CD6
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT       0x8CD6
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_OES       0x8CD6
@@ -1741,6 +1768,7 @@
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_OES      0x8CDB
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT          0x8CDA
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_FORMATS_OES          0x8CDA
+#define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_FOVEATION_QCOM       0x8BFF
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_INSUFFICIENT_SHADER_COMBINED_LOCAL_STORAGE_EXT       0x9652
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_LAYER_COUNT_ARB      0x8DA9
 #define LOCAL_GL_FRAMEBUFFER_INCOMPLETE_LAYER_COUNT_EXT      0x8DA9
@@ -1830,6 +1858,7 @@
 #define LOCAL_GL_GEOMETRY_SHADER_INVOCATIONS_EXT             0x887F
 #define LOCAL_GL_GEOMETRY_SHADER_INVOCATIONS_OES             0x887F
 #define LOCAL_GL_GEOMETRY_SHADER_OES                         0x8DD9
+#define LOCAL_GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED          0x82F3
 #define LOCAL_GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB      0x82F3
 #define LOCAL_GL_GEOMETRY_SUBROUTINE                         0x92EB
 #define LOCAL_GL_GEOMETRY_SUBROUTINE_UNIFORM                 0x92F1
@@ -2215,6 +2244,8 @@
 #define LOCAL_GL_LAYER_PROVOKING_VERTEX_OES                  0x825E
 #define LOCAL_GL_LAYOUT_COLOR_ATTACHMENT_EXT                 0x958E
 #define LOCAL_GL_LAYOUT_DEFAULT_INTEL                        0
+#define LOCAL_GL_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_EXT       0x9531
+#define LOCAL_GL_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_EXT       0x9530
 #define LOCAL_GL_LAYOUT_DEPTH_STENCIL_ATTACHMENT_EXT         0x958F
 #define LOCAL_GL_LAYOUT_DEPTH_STENCIL_READ_ONLY_EXT          0x9590
 #define LOCAL_GL_LAYOUT_GENERAL_EXT                          0x958D
@@ -2313,6 +2344,7 @@
 #define LOCAL_GL_LOSE_CONTEXT_ON_RESET_EXT                   0x8252
 #define LOCAL_GL_LOSE_CONTEXT_ON_RESET_KHR                   0x8252
 #define LOCAL_GL_LOWER_LEFT                                  0x8CA1
+#define LOCAL_GL_LOWER_LEFT_EXT                              0x8CA1
 #define LOCAL_GL_LOW_FLOAT                                   0x8DF0
 #define LOCAL_GL_LOW_INT                                     0x8DF3
 #define LOCAL_GL_LO_BIAS_NV                                  0x8715
@@ -2553,9 +2585,12 @@
 #define LOCAL_GL_MAX_CLIP_DISTANCES_EXT                      0x0D32
 #define LOCAL_GL_MAX_CLIP_PLANES                             0x0D32
 #define LOCAL_GL_MAX_CLIP_PLANES_IMG                         0x0D32
+#define LOCAL_GL_MAX_COARSE_FRAGMENT_SAMPLES_NV              0x955F
 #define LOCAL_GL_MAX_COLOR_ATTACHMENTS                       0x8CDF
 #define LOCAL_GL_MAX_COLOR_ATTACHMENTS_EXT                   0x8CDF
 #define LOCAL_GL_MAX_COLOR_ATTACHMENTS_NV                    0x8CDF
+#define LOCAL_GL_MAX_COLOR_FRAMEBUFFER_SAMPLES_AMD           0x91B3
+#define LOCAL_GL_MAX_COLOR_FRAMEBUFFER_STORAGE_SAMPLES_AMD   0x91B4
 #define LOCAL_GL_MAX_COLOR_MATRIX_STACK_DEPTH                0x80B3
 #define LOCAL_GL_MAX_COLOR_MATRIX_STACK_DEPTH_SGI            0x80B3
 #define LOCAL_GL_MAX_COLOR_TEXTURE_SAMPLES                   0x910E
@@ -2572,8 +2607,10 @@
 #define LOCAL_GL_MAX_COMBINED_IMAGE_UNIFORMS                 0x90CF
 #define LOCAL_GL_MAX_COMBINED_IMAGE_UNITS_AND_FRAGMENT_OUTPUTS       0x8F39
 #define LOCAL_GL_MAX_COMBINED_IMAGE_UNITS_AND_FRAGMENT_OUTPUTS_EXT   0x8F39
+#define LOCAL_GL_MAX_COMBINED_MESH_UNIFORM_COMPONENTS_NV     0x8E67
 #define LOCAL_GL_MAX_COMBINED_SHADER_OUTPUT_RESOURCES        0x8F39
 #define LOCAL_GL_MAX_COMBINED_SHADER_STORAGE_BLOCKS          0x90DC
+#define LOCAL_GL_MAX_COMBINED_TASK_UNIFORM_COMPONENTS_NV     0x8E6F
 #define LOCAL_GL_MAX_COMBINED_TESS_CONTROL_UNIFORM_COMPONENTS        0x8E1E
 #define LOCAL_GL_MAX_COMBINED_TESS_CONTROL_UNIFORM_COMPONENTS_EXT    0x8E1E
 #define LOCAL_GL_MAX_COMBINED_TESS_CONTROL_UNIFORM_COMPONENTS_OES    0x8E1E
@@ -2623,12 +2660,16 @@
 #define LOCAL_GL_MAX_DEEP_3D_TEXTURE_WIDTH_HEIGHT_NV         0x90D0
 #define LOCAL_GL_MAX_DEFORMATION_ORDER_SGIX                  0x8197
 #define LOCAL_GL_MAX_DEPTH                                   0x8280
+#define LOCAL_GL_MAX_DEPTH_STENCIL_FRAMEBUFFER_SAMPLES_AMD   0x91B5
 #define LOCAL_GL_MAX_DEPTH_TEXTURE_SAMPLES                   0x910F
+#define LOCAL_GL_MAX_DETACHED_BUFFERS_NV                     0x95AD
+#define LOCAL_GL_MAX_DETACHED_TEXTURES_NV                    0x95AC
 #define LOCAL_GL_MAX_DRAW_BUFFERS                            0x8824
 #define LOCAL_GL_MAX_DRAW_BUFFERS_ARB                        0x8824
 #define LOCAL_GL_MAX_DRAW_BUFFERS_ATI                        0x8824
 #define LOCAL_GL_MAX_DRAW_BUFFERS_EXT                        0x8824
 #define LOCAL_GL_MAX_DRAW_BUFFERS_NV                         0x8824
+#define LOCAL_GL_MAX_DRAW_MESH_TASKS_COUNT_NV                0x953D
 #define LOCAL_GL_MAX_DUAL_SOURCE_DRAW_BUFFERS                0x88FC
 #define LOCAL_GL_MAX_DUAL_SOURCE_DRAW_BUFFERS_EXT            0x88FC
 #define LOCAL_GL_MAX_ELEMENTS_INDICES                        0x80E9
@@ -2720,6 +2761,19 @@
 #define LOCAL_GL_MAX_LIST_NESTING                            0x0B31
 #define LOCAL_GL_MAX_MAP_TESSELLATION_NV                     0x86D6
 #define LOCAL_GL_MAX_MATRIX_PALETTE_STACK_DEPTH_ARB          0x8841
+#define LOCAL_GL_MAX_MESH_ATOMIC_COUNTERS_NV                 0x8E65
+#define LOCAL_GL_MAX_MESH_ATOMIC_COUNTER_BUFFERS_NV          0x8E64
+#define LOCAL_GL_MAX_MESH_IMAGE_UNIFORMS_NV                  0x8E62
+#define LOCAL_GL_MAX_MESH_OUTPUT_PRIMITIVES_NV               0x9539
+#define LOCAL_GL_MAX_MESH_OUTPUT_VERTICES_NV                 0x9538
+#define LOCAL_GL_MAX_MESH_SHADER_STORAGE_BLOCKS_NV           0x8E66
+#define LOCAL_GL_MAX_MESH_TEXTURE_IMAGE_UNITS_NV             0x8E61
+#define LOCAL_GL_MAX_MESH_TOTAL_MEMORY_SIZE_NV               0x9536
+#define LOCAL_GL_MAX_MESH_UNIFORM_BLOCKS_NV                  0x8E60
+#define LOCAL_GL_MAX_MESH_UNIFORM_COMPONENTS_NV              0x8E63
+#define LOCAL_GL_MAX_MESH_VIEWS_NV                           0x9557
+#define LOCAL_GL_MAX_MESH_WORK_GROUP_INVOCATIONS_NV          0x95A2
+#define LOCAL_GL_MAX_MESH_WORK_GROUP_SIZE_NV                 0x953B
 #define LOCAL_GL_MAX_MODELVIEW_STACK_DEPTH                   0x0D36
 #define LOCAL_GL_MAX_MULTISAMPLE_COVERAGE_MODES_NV           0x8E11
 #define LOCAL_GL_MAX_MULTIVIEW_BUFFERS_EXT                   0x90F2
@@ -2806,10 +2860,12 @@
 #define LOCAL_GL_MAX_SHADER_COMBINED_LOCAL_STORAGE_FAST_SIZE_EXT     0x9650
 #define LOCAL_GL_MAX_SHADER_COMBINED_LOCAL_STORAGE_SIZE_EXT  0x9651
 #define LOCAL_GL_MAX_SHADER_COMPILER_THREADS_ARB             0x91B0
+#define LOCAL_GL_MAX_SHADER_COMPILER_THREADS_KHR             0x91B0
 #define LOCAL_GL_MAX_SHADER_PIXEL_LOCAL_STORAGE_FAST_SIZE_EXT        0x8F63
 #define LOCAL_GL_MAX_SHADER_PIXEL_LOCAL_STORAGE_SIZE_EXT     0x8F67
 #define LOCAL_GL_MAX_SHADER_STORAGE_BLOCK_SIZE               0x90DE
 #define LOCAL_GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS          0x90DD
+#define LOCAL_GL_MAX_SHADER_SUBSAMPLED_IMAGE_UNITS_QCOM      0x8FA1
 #define LOCAL_GL_MAX_SHININESS_NV                            0x8504
 #define LOCAL_GL_MAX_SPARSE_3D_TEXTURE_SIZE_AMD              0x9199
 #define LOCAL_GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB              0x9199
@@ -2824,6 +2880,17 @@
 #define LOCAL_GL_MAX_SUBPIXEL_PRECISION_BIAS_BITS_NV         0x9349
 #define LOCAL_GL_MAX_SUBROUTINES                             0x8DE7
 #define LOCAL_GL_MAX_SUBROUTINE_UNIFORM_LOCATIONS            0x8DE8
+#define LOCAL_GL_MAX_TASK_ATOMIC_COUNTERS_NV                 0x8E6D
+#define LOCAL_GL_MAX_TASK_ATOMIC_COUNTER_BUFFERS_NV          0x8E6C
+#define LOCAL_GL_MAX_TASK_IMAGE_UNIFORMS_NV                  0x8E6A
+#define LOCAL_GL_MAX_TASK_OUTPUT_COUNT_NV                    0x953A
+#define LOCAL_GL_MAX_TASK_SHADER_STORAGE_BLOCKS_NV           0x8E6E
+#define LOCAL_GL_MAX_TASK_TEXTURE_IMAGE_UNITS_NV             0x8E69
+#define LOCAL_GL_MAX_TASK_TOTAL_MEMORY_SIZE_NV               0x9537
+#define LOCAL_GL_MAX_TASK_UNIFORM_BLOCKS_NV                  0x8E68
+#define LOCAL_GL_MAX_TASK_UNIFORM_COMPONENTS_NV              0x8E6B
+#define LOCAL_GL_MAX_TASK_WORK_GROUP_INVOCATIONS_NV          0x95A3
+#define LOCAL_GL_MAX_TASK_WORK_GROUP_SIZE_NV                 0x953C
 #define LOCAL_GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS            0x92D3
 #define LOCAL_GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS_EXT        0x92D3
 #define LOCAL_GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS_OES        0x92D3
@@ -2899,6 +2966,7 @@
 #define LOCAL_GL_MAX_TEXTURE_IMAGE_UNITS_NV                  0x8872
 #define LOCAL_GL_MAX_TEXTURE_LOD_BIAS                        0x84FD
 #define LOCAL_GL_MAX_TEXTURE_LOD_BIAS_EXT                    0x84FD
+#define LOCAL_GL_MAX_TEXTURE_MAX_ANISOTROPY                  0x84FF
 #define LOCAL_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT              0x84FF
 #define LOCAL_GL_MAX_TEXTURE_SIZE                            0x0D33
 #define LOCAL_GL_MAX_TEXTURE_STACK_DEPTH                     0x0D39
@@ -2963,6 +3031,19 @@
 #define LOCAL_GL_MAX_WINDOW_RECTANGLES_EXT                   0x8F14
 #define LOCAL_GL_MEDIUM_FLOAT                                0x8DF1
 #define LOCAL_GL_MEDIUM_INT                                  0x8DF4
+#define LOCAL_GL_MEMORY_ATTACHABLE_ALIGNMENT_NV              0x95A6
+#define LOCAL_GL_MEMORY_ATTACHABLE_NV                        0x95A8
+#define LOCAL_GL_MEMORY_ATTACHABLE_SIZE_NV                   0x95A7
+#define LOCAL_GL_MESH_OUTPUT_PER_PRIMITIVE_GRANULARITY_NV    0x9543
+#define LOCAL_GL_MESH_OUTPUT_PER_VERTEX_GRANULARITY_NV       0x92DF
+#define LOCAL_GL_MESH_OUTPUT_TYPE_NV                         0x957B
+#define LOCAL_GL_MESH_PRIMITIVES_OUT_NV                      0x957A
+#define LOCAL_GL_MESH_SHADER_BIT_NV                          0x00000040
+#define LOCAL_GL_MESH_SHADER_NV                              0x9559
+#define LOCAL_GL_MESH_SUBROUTINE_NV                          0x957C
+#define LOCAL_GL_MESH_SUBROUTINE_UNIFORM_NV                  0x957E
+#define LOCAL_GL_MESH_VERTICES_OUT_NV                        0x9579
+#define LOCAL_GL_MESH_WORK_GROUP_SIZE_NV                     0x953E
 #define LOCAL_GL_MIN                                         0x8007
 #define LOCAL_GL_MINMAX                                      0x802E
 #define LOCAL_GL_MINMAX_EXT                                  0x802E
@@ -3107,6 +3188,7 @@
 #define LOCAL_GL_NEGATE_BIT_ATI                              0x00000004
 #define LOCAL_GL_NEGATIVE_ONE_EXT                            0x87DF
 #define LOCAL_GL_NEGATIVE_ONE_TO_ONE                         0x935E
+#define LOCAL_GL_NEGATIVE_ONE_TO_ONE_EXT                     0x935E
 #define LOCAL_GL_NEGATIVE_W_EXT                              0x87DC
 #define LOCAL_GL_NEGATIVE_X_EXT                              0x87D9
 #define LOCAL_GL_NEGATIVE_Y_EXT                              0x87DA
@@ -3173,6 +3255,8 @@
 #define LOCAL_GL_NUM_SHADING_LANGUAGE_VERSIONS               0x82E9
 #define LOCAL_GL_NUM_SPARSE_LEVELS_ARB                       0x91AA
 #define LOCAL_GL_NUM_SPARSE_LEVELS_EXT                       0x91AA
+#define LOCAL_GL_NUM_SPIR_V_EXTENSIONS                       0x9554
+#define LOCAL_GL_NUM_SUPPORTED_MULTISAMPLE_MODES_AMD         0x91B6
 #define LOCAL_GL_NUM_TILING_TYPES_EXT                        0x9582
 #define LOCAL_GL_NUM_VIDEO_CAPTURE_STREAMS_NV                0x9024
 #define LOCAL_GL_NUM_VIRTUAL_PAGE_SIZES_ARB                  0x91A8
@@ -3362,7 +3446,9 @@
 #define LOCAL_GL_PALETTE8_RGBA4_OES                          0x8B98
 #define LOCAL_GL_PALETTE8_RGBA8_OES                          0x8B96
 #define LOCAL_GL_PARALLEL_ARRAYS_INTEL                       0x83F4
+#define LOCAL_GL_PARAMETER_BUFFER                            0x80EE
 #define LOCAL_GL_PARAMETER_BUFFER_ARB                        0x80EE
+#define LOCAL_GL_PARAMETER_BUFFER_BINDING                    0x80EF
 #define LOCAL_GL_PARAMETER_BUFFER_BINDING_ARB                0x80EF
 #define LOCAL_GL_PARTIAL_SUCCESS_NV                          0x902E
 #define LOCAL_GL_PASS_THROUGH_NV                             0x86E6
@@ -3498,7 +3584,9 @@
 #define LOCAL_GL_PIXEL_PACK_BUFFER_BINDING                   0x88ED
 #define LOCAL_GL_PIXEL_PACK_BUFFER_BINDING_ARB               0x88ED
 #define LOCAL_GL_PIXEL_PACK_BUFFER_BINDING_EXT               0x88ED
+#define LOCAL_GL_PIXEL_PACK_BUFFER_BINDING_NV                0x88ED
 #define LOCAL_GL_PIXEL_PACK_BUFFER_EXT                       0x88EB
+#define LOCAL_GL_PIXEL_PACK_BUFFER_NV                        0x88EB
 #define LOCAL_GL_PIXEL_SUBSAMPLE_2424_SGIX                   0x85A3
 #define LOCAL_GL_PIXEL_SUBSAMPLE_4242_SGIX                   0x85A4
 #define LOCAL_GL_PIXEL_SUBSAMPLE_4444_SGIX                   0x85A2
@@ -3528,7 +3616,9 @@
 #define LOCAL_GL_PIXEL_UNPACK_BUFFER_BINDING                 0x88EF
 #define LOCAL_GL_PIXEL_UNPACK_BUFFER_BINDING_ARB             0x88EF
 #define LOCAL_GL_PIXEL_UNPACK_BUFFER_BINDING_EXT             0x88EF
+#define LOCAL_GL_PIXEL_UNPACK_BUFFER_BINDING_NV              0x88EF
 #define LOCAL_GL_PIXEL_UNPACK_BUFFER_EXT                     0x88EC
+#define LOCAL_GL_PIXEL_UNPACK_BUFFER_NV                      0x88EC
 #define LOCAL_GL_PLUS_CLAMPED_ALPHA_NV                       0x92B2
 #define LOCAL_GL_PLUS_CLAMPED_NV                             0x92B1
 #define LOCAL_GL_PLUS_DARKER_NV                              0x9292
@@ -3581,6 +3671,7 @@
 #define LOCAL_GL_POLYGON_MODE                                0x0B40
 #define LOCAL_GL_POLYGON_MODE_NV                             0x0B40
 #define LOCAL_GL_POLYGON_OFFSET_BIAS_EXT                     0x8039
+#define LOCAL_GL_POLYGON_OFFSET_CLAMP                        0x8E1B
 #define LOCAL_GL_POLYGON_OFFSET_CLAMP_EXT                    0x8E1B
 #define LOCAL_GL_POLYGON_OFFSET_COMMAND_NV                   0x000E
 #define LOCAL_GL_POLYGON_OFFSET_EXT                          0x8037
@@ -3655,6 +3746,7 @@
 #define LOCAL_GL_PRIMITIVES_GENERATED_EXT                    0x8C87
 #define LOCAL_GL_PRIMITIVES_GENERATED_NV                     0x8C87
 #define LOCAL_GL_PRIMITIVES_GENERATED_OES                    0x8C87
+#define LOCAL_GL_PRIMITIVES_SUBMITTED                        0x82EF
 #define LOCAL_GL_PRIMITIVES_SUBMITTED_ARB                    0x82EF
 #define LOCAL_GL_PRIMITIVE_BOUNDING_BOX                      0x92BE
 #define LOCAL_GL_PRIMITIVE_BOUNDING_BOX_ARB                  0x92BE
@@ -3680,6 +3772,7 @@
 #define LOCAL_GL_PROGRAM_BINARY_ANGLE                        0x93A6
 #define LOCAL_GL_PROGRAM_BINARY_FORMATS                      0x87FF
 #define LOCAL_GL_PROGRAM_BINARY_FORMATS_OES                  0x87FF
+#define LOCAL_GL_PROGRAM_BINARY_FORMAT_MESA                  0x875F
 #define LOCAL_GL_PROGRAM_BINARY_LENGTH                       0x8741
 #define LOCAL_GL_PROGRAM_BINARY_LENGTH_OES                   0x8741
 #define LOCAL_GL_PROGRAM_BINARY_RETRIEVABLE_HINT             0x8257
@@ -3814,6 +3907,12 @@
 #define LOCAL_GL_QUERY_NO_WAIT_NV                            0x8E14
 #define LOCAL_GL_QUERY_OBJECT_AMD                            0x9153
 #define LOCAL_GL_QUERY_OBJECT_EXT                            0x9153
+#define LOCAL_GL_QUERY_RESOURCE_BUFFEROBJECT_NV              0x9547
+#define LOCAL_GL_QUERY_RESOURCE_MEMTYPE_VIDMEM_NV            0x9542
+#define LOCAL_GL_QUERY_RESOURCE_RENDERBUFFER_NV              0x9546
+#define LOCAL_GL_QUERY_RESOURCE_SYS_RESERVED_NV              0x9544
+#define LOCAL_GL_QUERY_RESOURCE_TEXTURE_NV                   0x9545
+#define LOCAL_GL_QUERY_RESOURCE_TYPE_VIDMEM_ALLOC_NV         0x9540
 #define LOCAL_GL_QUERY_RESULT                                0x8866
 #define LOCAL_GL_QUERY_RESULT_ARB                            0x8866
 #define LOCAL_GL_QUERY_RESULT_AVAILABLE                      0x8867
@@ -3909,6 +4008,8 @@
 #define LOCAL_GL_REFERENCED_BY_GEOMETRY_SHADER               0x9309
 #define LOCAL_GL_REFERENCED_BY_GEOMETRY_SHADER_EXT           0x9309
 #define LOCAL_GL_REFERENCED_BY_GEOMETRY_SHADER_OES           0x9309
+#define LOCAL_GL_REFERENCED_BY_MESH_SHADER_NV                0x95A0
+#define LOCAL_GL_REFERENCED_BY_TASK_SHADER_NV                0x95A1
 #define LOCAL_GL_REFERENCED_BY_TESS_CONTROL_SHADER           0x9307
 #define LOCAL_GL_REFERENCED_BY_TESS_CONTROL_SHADER_EXT       0x9307
 #define LOCAL_GL_REFERENCED_BY_TESS_CONTROL_SHADER_OES       0x9307
@@ -4017,6 +4118,7 @@
 #define LOCAL_GL_RENDERBUFFER_STENCIL_SIZE                   0x8D55
 #define LOCAL_GL_RENDERBUFFER_STENCIL_SIZE_EXT               0x8D55
 #define LOCAL_GL_RENDERBUFFER_STENCIL_SIZE_OES               0x8D55
+#define LOCAL_GL_RENDERBUFFER_STORAGE_SAMPLES_AMD            0x91B2
 #define LOCAL_GL_RENDERBUFFER_WIDTH                          0x8D42
 #define LOCAL_GL_RENDERBUFFER_WIDTH_EXT                      0x8D42
 #define LOCAL_GL_RENDERBUFFER_WIDTH_OES                      0x8D42
@@ -4037,6 +4139,7 @@
 #define LOCAL_GL_REPLACE_VALUE_AMD                           0x874B
 #define LOCAL_GL_REPLICATE_BORDER                            0x8153
 #define LOCAL_GL_REPLICATE_BORDER_HP                         0x8153
+#define LOCAL_GL_REPRESENTATIVE_FRAGMENT_TEST_NV             0x937F
 #define LOCAL_GL_REQUIRED_TEXTURE_IMAGE_UNITS_OES            0x8D68
 #define LOCAL_GL_RESAMPLE_AVERAGE_OML                        0x8988
 #define LOCAL_GL_RESAMPLE_DECIMATE_OML                       0x8989
@@ -4189,6 +4292,7 @@
 #define LOCAL_GL_RG_INTEGER                                  0x8228
 #define LOCAL_GL_RG_SNORM                                    0x8F91
 #define LOCAL_GL_RIGHT                                       0x0407
+#define LOCAL_GL_ROBUST_GPU_TIMEOUT_MS_KHR                   0x82FD
 #define LOCAL_GL_ROUNDED_RECT2_NV                            0xEA
 #define LOCAL_GL_ROUNDED_RECT4_NV                            0xEC
 #define LOCAL_GL_ROUNDED_RECT8_NV                            0xEE
@@ -4308,8 +4412,10 @@
 #define LOCAL_GL_SCALE_BY_TWO_NV                             0x853E
 #define LOCAL_GL_SCISSOR_BIT                                 0x00080000
 #define LOCAL_GL_SCISSOR_BOX                                 0x0C10
+#define LOCAL_GL_SCISSOR_BOX_EXCLUSIVE_NV                    0x9556
 #define LOCAL_GL_SCISSOR_COMMAND_NV                          0x0011
 #define LOCAL_GL_SCISSOR_TEST                                0x0C11
+#define LOCAL_GL_SCISSOR_TEST_EXCLUSIVE_NV                   0x9555
 #define LOCAL_GL_SCREEN                                      0x9295
 #define LOCAL_GL_SCREEN_COORDINATES_REND                     0x8490
 #define LOCAL_GL_SCREEN_KHR                                  0x9295
@@ -4349,6 +4455,7 @@
 #define LOCAL_GL_SHADER                                      0x82E1
 #define LOCAL_GL_SHADER_BINARY_DMP                           0x9250
 #define LOCAL_GL_SHADER_BINARY_FORMATS                       0x8DF8
+#define LOCAL_GL_SHADER_BINARY_FORMAT_SPIR_V                 0x9551
 #define LOCAL_GL_SHADER_BINARY_FORMAT_SPIR_V_ARB             0x9551
 #define LOCAL_GL_SHADER_BINARY_VIV                           0x8FC4
 #define LOCAL_GL_SHADER_COMPILER                             0x8DFA
@@ -4377,6 +4484,26 @@
 #define LOCAL_GL_SHADE_MODEL                                 0x0B54
 #define LOCAL_GL_SHADING_LANGUAGE_VERSION                    0x8B8C
 #define LOCAL_GL_SHADING_LANGUAGE_VERSION_ARB                0x8B8C
+#define LOCAL_GL_SHADING_RATE_16_INVOCATIONS_PER_PIXEL_NV    0x956F
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_1X2_PIXELS_NV 0x9566
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_2X1_PIXELS_NV 0x9567
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_2X2_PIXELS_NV 0x9568
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_2X4_PIXELS_NV 0x9569
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_4X2_PIXELS_NV 0x956A
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_4X4_PIXELS_NV 0x956B
+#define LOCAL_GL_SHADING_RATE_1_INVOCATION_PER_PIXEL_NV      0x9565
+#define LOCAL_GL_SHADING_RATE_2_INVOCATIONS_PER_PIXEL_NV     0x956C
+#define LOCAL_GL_SHADING_RATE_4_INVOCATIONS_PER_PIXEL_NV     0x956D
+#define LOCAL_GL_SHADING_RATE_8_INVOCATIONS_PER_PIXEL_NV     0x956E
+#define LOCAL_GL_SHADING_RATE_IMAGE_BINDING_NV               0x955B
+#define LOCAL_GL_SHADING_RATE_IMAGE_NV                       0x9563
+#define LOCAL_GL_SHADING_RATE_IMAGE_PALETTE_SIZE_NV          0x955E
+#define LOCAL_GL_SHADING_RATE_IMAGE_TEXEL_HEIGHT_NV          0x955D
+#define LOCAL_GL_SHADING_RATE_IMAGE_TEXEL_WIDTH_NV           0x955C
+#define LOCAL_GL_SHADING_RATE_NO_INVOCATIONS_NV              0x9564
+#define LOCAL_GL_SHADING_RATE_SAMPLE_ORDER_DEFAULT_NV        0x95AE
+#define LOCAL_GL_SHADING_RATE_SAMPLE_ORDER_PIXEL_MAJOR_NV    0x95AF
+#define LOCAL_GL_SHADING_RATE_SAMPLE_ORDER_SAMPLE_MAJOR_NV   0x95B0
 #define LOCAL_GL_SHADOW_AMBIENT_SGIX                         0x80BF
 #define LOCAL_GL_SHADOW_ATTENUATION_EXT                      0x834E
 #define LOCAL_GL_SHARED_EDGE_NV                              0xC0
@@ -4478,7 +4605,9 @@
 #define LOCAL_GL_SPARSE_TEXTURE_FULL_ARRAY_CUBE_MIPMAPS_EXT  0x91A9
 #define LOCAL_GL_SPECULAR                                    0x1202
 #define LOCAL_GL_SPHERE_MAP                                  0x2402
+#define LOCAL_GL_SPIR_V_BINARY                               0x9552
 #define LOCAL_GL_SPIR_V_BINARY_ARB                           0x9552
+#define LOCAL_GL_SPIR_V_EXTENSIONS                           0x9553
 #define LOCAL_GL_SPOT_CUTOFF                                 0x1206
 #define LOCAL_GL_SPOT_DIRECTION                              0x1204
 #define LOCAL_GL_SPOT_EXPONENT                               0x1205
@@ -4609,6 +4738,19 @@
 #define LOCAL_GL_STRICT_DEPTHFUNC_HINT_PGI                   0x1A216
 #define LOCAL_GL_STRICT_LIGHTING_HINT_PGI                    0x1A217
 #define LOCAL_GL_STRICT_SCISSOR_HINT_PGI                     0x1A218
+#define LOCAL_GL_SUBGROUP_FEATURE_ARITHMETIC_BIT_KHR         0x00000004
+#define LOCAL_GL_SUBGROUP_FEATURE_BALLOT_BIT_KHR             0x00000008
+#define LOCAL_GL_SUBGROUP_FEATURE_BASIC_BIT_KHR              0x00000001
+#define LOCAL_GL_SUBGROUP_FEATURE_CLUSTERED_BIT_KHR          0x00000040
+#define LOCAL_GL_SUBGROUP_FEATURE_PARTITIONED_BIT_NV         0x00000100
+#define LOCAL_GL_SUBGROUP_FEATURE_QUAD_BIT_KHR               0x00000080
+#define LOCAL_GL_SUBGROUP_FEATURE_SHUFFLE_BIT_KHR            0x00000010
+#define LOCAL_GL_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT_KHR   0x00000020
+#define LOCAL_GL_SUBGROUP_FEATURE_VOTE_BIT_KHR               0x00000002
+#define LOCAL_GL_SUBGROUP_QUAD_ALL_STAGES_KHR                0x9535
+#define LOCAL_GL_SUBGROUP_SIZE_KHR                           0x9532
+#define LOCAL_GL_SUBGROUP_SUPPORTED_FEATURES_KHR             0x9534
+#define LOCAL_GL_SUBGROUP_SUPPORTED_STAGES_KHR               0x9533
 #define LOCAL_GL_SUBPIXEL_BITS                               0x0D50
 #define LOCAL_GL_SUBPIXEL_PRECISION_BIAS_X_BITS_NV           0x9347
 #define LOCAL_GL_SUBPIXEL_PRECISION_BIAS_Y_BITS_NV           0x9348
@@ -4619,6 +4761,7 @@
 #define LOCAL_GL_SUCCESS_NV                                  0x902F
 #define LOCAL_GL_SUPERSAMPLE_SCALE_X_NV                      0x9372
 #define LOCAL_GL_SUPERSAMPLE_SCALE_Y_NV                      0x9373
+#define LOCAL_GL_SUPPORTED_MULTISAMPLE_MODES_AMD             0x91B7
 #define LOCAL_GL_SURFACE_MAPPED_NV                           0x8700
 #define LOCAL_GL_SURFACE_REGISTERED_NV                       0x86FD
 #define LOCAL_GL_SURFACE_STATE_NV                            0x86EB
@@ -4663,6 +4806,11 @@
 #define LOCAL_GL_TANGENT_ARRAY_POINTER_EXT                   0x8442
 #define LOCAL_GL_TANGENT_ARRAY_STRIDE_EXT                    0x843F
 #define LOCAL_GL_TANGENT_ARRAY_TYPE_EXT                      0x843E
+#define LOCAL_GL_TASK_SHADER_BIT_NV                          0x00000080
+#define LOCAL_GL_TASK_SHADER_NV                              0x955A
+#define LOCAL_GL_TASK_SUBROUTINE_NV                          0x957D
+#define LOCAL_GL_TASK_SUBROUTINE_UNIFORM_NV                  0x957F
+#define LOCAL_GL_TASK_WORK_GROUP_SIZE_NV                     0x953F
 #define LOCAL_GL_TERMINATE_SEQUENCE_COMMAND_NV               0x0000
 #define LOCAL_GL_TESSELLATION_FACTOR_AMD                     0x9005
 #define LOCAL_GL_TESSELLATION_MODE_AMD                       0x9004
@@ -4677,6 +4825,7 @@
 #define LOCAL_GL_TESS_CONTROL_SHADER_BIT_OES                 0x00000008
 #define LOCAL_GL_TESS_CONTROL_SHADER_EXT                     0x8E88
 #define LOCAL_GL_TESS_CONTROL_SHADER_OES                     0x8E88
+#define LOCAL_GL_TESS_CONTROL_SHADER_PATCHES                 0x82F1
 #define LOCAL_GL_TESS_CONTROL_SHADER_PATCHES_ARB             0x82F1
 #define LOCAL_GL_TESS_CONTROL_SUBROUTINE                     0x92E9
 #define LOCAL_GL_TESS_CONTROL_SUBROUTINE_UNIFORM             0x92EF
@@ -4688,6 +4837,7 @@
 #define LOCAL_GL_TESS_EVALUATION_SHADER_BIT_EXT              0x00000010
 #define LOCAL_GL_TESS_EVALUATION_SHADER_BIT_OES              0x00000010
 #define LOCAL_GL_TESS_EVALUATION_SHADER_EXT                  0x8E87
+#define LOCAL_GL_TESS_EVALUATION_SHADER_INVOCATIONS          0x82F2
 #define LOCAL_GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB      0x82F2
 #define LOCAL_GL_TESS_EVALUATION_SHADER_OES                  0x8E87
 #define LOCAL_GL_TESS_EVALUATION_SUBROUTINE                  0x92EA
@@ -4974,6 +5124,11 @@
 #define LOCAL_GL_TEXTURE_FIXED_SAMPLE_LOCATIONS              0x9107
 #define LOCAL_GL_TEXTURE_FLOAT_COMPONENTS_NV                 0x888C
 #define LOCAL_GL_TEXTURE_FORMAT_QCOM                         0x8BD6
+#define LOCAL_GL_TEXTURE_FORMAT_SRGB_OVERRIDE_EXT            0x8FBF
+#define LOCAL_GL_TEXTURE_FOVEATED_FEATURE_BITS_QCOM          0x8BFB
+#define LOCAL_GL_TEXTURE_FOVEATED_FEATURE_QUERY_QCOM         0x8BFD
+#define LOCAL_GL_TEXTURE_FOVEATED_MIN_PIXEL_DENSITY_QCOM     0x8BFC
+#define LOCAL_GL_TEXTURE_FOVEATED_NUM_FOCAL_POINTS_QUERY_QCOM        0x8BFE
 #define LOCAL_GL_TEXTURE_FREE_MEMORY_ATI                     0x87FC
 #define LOCAL_GL_TEXTURE_GATHER                              0x82A2
 #define LOCAL_GL_TEXTURE_GATHER_SHADOW                       0x82A3
@@ -5024,6 +5179,7 @@
 #define LOCAL_GL_TEXTURE_MATERIAL_PARAMETER_EXT              0x8352
 #define LOCAL_GL_TEXTURE_MATRIX                              0x0BA8
 #define LOCAL_GL_TEXTURE_MATRIX_FLOAT_AS_INT_BITS_OES        0x898F
+#define LOCAL_GL_TEXTURE_MAX_ANISOTROPY                      0x84FE
 #define LOCAL_GL_TEXTURE_MAX_ANISOTROPY_EXT                  0x84FE
 #define LOCAL_GL_TEXTURE_MAX_CLAMP_R_SGIX                    0x836B
 #define LOCAL_GL_TEXTURE_MAX_CLAMP_S_SGIX                    0x8369
@@ -5052,6 +5208,7 @@
 #define LOCAL_GL_TEXTURE_RECTANGLE_ARB                       0x84F5
 #define LOCAL_GL_TEXTURE_RECTANGLE_NV                        0x84F5
 #define LOCAL_GL_TEXTURE_REDUCTION_MODE_ARB                  0x9366
+#define LOCAL_GL_TEXTURE_REDUCTION_MODE_EXT                  0x9366
 #define LOCAL_GL_TEXTURE_RED_SIZE                            0x805C
 #define LOCAL_GL_TEXTURE_RED_SIZE_EXT                        0x805C
 #define LOCAL_GL_TEXTURE_RED_TYPE                            0x8C10
@@ -5115,6 +5272,9 @@
 #define LOCAL_GL_TEXTURE_WRAP_S                              0x2802
 #define LOCAL_GL_TEXTURE_WRAP_T                              0x2803
 #define LOCAL_GL_TEXT_FRAGMENT_SHADER_ATI                    0x8200
+#define LOCAL_GL_TILE_RASTER_ORDER_FIXED_MESA                0x8BB8
+#define LOCAL_GL_TILE_RASTER_ORDER_INCREASING_X_MESA         0x8BB9
+#define LOCAL_GL_TILE_RASTER_ORDER_INCREASING_Y_MESA         0x8BBA
 #define LOCAL_GL_TILING_TYPES_EXT                            0x9583
 #define LOCAL_GL_TIMEOUT_EXPIRED                             0x911B
 #define LOCAL_GL_TIMEOUT_EXPIRED_APPLE                       0x911B
@@ -5167,12 +5327,14 @@
 #define LOCAL_GL_TRANSFORM_FEEDBACK_BUFFER_START_NV          0x8C84
 #define LOCAL_GL_TRANSFORM_FEEDBACK_BUFFER_STRIDE            0x934C
 #define LOCAL_GL_TRANSFORM_FEEDBACK_NV                       0x8E22
+#define LOCAL_GL_TRANSFORM_FEEDBACK_OVERFLOW                 0x82EC
 #define LOCAL_GL_TRANSFORM_FEEDBACK_OVERFLOW_ARB             0x82EC
 #define LOCAL_GL_TRANSFORM_FEEDBACK_PAUSED                   0x8E23
 #define LOCAL_GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN       0x8C88
 #define LOCAL_GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN_EXT   0x8C88
 #define LOCAL_GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN_NV    0x8C88
 #define LOCAL_GL_TRANSFORM_FEEDBACK_RECORD_NV                0x8C86
+#define LOCAL_GL_TRANSFORM_FEEDBACK_STREAM_OVERFLOW          0x82ED
 #define LOCAL_GL_TRANSFORM_FEEDBACK_STREAM_OVERFLOW_ARB      0x82ED
 #define LOCAL_GL_TRANSFORM_FEEDBACK_VARYING                  0x92F4
 #define LOCAL_GL_TRANSFORM_FEEDBACK_VARYINGS                 0x8C83
@@ -5236,6 +5398,8 @@
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_COMPUTE_SHADER  0x90EC
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER 0x8A46
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_GEOMETRY_SHADER 0x8A45
+#define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_MESH_SHADER_NV  0x959C
+#define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_TASK_SHADER_NV  0x959D
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_TESS_CONTROL_SHADER     0x84F0
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_TESS_EVALUATION_SHADER  0x84F1
 #define LOCAL_GL_UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER   0x8A44
@@ -5419,13 +5583,16 @@
 #define LOCAL_GL_UNSIGNED_SHORT_8_8_MESA                     0x85BA
 #define LOCAL_GL_UNSIGNED_SHORT_8_8_REV_APPLE                0x85BB
 #define LOCAL_GL_UNSIGNED_SHORT_8_8_REV_MESA                 0x85BB
+#define LOCAL_GL_UPLOAD_GPU_MASK_NVX                         0x954A
 #define LOCAL_GL_UPPER_LEFT                                  0x8CA2
+#define LOCAL_GL_UPPER_LEFT_EXT                              0x8CA2
 #define LOCAL_GL_USE_MISSING_GLYPH_NV                        0x90AA
 #define LOCAL_GL_UTF16_NV                                    0x909B
 #define LOCAL_GL_UTF8_NV                                     0x909A
 #define LOCAL_GL_UUID_SIZE_EXT                               16
 #define LOCAL_GL_V2F                                         0x2A20
 #define LOCAL_GL_V3F                                         0x2A21
+#define LOCAL_GL_VALIDATE_SHADER_BINARY_QCOM                 0x96A3
 #define LOCAL_GL_VALIDATE_STATUS                             0x8B83
 #define LOCAL_GL_VARIABLE_A_NV                               0x8523
 #define LOCAL_GL_VARIABLE_B_NV                               0x8524
@@ -5573,6 +5740,7 @@
 #define LOCAL_GL_VERTEX_SHADER_EXT                           0x8780
 #define LOCAL_GL_VERTEX_SHADER_INSTRUCTIONS_EXT              0x87CF
 #define LOCAL_GL_VERTEX_SHADER_INVARIANTS_EXT                0x87D1
+#define LOCAL_GL_VERTEX_SHADER_INVOCATIONS                   0x82F0
 #define LOCAL_GL_VERTEX_SHADER_INVOCATIONS_ARB               0x82F0
 #define LOCAL_GL_VERTEX_SHADER_LOCALS_EXT                    0x87D3
 #define LOCAL_GL_VERTEX_SHADER_LOCAL_CONSTANTS_EXT           0x87D2
@@ -5598,6 +5766,7 @@
 #define LOCAL_GL_VERTEX_WEIGHT_ARRAY_STRIDE_EXT              0x850F
 #define LOCAL_GL_VERTEX_WEIGHT_ARRAY_TYPE_EXT                0x850E
 #define LOCAL_GL_VERTICAL_LINE_TO_NV                         0x08
+#define LOCAL_GL_VERTICES_SUBMITTED                          0x82EE
 #define LOCAL_GL_VERTICES_SUBMITTED_ARB                      0x82EE
 #define LOCAL_GL_VIBRANCE_BIAS_NV                            0x8719
 #define LOCAL_GL_VIBRANCE_SCALE_NV                           0x8713
@@ -5653,8 +5822,27 @@
 #define LOCAL_GL_VIEW_CLASS_64_BITS                          0x82C6
 #define LOCAL_GL_VIEW_CLASS_8_BITS                           0x82CB
 #define LOCAL_GL_VIEW_CLASS_96_BITS                          0x82C5
+#define LOCAL_GL_VIEW_CLASS_ASTC_10x10_RGBA                  0x9393
+#define LOCAL_GL_VIEW_CLASS_ASTC_10x5_RGBA                   0x9390
+#define LOCAL_GL_VIEW_CLASS_ASTC_10x6_RGBA                   0x9391
+#define LOCAL_GL_VIEW_CLASS_ASTC_10x8_RGBA                   0x9392
+#define LOCAL_GL_VIEW_CLASS_ASTC_12x10_RGBA                  0x9394
+#define LOCAL_GL_VIEW_CLASS_ASTC_12x12_RGBA                  0x9395
+#define LOCAL_GL_VIEW_CLASS_ASTC_4x4_RGBA                    0x9388
+#define LOCAL_GL_VIEW_CLASS_ASTC_5x4_RGBA                    0x9389
+#define LOCAL_GL_VIEW_CLASS_ASTC_5x5_RGBA                    0x938A
+#define LOCAL_GL_VIEW_CLASS_ASTC_6x5_RGBA                    0x938B
+#define LOCAL_GL_VIEW_CLASS_ASTC_6x6_RGBA                    0x938C
+#define LOCAL_GL_VIEW_CLASS_ASTC_8x5_RGBA                    0x938D
+#define LOCAL_GL_VIEW_CLASS_ASTC_8x6_RGBA                    0x938E
+#define LOCAL_GL_VIEW_CLASS_ASTC_8x8_RGBA                    0x938F
 #define LOCAL_GL_VIEW_CLASS_BPTC_FLOAT                       0x82D3
 #define LOCAL_GL_VIEW_CLASS_BPTC_UNORM                       0x82D2
+#define LOCAL_GL_VIEW_CLASS_EAC_R11                          0x9383
+#define LOCAL_GL_VIEW_CLASS_EAC_RG11                         0x9384
+#define LOCAL_GL_VIEW_CLASS_ETC2_EAC_RGBA                    0x9387
+#define LOCAL_GL_VIEW_CLASS_ETC2_RGB                         0x9385
+#define LOCAL_GL_VIEW_CLASS_ETC2_RGBA                        0x9386
 #define LOCAL_GL_VIEW_CLASS_RGTC1_RED                        0x82D0
 #define LOCAL_GL_VIEW_CLASS_RGTC2_RG                         0x82D1
 #define LOCAL_GL_VIEW_CLASS_S3TC_DXT1_RGB                    0x82CC
@@ -5680,6 +5868,7 @@
 #define LOCAL_GL_WARPS_PER_SM_NV                             0x933A
 #define LOCAL_GL_WARP_SIZE_NV                                0x9339
 #define LOCAL_GL_WEIGHTED_AVERAGE_ARB                        0x9367
+#define LOCAL_GL_WEIGHTED_AVERAGE_EXT                        0x9367
 #define LOCAL_GL_WEIGHT_ARRAY_ARB                            0x86AD
 #define LOCAL_GL_WEIGHT_ARRAY_BUFFER_BINDING                 0x889E
 #define LOCAL_GL_WEIGHT_ARRAY_BUFFER_BINDING_ARB             0x889E
@@ -5728,10 +5917,10 @@
 #define LOCAL_GL_ZERO                                        0
 #define LOCAL_GL_ZERO_EXT                                    0x87DD
 #define LOCAL_GL_ZERO_TO_ONE                                 0x935F
+#define LOCAL_GL_ZERO_TO_ONE_EXT                             0x935F
 #define LOCAL_GL_ZOOM_X                                      0x0D16
 #define LOCAL_GL_ZOOM_Y                                      0x0D17
 #define LOCAL_GL_Z_EXT                                       0x87D7
-
 
 // EGL
 #define LOCAL_EGL_ALPHA_FORMAT                               0x3088
@@ -5771,6 +5960,7 @@
 #define LOCAL_EGL_BITMAP_PIXEL_SIZE_KHR                      0x3110
 #define LOCAL_EGL_BITMAP_POINTER_KHR                         0x30C6
 #define LOCAL_EGL_BLUE_SIZE                                  0x3022
+#define LOCAL_EGL_BOTTOM_NV                                  0x336E
 #define LOCAL_EGL_BUFFER_AGE_EXT                             0x313D
 #define LOCAL_EGL_BUFFER_AGE_KHR                             0x313D
 #define LOCAL_EGL_BUFFER_COUNT_NV                            0x321D
@@ -5792,6 +5982,10 @@
 #define LOCAL_EGL_COLOR_FORMAT_HI                            0x8F70
 #define LOCAL_EGL_COLOR_RGBA_HI                              0x8F72
 #define LOCAL_EGL_COLOR_RGB_HI                               0x8F71
+#define LOCAL_EGL_COMPOSITE_DEADLINE_ANDROID                 0x3431
+#define LOCAL_EGL_COMPOSITE_INTERVAL_ANDROID                 0x3432
+#define LOCAL_EGL_COMPOSITE_TO_PRESENT_LATENCY_ANDROID       0x3433
+#define LOCAL_EGL_COMPOSITION_LATCH_TIME_ANDROID             0x3436
 #define LOCAL_EGL_COMPOSITOR_DROP_NEWEST_FRAME_EXT           0x3462
 #define LOCAL_EGL_COMPOSITOR_KEEP_NEWEST_FRAME_EXT           0x3463
 #define LOCAL_EGL_CONDITION_SATISFIED                        0x30F6
@@ -5802,6 +5996,7 @@
 #define LOCAL_EGL_CONFORMANT                                 0x3042
 #define LOCAL_EGL_CONFORMANT_KHR                             0x3042
 #define LOCAL_EGL_CONSUMER_ACQUIRE_TIMEOUT_USEC_KHR          0x321E
+#define LOCAL_EGL_CONSUMER_AUTO_ORIENTATION_NV               0x3369
 #define LOCAL_EGL_CONSUMER_FRAME_KHR                         0x3213
 #define LOCAL_EGL_CONSUMER_LATENCY_USEC_KHR                  0x3210
 #define LOCAL_EGL_CONSUMER_MAX_FRAME_HINT_NV                 0x3338
@@ -5835,6 +6030,7 @@
 #define LOCAL_EGL_CONTEXT_PRIORITY_LEVEL_IMG                 0x3100
 #define LOCAL_EGL_CONTEXT_PRIORITY_LOW_IMG                   0x3103
 #define LOCAL_EGL_CONTEXT_PRIORITY_MEDIUM_IMG                0x3102
+#define LOCAL_EGL_CONTEXT_PRIORITY_REALTIME_NV               0x3357
 #define LOCAL_EGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_KHR         0x2098
 #define LOCAL_EGL_CONTEXT_RELEASE_BEHAVIOR_KHR               0x2097
 #define LOCAL_EGL_CONTEXT_RELEASE_BEHAVIOR_NONE_KHR          0
@@ -5861,8 +6057,10 @@
 #define LOCAL_EGL_DEPTH_ENCODING_NONLINEAR_NV                0x30E3
 #define LOCAL_EGL_DEPTH_ENCODING_NV                          0x30E2
 #define LOCAL_EGL_DEPTH_SIZE                                 0x3025
+#define LOCAL_EGL_DEQUEUE_READY_TIME_ANDROID                 0x343B
 #define LOCAL_EGL_DEVICE_EXT                                 0x322C
 #define LOCAL_EGL_DISCARD_SAMPLES_ARM                        0x3286
+#define LOCAL_EGL_DISPLAY_PRESENT_TIME_ANDROID               0x343A
 #define LOCAL_EGL_DISPLAY_SCALING                            10000
 #define LOCAL_EGL_DMA_BUF_PLANE0_FD_EXT                      0x3272
 #define LOCAL_EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT             0x3444
@@ -5890,35 +6088,114 @@
 #define LOCAL_EGL_DRM_BUFFER_FORMAT_MESA                     0x31D0
 #define LOCAL_EGL_DRM_BUFFER_MESA                            0x31D3
 #define LOCAL_EGL_DRM_BUFFER_STRIDE_MESA                     0x31D4
+#define LOCAL_EGL_DRM_BUFFER_USE_CURSOR_MESA                 0x00000004
 #define LOCAL_EGL_DRM_BUFFER_USE_MESA                        0x31D1
 #define LOCAL_EGL_DRM_BUFFER_USE_SCANOUT_MESA                0x00000001
 #define LOCAL_EGL_DRM_BUFFER_USE_SHARE_MESA                  0x00000002
 #define LOCAL_EGL_DRM_CONNECTOR_EXT                          0x3236
 #define LOCAL_EGL_DRM_CRTC_EXT                               0x3234
 #define LOCAL_EGL_DRM_DEVICE_FILE_EXT                        0x3233
+#define LOCAL_EGL_DRM_MASTER_FD_EXT                          0x333C
 #define LOCAL_EGL_DRM_PLANE_EXT                              0x3235
 #define LOCAL_EGL_EXTENSIONS                                 0x3055
 #define LOCAL_EGL_EXTERNAL_REF_ID_EXT                        0x3461
 #define LOCAL_EGL_FALSE                                      0
+#define LOCAL_EGL_FIRST_COMPOSITION_GPU_FINISHED_TIME_ANDROID        0x3439
+#define LOCAL_EGL_FIRST_COMPOSITION_START_TIME_ANDROID       0x3437
 #define LOCAL_EGL_FIXED_SIZE_ANGLE                           0x3201
 #define LOCAL_EGL_FOREVER                                    0xFFFFFFFFFFFFFFFF
 #define LOCAL_EGL_FOREVER_KHR                                0xFFFFFFFFFFFFFFFF
 #define LOCAL_EGL_FOREVER_NV                                 0xFFFFFFFFFFFFFFFF
+#define LOCAL_EGL_FORMAT_ASTC_10X10_QCOM                     0x33ED
+#define LOCAL_EGL_FORMAT_ASTC_10X10_SRGB_QCOM                0x340B
+#define LOCAL_EGL_FORMAT_ASTC_10X5_QCOM                      0x33EA
+#define LOCAL_EGL_FORMAT_ASTC_10X5_SRGB_QCOM                 0x3408
+#define LOCAL_EGL_FORMAT_ASTC_10X6_QCOM                      0x33EB
+#define LOCAL_EGL_FORMAT_ASTC_10X6_SRGB_QCOM                 0x3409
+#define LOCAL_EGL_FORMAT_ASTC_10X8_QCOM                      0x33EC
+#define LOCAL_EGL_FORMAT_ASTC_10X8_SRGB_QCOM                 0x340A
+#define LOCAL_EGL_FORMAT_ASTC_12X10_QCOM                     0x33EE
+#define LOCAL_EGL_FORMAT_ASTC_12X10_SRGB_QCOM                0x340C
+#define LOCAL_EGL_FORMAT_ASTC_12X12_QCOM                     0x33EF
+#define LOCAL_EGL_FORMAT_ASTC_12X12_SRGB_QCOM                0x340D
+#define LOCAL_EGL_FORMAT_ASTC_4X4_QCOM                       0x33E2
+#define LOCAL_EGL_FORMAT_ASTC_4X4_SRGB_QCOM                  0x3400
+#define LOCAL_EGL_FORMAT_ASTC_5X4_QCOM                       0x33E3
+#define LOCAL_EGL_FORMAT_ASTC_5X4_SRGB_QCOM                  0x3401
+#define LOCAL_EGL_FORMAT_ASTC_5X5_QCOM                       0x33E4
+#define LOCAL_EGL_FORMAT_ASTC_5X5_SRGB_QCOM                  0x3402
+#define LOCAL_EGL_FORMAT_ASTC_6X5_QCOM                       0x33E5
+#define LOCAL_EGL_FORMAT_ASTC_6X5_SRGB_QCOM                  0x3403
+#define LOCAL_EGL_FORMAT_ASTC_6X6_QCOM                       0x33E6
+#define LOCAL_EGL_FORMAT_ASTC_6X6_SRGB_QCOM                  0x3404
+#define LOCAL_EGL_FORMAT_ASTC_8X5_QCOM                       0x33E7
+#define LOCAL_EGL_FORMAT_ASTC_8X5_SRGB_QCOM                  0x3405
+#define LOCAL_EGL_FORMAT_ASTC_8X6_QCOM                       0x33E8
+#define LOCAL_EGL_FORMAT_ASTC_8X6_SRGB_QCOM                  0x3406
+#define LOCAL_EGL_FORMAT_ASTC_8X8_QCOM                       0x33E9
+#define LOCAL_EGL_FORMAT_ASTC_8X8_SRGB_QCOM                  0x3407
+#define LOCAL_EGL_FORMAT_BGRA_8888_QCOM                      0x3129
+#define LOCAL_EGL_FORMAT_BGRX_8888_QCOM                      0x312A
+#define LOCAL_EGL_FORMAT_FLAG_MACROTILE_QCOM                 0x33E1
+#define LOCAL_EGL_FORMAT_FLAG_QCOM                           0x31CF
+#define LOCAL_EGL_FORMAT_FLAG_UBWC_QCOM                      0x33E0
+#define LOCAL_EGL_FORMAT_IYUV_QCOM                           0x31C7
+#define LOCAL_EGL_FORMAT_NV12_4R_QCOM                        0x3412
+#define LOCAL_EGL_FORMAT_NV12_4R_UV_QCOM                     0x3414
+#define LOCAL_EGL_FORMAT_NV12_4R_Y_QCOM                      0x3413
+#define LOCAL_EGL_FORMAT_NV12_QCOM                           0x31C2
+#define LOCAL_EGL_FORMAT_NV12_TILED_QCOM                     0x3128
+#define LOCAL_EGL_FORMAT_NV12_UV_QCOM                        0x3410
+#define LOCAL_EGL_FORMAT_NV12_Y_QCOM                         0x340F
+#define LOCAL_EGL_FORMAT_NV21_QCOM                           0x3127
+#define LOCAL_EGL_FORMAT_NV21_VU_QCOM                        0x3411
+#define LOCAL_EGL_FORMAT_P010_QCOM                           0x3415
+#define LOCAL_EGL_FORMAT_P010_UV_QCOM                        0x3417
+#define LOCAL_EGL_FORMAT_P010_Y_QCOM                         0x3416
+#define LOCAL_EGL_FORMAT_R8_QCOM                             0x31C0
+#define LOCAL_EGL_FORMAT_RG88_QCOM                           0x31C1
+#define LOCAL_EGL_FORMAT_RGBA_1010102_QCOM                   0x31CE
+#define LOCAL_EGL_FORMAT_RGBA_16_FLOAT_QCOM                  0x31CD
+#define LOCAL_EGL_FORMAT_RGBA_4444_QCOM                      0x31CA
+#define LOCAL_EGL_FORMAT_RGBA_5551_QCOM                      0x31C9
 #define LOCAL_EGL_FORMAT_RGBA_8888_EXACT_KHR                 0x30C2
 #define LOCAL_EGL_FORMAT_RGBA_8888_KHR                       0x30C3
+#define LOCAL_EGL_FORMAT_RGBA_8888_QCOM                      0x3122
+#define LOCAL_EGL_FORMAT_RGBX_8888_QCOM                      0x312F
 #define LOCAL_EGL_FORMAT_RGB_565_EXACT_KHR                   0x30C0
 #define LOCAL_EGL_FORMAT_RGB_565_KHR                         0x30C1
+#define LOCAL_EGL_FORMAT_RGB_565_QCOM                        0x3123
+#define LOCAL_EGL_FORMAT_RGB_888_QCOM                        0x31C8
+#define LOCAL_EGL_FORMAT_RG_1616_FLOAT_QCOM                  0x31CC
+#define LOCAL_EGL_FORMAT_R_16_FLOAT_QCOM                     0x31CB
+#define LOCAL_EGL_FORMAT_SRGBA_8888_QCOM                     0x31C4
+#define LOCAL_EGL_FORMAT_SRGBX_8888_QCOM                     0x31C3
+#define LOCAL_EGL_FORMAT_TP10_QCOM                           0x340E
+#define LOCAL_EGL_FORMAT_TP10_UV_QCOM                        0x3419
+#define LOCAL_EGL_FORMAT_TP10_Y_QCOM                         0x3418
+#define LOCAL_EGL_FORMAT_UYVY_QCOM                           0x3125
+#define LOCAL_EGL_FORMAT_VYUY_QCOM                           0x31C6
+#define LOCAL_EGL_FORMAT_YUYV_QCOM                           0x3124
+#define LOCAL_EGL_FORMAT_YV12_QCOM                           0x3126
+#define LOCAL_EGL_FORMAT_YVYU_QCOM                           0x31C5
 #define LOCAL_EGL_FRAMEBUFFER_TARGET_ANDROID                 0x3147
 #define LOCAL_EGL_FRONT_BUFFER_AUTO_REFRESH_ANDROID          0x314C
+#define LOCAL_EGL_FRONT_BUFFER_EXT                           0x3464
 #define LOCAL_EGL_GENERATE_RESET_ON_VIDEO_MEMORY_PURGE_NV    0x334C
+#define LOCAL_EGL_GENERIC_TOKEN_1_QCOM                       0x3420
+#define LOCAL_EGL_GENERIC_TOKEN_2_QCOM                       0x3421
+#define LOCAL_EGL_GENERIC_TOKEN_3_QCOM                       0x3422
 #define LOCAL_EGL_GL_COLORSPACE                              0x309D
 #define LOCAL_EGL_GL_COLORSPACE_BT2020_LINEAR_EXT            0x333F
 #define LOCAL_EGL_GL_COLORSPACE_BT2020_PQ_EXT                0x3340
+#define LOCAL_EGL_GL_COLORSPACE_DEFAULT_EXT                  0x314D
 #define LOCAL_EGL_GL_COLORSPACE_DISPLAY_P3_EXT               0x3363
 #define LOCAL_EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT        0x3362
+#define LOCAL_EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT   0x3490
 #define LOCAL_EGL_GL_COLORSPACE_KHR                          0x309D
 #define LOCAL_EGL_GL_COLORSPACE_LINEAR                       0x308A
 #define LOCAL_EGL_GL_COLORSPACE_LINEAR_KHR                   0x308A
+#define LOCAL_EGL_GL_COLORSPACE_SCRGB_EXT                    0x3351
 #define LOCAL_EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT             0x3350
 #define LOCAL_EGL_GL_COLORSPACE_SRGB                         0x3089
 #define LOCAL_EGL_GL_COLORSPACE_SRGB_KHR                     0x3089
@@ -5944,16 +6221,40 @@
 #define LOCAL_EGL_GL_TEXTURE_LEVEL_KHR                       0x30BC
 #define LOCAL_EGL_GL_TEXTURE_ZOFFSET                         0x30BD
 #define LOCAL_EGL_GL_TEXTURE_ZOFFSET_KHR                     0x30BD
+#define LOCAL_EGL_GPU_PERF_HINT_QCOM                         0x32D0
 #define LOCAL_EGL_GREEN_SIZE                                 0x3023
 #define LOCAL_EGL_HEIGHT                                     0x3056
+#define LOCAL_EGL_HINT_PERSISTENT_QCOM                       0x32D1
 #define LOCAL_EGL_HORIZONTAL_RESOLUTION                      0x3090
+#define LOCAL_EGL_IMAGE_FORMAT_QCOM                          0x3121
+#define LOCAL_EGL_IMAGE_NUM_PLANES_QCOM                      0x32B0
+#define LOCAL_EGL_IMAGE_PLANE_DEPTH_0_QCOM                   0x32B4
+#define LOCAL_EGL_IMAGE_PLANE_DEPTH_1_QCOM                   0x32B5
+#define LOCAL_EGL_IMAGE_PLANE_DEPTH_2_QCOM                   0x32B6
+#define LOCAL_EGL_IMAGE_PLANE_HEIGHT_0_QCOM                  0x32BA
+#define LOCAL_EGL_IMAGE_PLANE_HEIGHT_1_QCOM                  0x32BB
+#define LOCAL_EGL_IMAGE_PLANE_HEIGHT_2_QCOM                  0x32BC
+#define LOCAL_EGL_IMAGE_PLANE_PITCH_0_QCOM                   0x32B1
+#define LOCAL_EGL_IMAGE_PLANE_PITCH_1_QCOM                   0x32B2
+#define LOCAL_EGL_IMAGE_PLANE_PITCH_2_QCOM                   0x32B3
+#define LOCAL_EGL_IMAGE_PLANE_POINTER_0_QCOM                 0x32BD
+#define LOCAL_EGL_IMAGE_PLANE_POINTER_1_QCOM                 0x32BE
+#define LOCAL_EGL_IMAGE_PLANE_POINTER_2_QCOM                 0x32BF
+#define LOCAL_EGL_IMAGE_PLANE_WIDTH_0_QCOM                   0x32B7
+#define LOCAL_EGL_IMAGE_PLANE_WIDTH_1_QCOM                   0x32B8
+#define LOCAL_EGL_IMAGE_PLANE_WIDTH_2_QCOM                   0x32B9
 #define LOCAL_EGL_IMAGE_PRESERVED                            0x30D2
 #define LOCAL_EGL_IMAGE_PRESERVED_KHR                        0x30D2
+#define LOCAL_EGL_IMPORT_EXPLICIT_SYNC_EXT                   0x3472
+#define LOCAL_EGL_IMPORT_IMPLICIT_SYNC_EXT                   0x3471
+#define LOCAL_EGL_IMPORT_SYNC_TYPE_EXT                       0x3470
 #define LOCAL_EGL_INTEROP_BIT_KHR                            0x0010
 #define LOCAL_EGL_ITU_REC2020_EXT                            0x3281
 #define LOCAL_EGL_ITU_REC601_EXT                             0x327F
 #define LOCAL_EGL_ITU_REC709_EXT                             0x3280
 #define LOCAL_EGL_LARGEST_PBUFFER                            0x3058
+#define LOCAL_EGL_LAST_COMPOSITION_START_TIME_ANDROID        0x3438
+#define LOCAL_EGL_LEFT_NV                                    0x336B
 #define LOCAL_EGL_LEVEL                                      0x3029
 #define LOCAL_EGL_LINUX_DMA_BUF_EXT                          0x3270
 #define LOCAL_EGL_LINUX_DRM_FOURCC_EXT                       0x3271
@@ -6006,6 +6307,7 @@
 #define LOCAL_EGL_NATIVE_SURFACE_TIZEN                       0x32A1
 #define LOCAL_EGL_NATIVE_VISUAL_ID                           0x302E
 #define LOCAL_EGL_NATIVE_VISUAL_TYPE                         0x302F
+#define LOCAL_EGL_NEW_IMAGE_QCOM                             0x3120
 #define LOCAL_EGL_NONE                                       0x3038
 #define LOCAL_EGL_NON_CONFORMANT_CONFIG                      0x3051
 #define LOCAL_EGL_NOT_INITIALIZED                            0x3001
@@ -6070,17 +6372,23 @@
 #define LOCAL_EGL_PLATFORM_X11_SCREEN_KHR                    0x31D6
 #define LOCAL_EGL_POST_SUB_BUFFER_SUPPORTED_NV               0x30BE
 #define LOCAL_EGL_PRIMARY_COMPOSITOR_CONTEXT_EXT             0x3460
+#define LOCAL_EGL_PRODUCER_AUTO_ORIENTATION_NV               0x336A
 #define LOCAL_EGL_PRODUCER_FRAME_KHR                         0x3212
 #define LOCAL_EGL_PRODUCER_MAX_FRAME_HINT_NV                 0x3337
 #define LOCAL_EGL_PRODUCER_METADATA_NV                       0x3253
 #define LOCAL_EGL_PROTECTED_CONTENT_EXT                      0x32C0
+#define LOCAL_EGL_QUADRUPLE_BUFFER_NV                        0x3231
 #define LOCAL_EGL_READ                                       0x305A
+#define LOCAL_EGL_READS_DONE_TIME_ANDROID                    0x343C
 #define LOCAL_EGL_READ_SURFACE_BIT_KHR                       0x0001
 #define LOCAL_EGL_RECORDABLE_ANDROID                         0x3142
 #define LOCAL_EGL_RED_SIZE                                   0x3024
 #define LOCAL_EGL_RENDERABLE_TYPE                            0x3040
+#define LOCAL_EGL_RENDERING_COMPLETE_TIME_ANDROID            0x3435
 #define LOCAL_EGL_RENDER_BUFFER                              0x3086
+#define LOCAL_EGL_REQUESTED_PRESENT_TIME_ANDROID             0x3434
 #define LOCAL_EGL_RGB_BUFFER                                 0x308E
+#define LOCAL_EGL_RIGHT_NV                                   0x336C
 #define LOCAL_EGL_SAMPLES                                    0x3031
 #define LOCAL_EGL_SAMPLE_BUFFERS                             0x3032
 #define LOCAL_EGL_SAMPLE_RANGE_HINT_EXT                      0x327C
@@ -6112,9 +6420,14 @@
 #define LOCAL_EGL_STREAM_CROSS_PARTITION_NV                  0x323F
 #define LOCAL_EGL_STREAM_CROSS_PROCESS_NV                    0x3245
 #define LOCAL_EGL_STREAM_CROSS_SYSTEM_NV                     0x334F
+#define LOCAL_EGL_STREAM_DMA_NV                              0x3371
+#define LOCAL_EGL_STREAM_DMA_SERVER_NV                       0x3372
 #define LOCAL_EGL_STREAM_ENDPOINT_NV                         0x3243
 #define LOCAL_EGL_STREAM_FIFO_LENGTH_KHR                     0x31FC
 #define LOCAL_EGL_STREAM_FIFO_SYNCHRONOUS_NV                 0x3336
+#define LOCAL_EGL_STREAM_FRAME_MAJOR_AXIS_NV                 0x3368
+#define LOCAL_EGL_STREAM_FRAME_ORIGIN_X_NV                   0x3366
+#define LOCAL_EGL_STREAM_FRAME_ORIGIN_Y_NV                   0x3367
 #define LOCAL_EGL_STREAM_LOCAL_NV                            0x3244
 #define LOCAL_EGL_STREAM_PRODUCER_NV                         0x3247
 #define LOCAL_EGL_STREAM_PROTOCOL_FD_NV                      0x3246
@@ -6140,6 +6453,8 @@
 #define LOCAL_EGL_SWAP_BEHAVIOR                              0x3093
 #define LOCAL_EGL_SWAP_BEHAVIOR_PRESERVED_BIT                0x0400
 #define LOCAL_EGL_SWAP_INTERVAL_EXT                          0x322F
+#define LOCAL_EGL_SYNC_CLIENT_EXT                            0x3364
+#define LOCAL_EGL_SYNC_CLIENT_SIGNAL_EXT                     0x3365
 #define LOCAL_EGL_SYNC_CL_EVENT                              0x30FE
 #define LOCAL_EGL_SYNC_CL_EVENT_COMPLETE                     0x30FF
 #define LOCAL_EGL_SYNC_CL_EVENT_COMPLETE_KHR                 0x30FF
@@ -6178,12 +6493,17 @@
 #define LOCAL_EGL_TIMEOUT_EXPIRED                            0x30F5
 #define LOCAL_EGL_TIMEOUT_EXPIRED_KHR                        0x30F5
 #define LOCAL_EGL_TIMEOUT_EXPIRED_NV                         0x30EB
+#define LOCAL_EGL_TIMESTAMPS_ANDROID                         0x3430
+#define LOCAL_EGL_TIMESTAMP_INVALID_ANDROID                  EGL_CAST(EGLnsecsANDROID,-1)
+#define LOCAL_EGL_TIMESTAMP_PENDING_ANDROID                  EGL_CAST(EGLnsecsANDROID,-2)
+#define LOCAL_EGL_TOP_NV                                     0x336D
 #define LOCAL_EGL_TRACK_REFERENCES_KHR                       0x3352
 #define LOCAL_EGL_TRANSPARENT_BLUE_VALUE                     0x3035
 #define LOCAL_EGL_TRANSPARENT_GREEN_VALUE                    0x3036
 #define LOCAL_EGL_TRANSPARENT_RED_VALUE                      0x3037
 #define LOCAL_EGL_TRANSPARENT_RGB                            0x3052
 #define LOCAL_EGL_TRANSPARENT_TYPE                           0x3034
+#define LOCAL_EGL_TRIPLE_BUFFER_NV                           0x3230
 #define LOCAL_EGL_TRUE                                       1
 #define LOCAL_EGL_UNKNOWN                                    EGL_CAST(EGLint,-1)
 #define LOCAL_EGL_UNSIGNALED                                 0x30F3
@@ -6207,6 +6527,7 @@
 #define LOCAL_EGL_WIDTH                                      0x3057
 #define LOCAL_EGL_WINDOW_BIT                                 0x0004
 #define LOCAL_EGL_WRITE_SURFACE_BIT_KHR                      0x0002
+#define LOCAL_EGL_X_AXIS_NV                                  0x336F
 #define LOCAL_EGL_YUV_BUFFER_EXT                             0x3300
 #define LOCAL_EGL_YUV_CHROMA_HORIZONTAL_SITING_HINT_EXT      0x327D
 #define LOCAL_EGL_YUV_CHROMA_SITING_0_5_EXT                  0x3285
@@ -6242,8 +6563,8 @@
 #define LOCAL_EGL_YUV_SUBSAMPLE_4_2_2_EXT                    0x3314
 #define LOCAL_EGL_YUV_SUBSAMPLE_4_4_4_EXT                    0x3315
 #define LOCAL_EGL_YUV_SUBSAMPLE_EXT                          0x3312
+#define LOCAL_EGL_Y_AXIS_NV                                  0x3370
 #define LOCAL_EGL_Y_INVERTED_NOK                             0x307F
-
 
 // GLX
 #define LOCAL_GLX_3DFX_FULLSCREEN_MODE_MESA                  0x2
@@ -6311,6 +6632,10 @@
 #define LOCAL_GLX_CONTEXT_MAJOR_VERSION_ARB                  0x2091
 #define LOCAL_GLX_CONTEXT_MINOR_VERSION_ARB                  0x2092
 #define LOCAL_GLX_CONTEXT_OPENGL_NO_ERROR_ARB                0x31B3
+#define LOCAL_GLX_CONTEXT_PRIORITY_HIGH_EXT                  0x3101
+#define LOCAL_GLX_CONTEXT_PRIORITY_LEVEL_EXT                 0x3100
+#define LOCAL_GLX_CONTEXT_PRIORITY_LOW_EXT                   0x3103
+#define LOCAL_GLX_CONTEXT_PRIORITY_MEDIUM_EXT                0x3102
 #define LOCAL_GLX_CONTEXT_PROFILE_MASK_ARB                   0x9126
 #define LOCAL_GLX_CONTEXT_RELEASE_BEHAVIOR_ARB               0x2097
 #define LOCAL_GLX_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB         0x2098
@@ -6417,7 +6742,6 @@
 #define LOCAL_GLX_RED_SIZE                                   8
 #define LOCAL_GLX_RENDERER_ACCELERATED_MESA                  0x8186
 #define LOCAL_GLX_RENDERER_DEVICE_ID_MESA                    0x8184
-#define LOCAL_GLX_RENDERER_ID_MESA                           0x818E
 #define LOCAL_GLX_RENDERER_OPENGL_COMPATIBILITY_PROFILE_VERSION_MESA 0x818B
 #define LOCAL_GLX_RENDERER_OPENGL_CORE_PROFILE_VERSION_MESA  0x818A
 #define LOCAL_GLX_RENDERER_OPENGL_ES2_PROFILE_VERSION_MESA   0x818D
@@ -6532,7 +6856,6 @@
 #define LOCAL_GLX_X_VISUAL_TYPE_EXT                          0x22
 #define LOCAL_GLX_Y_INVERTED_EXT                             0x20D4
 
-
 // WGL
 #define LOCAL_WGL_ACCELERATION_ARB                           0x2003
 #define LOCAL_WGL_ACCELERATION_EXT                           0x2003
@@ -6585,7 +6908,7 @@
 #define LOCAL_WGL_BLUE_BITS_EXT                              0x2019
 #define LOCAL_WGL_BLUE_SHIFT_ARB                             0x201A
 #define LOCAL_WGL_BLUE_SHIFT_EXT                             0x201A
-#define LOCAL_WGL_COLORSPACE_EXT                             0x3087
+#define LOCAL_WGL_COLORSPACE_EXT                             0x309D
 #define LOCAL_WGL_COLORSPACE_LINEAR_EXT                      0x308A
 #define LOCAL_WGL_COLORSPACE_SRGB_EXT                        0x3089
 #define LOCAL_WGL_COLOR_BITS_ARB                             0x2014
@@ -6601,6 +6924,11 @@
 #define LOCAL_WGL_CONTEXT_LAYER_PLANE_ARB                    0x2093
 #define LOCAL_WGL_CONTEXT_MAJOR_VERSION_ARB                  0x2091
 #define LOCAL_WGL_CONTEXT_MINOR_VERSION_ARB                  0x2092
+#define LOCAL_WGL_CONTEXT_MULTIGPU_ATTRIB_AFR_NV             0x20AC
+#define LOCAL_WGL_CONTEXT_MULTIGPU_ATTRIB_MULTICAST_NV       0x20AD
+#define LOCAL_WGL_CONTEXT_MULTIGPU_ATTRIB_MULTI_DISPLAY_MULTICAST_NV 0x20AE
+#define LOCAL_WGL_CONTEXT_MULTIGPU_ATTRIB_NV                 0x20AA
+#define LOCAL_WGL_CONTEXT_MULTIGPU_ATTRIB_SINGLE_NV          0x20AB
 #define LOCAL_WGL_CONTEXT_OPENGL_NO_ERROR_ARB                0x31B3
 #define LOCAL_WGL_CONTEXT_PROFILE_MASK_ARB                   0x9126
 #define LOCAL_WGL_CONTEXT_RELEASE_BEHAVIOR_ARB               0x2097
@@ -6789,6 +7117,7 @@
 #define LOCAL_WGL_TEXTURE_FLOAT_RG_NV                        0x20B6
 #define LOCAL_WGL_TEXTURE_FLOAT_R_NV                         0x20B5
 #define LOCAL_WGL_TEXTURE_FORMAT_ARB                         0x2072
+#define LOCAL_WGL_TEXTURE_RECTANGLE_ATI                      0x21A5
 #define LOCAL_WGL_TEXTURE_RECTANGLE_NV                       0x20A2
 #define LOCAL_WGL_TEXTURE_RGBA_ARB                           0x2076
 #define LOCAL_WGL_TEXTURE_RGB_ARB                            0x2075
@@ -6820,6 +7149,6 @@
 #define LOCAL_WGL_VIDEO_OUT_STACKED_FIELDS_1_2               0x20CB
 #define LOCAL_WGL_VIDEO_OUT_STACKED_FIELDS_2_1               0x20CC
 
-
-
 #endif // GLCONSTS_H_
+
+// clang-format on

@@ -4,7 +4,9 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Messaging.jsm");
+const { EventDispatcher } = ChromeUtils.import(
+  "resource://gre/modules/Messaging.jsm"
+);
 
 var EXPORTED_SYMBOLS = ["BrowserActions"];
 
@@ -14,8 +16,6 @@ var BrowserActions = {
 
   _initialized: false,
 
-  _nextMenuId: 0,
-
   /**
    * Registers the listeners only if they have not been initialized
    * already and there is at least one browser action.
@@ -23,7 +23,7 @@ var BrowserActions = {
   _maybeRegisterListeners() {
     if (!this._initialized && Object.keys(this._browserActions).length) {
       this._initialized = true;
-      EventDispatcher.instance.registerListener(this, "Menu:BrowserActionClicked");
+      EventDispatcher.instance.registerListener(this, "Menu:Clicked");
     }
   },
 
@@ -34,26 +34,29 @@ var BrowserActions = {
   _maybeUnregisterListeners() {
     if (this._initialized && !Object.keys(this._browserActions).length) {
       this._initialized = false;
-      EventDispatcher.instance.unregisterListener(this, "Menu:BrowserActionClicked");
+      EventDispatcher.instance.unregisterListener(this, "Menu:Clicked");
     }
   },
 
   /**
    * Called when a browser action is clicked on.
    * @param {string} event The name of the event, which should always
-   *    be "Menu:BrowserActionClicked".
+   *    be "Menu:Clicked".
    * @param {Object} data An object containing information about the
    *    browser action, which in this case should contain an `item`
-   *    property which is browser action's ID.
+   *    property which is browser action's UUID.
    */
   onEvent(event, data) {
-    if (event !== "Menu:BrowserActionClicked") {
-      throw new Error(`Expected "Menu:BrowserActionClicked" event - received "${event}" instead`);
+    if (event !== "Menu:Clicked") {
+      throw new Error(
+        `Expected "Menu:Clicked" event - received "${event}" instead`
+      );
     }
 
     let browserAction = this._browserActions[data.item];
     if (!browserAction) {
-      throw new Error(`No browser action found with id ${data.item}`);
+      // This was probably meant for the NativeWindow menu handler.
+      return;
     }
     browserAction.onClicked();
   },
@@ -64,8 +67,7 @@ var BrowserActions = {
    */
   register(browserAction) {
     EventDispatcher.instance.sendRequest({
-      type: "Menu:AddBrowserAction",
-      id: this._nextMenuId++,
+      type: "Menu:Add",
       uuid: browserAction.uuid,
       name: browserAction.defaults.name,
     });
@@ -84,7 +86,7 @@ var BrowserActions = {
   update(uuid, options) {
     if (options.name) {
       EventDispatcher.instance.sendRequest({
-        type: "Menu:UpdateBrowserAction",
+        type: "Menu:Update",
         uuid,
         options,
       });
@@ -125,7 +127,7 @@ var BrowserActions = {
   },
 
   /**
-   * Unregisters the browser action with the specified ID.
+   * Unregisters the browser action with the specified UUID.
    * @param {string} uuid The UUID of the browser action.
    */
   unregister(uuid) {
@@ -134,11 +136,11 @@ var BrowserActions = {
       throw new Error(`No BrowserAction with UUID ${uuid} was found`);
     }
     EventDispatcher.instance.sendRequest({
-      type: "Menu:RemoveBrowserAction",
+      type: "Menu:Remove",
       uuid,
     });
     delete this._browserActions[uuid];
     delete this._browserActionTitles[uuid];
     this._maybeUnregisterListeners();
-  }
+  },
 };

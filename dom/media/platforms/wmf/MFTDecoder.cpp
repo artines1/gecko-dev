@@ -14,88 +14,41 @@
 
 namespace mozilla {
 
-MFTDecoder::MFTDecoder()
-{
+MFTDecoder::MFTDecoder() {
   memset(&mInputStreamInfo, 0, sizeof(MFT_INPUT_STREAM_INFO));
   memset(&mOutputStreamInfo, 0, sizeof(MFT_OUTPUT_STREAM_INFO));
 }
 
-MFTDecoder::~MFTDecoder()
-{
-}
+MFTDecoder::~MFTDecoder() {}
 
 HRESULT
-MFTDecoder::Create(const GUID& aMFTClsID)
-{
+MFTDecoder::Create(const GUID& aMFTClsID) {
   // Note: IMFTransform is documented to only be safe on MTA threads.
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   // Create the IMFTransform to do the decoding.
   HRESULT hr;
-  hr = CoCreateInstance(aMFTClsID,
-                        nullptr,
-                        CLSCTX_INPROC_SERVER,
-                        IID_PPV_ARGS(static_cast<IMFTransform**>(
-                          getter_AddRefs(mDecoder))));
-  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
-
-  return S_OK;
-}
-
-// Helper function to create a COM object instance from a DLL.
-static HRESULT
-CreateCOMObjectFromDll(HMODULE aDLL,
-                       const CLSID& aCLSId,
-                       const IID& aIID,
-                       void** aObject)
-{
-  if (!aDLL || !aObject) {
-    return E_INVALIDARG;
-  }
-  using GetClassObject =
-    HRESULT(WINAPI*)(const CLSID& clsid, const IID& iid, void** object);
-
-  GetClassObject getClassObject = reinterpret_cast<GetClassObject>(
-    GetProcAddress(aDLL, "DllGetClassObject"));
-  NS_ENSURE_TRUE(getClassObject, E_FAIL);
-
-  RefPtr<IClassFactory> factory;
-  HRESULT hr =
-    getClassObject(aCLSId,
-                   IID_PPV_ARGS(static_cast<IClassFactory**>(
-                     getter_AddRefs(factory))));
-  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
-
-  hr = factory->CreateInstance(NULL, aIID, aObject);
-  return hr;
-}
-
-HRESULT
-MFTDecoder::Create(HMODULE aDecoderDLL, const GUID& aMFTClsID)
-{
-  // Create the IMFTransform to do the decoding.
-  HRESULT hr =
-    CreateCOMObjectFromDll(aDecoderDLL, aMFTClsID,
-                           IID_PPV_ARGS(static_cast<IMFTransform**>(
-                             getter_AddRefs(mDecoder))));
+  hr = CoCreateInstance(
+      aMFTClsID, nullptr, CLSCTX_INPROC_SERVER,
+      IID_PPV_ARGS(static_cast<IMFTransform**>(getter_AddRefs(mDecoder))));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
   return S_OK;
 }
 
 HRESULT
-MFTDecoder::SetMediaTypes(IMFMediaType* aInputType,
-                          IMFMediaType* aOutputType,
-                          ConfigureOutputCallback aCallback,
-                          void* aData)
-{
+MFTDecoder::SetMediaTypes(IMFMediaType* aInputType, IMFMediaType* aOutputType,
+                          std::function<HRESULT(IMFMediaType*)>&& aCallback) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
-  mOutputType = aOutputType;
 
   // Set the input type to the one the caller gave us...
   HRESULT hr = mDecoder->SetInputType(0, aInputType, 0);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-  hr = SetDecoderOutputType(true /* match all attributes */, aCallback, aData);
+  GUID currentSubtype = {0};
+  hr = aOutputType->GetGUID(MF_MT_SUBTYPE, &currentSubtype);
+  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+
+  hr = SetDecoderOutputType(currentSubtype, aOutputType, std::move(aCallback));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
   hr = mDecoder->GetInputStreamInfo(0, &mInputStreamInfo);
@@ -110,9 +63,7 @@ MFTDecoder::SetMediaTypes(IMFMediaType* aInputType,
   return S_OK;
 }
 
-already_AddRefed<IMFAttributes>
-MFTDecoder::GetAttributes()
-{
+already_AddRefed<IMFAttributes> MFTDecoder::GetAttributes() {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   RefPtr<IMFAttributes> attr;
   HRESULT hr = mDecoder->GetAttributes(getter_AddRefs(attr));
@@ -121,39 +72,44 @@ MFTDecoder::GetAttributes()
 }
 
 HRESULT
-MFTDecoder::SetDecoderOutputType(bool aMatchAllAttributes,
-                                 ConfigureOutputCallback aCallback,
-                                 void* aData)
-{
+MFTDecoder::FindDecoderOutputType() {
+  MOZ_ASSERT(mscom::IsCurrentThreadMTA());
+  MOZ_ASSERT(mOutputType, "SetDecoderTypes must have been called once");
+
+  return FindDecoderOutputTypeWithSubtype(mOutputSubType);
+}
+
+HRESULT
+MFTDecoder::FindDecoderOutputTypeWithSubtype(const GUID& aSubType) {
+  return SetDecoderOutputType(aSubType, nullptr,
+                              [](IMFMediaType*) { return S_OK; });
+}
+
+HRESULT
+MFTDecoder::SetDecoderOutputType(
+    const GUID& aSubType, IMFMediaType* aTypeToUse,
+    std::function<HRESULT(IMFMediaType*)>&& aCallback) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
 
-  GUID currentSubtype = {0};
-  HRESULT hr = mOutputType->GetGUID(MF_MT_SUBTYPE, &currentSubtype);
-  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+  if (!aTypeToUse) {
+    aTypeToUse = mOutputType;
+  }
 
   // Iterate the enumerate the output types, until we find one compatible
   // with what we need.
   RefPtr<IMFMediaType> outputType;
   UINT32 typeIndex = 0;
   while (SUCCEEDED(mDecoder->GetOutputAvailableType(
-    0, typeIndex++, getter_AddRefs(outputType)))) {
+      0, typeIndex++, getter_AddRefs(outputType)))) {
     GUID outSubtype = {0};
-    hr = outputType->GetGUID(MF_MT_SUBTYPE, &outSubtype);
+    HRESULT hr = outputType->GetGUID(MF_MT_SUBTYPE, &outSubtype);
     NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-    BOOL resultMatch = currentSubtype == outSubtype;
-
-    if (resultMatch && aMatchAllAttributes) {
-      hr = mOutputType->Compare(outputType, MF_ATTRIBUTES_MATCH_OUR_ITEMS,
-                                &resultMatch);
+    if (aSubType == outSubtype) {
+      hr = aCallback(outputType);
       NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
-    }
-    if (resultMatch == TRUE) {
-      if (aCallback) {
-        hr = aCallback(outputType, aData);
-        NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
-      }
+
       hr = mDecoder->SetOutputType(0, outputType, 0);
       NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
@@ -163,6 +119,9 @@ MFTDecoder::SetDecoderOutputType(bool aMatchAllAttributes,
       mMFTProvidesOutputSamples = IsFlagSet(mOutputStreamInfo.dwFlags,
                                             MFT_OUTPUT_STREAM_PROVIDES_SAMPLES);
 
+      mOutputType = outputType;
+      mOutputSubType = outSubtype;
+
       return S_OK;
     }
     outputType = nullptr;
@@ -171,8 +130,7 @@ MFTDecoder::SetDecoderOutputType(bool aMatchAllAttributes,
 }
 
 HRESULT
-MFTDecoder::SendMFTMessage(MFT_MESSAGE_TYPE aMsg, ULONG_PTR aData)
-{
+MFTDecoder::SendMFTMessage(MFT_MESSAGE_TYPE aMsg, ULONG_PTR aData) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
   HRESULT hr = mDecoder->ProcessMessage(aMsg, aData);
@@ -181,11 +139,9 @@ MFTDecoder::SendMFTMessage(MFT_MESSAGE_TYPE aMsg, ULONG_PTR aData)
 }
 
 HRESULT
-MFTDecoder::CreateInputSample(const uint8_t* aData,
-                              uint32_t aDataSize,
-                              int64_t aTimestamp,
-                              RefPtr<IMFSample>* aOutSample)
-{
+MFTDecoder::CreateInputSample(const uint8_t* aData, uint32_t aDataSize,
+                              int64_t aTimestamp, int64_t aDuration,
+                              RefPtr<IMFSample>* aOutSample) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
 
@@ -196,11 +152,11 @@ MFTDecoder::CreateInputSample(const uint8_t* aData,
 
   RefPtr<IMFMediaBuffer> buffer;
   int32_t bufferSize =
-    std::max<uint32_t>(uint32_t(mInputStreamInfo.cbSize), aDataSize);
+      std::max<uint32_t>(uint32_t(mInputStreamInfo.cbSize), aDataSize);
   UINT32 alignment =
-    (mInputStreamInfo.cbAlignment > 1) ? mInputStreamInfo.cbAlignment - 1 : 0;
-  hr = wmf::MFCreateAlignedMemoryBuffer(
-    bufferSize, alignment, getter_AddRefs(buffer));
+      (mInputStreamInfo.cbAlignment > 1) ? mInputStreamInfo.cbAlignment - 1 : 0;
+  hr = wmf::MFCreateAlignedMemoryBuffer(bufferSize, alignment,
+                                        getter_AddRefs(buffer));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
   DWORD maxLength = 0;
@@ -224,14 +180,34 @@ MFTDecoder::CreateInputSample(const uint8_t* aData,
   hr = sample->SetSampleTime(UsecsToHNs(aTimestamp));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
+  if (aDuration == 0) {
+    // If the sample duration is 0, the decoder will try and estimate the
+    // duration. In practice this can lead to some wildly incorrect durations,
+    // as in bug 1560440. The Microsoft docs seem conflicting here with
+    // `IMFSample::SetSampleDuration` stating 'The duration can also be zero.
+    // This might be valid for some types of data.' However,
+    // `IMFSample::GetSampleDuration method` states 'If the retrieved duration
+    // is zero, or if the method returns MF_E_NO_SAMPLE_DURATION, the duration
+    // is unknown. In that case, it might be possible to calculate the duration
+    // from the media type--for example, by using the video frame rate or the
+    // audio sampling rate.' The latter of those seems to be how the decoder
+    // handles 0 duration, hence why it estimates.
+    //
+    // Since our demuxing pipeline can create 0 duration samples, and since the
+    // decoder will override them to something positive anyway, setting them to
+    // have a trivial duration seems like the lesser of evils.
+    aDuration = 1;
+  }
+  hr = sample->SetSampleDuration(UsecsToHNs(aDuration));
+  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+
   *aOutSample = sample.forget();
 
   return S_OK;
 }
 
 HRESULT
-MFTDecoder::CreateOutputSample(RefPtr<IMFSample>* aOutSample)
-{
+MFTDecoder::CreateOutputSample(RefPtr<IMFSample>* aOutSample) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
 
@@ -242,10 +218,11 @@ MFTDecoder::CreateOutputSample(RefPtr<IMFSample>* aOutSample)
 
   RefPtr<IMFMediaBuffer> buffer;
   int32_t bufferSize = mOutputStreamInfo.cbSize;
-  UINT32 alignment =
-    (mOutputStreamInfo.cbAlignment > 1) ? mOutputStreamInfo.cbAlignment - 1 : 0;
-  hr = wmf::MFCreateAlignedMemoryBuffer(
-    bufferSize, alignment, getter_AddRefs(buffer));
+  UINT32 alignment = (mOutputStreamInfo.cbAlignment > 1)
+                         ? mOutputStreamInfo.cbAlignment - 1
+                         : 0;
+  hr = wmf::MFCreateAlignedMemoryBuffer(bufferSize, alignment,
+                                        getter_AddRefs(buffer));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
   hr = sample->AddBuffer(buffer);
@@ -257,8 +234,7 @@ MFTDecoder::CreateOutputSample(RefPtr<IMFSample>* aOutSample)
 }
 
 HRESULT
-MFTDecoder::Output(RefPtr<IMFSample>* aOutput)
-{
+MFTDecoder::Output(RefPtr<IMFSample>* aOutput) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
 
@@ -307,7 +283,7 @@ MFTDecoder::Output(RefPtr<IMFSample>* aOutput)
     mDiscontinuity = false;
   }
 
-  *aOutput = output.pSample; // AddRefs
+  *aOutput = output.pSample;  // AddRefs
   if (mMFTProvidesOutputSamples && !providedSample) {
     // If the MFT is providing samples, we must release the sample here.
     // Typically only the H.264 MFT provides samples when using DXVA,
@@ -321,23 +297,21 @@ MFTDecoder::Output(RefPtr<IMFSample>* aOutput)
 }
 
 HRESULT
-MFTDecoder::Input(const uint8_t* aData,
-                  uint32_t aDataSize,
-                  int64_t aTimestamp)
-{
+MFTDecoder::Input(const uint8_t* aData, uint32_t aDataSize, int64_t aTimestamp,
+                  int64_t aDuration) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder != nullptr, E_POINTER);
 
   RefPtr<IMFSample> input;
-  HRESULT hr = CreateInputSample(aData, aDataSize, aTimestamp, &input);
+  HRESULT hr =
+      CreateInputSample(aData, aDataSize, aTimestamp, aDuration, &input);
   NS_ENSURE_TRUE(SUCCEEDED(hr) && input != nullptr, hr);
 
   return Input(input);
 }
 
 HRESULT
-MFTDecoder::Input(IMFSample* aSample)
-{
+MFTDecoder::Input(IMFSample* aSample) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   HRESULT hr = mDecoder->ProcessInput(0, aSample, 0);
   if (hr == MF_E_NOTACCEPTING) {
@@ -350,8 +324,7 @@ MFTDecoder::Input(IMFSample* aSample)
 }
 
 HRESULT
-MFTDecoder::Flush()
-{
+MFTDecoder::Flush() {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   HRESULT hr = SendMFTMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
@@ -362,11 +335,10 @@ MFTDecoder::Flush()
 }
 
 HRESULT
-MFTDecoder::GetOutputMediaType(RefPtr<IMFMediaType>& aMediaType)
-{
+MFTDecoder::GetOutputMediaType(RefPtr<IMFMediaType>& aMediaType) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   NS_ENSURE_TRUE(mDecoder, E_POINTER);
   return mDecoder->GetOutputCurrentType(0, getter_AddRefs(aMediaType));
 }
 
-} // namespace mozilla
+}  // namespace mozilla

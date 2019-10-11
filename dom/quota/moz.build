@@ -15,6 +15,12 @@ XPCSHELL_TESTS_MANIFESTS += [
     'test/unit/xpcshell.ini'
 ]
 
+TEST_HARNESS_FILES.xpcshell.dom.quota.test += [
+    'test/head-shared.js',
+]
+
+TEST_DIRS += ['test/gtest']
+
 XPIDL_SOURCES += [
     'nsIQuotaCallbacks.idl',
     'nsIQuotaManagerService.idl',
@@ -30,8 +36,10 @@ EXPORTS.mozilla.dom += [
 
 EXPORTS.mozilla.dom.quota += [
     'ActorsParent.h',
+    'CheckedUnsafePtr.h',
     'Client.h',
     'FileStreams.h',
+    'MemoryOutputStream.h',
     'OriginScope.h',
     'PersistenceType.h',
     'QuotaCommon.h',
@@ -42,10 +50,18 @@ EXPORTS.mozilla.dom.quota += [
     'UsageInfo.h',
 ]
 
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
+
 UNIFIED_SOURCES += [
     'ActorsChild.cpp',
     'ActorsParent.cpp',
+    'Client.cpp',
     'FileStreams.cpp',
+    'MemoryOutputStream.cpp',
+    'nsIndexedDBProtocolHandler.cpp',
+    'QuotaCommon.cpp',
     'QuotaManagerService.cpp',
     'QuotaRequests.cpp',
     'QuotaResults.cpp',
@@ -61,6 +77,7 @@ IPDL_SOURCES += [
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
+
 LOCAL_INCLUDES += [
     '/caps',
 ]

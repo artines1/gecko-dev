@@ -11,7 +11,7 @@
 
 // Declare in which spec module and front module a set of types are defined.
 // This array should be sorted by `spec` attribute.
-const Types = exports.__TypesForTests = [
+const Types = (exports.__TypesForTests = [
   {
     types: ["accessible", "accessiblewalker", "accessibility"],
     spec: "devtools/shared/specs/accessibility",
@@ -28,16 +28,6 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/addon/addons",
   },
   {
-    types: ["addonConsole"],
-    spec: "devtools/shared/specs/addon/console",
-    front: null,
-  },
-  {
-    types: ["webExtension"],
-    spec: "devtools/shared/specs/addon/webextension",
-    front: null,
-  },
-  {
     types: ["webExtensionInspectedWindow"],
     spec: "devtools/shared/specs/addon/webextension-inspected-window",
     front: "devtools/shared/fronts/addon/webextension-inspected-window",
@@ -47,21 +37,15 @@ const Types = exports.__TypesForTests = [
     spec: "devtools/shared/specs/animation",
     front: "devtools/shared/fronts/animation",
   },
-  /* breakpoint has old fashion client and no front */
   {
-    types: ["breakpoint"],
-    spec: "devtools/shared/specs/breakpoint",
-    front: null,
+    types: ["arraybuffer"],
+    spec: "devtools/shared/specs/array-buffer",
+    front: "devtools/shared/fronts/array-buffer",
   },
   {
-    types: ["function-call", "call-watcher"],
-    spec: "devtools/shared/specs/call-watcher",
-    front: "devtools/shared/fronts/call-watcher",
-  },
-  {
-    types: ["frame-snapshot", "canvas"],
-    spec: "devtools/shared/specs/canvas",
-    front: "devtools/shared/fronts/canvas",
+    types: ["changes"],
+    spec: "devtools/shared/specs/changes",
+    front: "devtools/shared/fronts/changes",
   },
   {
     types: ["cssProperties"],
@@ -69,9 +53,19 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/css-properties",
   },
   {
-    types: ["cssUsage"],
-    spec: "devtools/shared/specs/csscoverage",
-    front: "devtools/shared/fronts/csscoverage",
+    types: ["frameDescriptor"],
+    spec: "devtools/shared/specs/descriptors/frame",
+    front: "devtools/shared/fronts/descriptors/frame",
+  },
+  {
+    types: ["processDescriptor"],
+    spec: "devtools/shared/specs/descriptors/process",
+    front: "devtools/shared/fronts/descriptors/process",
+  },
+  {
+    types: ["webExtensionDescriptor"],
+    spec: "devtools/shared/specs/descriptors/webextension",
+    front: "devtools/shared/fronts/descriptors/webextension",
   },
   {
     types: ["device"],
@@ -100,11 +94,6 @@ const Types = exports.__TypesForTests = [
     spec: "devtools/shared/specs/framerate",
     front: "devtools/shared/fronts/framerate",
   },
-  {
-    types: ["gcli"],
-    spec: "devtools/shared/specs/gcli",
-    front: "devtools/shared/fronts/gcli",
-  },
   /* heap snapshot has old fashion client and no front */
   {
     types: ["heapSnapshotFile"],
@@ -125,6 +114,11 @@ const Types = exports.__TypesForTests = [
     types: ["flexbox", "grid", "layout"],
     spec: "devtools/shared/specs/layout",
     front: "devtools/shared/fronts/layout",
+  },
+  {
+    types: ["manifest"],
+    spec: "devtools/shared/specs/manifest",
+    front: "devtools/shared/fronts/manifest",
   },
   {
     types: ["memory"],
@@ -187,19 +181,25 @@ const Types = exports.__TypesForTests = [
     spec: "devtools/shared/specs/reflow",
     front: "devtools/shared/fronts/reflow",
   },
-  /* Script and source have old fashion client and no front */
   {
-    types: ["context"],
-    spec: "devtools/shared/specs/script",
-    front: null,
+    types: ["screenshot"],
+    spec: "devtools/shared/specs/screenshot",
+    front: "devtools/shared/fronts/screenshot",
   },
   {
     types: ["source"],
     spec: "devtools/shared/specs/source",
-    front: null,
+    front: "devtools/shared/fronts/source",
   },
   {
-    types: ["cookies", "localStorage", "sessionStorage", "Cache", "indexedDB", "storage"],
+    types: [
+      "cookies",
+      "localStorage",
+      "sessionStorage",
+      "Cache",
+      "indexedDB",
+      "storage",
+    ],
     spec: "devtools/shared/specs/storage",
     front: "devtools/shared/fronts/storage",
   },
@@ -207,7 +207,7 @@ const Types = exports.__TypesForTests = [
   {
     types: ["longstring"],
     spec: "devtools/shared/specs/string",
-    front: null
+    front: null,
   },
   {
     types: ["longstractor"],
@@ -237,11 +237,16 @@ const Types = exports.__TypesForTests = [
   {
     types: ["browsingContextTarget"],
     spec: "devtools/shared/specs/targets/browsing-context",
-    front: null,
+    front: "devtools/shared/fronts/targets/browsing-context",
   },
   {
     types: ["chromeWindowTarget"],
     spec: "devtools/shared/specs/targets/chrome-window",
+    front: null,
+  },
+  {
+    types: ["contentProcessTarget"],
+    spec: "devtools/shared/specs/targets/content-process",
     front: null,
   },
   {
@@ -262,34 +267,39 @@ const Types = exports.__TypesForTests = [
   {
     types: ["workerTarget"],
     spec: "devtools/shared/specs/targets/worker",
-    front: null,
+    front: "devtools/shared/fronts/targets/worker",
   },
   {
-    types: ["timeline"],
-    spec: "devtools/shared/specs/timeline",
-    front: "devtools/shared/fronts/timeline",
-  },
-  {
-    types: ["audionode", "webaudio"],
-    spec: "devtools/shared/specs/webaudio",
-    front: "devtools/shared/fronts/webaudio",
+    types: ["thread"],
+    spec: "devtools/shared/specs/thread",
+    front: "devtools/shared/fronts/thread",
   },
   {
     types: ["console"],
     spec: "devtools/shared/specs/webconsole",
-    front: null,
+    front: "devtools/shared/fronts/webconsole",
   },
   {
-    types: ["gl-shader", "gl-program", "webgl"],
-    spec: "devtools/shared/specs/webgl",
-    front: "devtools/shared/fronts/webgl",
+    types: ["webSocket"],
+    spec: "devtools/shared/specs/websocket",
+    front: "devtools/shared/fronts/websocket",
   },
   {
-    types: ["pushSubscription", "serviceWorkerRegistration", "serviceWorker"],
+    types: ["pushSubscription"],
+    spec: "devtools/shared/specs/worker/push-subscription",
+    front: "devtools/shared/fronts/worker/push-subscription",
+  },
+  {
+    types: ["serviceWorker"],
     spec: "devtools/shared/specs/worker/service-worker",
-    front: null,
+    front: "devtools/shared/fronts/worker/service-worker",
   },
-];
+  {
+    types: ["serviceWorkerRegistration"],
+    spec: "devtools/shared/specs/worker/service-worker-registration",
+    front: "devtools/shared/fronts/worker/service-worker-registration",
+  },
+]);
 
 const lazySpecs = new Map();
 const lazyFronts = new Map();
@@ -317,7 +327,8 @@ function lazyLoadSpec(type) {
       require(modulePath);
     } catch (e) {
       throw new Error(
-        `Unable to load lazy spec module '${modulePath}' for type '${type}'`);
+        `Unable to load lazy spec module '${modulePath}' for type '${type}'`
+      );
     }
     lazySpecs.delete(type);
     return true;
@@ -341,7 +352,9 @@ function lazyLoadFront(type) {
       require(modulePath);
     } catch (e) {
       throw new Error(
-        `Unable to load lazy front module '${modulePath}' for type '${type}'`);
+        `Unable to load lazy front module '${modulePath}' for type '${type}'.
+        Error: ${e}`
+      );
     }
     lazyFronts.delete(type);
     return true;

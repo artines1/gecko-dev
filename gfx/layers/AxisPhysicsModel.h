@@ -7,12 +7,11 @@
 #ifndef mozilla_layers_AxisPhysicsModel_h
 #define mozilla_layers_AxisPhysicsModel_h
 
-#include <sys/types.h>                  // for int32_t
-#include "mozilla/TimeStamp.h"          // for TimeDuration
+#include <sys/types.h>          // for int32_t
+#include "mozilla/TimeStamp.h"  // for TimeDuration
 
 namespace mozilla {
 namespace layers {
-
 
 /**
  * AxisPhysicsModel encapsulates a generic 1-dimensional physically-based motion
@@ -24,9 +23,9 @@ namespace layers {
  * method.
  */
 class AxisPhysicsModel {
-public:
+ public:
   AxisPhysicsModel(double aInitialPosition, double aInitialVelocity);
-  ~AxisPhysicsModel();
+  virtual ~AxisPhysicsModel();
 
   /**
    * Advance the physics simulation.
@@ -54,21 +53,18 @@ public:
    */
   void SetPosition(double aPosition);
 
-protected:
-
-  struct State
-  {
-    State(double ap, double av) : p(ap), v(av) {};
-    double p; // Position
-    double v; // Velocity
+ protected:
+  struct State {
+    State(double ap, double av) : p(ap), v(av){};
+    double p;  // Position
+    double v;  // Velocity
   };
 
-  struct Derivative
-  {
-    Derivative() : dp(0.0), dv(0.0) {};
-    Derivative(double aDp, double aDv) : dp(aDp), dv(aDv) {};
-    double dp; // dp / delta time = Position
-    double dv; // dv / delta time = Velocity
+  struct Derivative {
+    Derivative() : dp(0.0), dv(0.0){};
+    Derivative(double aDp, double aDv) : dp(aDp), dv(aDv){};
+    double dp;  // dp / delta time = Position
+    double dv;  // dv / delta time = Velocity
   };
 
   /**
@@ -76,10 +72,9 @@ protected:
    * axis-position-units / second that should be added or removed from the
    * velocity.
    */
-  virtual double Acceleration(const State &aState) = 0;
+  virtual double Acceleration(const State& aState) = 0;
 
-private:
-
+ private:
   /**
    * Duration of fixed delta time step (seconds)
    */
@@ -113,18 +108,16 @@ private:
    * Apply delta velocity and position represented by aDerivative over
    * aDeltaTime seconds, calculate new acceleration, and return new deltas.
    */
-  Derivative Evaluate(const State &aInitState, double aDeltaTime,
-                      const Derivative &aDerivative);
+  Derivative Evaluate(const State& aInitState, double aDeltaTime,
+                      const Derivative& aDerivative);
 
   /**
    * Helper function for performing linear interpolation (lerp) of double's
    */
   static double LinearInterpolate(double aV1, double aV2, double aBlend);
-
 };
 
-
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

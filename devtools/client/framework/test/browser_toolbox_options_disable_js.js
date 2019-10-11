@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -7,19 +5,12 @@
 
 const TEST_URI = URL_ROOT + "browser_toolbox_options_disable_js.html";
 
-function test() {
-  addTab(TEST_URI).then(tab => {
-    const target = TargetFactory.forTab(tab);
-    gDevTools.showToolbox(target).then(testSelectTool);
-  });
-}
+add_task(async function() {
+  const tab = await addTab(TEST_URI);
+  const target = await TargetFactory.forTab(tab);
+  const toolbox = await gDevTools.showToolbox(target);
 
-function testSelectTool(toolbox) {
-  toolbox.once("options-selected", () => testToggleJS(toolbox));
-  toolbox.selectTool("options");
-}
-
-const testToggleJS = async function(toolbox) {
+  await toolbox.selectTool("options");
   ok(true, "Toolbox selected via selectTool method");
 
   await testJSEnabled();
@@ -37,8 +28,9 @@ const testToggleJS = async function(toolbox) {
   await testJSEnabled();
   await testJSEnabledIframe();
 
-  finishUp(toolbox);
-};
+  await toolbox.destroy();
+  gBrowser.removeCurrentTab();
+});
 
 async function testJSEnabled() {
   info("Testing that JS is enabled");
@@ -51,7 +43,11 @@ async function testJSEnabled() {
     const doc = content.document;
     const output = doc.getElementById("output");
     doc.querySelector("#logJSEnabled").click();
-    is(output.textContent, "JavaScript Enabled", 'Output is "JavaScript Enabled"');
+    is(
+      output.textContent,
+      "JavaScript Enabled",
+      'Output is "JavaScript Enabled"'
+    );
   });
 }
 
@@ -64,8 +60,11 @@ async function testJSEnabledIframe() {
     const iframeDoc = iframe.contentDocument;
     const output = iframeDoc.getElementById("output");
     iframeDoc.querySelector("#logJSEnabled").click();
-    is(output.textContent, "JavaScript Enabled",
-                            'Output is "JavaScript Enabled" in iframe');
+    is(
+      output.textContent,
+      "JavaScript Enabled",
+      'Output is "JavaScript Enabled" in iframe'
+    );
   });
 }
 
@@ -79,9 +78,25 @@ async function toggleJS(toolbox) {
     info("Checking checkbox to disable JS");
   }
 
-  const browserLoaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
+  let { javascriptEnabled } = toolbox.target.configureOptions;
+  is(
+    javascriptEnabled,
+    !cbx.checked,
+    "BrowsingContextTargetFront's configureOptions is correct before the toggle"
+  );
+
+  const browserLoaded = BrowserTestUtils.browserLoaded(
+    gBrowser.selectedBrowser
+  );
   cbx.click();
   await browserLoaded;
+
+  ({ javascriptEnabled } = toolbox.target.configureOptions);
+  is(
+    javascriptEnabled,
+    !cbx.checked,
+    "BrowsingContextTargetFront's configureOptions is correctly updated"
+  );
 }
 
 async function testJSDisabled() {
@@ -92,8 +107,10 @@ async function testJSDisabled() {
     const output = doc.getElementById("output");
     doc.querySelector("#logJSDisabled").click();
 
-    ok(output.textContent !== "JavaScript Disabled",
-       'output is not "JavaScript Disabled"');
+    ok(
+      output.textContent !== "JavaScript Disabled",
+      'output is not "JavaScript Disabled"'
+    );
   });
 }
 
@@ -106,14 +123,9 @@ async function testJSDisabledIframe() {
     const iframeDoc = iframe.contentDocument;
     const output = iframeDoc.getElementById("output");
     iframeDoc.querySelector("#logJSDisabled").click();
-    ok(output.textContent !== "JavaScript Disabled",
-       'output is not "JavaScript Disabled" in iframe');
-  });
-}
-
-function finishUp(toolbox) {
-  toolbox.destroy().then(function() {
-    gBrowser.removeCurrentTab();
-    finish();
+    ok(
+      output.textContent !== "JavaScript Disabled",
+      'output is not "JavaScript Disabled" in iframe'
+    );
   });
 }

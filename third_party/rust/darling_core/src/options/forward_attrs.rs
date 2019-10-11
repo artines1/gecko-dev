@@ -1,13 +1,13 @@
 use syn::NestedMeta;
 
-use {FromMetaItem, Result};
-use util::IdentList;
+use util::PathList;
+use {FromMeta, Result};
 
 /// A rule about which attributes to forward to the generated struct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForwardAttrs {
     All,
-    Only(IdentList),
+    Only(PathList),
 }
 
 impl ForwardAttrs {
@@ -20,12 +20,12 @@ impl ForwardAttrs {
     }
 }
 
-impl FromMetaItem for ForwardAttrs {
+impl FromMeta for ForwardAttrs {
     fn from_word() -> Result<Self> {
         Ok(ForwardAttrs::All)
     }
 
     fn from_list(nested: &[NestedMeta]) -> Result<Self> {
-        Ok(ForwardAttrs::Only(IdentList::from_list(nested)?))
+        Ok(ForwardAttrs::Only(PathList::from_list(nested)?))
     }
 }

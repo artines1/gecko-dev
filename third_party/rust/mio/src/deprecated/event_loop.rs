@@ -1,4 +1,5 @@
-use {channel, Evented, Poll, Events, Token};
+use {channel, Poll, Events, Token};
+use event::Evented;
 use deprecated::{Handler, NotifyError};
 use event_imp::{Event, Ready, PollOpt};
 use timer::{self, Timer, Timeout};
@@ -109,7 +110,7 @@ impl<H: Handler> EventLoop<H> {
 
     fn configured(config: Config) -> io::Result<EventLoop<H>> {
         // Create the IO poller
-        let poll = try!(Poll::new());
+        let poll = Poll::new()?;
 
         let timer = timer::Builder::default()
             .tick_duration(config.timer_tick)
@@ -121,50 +122,22 @@ impl<H: Handler> EventLoop<H> {
         let (tx, rx) = channel::sync_channel(config.notify_capacity);
 
         // Register the notification wakeup FD with the IO poller
-        try!(poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot()));
-        try!(poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge()));
+        poll.register(&rx, NOTIFY, Ready::readable(), PollOpt::edge() | PollOpt::oneshot())?;
+        poll.register(&timer, TIMER, Ready::readable(), PollOpt::edge())?;
 
         Ok(EventLoop {
             run: true,
-            poll: poll,
-            timer: timer,
+            poll,
+            timer,
             notify_tx: tx,
             notify_rx: rx,
-            config: config,
+            config,
             events: Events::with_capacity(1024),
         })
     }
 
     /// Returns a sender that allows sending messages to the event loop in a
     /// thread-safe way, waking up the event loop if needed.
-    ///
-    /// # Example
-    /// ```
-    /// use std::thread;
-    /// use mio::deprecated::{EventLoop, Handler};
-    ///
-    /// struct MyHandler;
-    ///
-    /// impl Handler for MyHandler {
-    ///     type Timeout = ();
-    ///     type Message = u32;
-    ///
-    ///     fn notify(&mut self, event_loop: &mut EventLoop<MyHandler>, msg: u32) {
-    ///         assert_eq!(msg, 123);
-    ///         event_loop.shutdown();
-    ///     }
-    /// }
-    ///
-    /// let mut event_loop = EventLoop::new().unwrap();
-    /// let sender = event_loop.channel();
-    ///
-    /// // Send the notification from another thread
-    /// thread::spawn(move || {
-    ///     let _ = sender.send(123);
-    /// });
-    ///
-    /// let _ = event_loop.run(&mut MyHandler);
-    /// ```
     ///
     /// # Implementation Details
     ///
@@ -194,29 +167,6 @@ impl<H: Handler> EventLoop<H> {
     ///
     /// Returns a handle to the timeout that can be used to cancel the timeout
     /// using [#clear_timeout](#method.clear_timeout).
-    ///
-    /// # Example
-    /// ```
-    /// use mio::deprecated::{EventLoop, Handler};
-    /// use std::time::Duration;
-    ///
-    /// struct MyHandler;
-    ///
-    /// impl Handler for MyHandler {
-    ///     type Timeout = u32;
-    ///     type Message = ();
-    ///
-    ///     fn timeout(&mut self, event_loop: &mut EventLoop<MyHandler>, timeout: u32) {
-    ///         assert_eq!(timeout, 123);
-    ///         event_loop.shutdown();
-    ///     }
-    /// }
-    ///
-    ///
-    /// let mut event_loop = EventLoop::new().unwrap();
-    /// let timeout = event_loop.timeout(123, Duration::from_millis(300)).unwrap();
-    /// let _ = event_loop.run(&mut MyHandler);
-    /// ```
     pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> timer::Result<Timeout> {
         self.timer.set_timeout(delay, token)
     }
@@ -260,7 +210,7 @@ impl<H: Handler> EventLoop<H> {
 
         while self.run {
             // Execute ticks as long as the event loop is running
-            try!(self.run_once(handler, None));
+            self.run_once(handler, None)?;
         }
 
         Ok(())
@@ -335,7 +285,7 @@ impl<H: Handler> EventLoop<H> {
     }
 
     fn io_event(&mut self, handler: &mut H, evt: Event) {
-        handler.ready(self, evt.token(), evt.kind());
+        handler.ready(self, evt.token(), evt.readiness());
     }
 
     fn notify(&mut self, handler: &mut H) {
@@ -386,11 +336,11 @@ impl<M> Clone for Sender <M> {
 
 impl<M> Sender<M> {
     fn new(tx: channel::SyncSender<M>) -> Sender<M> {
-        Sender { tx: tx }
+        Sender { tx }
     }
 
     pub fn send(&self, msg: M) -> Result<(), NotifyError<M>> {
-        try!(self.tx.try_send(msg));
+        self.tx.try_send(msg)?;
         Ok(())
     }
 }

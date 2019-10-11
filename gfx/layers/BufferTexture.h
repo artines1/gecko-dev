@@ -20,55 +20,51 @@ bool ComputeHasIntermediateBuffer(gfx::SurfaceFormat aFormat,
                                   LayersBackend aLayersBackend,
                                   bool aSupportsTextureDirectMapping);
 
-class BufferTextureData : public TextureData
-{
-public:
-  static BufferTextureData* Create(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+class BufferTextureData : public TextureData {
+ public:
+  static BufferTextureData* Create(gfx::IntSize aSize,
+                                   gfx::SurfaceFormat aFormat,
                                    gfx::BackendType aMoz2DBackend,
                                    LayersBackend aLayersBackend,
                                    TextureFlags aFlags,
                                    TextureAllocationFlags aAllocFlags,
                                    LayersIPCChannel* aAllocator);
 
-  static BufferTextureData* CreateForYCbCr(KnowsCompositor* aAllocator,
-                                           gfx::IntSize aYSize,
-                                           uint32_t aYStride,
-                                           gfx::IntSize aCbCrSize,
-                                           uint32_t aCbCrStride,
-                                           StereoMode aStereoMode,
-                                           YUVColorSpace aYUVColorSpace,
-                                           uint32_t aBitDepth,
-                                           TextureFlags aTextureFlags);
+  static BufferTextureData* CreateForYCbCr(
+      KnowsCompositor* aAllocator, gfx::IntSize aYSize, uint32_t aYStride,
+      gfx::IntSize aCbCrSize, uint32_t aCbCrStride, StereoMode aStereoMode,
+      gfx::ColorDepth aColorDepth, gfx::YUVColorSpace aYUVColorSpace,
+      gfx::ColorRange aColorRange, TextureFlags aTextureFlags);
 
-  virtual bool Lock(OpenMode aMode) override { return true; }
+  bool Lock(OpenMode aMode) override { return true; }
 
-  virtual void Unlock() override {}
+  void Unlock() override {}
 
-  virtual void FillInfo(TextureData::Info& aInfo) const override;
+  void FillInfo(TextureData::Info& aInfo) const override;
 
-  virtual already_AddRefed<gfx::DrawTarget> BorrowDrawTarget() override;
+  already_AddRefed<gfx::DrawTarget> BorrowDrawTarget() override;
 
-  virtual bool BorrowMappedData(MappedTextureData& aMap) override;
+  bool BorrowMappedData(MappedTextureData& aMap) override;
 
-  virtual bool BorrowMappedYCbCrData(MappedYCbCrTextureData& aMap) override;
+  bool BorrowMappedYCbCrData(MappedYCbCrTextureData& aMap) override;
 
   // use TextureClient's default implementation
-  virtual bool UpdateFromSurface(gfx::SourceSurface* aSurface) override;
+  bool UpdateFromSurface(gfx::SourceSurface* aSurface) override;
 
-  virtual BufferTextureData* AsBufferTextureData() override { return this; }
+  BufferTextureData* AsBufferTextureData() override { return this; }
 
   // Don't use this.
-  void SetDesciptor(const BufferDescriptor& aDesc);
+  void SetDescriptor(BufferDescriptor&& aDesc);
 
   Maybe<gfx::IntSize> GetCbCrSize() const;
 
-  Maybe<YUVColorSpace> GetYUVColorSpace() const;
+  Maybe<gfx::YUVColorSpace> GetYUVColorSpace() const;
 
-  Maybe<uint32_t> GetBitDepth() const;
+  Maybe<gfx::ColorDepth> GetColorDepth() const;
 
   Maybe<StereoMode> GetStereoMode() const;
 
-protected:
+ protected:
   gfx::IntSize GetSize() const;
 
   gfx::SurfaceFormat GetFormat() const;
@@ -82,17 +78,15 @@ protected:
   virtual uint8_t* GetBuffer() = 0;
   virtual size_t GetBufferSize() = 0;
 
-  BufferTextureData(const BufferDescriptor& aDescriptor, gfx::BackendType aMoz2DBackend)
-  : mDescriptor(aDescriptor)
-  , mMoz2DBackend(aMoz2DBackend)
-  {}
+  BufferTextureData(const BufferDescriptor& aDescriptor,
+                    gfx::BackendType aMoz2DBackend)
+      : mDescriptor(aDescriptor), mMoz2DBackend(aMoz2DBackend) {}
 
-  RefPtr<gfx::DrawTarget> mDrawTarget;
   BufferDescriptor mDescriptor;
   gfx::BackendType mMoz2DBackend;
 };
 
-} // namespace
-} // namespace
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

@@ -1,9 +1,11 @@
 "use strict";
 
-var gAnimHistogram = Services.telemetry
-                             .getHistogramById("FX_TAB_CLOSE_TIME_ANIM_MS");
-var gNoAnimHistogram = Services.telemetry
-                               .getHistogramById("FX_TAB_CLOSE_TIME_NO_ANIM_MS");
+var gAnimHistogram = Services.telemetry.getHistogramById(
+  "FX_TAB_CLOSE_TIME_ANIM_MS"
+);
+var gNoAnimHistogram = Services.telemetry.getHistogramById(
+  "FX_TAB_CLOSE_TIME_NO_ANIM_MS"
+);
 
 /**
  * Takes a Telemetry histogram snapshot and returns the sum of all counts.
@@ -16,7 +18,7 @@ var gNoAnimHistogram = Services.telemetry
 function snapshotCount(snapshot) {
   // Use Array.prototype.reduce to sum up all of the
   // snapshot.count entries
-  return snapshot.counts.reduce((a, b) => a + b);
+  return Object.values(snapshot.values).reduce((a, b) => a + b, 0);
 }
 
 /**
@@ -32,8 +34,11 @@ function snapshotCount(snapshot) {
  *        this would be 0.
  */
 function assertCount(snapshot, expectedCount) {
-  Assert.equal(snapshotCount(snapshot), expectedCount,
-               `Should only be ${expectedCount} collected value.`);
+  Assert.equal(
+    snapshotCount(snapshot),
+    expectedCount,
+    `Should only be ${expectedCount} collected value.`
+  );
 }
 
 /**

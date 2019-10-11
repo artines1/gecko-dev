@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -10,7 +9,10 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,<p>test inspect() in Scratchpad</p>");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html;charset=utf8,<p>test inspect() in Scratchpad</p>"
+  );
 }
 
 function runTests() {

@@ -23,13 +23,14 @@ import time
 
 import mozcrash
 import mozfile
-import results
-import talosconfig
-import utils
+
 from mozlog import get_proxy_logger
 from talos.cmanager import CounterManagement
 from talos.ffsetup import FFSetup
 from talos.talos_process import run_browser
+from talos import utils
+from talos import results
+from talos import talosconfig
 from talos.utils import TalosCrash, TalosError, TalosRegression, run_in_debug_mode
 
 LOG = get_proxy_logger()
@@ -101,6 +102,12 @@ class TTest(object):
         if browser_config.get('stylothreads', 0) > 0:
             setup.env['STYLO_THREADS'] = str(browser_config['stylothreads'])
 
+        if browser_config['enable_webrender']:
+            setup.env['MOZ_WEBRENDER'] = '1'
+            setup.env['MOZ_ACCELERATED'] = '1'
+        else:
+            setup.env['MOZ_WEBRENDER'] = '0'
+
         # set url if there is one (i.e. receiving a test page, not a manifest/pageloader test)
         if test_config.get('url', None) is not None:
             test_config['url'] = utils.interpolate(
@@ -108,6 +115,8 @@ class TTest(object):
                 profile=setup.profile_dir,
                 firefox=browser_config['browser_path']
             )
+        else:
+            setup.env['MOZ_USE_PAGELOADER'] = '1'
 
         # setup global (cross-cycle) responsiveness counters
         global_counters = {}
@@ -126,11 +135,6 @@ class TTest(object):
         setup.env['JSGC_DISABLE_POISONING'] = '1'
         setup.env['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = '1'
 
-        # if using mitmproxy we must allow access to 'external' sites
-        if browser_config.get('mitmproxy', False):
-            LOG.info('Using mitmproxy so setting MOZ_DISABLE_NONLOCAL_CONNECTIONS to 0')
-            setup.env['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = '0'
-
         # instantiate an object to hold test results
         test_results = results.TestResults(
             test_config,
@@ -145,6 +149,11 @@ class TTest(object):
 
             # remove the browser  error file
             mozfile.remove(browser_config['error_filename'])
+
+            # individual tests can have different frameworks
+            # TODO: ensure that we don't run >1 test with custom frameworks
+            if test_config.get('perfherder_framework', None) is not None:
+                test_results.framework = test_config['perfherder_framework']
 
             # reinstall any file whose stability we need to ensure across
             # the cycles

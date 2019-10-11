@@ -7,228 +7,150 @@
 #include "CrashReporterHost.h"
 #include "CrashReporterMetadataShmem.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "mozilla/recordreplay/ParentIPC.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/Telemetry.h"
-#include "nsExceptionHandler.h"
 #include "nsIAsyncShutdown.h"
 #include "nsICrashService.h"
+#include "nsXULAppAPI.h"
+
+// Consistency checking for nsICrashService constants.  We depend on the
+// equivalence between nsICrashService values and GeckoProcessType values
+// in the code below.  Making them equal also ensures that if new process
+// types are added, people will know they may need to add crash reporting
+// support in various places because compilation errors will be triggered here.
+static_assert(nsICrashService::PROCESS_TYPE_MAIN ==
+                  (int)GeckoProcessType_Default,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_PLUGIN ==
+                  (int)GeckoProcessType_Plugin,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_CONTENT ==
+                  (int)GeckoProcessType_Content,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_IPDLUNITTEST ==
+                  (int)GeckoProcessType_IPDLUnitTest,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_GMPLUGIN ==
+                  (int)GeckoProcessType_GMPlugin,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_GPU == (int)GeckoProcessType_GPU,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_VR == (int)GeckoProcessType_VR,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_RDD == (int)GeckoProcessType_RDD,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_SOCKET ==
+                  (int)GeckoProcessType_Socket,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+static_assert(nsICrashService::PROCESS_TYPE_SANDBOX_BROKER ==
+                  (int)GeckoProcessType_RemoteSandboxBroker,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
+// Add new static asserts here if you add more process types.
+// Update this static assert as well.
+static_assert(nsICrashService::PROCESS_TYPE_SANDBOX_BROKER + 1 ==
+                  (int)GeckoProcessType_End,
+              "GeckoProcessType enum is out of sync with nsICrashService!");
 
 namespace mozilla {
 namespace ipc {
 
 CrashReporterHost::CrashReporterHost(GeckoProcessType aProcessType,
                                      const Shmem& aShmem,
-                                     ThreadId aThreadId)
- : mProcessType(aProcessType),
-   mShmem(aShmem),
-   mThreadId(aThreadId),
-   mStartTime(::time(nullptr)),
-   mFinalized(false)
-{
-}
+                                     CrashReporter::ThreadId aThreadId)
+    : mProcessType(aProcessType),
+      mShmem(aShmem),
+      mThreadId(aThreadId),
+      mStartTime(::time(nullptr)),
+      mFinalized(false) {}
 
-bool
-CrashReporterHost::GenerateCrashReport(base::ProcessId aPid)
-{
+bool CrashReporterHost::GenerateCrashReport(base::ProcessId aPid) {
   if (!TakeCrashedChildMinidump(aPid, nullptr)) {
     return false;
   }
   return FinalizeCrashReport();
 }
 
-RefPtr<nsIFile>
-CrashReporterHost::TakeCrashedChildMinidump(base::ProcessId aPid, uint32_t* aOutSequence)
-{
+RefPtr<nsIFile> CrashReporterHost::TakeCrashedChildMinidump(
+    base::ProcessId aPid, uint32_t* aOutSequence) {
+  CrashReporter::AnnotationTable annotations;
   MOZ_ASSERT(!HasMinidump());
 
   RefPtr<nsIFile> crashDump;
-  if (!XRE_TakeMinidumpForChild(aPid, getter_AddRefs(crashDump), aOutSequence)) {
+  if (!CrashReporter::TakeMinidumpForChild(aPid, getter_AddRefs(crashDump),
+                                           annotations, aOutSequence)) {
     return nullptr;
   }
-  if (!AdoptMinidump(crashDump)) {
+  if (!AdoptMinidump(crashDump, annotations)) {
     return nullptr;
   }
-  return crashDump.get();
+  return crashDump;
 }
 
-bool
-CrashReporterHost::AdoptMinidump(nsIFile* aFile)
-{
-  return CrashReporter::GetIDFromMinidump(aFile, mDumpID);
+bool CrashReporterHost::AdoptMinidump(nsIFile* aFile,
+                                      const AnnotationTable& aAnnotations) {
+  if (!CrashReporter::GetIDFromMinidump(aFile, mDumpID)) {
+    return false;
+  }
+
+  MergeCrashAnnotations(mExtraAnnotations, aAnnotations);
+  return true;
 }
 
-bool
-CrashReporterHost::FinalizeCrashReport()
-{
+int32_t CrashReporterHost::GetCrashType() {
+  if (mExtraAnnotations[CrashReporter::Annotation::RecordReplayHang]
+          .EqualsLiteral("1")) {
+    return nsICrashService::CRASH_TYPE_HANG;
+  }
+
+  if (mExtraAnnotations[CrashReporter::Annotation::PluginHang].EqualsLiteral(
+          "1")) {
+    return nsICrashService::CRASH_TYPE_HANG;
+  }
+
+  return nsICrashService::CRASH_TYPE_CRASH;
+}
+
+bool CrashReporterHost::FinalizeCrashReport() {
   MOZ_ASSERT(!mFinalized);
   MOZ_ASSERT(HasMinidump());
 
-  CrashReporter::AnnotationTable notes;
+  CrashReporter::AnnotationTable annotations;
 
-  nsAutoCString type;
-  switch (mProcessType) {
-    case GeckoProcessType_Content:
-      type = NS_LITERAL_CSTRING("content");
-      break;
-    case GeckoProcessType_Plugin:
-    case GeckoProcessType_GMPlugin:
-      type = NS_LITERAL_CSTRING("plugin");
-      break;
-    case GeckoProcessType_GPU:
-      type = NS_LITERAL_CSTRING("gpu");
-      break;
-    default:
-      NS_ERROR("unknown process type");
-      break;
-  }
-  notes.Put(NS_LITERAL_CSTRING("ProcessType"), type);
+  annotations[CrashReporter::Annotation::ProcessType] =
+      XRE_ChildProcessTypeToAnnotation(mProcessType);
 
   char startTime[32];
   SprintfLiteral(startTime, "%lld", static_cast<long long>(mStartTime));
-  notes.Put(NS_LITERAL_CSTRING("StartupTime"), nsDependentCString(startTime));
+  annotations[CrashReporter::Annotation::StartupTime] =
+      nsDependentCString(startTime);
 
   // We might not have shmem (for example, when running crashreporter tests).
   if (mShmem.IsReadable()) {
-    CrashReporterMetadataShmem::ReadAppNotes(mShmem, &notes);
+    CrashReporterMetadataShmem::ReadAppNotes(mShmem, annotations);
   }
-  CrashReporter::AppendExtraData(mDumpID, mExtraNotes);
-  CrashReporter::AppendExtraData(mDumpID, notes);
 
-  // Use mExtraNotes, since NotifyCrashService looks for "PluginHang" which is
-  // set in the parent process.
-  NotifyCrashService(mProcessType, mDumpID, &mExtraNotes);
+  MergeCrashAnnotations(mExtraAnnotations, annotations);
+  CrashReporter::WriteExtraFile(mDumpID, mExtraAnnotations);
+
+  int32_t crashType = GetCrashType();
+  NotifyCrashService(mProcessType, crashType, mDumpID);
 
   mFinalized = true;
   return true;
 }
 
-namespace {
-class GenerateMinidumpShutdownBlocker : public nsIAsyncShutdownBlocker {
-public:
-  GenerateMinidumpShutdownBlocker() = default;
-
-  NS_IMETHOD BlockShutdown(nsIAsyncShutdownClient* aBarrierClient) override
-  {
-    return NS_OK;
-  }
-
-  NS_IMETHOD GetName(nsAString& aName) override
-  {
-    aName = NS_LITERAL_STRING("Crash Reporter: blocking on minidump"
-                              "generation.");
-    return NS_OK;
-  }
-
-  NS_IMETHOD GetState(nsIPropertyBag**) override
-  {
-    return NS_OK;
-  }
-
-  NS_DECL_THREADSAFE_ISUPPORTS
-
-private:
-  virtual ~GenerateMinidumpShutdownBlocker() = default;
-};
-
-NS_IMPL_ISUPPORTS(GenerateMinidumpShutdownBlocker, nsIAsyncShutdownBlocker)
-}
-
-static nsCOMPtr<nsIAsyncShutdownClient> GetShutdownBarrier()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  nsCOMPtr<nsIAsyncShutdownService> svc = services::GetAsyncShutdown();
-  nsCOMPtr<nsIAsyncShutdownClient> barrier;
-  nsresult rv = svc->GetProfileBeforeChange(getter_AddRefs(barrier));
-
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return nullptr;
-  }
-
-  return barrier.forget();
-}
-
-void
-CrashReporterHost::GenerateMinidumpAndPair(GeckoChildProcessHost* aChildProcess,
-                                           nsIFile* aMinidumpToPair,
-                                           const nsACString& aPairName,
-                                           std::function<void(bool)>&& aCallback,
-                                           bool aAsync)
-{
-  base::ProcessHandle childHandle;
-#ifdef XP_MACOSX
-  childHandle = aChildProcess->GetChildTask();
-#else
-  childHandle = aChildProcess->GetChildProcessHandle();
-#endif
-
-  if (!mCreateMinidumpCallback.IsEmpty()) {
-    aCallback(false);
-    return;
-  }
-  mCreateMinidumpCallback.Init(std::move(aCallback), aAsync);
-
-  if (!childHandle) {
-    NS_WARNING("Failed to get child process handle.");
-    mCreateMinidumpCallback.Invoke(false);
-    return;
-  }
-
-  nsCOMPtr<nsIAsyncShutdownBlocker> shutdownBlocker;
-  if (aAsync && NS_IsMainThread()) {
-    nsCOMPtr<nsIAsyncShutdownClient> barrier = GetShutdownBarrier();
-    if (!barrier) {
-      mCreateMinidumpCallback.Invoke(false);
-      return;
-    }
-
-    shutdownBlocker = new GenerateMinidumpShutdownBlocker();
-
-    nsresult rv = barrier->AddBlocker(shutdownBlocker,
-                                      NS_LITERAL_STRING(__FILE__), __LINE__,
-                                      NS_LITERAL_STRING("Minidump generation"));
-    Unused << NS_WARN_IF(NS_FAILED(rv));
-  }
-
-  std::function<void(bool)> callback =
-    [this, shutdownBlocker](bool aResult) {
-      if (aResult &&
-          CrashReporter::GetIDFromMinidump(this->mTargetDump, this->mDumpID)) {
-        this->mCreateMinidumpCallback.Invoke(true);
-      } else {
-        this->mCreateMinidumpCallback.Invoke(false);
-       }
-
-       if (shutdownBlocker) {
-         nsCOMPtr<nsIAsyncShutdownClient> barrier = GetShutdownBarrier();
-         if (barrier) {
-           barrier->RemoveBlocker(shutdownBlocker);
-         }
-      }
-    };
-
-  CrashReporter::CreateMinidumpsAndPair(childHandle,
-                                        mThreadId,
-                                        aPairName,
-                                        aMinidumpToPair,
-                                        getter_AddRefs(mTargetDump),
-                                        std::move(callback),
-                                        aAsync);
-}
-
-/* static */ void
-CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
-                                      const nsString& aChildDumpID,
-                                      const AnnotationTable* aNotes)
-{
+/* static */
+void CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
+                                           int32_t aCrashType,
+                                           const nsString& aChildDumpID) {
   if (!NS_IsMainThread()) {
     RefPtr<Runnable> runnable = NS_NewRunnableFunction(
-      "ipc::CrashReporterHost::NotifyCrashService", [=]() -> void {
-        CrashReporterHost::NotifyCrashService(
-          aProcessType, aChildDumpID, aNotes);
-      });
+        "ipc::CrashReporterHost::NotifyCrashService", [&]() -> void {
+          CrashReporterHost::NotifyCrashService(aProcessType, aCrashType,
+                                                aChildDumpID);
+        });
     RefPtr<nsIThread> mainThread = do_GetMainThread();
     SyncRunnable::DispatchToThread(mainThread, runnable);
     return;
@@ -237,55 +159,74 @@ CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
   MOZ_ASSERT(!aChildDumpID.IsEmpty());
 
   nsCOMPtr<nsICrashService> crashService =
-    do_GetService("@mozilla.org/crashservice;1");
+      do_GetService("@mozilla.org/crashservice;1");
   if (!crashService) {
     return;
   }
 
   int32_t processType;
-  int32_t crashType = nsICrashService::CRASH_TYPE_CRASH;
-
   nsCString telemetryKey;
 
   switch (aProcessType) {
-    case GeckoProcessType_Content:
-      processType = nsICrashService::PROCESS_TYPE_CONTENT;
-      telemetryKey.AssignLiteral("content");
-      break;
-    case GeckoProcessType_Plugin: {
-      processType = nsICrashService::PROCESS_TYPE_PLUGIN;
-      telemetryKey.AssignLiteral("plugin");
-      nsAutoCString val;
-      if (aNotes->Get(NS_LITERAL_CSTRING("PluginHang"), &val) &&
-        val.EqualsLiteral("1")) {
-        crashType = nsICrashService::CRASH_TYPE_HANG;
-        telemetryKey.AssignLiteral("pluginhang");
-      }
-      break;
-    }
-    case GeckoProcessType_GMPlugin:
-      processType = nsICrashService::PROCESS_TYPE_GMPLUGIN;
-      telemetryKey.AssignLiteral("gmplugin");
-      break;
-    case GeckoProcessType_GPU:
-      processType = nsICrashService::PROCESS_TYPE_GPU;
-      telemetryKey.AssignLiteral("gpu");
-      break;
-    default:
+    case GeckoProcessType_IPDLUnitTest:
+    case GeckoProcessType_Default:
       NS_ERROR("unknown process type");
       return;
+    default:
+      processType = (int)aProcessType;
+      break;
+  }
+
+  if (aProcessType == GeckoProcessType_Plugin &&
+      aCrashType == nsICrashService::CRASH_TYPE_HANG) {
+    telemetryKey.AssignLiteral("pluginhang");
+  } else {
+    switch (aProcessType) {
+#define GECKO_PROCESS_TYPE(enum_name, string_name, xre_name, bin_type) \
+  case GeckoProcessType_##enum_name:                                   \
+    telemetryKey.AssignLiteral(string_name);                           \
+    break;
+#include "mozilla/GeckoProcessTypes.h"
+#undef GECKO_PROCESS_TYPE
+      // We can't really hit this, thanks to the above switch, but having it
+      // here will placate the compiler.
+      default:
+        NS_ERROR("unknown process type");
+        return;
+    }
   }
 
   RefPtr<Promise> promise;
-  crashService->AddCrash(processType, crashType, aChildDumpID, getter_AddRefs(promise));
-  Telemetry::Accumulate(Telemetry::SUBPROCESS_CRASHES_WITH_DUMP, telemetryKey, 1);
+  crashService->AddCrash(processType, aCrashType, aChildDumpID,
+                         getter_AddRefs(promise));
+  Telemetry::Accumulate(Telemetry::SUBPROCESS_CRASHES_WITH_DUMP, telemetryKey,
+                        1);
 }
 
-void
-CrashReporterHost::AddNote(const nsCString& aKey, const nsCString& aValue)
-{
-  mExtraNotes.Put(aKey, aValue);
+void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
+                                      bool aValue) {
+  mExtraAnnotations[aKey] =
+      aValue ? NS_LITERAL_CSTRING("1") : NS_LITERAL_CSTRING("0");
 }
 
-} // namespace ipc
-} // namespace mozilla
+void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
+                                      int aValue) {
+  nsAutoCString valueString;
+  valueString.AppendInt(aValue);
+  mExtraAnnotations[aKey] = valueString;
+}
+
+void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
+                                      unsigned int aValue) {
+  nsAutoCString valueString;
+  valueString.AppendInt(aValue);
+  mExtraAnnotations[aKey] = valueString;
+}
+
+void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
+                                      const nsACString& aValue) {
+  mExtraAnnotations[aKey] = aValue;
+}
+
+}  // namespace ipc
+}  // namespace mozilla

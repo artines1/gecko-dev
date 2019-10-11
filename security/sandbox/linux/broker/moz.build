@@ -10,7 +10,7 @@ EXPORTS.mozilla += [
     'SandboxBrokerPolicyFactory.h',
 ]
 
-SOURCES += [
+UNIFIED_SOURCES += [
     'SandboxBroker.cpp',
     'SandboxBrokerCommon.cpp',
     'SandboxBrokerPolicyFactory.cpp',
@@ -30,7 +30,8 @@ LOCAL_INCLUDES += [
     '/security/sandbox/chromium',
 ]
 
-if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     CXXFLAGS += CONFIG['GLIB_CFLAGS']
+    CXXFLAGS += CONFIG['TK_CFLAGS']
 
 FINAL_LIBRARY = 'xul'

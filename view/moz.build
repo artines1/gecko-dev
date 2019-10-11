@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files('**'):
-    BUG_COMPONENT = ('Core', 'Layout: View Rendering')
+    BUG_COMPONENT = ('Core', 'Web Painting')
 
 EXPORTS += [
     'nsView.h',
@@ -16,6 +16,8 @@ UNIFIED_SOURCES += [
     'nsView.cpp',
     'nsViewManager.cpp',
 ]
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 

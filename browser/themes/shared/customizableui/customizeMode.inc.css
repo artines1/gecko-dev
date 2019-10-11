@@ -8,20 +8,21 @@
   --drag-drop-transition-duration: .3s;
 }
 
-#main-window[customizing] .customization-target:not(#widget-overflow-fixed-list) {
+:root[customizing] .customization-target:not(#widget-overflow-fixed-list) {
   min-width: 100px;
 }
 
 #customization-container {
-  background-color: var(--toolbar-non-lwt-bgcolor);
-  background-image: var(--toolbar-non-lwt-bgimage);
-  color: var(--toolbar-non-lwt-textcolor);
-  text-shadow: none;
+  background-color: var(--toolbar-bgcolor);
+  background-image: var(--toolbar-bgimage);
+  color: var(--toolbar-color);
 }
 
 :root[lwtheme-image] #customization-container {
   background-color: transparent;
   background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-non-lwt-bgcolor) 45px);
+  color: var(--toolbar-non-lwt-textcolor);
+  text-shadow: none;
 }
 
 #customization-palette {
@@ -67,9 +68,10 @@
   padding: 2px 5px;
 }
 
-.customizationmode-checkbox:not(:-moz-lwtheme),
+.customizationmode-checkbox:not(:-moz-lwtheme):not([disabled]),
 .customizationmode-button {
-  color: rgb(71, 71, 71);
+  /* !important overrides :hover:active color from button.css on Mac */
+  color: rgb(71, 71, 71) !important;
 }
 
 #customization-reset-button,
@@ -79,7 +81,7 @@
 }
 
 #customization-done-button {
-  color: #fff;
+  color: #fff !important;
   font-weight: 700;
   border-color: #0060df;
   background-color: #0a84ff;
@@ -145,8 +147,7 @@
 
 #customization-uidensity-button > .box-inherit > .box-inherit > .button-text,
 #customization-lwtheme-button > .box-inherit > .box-inherit > .button-text {
-  /* Sadly, button.css thinks its margins are perfect for everyone. */
-  margin-inline-start: 6px !important;
+  margin-inline-start: 6px;
 }
 
 #customization-uidensity-button > .box-inherit > .box-inherit > .button-icon,
@@ -158,7 +159,7 @@
 }
 
 #customization-lwtheme-button > .box-inherit > .box-inherit > .button-icon {
-  background-image: url("chrome://mozapps/content/extensions/default-theme-icon.svg");
+  background-image: url("resource://gre/modules/themes/default/icon.svg");
 }
 
 #customization-uidensity-button > .box-inherit > .box-inherit > .button-icon {
@@ -255,13 +256,20 @@ toolbarpaletteitem[place="toolbar"]:not([mousedown="true"]):-moz-focusring {
   outline-offset: -5px;
 }
 
+toolbarpaletteitem[place=palette]::after {
+  content: attr(title);
+  display: block;
+  text-align: center;
+}
+
 toolbarpaletteitem[place=palette] > toolbarspring {
   width: 7em;
   min-width: 7em;
   outline: 1px solid;
   outline-offset: -8px;
   opacity: .6;
-  height: 37px;
+  min-height: 37px;
+  max-height: 37px;
 }
 
 toolbarpaletteitem[place=toolbar] > toolbarspring {
@@ -281,10 +289,17 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   display: none;
 }
 
-#customization-palette > toolbarpaletteitem > label {
-  text-align: center;
-  margin-left: 0;
-  margin-right: 0;
+/* Squeeze together the multi-button toolbarpaletteitems: */
+#wrapper-zoom-controls[place="palette"] > #zoom-controls > #zoom-out-button,
+#wrapper-edit-controls[place="palette"] > #edit-controls > #cut-button {
+  -moz-box-align: end;
+}
+#wrapper-zoom-controls[place="palette"] > #zoom-controls > #zoom-in-button,
+#wrapper-edit-controls[place="palette"] > #edit-controls > #paste-button {
+  -moz-box-align: start;
+}
+#wrapper-edit-controls[place="palette"] > #edit-controls > #copy-button {
+  -moz-box-flex: 0;
 }
 
 #customization-uidensity-touch-spacer {
@@ -296,20 +311,19 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   margin-bottom: 10px;
 }
 
-#customization-uidensity-menu > .panel-arrowcontainer > .panel-arrowcontent,
-#customization-lwtheme-menu > .panel-arrowcontainer > .panel-arrowcontent {
-  -moz-box-orient: vertical;
+#customization-uidensity-menu,
+#customization-lwtheme-menu {
   font: menu;
 }
 
-#customization-lwtheme-menu > .panel-arrowcontainer > .panel-arrowcontent {
+#customization-lwtheme-menu {
   /* Make the panel padding uniform across all platforms due to the
      styling of the section headers and footer. */
-  padding: 10px;
+  --arrowpanel-padding: 10px;
 }
 
-#customization-uidensity-menu > .panel-arrowcontainer > .panel-arrowcontent {
-  padding: 5px 10px;
+#customization-uidensity-menu {
+  --arrowpanel-padding: 5px 10px;
 }
 
 .customization-uidensity-menuitem > .menu-iconic-left > .menu-iconic-icon,
@@ -366,10 +380,6 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   text-align: start;
 }
 
-.customization-uidensity-menuitem > .menu-iconic-text {
-  font: menu;
-}
-
 #customization-lwtheme-menu-header,
 #customization-lwtheme-menu-recommended {
   padding: 10px;
@@ -418,6 +428,17 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   border-inline-end: 1px solid var(--panel-separator-color);
 }
 
+.customization-uidensity-menuitem > .menu-iconic-left > .menu-iconic-icon:-moz-locale-dir(rtl),
+.customization-lwtheme-menu-theme > .toolbarbutton-icon:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
+}
+
+#customization-uidensity-button > .box-inherit > .box-inherit > .button-icon:-moz-locale-dir(rtl),
+#customization-lwtheme-button > .box-inherit > .box-inherit > .button-icon:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
+}
+
+
 #customization-panelWrapper > .panel-arrowcontent {
   color: var(--arrowpanel-color);
   background: var(--arrowpanel-background);
@@ -430,12 +451,14 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   border-radius: var(--arrowpanel-border-radius);
 %else
   border: 1px solid var(--arrowpanel-border-color);
+  margin: 0;
   box-shadow: 0 0 4px hsla(0,0%,0%,.2);
 %endif
   max-width: 29em;
 }
 
 #customization-panelWrapper > .panel-arrowbox {
+  display: block;
   position: relative;
   height: 10px;
   margin-bottom: -1px;
@@ -504,7 +527,7 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
  */
 #customization-panelHolder > #widget-overflow-fixed-list:not(:empty) {
   padding-bottom: 50px; /* Make sure there's always space to drop stuff. */
-  border-top: 1px solid rgba(0,0,0,0.1);
+  border-top: 1px solid var(--panel-separator-color);
 }
 
 #customization-panelHolder > #widget-overflow-fixed-list::before {
@@ -534,8 +557,8 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
   opacity: 0;
 }
 
-#downloads-button-autohide-panel > .panel-arrowcontainer > .panel-arrowcontent {
-  padding: 5px 12px;
+#downloads-button-autohide-panel {
+  --arrowpanel-padding: 5px 12px;
 }
 
 #downloads-button-autohide-checkbox {
@@ -567,7 +590,7 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 
 %ifdef XP_UNIX
 %ifndef XP_MACOSX
-#customization-palette[whimsypong] > toolbarpaletteitem > toolbarspring {
+#customization-palette[whimsypong] > toolbarpaletteitem[id^="wrapper-customizableui-special-spring"] {
   font-size: 12px;
 }
 %endif
@@ -614,6 +637,7 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 #wp-player2,
 #wp-ball,
 #wp-score {
+  display: block;
   position: fixed;
 }
 

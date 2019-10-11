@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -35,7 +33,7 @@ add_task(async function() {
 });
 
 async function testToolboxInitialization(testActor, tab) {
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
 
   info("Opening inspector with gDevTools.");
   const toolbox = await gDevTools.showToolbox(target, "inspector");
@@ -44,7 +42,7 @@ async function testToolboxInitialization(testActor, tab) {
   ok(true, "Inspector started, and notification received.");
   ok(inspector, "Inspector instance is accessible.");
   ok(inspector.isReady, "Inspector instance is ready.");
-  is(inspector.target.tab, tab, "Valid target.");
+  is(inspector.currentTarget.tab, tab, "Valid target.");
 
   await selectNode("p", inspector);
   await testMarkupView("p", inspector);
@@ -75,7 +73,7 @@ async function testContextMenuInitialization(testActor) {
 async function testContextMenuInspectorAlreadyOpen(testActor) {
   info("Changing node by clicking on 'Inspect Element' context menu item");
 
-  const inspector = getActiveInspector();
+  const inspector = await getActiveInspector();
   ok(inspector, "Inspector is active");
 
   await clickOnInspectMenuItem(testActor, "#closing");
@@ -86,11 +84,16 @@ async function testContextMenuInspectorAlreadyOpen(testActor) {
 }
 
 async function testMarkupView(selector, inspector) {
-  inspector = inspector || getActiveInspector();
+  if (!inspector) {
+    inspector = await getActiveInspector();
+  }
   const nodeFront = await getNodeFront(selector, inspector);
   try {
-    is(inspector.selection.nodeFront, nodeFront,
-       "Right node is selected in the markup view");
+    is(
+      inspector.selection.nodeFront,
+      nodeFront,
+      "Right node is selected in the markup view"
+    );
   } catch (ex) {
     ok(false, "Got exception while resolving selected node of markup view.");
     console.error(ex);
@@ -98,13 +101,18 @@ async function testMarkupView(selector, inspector) {
 }
 
 async function testBreadcrumbs(selector, inspector) {
-  inspector = inspector || getActiveInspector();
+  if (!inspector) {
+    inspector = await getActiveInspector();
+  }
   const nodeFront = await getNodeFront(selector, inspector);
 
   const b = inspector.breadcrumbs;
   const expectedText = b.prettyPrintNodeAsText(nodeFront);
   const button = b.container.querySelector("button[checked=true]");
   ok(button, "A crumbs is checked=true");
-  is(button.getAttribute("title"), expectedText,
-     "Crumb refers to the right node");
+  is(
+    button.getAttribute("title"),
+    expectedText,
+    "Crumb refers to the right node"
+  );
 }

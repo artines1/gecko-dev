@@ -4,49 +4,45 @@
 
 "use strict";
 
-var gDebuggee;
-var gThreadClient;
-
-add_task(async function run_test() {
-  await run_test_with_server(DebuggerServer);
-  await run_test_with_server(WorkerDebuggerServer);
+Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
 });
 
-async function run_test_with_server(server) {
-  initTestDebuggerServer(server);
-  const title = "test_enum_symbols";
-  gDebuggee = addTestGlobal(title, server);
-  gDebuggee.eval(function stopMe(arg) {
-    debugger;
-  }.toString());
-  const client = new DebuggerClient(server.connectPipe());
-  await client.connect();
-  [,, gThreadClient] = await attachTestTabAndResume(client, title);
-  await test_enum_symbols();
-  await client.close();
-}
+add_task(
+  threadFrontTest(async ({ threadFront, debuggee, client }) => {
+    await new Promise(function(resolve) {
+      threadFront.once("paused", async function(packet) {
+        const [grip] = packet.frame.arguments;
+        const objClient = threadFront.pauseGrip(grip);
+        const { iterator } = await objClient.enumSymbols();
+        const { ownSymbols } = await iterator.slice(0, iterator.count);
 
-async function test_enum_symbols() {
-  await new Promise(function(resolve) {
-    gThreadClient.addOneTimeListener("paused", async function(event, packet) {
-      const [grip] = packet.frame.arguments;
-      const objClient = gThreadClient.pauseGrip(grip);
-      const {iterator} = await objClient.enumSymbols();
-      const {ownSymbols} = await iterator.slice(0, iterator.count);
+        strictEqual(ownSymbols.length, 1, "There is 1 symbol property.");
+        const { name, descriptor } = ownSymbols[0];
+        strictEqual(name, "Symbol(sym)", "Got right symbol name.");
+        deepEqual(
+          descriptor,
+          {
+            configurable: false,
+            enumerable: false,
+            writable: false,
+            value: 1,
+          },
+          "Got right property descriptor."
+        );
 
-      strictEqual(ownSymbols.length, 1, "There is 1 symbol property.");
-      const {name, descriptor} = ownSymbols[0];
-      strictEqual(name, "Symbol(sym)", "Got right symbol name.");
-      deepEqual(descriptor, {
-        configurable: false,
-        enumerable: false,
-        writable: false,
-        value: 1,
-      }, "Got right property descriptor.");
-
-      await gThreadClient.resume();
-      resolve();
+        await threadFront.resume();
+        resolve();
+      });
+      debuggee.eval(
+        function stopMe(arg1) {
+          debugger;
+        }.toString()
+      );
+      debuggee.eval(
+        `stopMe(Object.defineProperty({}, Symbol("sym"), {value: 1}));`
+      );
     });
-    gDebuggee.eval(`stopMe(Object.defineProperty({}, Symbol("sym"), {value: 1}));`);
-  });
-}
+  })
+);

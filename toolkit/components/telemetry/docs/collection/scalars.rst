@@ -2,6 +2,11 @@
 Scalars
 =======
 
+A *scalar* metric can be used to track a single value. Unlike
+histograms, which collect every measurement taken, a scalar only
+tracks a single value, with later values completely replacing earlier
+ones.
+
 Historically we started to overload our histogram mechanism to also collect scalar data,
 such as flag values, counts, labels and others.
 The scalar measurement types are the suggested way to collect that kind of scalar data.
@@ -9,12 +14,12 @@ The serialized scalar data is submitted with the :doc:`main pings <../data/main-
 
 .. important::
 
-    Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers. We try to reply within a business day.
+    Every new or changed data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection>`__ from a Data Steward.
 
 The API
 =======
-Scalar probes can be managed either through the `nsITelemetry interface <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/nsITelemetry.idl>`_
-or the `C++ API <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Telemetry.h>`_.
+Scalar probes can be managed either through the `nsITelemetry interface <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/core/nsITelemetry.idl>`_
+or the `C++ API <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/core/Telemetry.h>`_.
 
 JS API
 ------
@@ -33,6 +38,8 @@ Probes in privileged JavaScript code can use the following functions to manipula
 These functions can throw if, for example, an operation is performed on a scalar type that doesn't support it
 (e.g. calling scalarSetMaximum on a scalar of the string kind). Please look at the `code documentation <https://dxr.mozilla.org/mozilla-central/search?q=regexp%3ATelemetryScalar%3A%3A(Set%7CAdd)+file%3ATelemetryScalar.cpp&redirect=false>`_ for
 additional information.
+
+.. _registerscalars:
 
 ``registerScalars()``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -79,7 +86,7 @@ Example:
 
 C++ API
 -------
-Probes in native code can use the more convenient helper functions declared in `Telemetry.h <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Telemetry.h>`_:
+Probes in native code can use the more convenient helper functions declared in `Telemetry.h <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/core/Telemetry.h>`_:
 
 .. code-block:: cpp
 
@@ -127,8 +134,8 @@ The probes in the definition file are represented in a fixed-depth, two-level st
 Category and probe names need to follow a few rules:
 
 - they cannot exceed 40 characters each;
-- category names must be alpha-numeric + ``.``, with no leading/trailing digit or ``.``;
-- probe names must be alpha-numeric + ``_``, with no leading/trailing digit or ``_``.
+- category names must be alphanumeric + ``.``, with no leading/trailing digit or ``.``;
+- probe names must be alphanumeric + ``_``, with no leading/trailing digit or ``_``.
 
 A probe can be defined as follows:
 
@@ -152,6 +159,12 @@ Required Fields
 - ``expires``: The version number in which the scalar expires, e.g. "30"; a version number of type "N" is automatically converted to "N.0a1" in order to expire the scalar also in the development channels. A telemetry probe acting on an expired scalar will print a warning into the browser console. For scalars that never expire the value ``never`` can be used.
 - ``kind``: A string representing the scalar type. Allowed values are ``uint``, ``string`` and ``boolean``.
 - ``notification_emails``: A list of email addresses to notify with alerts of expiring probes. More importantly, these are used by the data steward to verify that the probe is still useful.
+- ``products``: A list of products the scalar can be recorded on. Currently supported values are:
+
+  - ``firefox`` - Collected in Firefox Desktop for submission via Firefox Telemetry.
+  - ``fennec`` - Collected in Firefox for Android for submission via Firefox Mobile Telemetry.
+  - ``geckoview`` - Collected in GeckoView-based Android products and surfaced via `GeckoViewTelemetryController.jsm <https://hg.mozilla.org/mozilla-central/raw-file/tip/toolkit/components/telemetry/geckoview/GeckoViewTelemetryController.jsm>`__.
+
 - ``record_in_processes``: A list of processes the scalar is allowed to record in. Currently supported values are:
 
   - ``main``;
@@ -163,15 +176,17 @@ Required Fields
 Optional Fields
 ---------------
 
-- ``cpp_guard``: A string that gets inserted as an ``#ifdef`` directive around the automatically generated C++ declaration. This is typically used for platform-specific scalars, e.g. ``ANDROID``.
 - ``release_channel_collection``: This can be either ``opt-in`` (default) or ``opt-out``. With the former the scalar is submitted by default on pre-release channels, unless the user has opted out. With the latter the scalar is submitted by default on release and pre-release channels, unless the user has opted out.
-- ``keyed``: A boolean that determines whether this is a keyed scalar. It defaults to ``False``.
-- ``products``: A list of products the scalar can be recorded on. It defaults to ``all``. Currently supported values are:
+- ``keyed``: A boolean that determines whether this is a keyed scalar. It defaults to ``false``.
+- ``record_into_store``: A list of stores this scalar should be recorded into. It defaults to ``[main]``.
+- ``operating_systems``: This field restricts recording to certain operating systems only. Use that in-place of previous ``cpp_guards`` to avoid inclusion on not-specified operating systems. It defaults to ``all``. Currently supported values are:
 
-  - ``firefox``
-  - ``fennec``
-  - ``geckoview``
-  - ``all`` (record on all products)
+   - ``mac``
+   - ``linux``
+   - ``windows``
+   - ``android``
+   - ``unix``
+   - ``all`` (record on all operating systems)
 
 String type restrictions
 ------------------------
@@ -302,3 +317,4 @@ Version History
   - Ignore re-registering existing scalars for a category instead of failing (`bug 1409323 <https://bugzilla.mozilla.org/show_bug.cgi?id=1409323>`_).
 
 - Firefox 60: Enabled support for adding scalars in artifact builds and build-faster workflows (`bug 1425909 <https://bugzilla.mozilla.org/show_bug.cgi?id=1425909>`_).
+- Firefox 66: Replace ``cpp_guard`` with ``operating_systems`` (`bug 1482912 <https://bugzilla.mozilla.org/show_bug.cgi?id=1482912>`_)`

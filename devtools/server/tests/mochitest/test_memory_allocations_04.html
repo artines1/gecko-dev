@@ -6,7 +6,7 @@ Bug 1068171 - Test controlling the memory actor's allocation sampling probabilit
 <head>
   <meta charset="utf-8">
   <title>Memory monitoring actor test</title>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -19,7 +19,7 @@ window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   (async function() {
-    const { memory, client } = await startServerAndGetSelectedTabMemory();
+    const { memory, target } = await startServerAndGetSelectedTabMemory();
     await memory.attach();
 
     const allocs = [];
@@ -32,7 +32,7 @@ window.onload = function() {
     const testProbability = async function(p, expected) {
       info("probability = " + p);
       await memory.startRecordingAllocations({
-        probability: p
+        probability: p,
       });
       allocator();
       const response = await memory.getAllocations();
@@ -53,7 +53,7 @@ window.onload = function() {
     // (js/src/jit-test/tests/debug/Memory-allocationsSamplingProbability-*.js).
 
     await memory.detach();
-    destroyServerAndFinish(client);
+    destroyServerAndFinish(target);
   })();
 };
 </script>

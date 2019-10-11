@@ -25,10 +25,9 @@ class AsyncStatementJSHelper;
 class AsyncStatementParamsHolder;
 class Connection;
 
-class AsyncStatement final : public mozIStorageAsyncStatement
-                           , public StorageBaseStatementInternal
-{
-public:
+class AsyncStatement final : public mozIStorageAsyncStatement,
+                             public StorageBaseStatementInternal {
+ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_MOZISTORAGEASYNCSTATEMENT
   NS_DECL_MOZISTORAGEBASESTATEMENT
@@ -48,28 +47,25 @@ public:
    * @param aSQLStatement
    *        The SQL statement to prepare that this object will represent.
    */
-  nsresult initialize(Connection *aDBConnection,
-                      sqlite3 *aNativeConnection,
-                      const nsACString &aSQLStatement);
+  nsresult initialize(Connection* aDBConnection, sqlite3* aNativeConnection,
+                      const nsACString& aSQLStatement);
 
   /**
    * Obtains and transfers ownership of the array of parameters that are bound
    * to this statment.  This can be null.
    */
-  inline already_AddRefed<BindingParamsArray> bindingParamsArray()
-  {
+  inline already_AddRefed<BindingParamsArray> bindingParamsArray() {
     return mParamsArray.forget();
   }
 
-
-private:
+ private:
   ~AsyncStatement();
 
   /**
    * @return a pointer to the BindingParams object to use with our Bind*
    *         method.
    */
-  mozIStorageBindingParams *getParams();
+  mozIStorageBindingParams* getParams();
 
   /**
    * The SQL string as passed by the user.  We store it because we create the
@@ -100,7 +96,7 @@ private:
   friend class AsyncStatementJSHelper;
 };
 
-} // namespace storage
-} // namespace mozilla
+}  // namespace storage
+}  // namespace mozilla
 
-#endif // mozilla_storage_mozStorageAsyncStatement_h_
+#endif  // mozilla_storage_mozStorageAsyncStatement_h_

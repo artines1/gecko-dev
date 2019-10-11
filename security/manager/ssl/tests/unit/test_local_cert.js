@@ -3,8 +3,9 @@
 
 "use strict";
 
-const certService = Cc["@mozilla.org/security/local-cert-service;1"]
-                    .getService(Ci.nsILocalCertService);
+const certService = Cc["@mozilla.org/security/local-cert-service;1"].getService(
+  Ci.nsILocalCertService
+);
 
 const gNickname = "local-cert-test";
 
@@ -25,7 +26,7 @@ function getOrCreateCert(nickname) {
           return;
         }
         resolve(c);
-      }
+      },
     });
   });
 }
@@ -39,7 +40,7 @@ function removeCert(nickname) {
           return;
         }
         resolve();
-      }
+      },
     });
   });
 }

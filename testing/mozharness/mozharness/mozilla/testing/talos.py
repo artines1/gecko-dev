@@ -8,6 +8,7 @@
 run talos tests in a virtualenv
 """
 
+import argparse
 import os
 import sys
 import pprint
@@ -112,11 +113,6 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
           "dest": "suite",
           "help": "Talos suite to run (from talos json)"
           }],
-        [["--branch-name"],
-         {"action": "store",
-          "dest": "branch",
-          "help": "Graphserver branch to report to"
-          }],
         [["--system-bits"],
          {"action": "store",
           "dest": "system_bits",
@@ -135,27 +131,51 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             "dest": "gecko_profile",
             "action": "store_true",
             "default": False,
-            "help": "Whether or not to profile the test run and save the profile results"
+            "help": argparse.SUPPRESS
         }],
         [["--geckoProfileInterval"], {
             "dest": "gecko_profile_interval",
             "type": "int",
             "default": 0,
-            "help": "The interval between samples taken by the profiler (milliseconds)"
+            "help": argparse.SUPPRESS
         }],
-        [["--e10s"], {
-            "dest": "e10s",
+        [["--gecko-profile"], {
+            "dest": "gecko_profile",
             "action": "store_true",
             "default": False,
-            "help": "we should have --disable-e10s, but instead we assume non-e10s and use "
-            "--e10s to help"
+            "help": "Whether or not to profile the test run and save the profile results"
+        }],
+        [["--gecko-profile-interval"], {
+            "dest": "gecko_profile_interval",
+            "type": "int",
+            "default": 0,
+            "help": "The interval between samples taken by the profiler (milliseconds)"
+        }],
+        [["--disable-e10s"], {
+            "dest": "e10s",
+            "action": "store_false",
+            "default": True,
+            "help": "Run without multiple processes (e10s)."
         }],
         [["--enable-webrender"], {
             "action": "store_true",
             "dest": "enable_webrender",
             "default": False,
-            "help": "Tries to enable the WebRender compositor.",
+            "help": "Enable the WebRender compositor in Gecko.",
         }],
+        [["--enable-fission"], {
+            "action": "store_true",
+            "dest": "enable_fission",
+            "default": False,
+            "help": "Enable Fission (site isolation) in Gecko.",
+        }],
+        [["--setpref"], {
+            "action": "append",
+            "metavar": "PREF=VALUE",
+            "dest": "extra_prefs",
+            "default": [],
+            "help": "Defines an extra user preference."}
+         ],
     ] + testing_config_options + copy.deepcopy(code_coverage_config_options)
 
     def __init__(self, **kwargs):
@@ -165,7 +185,6 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
                                           'populate-webroot',
                                           'create-virtualenv',
                                           'install',
-                                          'setup-mitmproxy',
                                           'run-tests',
                                           ])
         kwargs.setdefault('default_actions', ['clobber',
@@ -173,7 +192,6 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
                                               'populate-webroot',
                                               'create-virtualenv',
                                               'install',
-                                              'setup-mitmproxy',
                                               'run-tests',
                                               ])
         kwargs.setdefault('config', {})
@@ -190,31 +208,25 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
         self.obj_path = self.config.get("obj_path")
         self.tests = None
         self.gecko_profile = self.config.get('gecko_profile') or \
-            "--geckoProfile" in self.config.get("talos_extra_options", [])
+            "--geckoProfile" in self.config.get("talos_extra_options", []) or \
+            "--gecko-profile" in self.config.get("talos_extra_options", [])
         self.gecko_profile_interval = self.config.get('gecko_profile_interval')
         self.pagesets_name = None
         self.benchmark_zip = None
-        # some platforms download a mitmproxy release binary
-        self.mitmproxy_rel_bin = None
-        # zip file found on tooltool that contains all of the mitmproxy recordings
-        self.mitmproxy_recording_set = None
-        # files inside the recording set
-        self.mitmproxy_recordings_file_list = self.config.get('mitmproxy', None)
-        # path to mitdump tool itself, in py3 venv
-        self.mitmdump = None
+        self.webextensions_zip = None
 
     # We accept some configuration options from the try commit message in the format
     # mozharness: <options>
     # Example try commit message:
-    #   mozharness: --geckoProfile try: <stuff>
+    #   mozharness: --gecko-profile try: <stuff>
     def query_gecko_profile_options(self):
         gecko_results = []
         # finally, if gecko_profile is set, we add that to the talos options
         if self.gecko_profile:
-            gecko_results.append('--geckoProfile')
+            gecko_results.append('--gecko-profile')
             if self.gecko_profile_interval:
                 gecko_results.extend(
-                    ['--geckoProfileInterval', str(self.gecko_profile_interval)]
+                    ['--gecko-profile-interval', str(self.gecko_profile_interval)]
                 )
         return gecko_results
 
@@ -260,18 +272,17 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             self.benchmark_zip_manifest = 'jetstream-benchmark.manifest'
             return self.benchmark_zip
 
-    def query_mitmproxy_recordings_file_list(self):
-        """ When using mitmproxy we also need the name of the playback files that are included
-        inside the playback archive.
+    def query_webextensions_zip(self):
+        """Certain suites require external WebExtension sets to be downloaded and
+        extracted.
         """
-        if self.mitmproxy_recordings_file_list:
-            return self.mitmproxy_recordings_file_list
+        if self.webextensions_zip:
+            return self.webextensions_zip
         if self.query_talos_json_config() and self.suite is not None:
-            talos_opts = self.talos_json_config['suites'][self.suite].get('talos_options', None)
-            for index, val in enumerate(talos_opts):
-                if val == '--mitmproxy':
-                    self.mitmproxy_recordings_file_list = talos_opts[index + 1]
-            return self.mitmproxy_recordings_file_list
+            self.webextensions_zip = \
+                self.talos_json_config['suites'][self.suite].get('webextensions_zip')
+            self.webextensions_zip_manifest = 'webextensions.manifest'
+            return self.webextensions_zip
 
     def get_suite_from_test(self):
         """ Retrieve the talos suite name from a given talos test name."""
@@ -319,26 +330,11 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
         kw_options = {'executablePath': binary_path}
         if 'suite' in self.config:
             kw_options['suite'] = self.config['suite']
-            if self.config.get('e10s', False):
-                kw_options['suite'] = "%s-e10s" % self.config['suite']
         if self.config.get('title'):
             kw_options['title'] = self.config['title']
-        if self.config.get('branch'):
-            kw_options['branchName'] = self.config['branch']
         if self.symbols_path:
             kw_options['symbolsPath'] = self.symbols_path
-        # if using mitmproxy, we've already created a py3 venv just
-        # for it; need to add the path to that env/mitdump tool
-        if self.mitmdump:
-            kw_options['mitmdumpPath'] = self.mitmdump
-            # also need to have recordings list; get again here from talos.json, in case talos was
-            # invoked via '-a' and therefore the --mitmproxy param wasn't used on command line
-            if not self.config.get('mitmproxy', None):
-                file_list = self.query_mitmproxy_recordings_file_list()
-                if file_list is not None:
-                    kw_options['mitmproxy'] = file_list
-                else:
-                    self.fatal("Talos requires list of mitmproxy playback files, use --mitmproxy")
+
         kw_options.update(kw)
         # talos expects tests to be in the format (e.g.) 'ts:tp5:tsvg'
         tests = kw_options.get('activeTests')
@@ -356,6 +352,13 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             options += self.config['talos_extra_options']
         if self.config.get('code_coverage', False):
             options.extend(['--code-coverage'])
+        if self.config['extra_prefs']:
+            options.extend(['--setpref={}'.format(p) for p in self.config['extra_prefs']])
+        if self.config['enable_webrender']:
+            options.extend(['--enable-webrender'])
+        if self.config['enable_fission']:
+            options.extend(['--enable-fission'])
+
         return options
 
     def populate_webroot(self):
@@ -385,31 +388,40 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             self.suite = self.config['suite']
 
         tooltool_artifacts = []
+        src_talos_pageset_dest = os.path.join(self.talos_path, 'talos', 'tests')
+        webextension_dest = os.path.join(self.talos_path, 'talos', 'webextensions')
+
         if self.query_pagesets_name():
             tooltool_artifacts.append({'name': self.pagesets_name,
-                                       'manifest': self.pagesets_name_manifest})
+                                       'manifest': self.pagesets_name_manifest,
+                                       'dest': src_talos_pageset_dest})
 
         if self.query_benchmark_zip():
             tooltool_artifacts.append({'name': self.benchmark_zip,
-                                       'manifest': self.benchmark_zip_manifest})
+                                       'manifest': self.benchmark_zip_manifest,
+                                       'dest': src_talos_pageset_dest})
+
+        if self.query_webextensions_zip():
+            tooltool_artifacts.append({'name': self.webextensions_zip,
+                                       'manifest': self.webextensions_zip_manifest,
+                                       'dest': webextension_dest})
 
         # now that have the suite name, check if artifact is required, if so download it
         # the --no-download option will override this
         for artifact in tooltool_artifacts:
             if '--no-download' not in self.config.get('talos_extra_options', []):
                 self.info("Downloading %s with tooltool..." % artifact)
-                self.src_talos_webdir = os.path.join(self.talos_path, 'talos')
-                src_talos_pageset = os.path.join(self.src_talos_webdir, 'tests')
-                if not os.path.exists(os.path.join(src_talos_pageset, artifact['name'])):
+
+                if not os.path.exists(os.path.join(artifact['dest'], artifact['name'])):
                     manifest_file = os.path.join(self.talos_path, artifact['manifest'])
                     self.tooltool_fetch(
                         manifest_file,
-                        output_dir=src_talos_pageset,
+                        output_dir=artifact['dest'],
                         cache=self.config.get('tooltool_cache')
                     )
-                    archive = os.path.join(src_talos_pageset, artifact['name'])
+                    archive = os.path.join(artifact['dest'], artifact['name'])
                     unzip = self.query_exe('unzip')
-                    unzip_cmd = [unzip, '-q', '-o', archive, '-d', src_talos_pageset]
+                    unzip_cmd = [unzip, '-q', '-o', archive, '-d', artifact['dest']]
                     self.run_command(unzip_cmd, halt_on_failure=True)
                 else:
                     self.info("%s already available" % artifact)
@@ -418,8 +430,7 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
                           artifact)
 
         # if running webkit tests locally, need to copy webkit source into talos/tests
-        if self.config.get('run_local') and ('speedometer' in self.suite or
-                                             'stylebench' in self.suite or
+        if self.config.get('run_local') and ('stylebench' in self.suite or
                                              'motionmark' in self.suite):
             self.get_webkit_source()
 
@@ -439,131 +450,6 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             shutil.copytree(src, dest)
         except Exception:
             self.critical("Error copying webkit benchmarks from %s to %s" % (src, dest))
-
-    def setup_mitmproxy(self):
-        """Some talos tests require the use of mitmproxy to playback the pages,
-        set it up here.
-        """
-        if not self.query_mitmproxy_recording_set():
-            self.info("Skipping: mitmproxy is not required")
-            return
-
-        os_name = self.platform_name()
-
-        # on windows we need to install a pytyon 3 virtual env; on macosx and linux we
-        # use a mitmdump pre-built binary that doesn't need an external python 3
-        if 'win' in os_name:
-            # setup python 3.x virtualenv
-            self.setup_py3_virtualenv()
-
-        # install mitmproxy
-        self.install_mitmproxy()
-
-        # download the recording set; will be overridden by the --no-download
-        if ('talos_extra_options' in self.config and
-                '--no-download' not in self.config['talos_extra_options']) or \
-                'talos_extra_options' not in self.config:
-            self.download_mitmproxy_recording_set()
-        else:
-            self.info("Not downloading mitmproxy recording set because no-download was specified")
-
-    def setup_py3_virtualenv(self):
-        """Mitmproxy needs Python 3.x; set up a separate py 3.x env here"""
-        self.info("Setting up python 3.x virtualenv, required for mitmproxy")
-        # first download the py3 package
-        self.py3_path = self.fetch_python3()
-        # now create the py3 venv
-        self.py3_venv_configuration(python_path=self.py3_path, venv_path='py3venv')
-        self.py3_create_venv()
-        self.py3_install_modules(["cffi==1.10.0"])
-        requirements = [os.path.join(self.talos_path, 'talos',
-                                     'mitmproxy', 'mitmproxy_requirements.txt')]
-        self.py3_install_requirement_files(requirements)
-        # add py3 executables path to system path
-        sys.path.insert(1, self.py3_path_to_executables())
-
-    def install_mitmproxy(self):
-        """Install the mitmproxy tool into the Python 3.x env"""
-        self.info("Installing mitmproxy")
-        if 'win' in self.platform_name():
-            self.py3_install_modules(modules=['mitmproxy'])
-            self.mitmdump = os.path.join(self.py3_path_to_executables(), 'mitmdump')
-        else:
-            # on macosx and linux64 we use a prebuilt mitmproxy release binary
-            mitmproxy_path = os.path.join(self.talos_path, 'talos', 'mitmproxy')
-            self.mitmdump = os.path.join(mitmproxy_path, 'mitmdump')
-            if not os.path.exists(self.mitmdump):
-                # download the mitmproxy release binary; will be overridden by the --no-download
-                if ('talos_extra_options' in self.config and
-                    '--no-download' not in self.config['talos_extra_options']) or \
-                   'talos_extra_options' not in self.config:
-                    if 'osx' in self.platform_name():
-                        _platform = 'osx'
-                    else:
-                        _platform = 'linux64'
-                    self.query_mitmproxy_rel_bin(_platform)
-                    if self.mitmproxy_rel_bin is None:
-                        self.fatal("Aborting: mitmproxy_release_bin_osx not found in talos.json")
-                    self.download_mitmproxy_binary(_platform)
-                else:
-                    self.info("Not downloading mitmproxy rel binary because no-download was "
-                              "specified")
-            self.info('The mitmdump macosx binary is found at: %s' % self.mitmdump)
-        self.run_command([self.mitmdump, '--version'], env=self.query_env())
-
-    def query_mitmproxy_rel_bin(self, platform):
-        """Mitmproxy requires external playback archives to be downloaded and extracted"""
-        if self.mitmproxy_rel_bin:
-            return self.mitmproxy_rel_bin
-        if self.query_talos_json_config() and self.suite is not None:
-            config_key = "mitmproxy_release_bin_" + platform
-            self.mitmproxy_rel_bin = self.talos_json_config['suites'][self.suite].get(config_key,
-                                                                                      False)
-            return self.mitmproxy_rel_bin
-
-    def download_mitmproxy_binary(self, platform):
-        """Download the mitmproxy release binary from tooltool"""
-        self.info("Downloading the mitmproxy release binary using tooltool")
-        dest = os.path.join(self.talos_path, 'talos', 'mitmproxy')
-        _manifest = "mitmproxy-rel-bin-%s.manifest" % platform
-        manifest_file = os.path.join(self.talos_path, 'talos', 'mitmproxy', _manifest)
-
-        if platform in ['osx', 'linux64']:
-            self.tooltool_fetch(
-                manifest_file,
-                output_dir=dest,
-                cache=self.config.get('tooltool_cache')
-            )
-
-            archive = os.path.join(dest, self.mitmproxy_rel_bin)
-            tar = self.query_exe('tar')
-            unzip_cmd = [tar, '-xvzf', archive, '-C', dest]
-            self.run_command(unzip_cmd, halt_on_failure=True)
-
-    def query_mitmproxy_recording_set(self):
-        """Mitmproxy requires external playback archives to be downloaded and extracted"""
-        if self.mitmproxy_recording_set:
-            return self.mitmproxy_recording_set
-        if self.query_talos_json_config() and self.suite is not None:
-            self.mitmproxy_recording_set = (
-                self.talos_json_config['suites'][self.suite].get('mitmproxy_recording_set', False))
-            return self.mitmproxy_recording_set
-
-    def download_mitmproxy_recording_set(self):
-        """Download the set of mitmproxy recording files that will be played back"""
-        self.info("Downloading the mitmproxy recording set using tooltool")
-        dest = os.path.join(self.talos_path, 'talos', 'mitmproxy')
-        manifest_file = os.path.join(self.talos_path, 'talos',
-                                     'mitmproxy', 'mitmproxy-playback-set.manifest')
-        self.tooltool_fetch(
-            manifest_file,
-            output_dir=dest,
-            cache=self.config.get('tooltool_cache')
-        )
-        archive = os.path.join(dest, self.mitmproxy_recording_set)
-        unzip = self.query_exe('unzip')
-        unzip_cmd = [unzip, '-q', '-o', archive, '-d', dest]
-        self.run_command(unzip_cmd, halt_on_failure=True)
 
     # Action methods. {{{1
     # clobber defined in BaseScript
@@ -594,6 +480,11 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
                                      'lib',
                                      os.path.basename(_python_interp),
                                      'site-packages')
+
+            # if  running gecko profiling  install the requirements
+            if self.gecko_profile:
+                self._install_view_gecko_profile_req()
+
             sys.path.append(_path)
             return
 
@@ -623,6 +514,9 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
             requirements=[os.path.join(self.talos_path,
                                        'requirements.txt')]
         )
+        self._install_view_gecko_profile_req()
+
+    def _install_view_gecko_profile_req(self):
         # if running locally and gecko profiing is on, we will be using the
         # view-gecko-profile tool which has its own requirements too
         if self.gecko_profile and self.run_local:
@@ -689,17 +583,10 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
         else:
             env['PYTHONPATH'] = self.talos_path
 
-        # mitmproxy needs path to mozharness when installing the cert
-        env['SCRIPTSPATH'] = scripts_path
-
         if self.repo_path is not None:
             env['MOZ_DEVELOPER_REPO_DIR'] = self.repo_path
         if self.obj_path is not None:
             env['MOZ_DEVELOPER_OBJ_DIR'] = self.obj_path
-
-        if self.config['enable_webrender']:
-            env['MOZ_WEBRENDER'] = '1'
-            env['MOZ_ACCELERATED'] = '1'
 
         # TODO: consider getting rid of this as we should be default to stylo now
         env['STYLO_FORCE_ENABLED'] = '1'
@@ -761,20 +648,3 @@ class Talos(TestingMixin, MercurialScript, TooltoolMixin,
 
         self.record_status(parser.worst_tbpl_status,
                            level=parser.worst_log_level)
-
-    def fetch_python3(self):
-        manifest_file = os.path.join(
-            self.talos_path,
-            'talos',
-            'mitmproxy',
-            self.config.get('python3_manifest')[self.platform_name()])
-        output_dir = self.query_abs_dirs()['abs_work_dir']
-        # Slowdown: The unzipped Python3 installation gets deleted every time
-        self.tooltool_fetch(
-            manifest_file,
-            output_dir=output_dir,
-            cache=self.config.get('tooltool_cache')
-        )
-        python3_path = os.path.join(output_dir, 'python3.6', 'python')
-        self.run_command([python3_path, '--version'], env=self.query_env())
-        return python3_path

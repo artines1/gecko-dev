@@ -41,7 +41,7 @@ add_task(async function test_buildTestDatabase() {
     places.push({
       uri: testURI,
       transition: modHistoryTypes(i),
-      visitDate: today
+      visitDate: today,
     });
   }
 
@@ -52,7 +52,7 @@ add_task(async function test_buildTestDatabase() {
     places.push({
       uri: testURI,
       transition: modHistoryTypes(i),
-      visitDate: today
+      visitDate: today,
     });
   }
 
@@ -96,7 +96,13 @@ add_task(function test_execute() {
   for (let i = 0; i < root.childCount; ++i) {
     let resultNode = root.getChild(i);
     let accesstime = Date(resultNode.time / 1000);
-    dump("----> result: " + resultNode.uri + "   Date: " + accesstime.toLocaleString() + "\n");
+    dump(
+      "----> result: " +
+        resultNode.uri +
+        "   Date: " +
+        accesstime.toLocaleString() +
+        "\n"
+    );
   }
   Assert.equal(cc, 0);
   root.containerOpen = false;

@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-ref-later.case
 // - src/function-forms/error/async-func-expr-named.template
 /*---
 description: Referencing a parameter that occurs later in the ParameterList (async function named expression)
 esid: sec-async-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.6 Async Function Definitions

@@ -5,12 +5,13 @@ set -x -e
 echo "running as" $(id)
 
 # Detect release version.
-. /etc/lsb-release
-if [ "${DISTRIB_RELEASE}" == "12.04" ]; then
-    echo "Ubuntu 12.04 not supported"
-    exit 1
-elif [ "${DISTRIB_RELEASE}" == "16.04" ]; then
-    UBUNTU_1604=1
+. /etc/os-release
+if [ "${ID}" == "ubuntu" ]; then
+    DISTRIBUTION="Ubuntu"
+elif [ "${ID}" == "debian" ]; then
+    DISTRIBUTION="Debian"
+else
+    DISTRIBUTION="Unknown"
 fi
 
 ####
@@ -19,21 +20,25 @@ fi
 
 # Inputs, with defaults
 
+: GECKO_PATH                    ${GECKO_PATH}
 : MOZHARNESS_PATH               ${MOZHARNESS_PATH}
 : MOZHARNESS_URL                ${MOZHARNESS_URL}
 : MOZHARNESS_SCRIPT             ${MOZHARNESS_SCRIPT}
 : MOZHARNESS_CONFIG             ${MOZHARNESS_CONFIG}
+: MOZHARNESS_OPTIONS            ${MOZHARNESS_OPTIONS}
 : NEED_XVFB                     ${NEED_XVFB:=true}
 : NEED_WINDOW_MANAGER           ${NEED_WINDOW_MANAGER:=false}
+: NEED_COMPIZ                   ${NEED_COMPIZ}
 : NEED_PULSEAUDIO               ${NEED_PULSEAUDIO:=false}
 : START_VNC                     ${START_VNC:=false}
 : TASKCLUSTER_INTERACTIVE       ${TASKCLUSTER_INTERACTIVE:=false}
-: WORKSPACE                     ${WORKSPACE:=$HOME/workspace}
 : mozharness args               "${@}"
+: WORKING_DIR                   ${WORKING_DIR:=$(pwd)}
+: WORKSPACE                     ${WORKSPACE:=${WORKING_DIR%/}/workspace}
 
 set -v
-mkdir -p $WORKSPACE
-cd $WORKSPACE
+mkdir -p "$WORKSPACE"
+cd "$WORKSPACE"
 
 fail() {
     echo # make sure error message is on a new line
@@ -41,10 +46,37 @@ fail() {
     exit 1
 }
 
+# start pulseaudio
 maybe_start_pulse() {
     if $NEED_PULSEAUDIO; then
-        pulseaudio --fail --daemonize --start
-        pactl load-module module-null-sink
+        # call pulseaudio with varying parameters
+        if [ $DISTRIBUTION == "Ubuntu" ]; then
+            pulseaudio --fail --daemonize --start
+        elif [ $DISTRIBUTION == "Debian" ]; then
+            # temporarily turn errexit off
+            # nicely kill existing daemons/processes if exist
+            set +e
+            pulseaudio --kill
+
+            # Debian needs additional stabilization and debugging
+            ps ax | grep 'pulseaudio'
+            ps -ef | grep 'pulseaudio' | grep -v grep | awk '{print $2}' | xargs -r kill -9
+            ps ax | grep 'pulseaudio'
+
+            # check and start pulseaudio with debugging
+            pulseaudio --check; echo $?
+            pulseaudio --fail --daemonize --start -vvvv --exit-idle-time=-1 --log-level=4 --log-time=1
+            set -e
+        else
+            :
+        fi
+
+        pulseaudio --check
+        if [ $? -eq 0 ]; then
+            echo "Pulseaudio successfully initialized"
+        else
+            echo "Pulseaudio failed to initialize, trying again"
+        fi
     fi
 }
 
@@ -57,15 +89,15 @@ if [[ -z ${MOZHARNESS_SCRIPT} ]]; then fail "MOZHARNESS_SCRIPT is not set"; fi
 if [[ -z ${MOZHARNESS_CONFIG} ]]; then fail "MOZHARNESS_CONFIG is not set"; fi
 
 # make sure artifact directories exist
-mkdir -p $WORKSPACE/build/upload/logs
-mkdir -p ~/artifacts/public
-mkdir -p $WORKSPACE/build/blobber_upload_dir
+mkdir -p "$WORKSPACE/logs"
+mkdir -p "$WORKING_DIR/artifacts/public"
+mkdir -p "$WORKSPACE/build/blobber_upload_dir"
 
 cleanup() {
     local rv=$?
     if [[ -s $HOME/.xsession-errors ]]; then
       # To share X issues
-      cp $HOME/.xsession-errors ~/artifacts/public/xsession-errors.log
+      cp "$HOME/.xsession-errors" "$WORKING_DIR/artifacts/public/xsession-errors.log"
     fi
     if $NEED_XVFB; then
         cleanup_xvfb
@@ -124,16 +156,13 @@ if $NEED_XVFB; then
 fi
 
 if $START_VNC; then
-    x11vnc > ~/artifacts/public/x11vnc.log 2>&1 &
+    x11vnc > "$WORKING_DIR/artifacts/public/x11vnc.log" 2>&1 &
 fi
 
 if $NEED_WINDOW_MANAGER; then
     # This is read by xsession to select the window manager
     echo DESKTOP_SESSION=ubuntu > $HOME/.xsessionrc
 
-    # note that doing anything with this display before running Xsession will cause sadness (like,
-    # crashes in compiz). Make sure that X has enough time to start
-    sleep 15
     # DISPLAY has already been set above
     # XXX: it would be ideal to add a semaphore logic to make sure that the
     # window manager is ready
@@ -146,15 +175,28 @@ if $NEED_WINDOW_MANAGER; then
     # Disable the screen saver
     xset s off s reset
 
-    if [ "${UBUNTU_1604}" ]; then
-        # start compiz for our window manager
+    # This starts the gnome-keyring-daemon with an unlocked login keyring. libsecret uses this to
+    # store secrets. Firefox uses libsecret to store a key that protects sensitive information like
+    # credit card numbers.
+    if test -z "$DBUS_SESSION_BUS_ADDRESS" ; then
+        # if not found, launch a new one
+        eval `dbus-launch --sh-syntax`
+    fi
+    eval `echo '' | /usr/bin/gnome-keyring-daemon -r -d --unlock --components=secrets`
+fi
+
+if $NEED_COMPIZ; then
+    if [ $DISTRIBUTION == "Ubuntu" ]; then
         compiz 2>&1 &
-        #TODO: how to determine if compiz starts correctly?
     fi
 fi
 
-if [ "${UBUNTU_1604}" ]; then
-    maybe_start_pulse
+maybe_start_pulse
+
+if $NEED_PULSEAUDIO; then
+    # Load null-sink using pactl, and if it was successful.
+    pactl load-module module-null-sink
+    pactl list modules short
 fi
 
 # For telemetry purposes, the build process wants information about the
@@ -168,16 +210,27 @@ for cfg in $MOZHARNESS_CONFIG; do
   config_cmds="${config_cmds} --config-file ${MOZHARNESS_PATH}/configs/${cfg}"
 done
 
+if [ -n "$MOZHARNESS_OPTIONS" ]; then
+    options=""
+    for option in $MOZHARNESS_OPTIONS; do
+        options="$options --$option"
+    done
+fi
+
+# Use |mach python| if a source checkout exists so in-tree packages are
+# available.
+[[ -x "${GECKO_PATH}/mach" ]] && python="${GECKO_PATH}/mach python" || python="python2.7"
+
+# Save the computed mozharness command to a binary which is useful for
+# interactive mode.
 mozharness_bin="$HOME/bin/run-mozharness"
 mkdir -p $(dirname $mozharness_bin)
 
-# Save the computed mozharness command to a binary which is useful
-# for interactive mode.
 echo -e "#!/usr/bin/env bash
 # Some mozharness scripts assume base_work_dir is in
 # the current working directory, see bug 1279237
-cd $WORKSPACE
-cmd=\"python2.7 ${MOZHARNESS_PATH}/scripts/${MOZHARNESS_SCRIPT} ${config_cmds} ${@} \${@}\"
+cd "$WORKSPACE"
+cmd=\"${python} ${MOZHARNESS_PATH}/scripts/${MOZHARNESS_SCRIPT} ${config_cmds} ${options} ${@} \${@}\"
 echo \"Running: \${cmd}\"
 exec \${cmd}" > ${mozharness_bin}
 chmod +x ${mozharness_bin}
@@ -192,6 +245,6 @@ fi
 # Run a custom mach command (this is typically used by action tasks to run
 # harnesses in a particular way)
 if [ "$CUSTOM_MACH_COMMAND" ]; then
-    eval "$HOME/workspace/build/tests/mach ${CUSTOM_MACH_COMMAND}"
+    eval "'$WORKSPACE/build/tests/mach' ${CUSTOM_MACH_COMMAND}"
     exit $?
 fi

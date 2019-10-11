@@ -17,8 +17,9 @@ from taskgraph.transforms.job import run_job_using
 from taskgraph.transforms.job.common import add_artifacts
 
 from taskgraph.util.hash import hash_path
+from taskgraph.util.taskcluster import get_root_url
 from taskgraph import GECKO
-from taskgraph.util.cached_tasks import add_optimization
+import taskgraph
 
 DSC_PACKAGE_RE = re.compile('.*(?=_)')
 SOURCE_PACKAGE_RE = re.compile('.*(?=[-_]\d)')
@@ -42,11 +43,19 @@ run_schema = Schema({
     # control (.dsc), or a tarball.
     Required(Any('dsc', 'tarball')): source_definition,
 
+    # Package name. Normally derived from the source control or tarball file
+    # name. Use in case the name doesn't match DSC_PACKAGE_RE or
+    # SOURCE_PACKAGE_RE.
+    Optional('name'): basestring,
+
     # Patch to apply to the extracted source.
     Optional('patch'): basestring,
 
     # Command to run before dpkg-buildpackage.
     Optional('pre-build-command'): basestring,
+
+    # Architecture to build the package for.
+    Optional('arch'): basestring,
 
     # List of package tasks to get build dependencies from.
     Optional('packages'): [basestring],
@@ -68,11 +77,23 @@ def docker_worker_debian_package(config, job, taskdesc):
 
     name = taskdesc['label'].replace('{}-'.format(config.kind), '', 1)
 
+    arch = run.get('arch', 'amd64')
+
     worker = taskdesc['worker']
     worker['artifacts'] = []
-    worker['docker-image'] = 'debian:{dist}-{date}'.format(
-        dist=run['dist'],
-        date=run['snapshot'][:8])
+    version = {
+        'wheezy': 7,
+        'jessie': 8,
+        'stretch': 9,
+        'buster': 10,
+    }[run['dist']]
+    image = 'debian%d' % version
+    if arch != 'amd64':
+        image += '-' + arch
+    image += '-packages'
+    worker['docker-image'] = {'in-tree': image}
+    # Retry on apt-get errors.
+    worker['retry-exit-status'] = [100]
 
     add_artifacts(config, job, taskdesc, path='/tmp/artifacts')
 
@@ -94,15 +115,10 @@ def docker_worker_debian_package(config, job, taskdesc):
     src_url = src['url']
     src_file = os.path.basename(src_url)
     src_sha256 = src['sha256']
-    package = package_re.match(src_file).group(0)
+    package = run.get('name')
+    if not package:
+        package = package_re.match(src_file).group(0)
     unpack = unpack.format(src_file=src_file, package=package)
-
-    base_deps = [
-        'apt-utils',
-        'build-essential',
-        'devscripts',
-        'fakeroot',
-    ]
 
     resolver = run.get('resolver', 'apt-get')
     if resolver == 'apt-get':
@@ -111,19 +127,15 @@ def docker_worker_debian_package(config, job, taskdesc):
         resolver = ('aptitude -y --without-recommends -o '
                     'Aptitude::ProblemResolver::Hints::KeepBuildDeps='
                     '"reject {}-build-deps :UNINST"').format(package)
-        base_deps.append('aptitude')
     else:
         raise RuntimeError('Unreachable')
 
     adjust = ''
     if 'patch' in run:
-        # We can't depend on docker images, so we don't have robustcheckout or
-        # or run-task to get a checkout. So for this one file we'd need
-        # from a checkout, download it.
-        env['PATCH_URL'] = '{head_repo}/raw-file/{head_rev}/build/debian-packages/{patch}'.format(
-            head_repo=config.params['head_repository'],
-            head_rev=config.params['head_rev'],
-            patch=run['patch'],
+        # We don't use robustcheckout or run-task to get a checkout. So for
+        # this one file we'd need from a checkout, download it.
+        env["PATCH_URL"] = config.params.file_url(
+            "build/debian-packages/{patch}".format(patch=run["patch"]),
         )
         adjust += 'curl -sL $PATCH_URL | patch -p1 && '
     if 'pre-build-command' in run:
@@ -141,42 +153,25 @@ def docker_worker_debian_package(config, job, taskdesc):
             dist=run['dist'],
         )
 
-    # We can't depend on docker images (since docker images depend on packages),
-    # so we inline the whole script here.
     worker['command'] = [
         'sh',
         '-x',
         '-c',
-        # Fill /etc/apt/sources.list with the relevant snapshot repository.
-        'echo "deb http://snapshot.debian.org/archive/debian'
-        '/{snapshot}/ {dist} main" > /etc/apt/sources.list && '
-        'echo "deb http://snapshot.debian.org/archive/debian'
-        '/{snapshot}/ {dist}-updates main" >> /etc/apt/sources.list && '
-        'echo "deb http://snapshot.debian.org/archive/debian'
-        '/{snapshot}/ {dist}-backports main" >> /etc/apt/sources.list && '
-        'echo "deb http://snapshot.debian.org/archive/debian-security'
-        '/{snapshot}/ {dist}/updates main" >> /etc/apt/sources.list && '
-        'apt-get update -o Acquire::Check-Valid-Until=false -q && '
         # Add sources for packages coming from other package tasks.
-        'apt-get install -yyq apt-transport-https ca-certificates && '
-        'for task in $PACKAGES; do '
-        '  echo "deb [trusted=yes] https://queue.taskcluster.net/v1/task'
-        '/$task/runs/0/artifacts/public/build/ debian/" '
-        '>> /etc/apt/sources.list; '
-        'done && '
-        # Install the base utilities required to build debian packages.
-        'apt-get update -o Acquire::Check-Valid-Until=false -q && '
-        'apt-get install -yyq {base_deps} && '
+        '/usr/local/sbin/setup_packages.sh {root_url} $PACKAGES && '
+        'apt-get update && '
+        # Upgrade packages that might have new versions in package tasks.
+        'apt-get dist-upgrade && '
         'cd /tmp && '
         # Get, validate and extract the package source.
-        'dget -d -u {src_url} && '
+        '(dget -d -u {src_url} || exit 100) && '
         'echo "{src_sha256}  {src_file}" | sha256sum -c && '
         '{unpack} && '
         'cd {package} && '
         # Optionally apply patch and/or pre-build command.
         '{adjust}'
         # Install the necessary build dependencies.
-        'mk-build-deps -i -r debian/control -t \'{resolver}\' && '
+        '(mk-build-deps -i -r debian/control -t \'{resolver}\' || exit 100) && '
         # Build the package
         'DEB_BUILD_OPTIONS="parallel=$(nproc) nocheck" dpkg-buildpackage && '
         # Copy the artifacts
@@ -187,6 +182,7 @@ def docker_worker_debian_package(config, job, taskdesc):
         'apt-ftparchive sources debian | gzip -c9 > debian/Sources.gz && '
         'apt-ftparchive packages debian | gzip -c9 > debian/Packages.gz'
         .format(
+            root_url=get_root_url(False),
             package=package,
             snapshot=run['snapshot'],
             dist=run['dist'],
@@ -196,16 +192,9 @@ def docker_worker_debian_package(config, job, taskdesc):
             unpack=unpack,
             adjust=adjust,
             artifacts='/tmp/artifacts',
-            base_deps=' '.join(base_deps),
             resolver=resolver,
         )
     ]
-
-    # Use the command generated above as the base for the index hash.
-    # We rely on it not varying depending on the head_repository or head_rev.
-    data = list(worker['command'])
-    if 'patch' in run:
-        data.append(hash_path(os.path.join(GECKO, 'build', 'debian-packages', run['patch'])))
 
     if run.get('packages'):
         env = worker.setdefault('env', {})
@@ -216,7 +205,17 @@ def docker_worker_debian_package(config, job, taskdesc):
         deps = taskdesc.setdefault('dependencies', {})
         for p in run['packages']:
             deps[p] = 'packages-{}'.format(p)
-            data.append(p)
 
-    add_optimization(config, taskdesc, cache_type='packages.v1',
-                     cache_name=name, digest_data=data)
+    # Use the command generated above as the base for the index hash.
+    # We rely on it not varying depending on the head_repository or head_rev.
+    digest_data = list(worker['command'])
+    if 'patch' in run:
+        digest_data.append(
+            hash_path(os.path.join(GECKO, 'build', 'debian-packages', run['patch'])))
+
+    if not taskgraph.fast:
+        taskdesc['cache'] = {
+            'type': 'packages.v1',
+            'name': name,
+            'digest-data': digest_data
+        }

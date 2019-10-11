@@ -11,117 +11,120 @@
 namespace mozilla {
 namespace layers {
 
-StaticRefPtr<VideoBridgeChild> sVideoBridgeChildSingleton;
+StaticRefPtr<VideoBridgeChild> sVideoBridgeToParentProcess;
+StaticRefPtr<VideoBridgeChild> sVideoBridgeToGPUProcess;
 
-/* static */ void
-VideoBridgeChild::Startup()
-{
-  sVideoBridgeChildSingleton = new VideoBridgeChild();
-  RefPtr<VideoBridgeParent> parent = new VideoBridgeParent();
+/* static */
+void VideoBridgeChild::StartupForGPUProcess() {
+  ipc::Endpoint<PVideoBridgeParent> parentPipe;
+  ipc::Endpoint<PVideoBridgeChild> childPipe;
 
-  MessageLoop* loop = CompositorThreadHolder::Loop();
+  PVideoBridge::CreateEndpoints(base::GetCurrentProcId(),
+                                base::GetCurrentProcId(), &parentPipe,
+                                &childPipe);
 
-  sVideoBridgeChildSingleton->Open(parent->GetIPCChannel(),
-                                   loop,
-                                   ipc::ChildSide);
-  sVideoBridgeChildSingleton->mIPDLSelfRef = sVideoBridgeChildSingleton;
-  parent->SetOtherProcessId(base::GetCurrentProcId());
+  VideoBridgeChild::OpenToGPUProcess(std::move(childPipe));
+
+  CompositorThreadHolder::Loop()->PostTask(
+      NewRunnableFunction("gfx::VideoBridgeParent::Open",
+                          &VideoBridgeParent::Open, std::move(parentPipe)));
 }
 
-/* static */ void
-VideoBridgeChild::Shutdown()
-{
-  if (sVideoBridgeChildSingleton) {
-    sVideoBridgeChildSingleton->Close();
-    sVideoBridgeChildSingleton = nullptr;
+void VideoBridgeChild::OpenToParentProcess(
+    Endpoint<PVideoBridgeChild>&& aEndpoint) {
+  sVideoBridgeToParentProcess = new VideoBridgeChild();
+
+  if (!aEndpoint.Bind(sVideoBridgeToParentProcess)) {
+    // We can't recover from this.
+    MOZ_CRASH("Failed to bind RemoteDecoderManagerParent to endpoint");
+  }
+}
+
+void VideoBridgeChild::OpenToGPUProcess(
+    Endpoint<PVideoBridgeChild>&& aEndpoint) {
+  sVideoBridgeToGPUProcess = new VideoBridgeChild();
+
+  if (!aEndpoint.Bind(sVideoBridgeToGPUProcess)) {
+    // We can't recover from this.
+    MOZ_CRASH("Failed to bind RemoteDecoderManagerParent to endpoint");
+  }
+}
+
+/* static */
+void VideoBridgeChild::Shutdown() {
+  if (sVideoBridgeToParentProcess) {
+    sVideoBridgeToParentProcess->Close();
+    sVideoBridgeToParentProcess = nullptr;
+  }
+  if (sVideoBridgeToGPUProcess) {
+    sVideoBridgeToGPUProcess->Close();
+    sVideoBridgeToGPUProcess = nullptr;
   }
 }
 
 VideoBridgeChild::VideoBridgeChild()
-  : mMessageLoop(MessageLoop::current())
-  , mCanSend(true)
-{
+    : mIPDLSelfRef(this),
+      mMessageLoop(MessageLoop::current()),
+      mCanSend(true) {}
+
+VideoBridgeChild::~VideoBridgeChild() {}
+
+VideoBridgeChild* VideoBridgeChild::GetSingletonToParentProcess() {
+  return sVideoBridgeToParentProcess;
 }
 
-VideoBridgeChild::~VideoBridgeChild()
-{
+VideoBridgeChild* VideoBridgeChild::GetSingletonToGPUProcess() {
+  return sVideoBridgeToGPUProcess;
 }
 
-VideoBridgeChild*
-VideoBridgeChild::GetSingleton()
-{
-  return sVideoBridgeChildSingleton;
-}
-
-bool
-VideoBridgeChild::AllocUnsafeShmem(size_t aSize,
-                                   ipc::SharedMemory::SharedMemoryType aType,
-                                   ipc::Shmem* aShmem)
-{
+bool VideoBridgeChild::AllocUnsafeShmem(
+    size_t aSize, ipc::SharedMemory::SharedMemoryType aType,
+    ipc::Shmem* aShmem) {
   return PVideoBridgeChild::AllocUnsafeShmem(aSize, aType, aShmem);
 }
 
-bool
-VideoBridgeChild::AllocShmem(size_t aSize,
-                             ipc::SharedMemory::SharedMemoryType aType,
-                             ipc::Shmem* aShmem)
-{
+bool VideoBridgeChild::AllocShmem(size_t aSize,
+                                  ipc::SharedMemory::SharedMemoryType aType,
+                                  ipc::Shmem* aShmem) {
   MOZ_ASSERT(CanSend());
   return PVideoBridgeChild::AllocShmem(aSize, aType, aShmem);
 }
 
-bool
-VideoBridgeChild::DeallocShmem(ipc::Shmem& aShmem)
-{
+bool VideoBridgeChild::DeallocShmem(ipc::Shmem& aShmem) {
   return PVideoBridgeChild::DeallocShmem(aShmem);
 }
 
-PTextureChild*
-VideoBridgeChild::AllocPTextureChild(const SurfaceDescriptor&,
-                                     const ReadLockDescriptor&,
-                                     const LayersBackend&,
-                                     const TextureFlags&,
-                                     const uint64_t& aSerial)
-{
+PTextureChild* VideoBridgeChild::AllocPTextureChild(const SurfaceDescriptor&,
+                                                    const ReadLockDescriptor&,
+                                                    const LayersBackend&,
+                                                    const TextureFlags&,
+                                                    const uint64_t& aSerial) {
   MOZ_ASSERT(CanSend());
   return TextureClient::CreateIPDLActor();
 }
 
-bool
-VideoBridgeChild::DeallocPTextureChild(PTextureChild* actor)
-{
+bool VideoBridgeChild::DeallocPTextureChild(PTextureChild* actor) {
   return TextureClient::DestroyIPDLActor(actor);
 }
 
-void
-VideoBridgeChild::ActorDestroy(ActorDestroyReason aWhy)
-{
+void VideoBridgeChild::ActorDestroy(ActorDestroyReason aWhy) {
   mCanSend = false;
 }
 
-void
-VideoBridgeChild::DeallocPVideoBridgeChild()
-{
-  mIPDLSelfRef = nullptr;
-}
+void VideoBridgeChild::ActorDealloc() { mIPDLSelfRef = nullptr; }
 
-PTextureChild*
-VideoBridgeChild::CreateTexture(const SurfaceDescriptor& aSharedData,
-                                const ReadLockDescriptor& aReadLock,
-                                LayersBackend aLayersBackend,
-                                TextureFlags aFlags,
-                                uint64_t aSerial,
-                                wr::MaybeExternalImageId& aExternalImageId,
-                                nsIEventTarget* aTarget)
-{
+PTextureChild* VideoBridgeChild::CreateTexture(
+    const SurfaceDescriptor& aSharedData, const ReadLockDescriptor& aReadLock,
+    LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
+    wr::MaybeExternalImageId& aExternalImageId, nsIEventTarget* aTarget) {
   MOZ_ASSERT(CanSend());
-  return SendPTextureConstructor(aSharedData, aReadLock, aLayersBackend, aFlags, aSerial);
+  return SendPTextureConstructor(aSharedData, aReadLock, aLayersBackend, aFlags,
+                                 aSerial);
 }
 
-bool VideoBridgeChild::IsSameProcess() const
-{
+bool VideoBridgeChild::IsSameProcess() const {
   return OtherPid() == base::GetCurrentProcId();
 }
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla

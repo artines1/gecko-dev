@@ -6,14 +6,17 @@
 
 const { Component } = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { button, span } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  button,
+  span,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 
 const defaultProps = {
   disabled: false,
   busy: false,
   title: null,
   children: null,
-  className: ""
+  className: "",
 };
 
 /**
@@ -29,7 +32,7 @@ class Button extends Component {
       busy: PropTypes.bool,
       title: PropTypes.string,
       children: PropTypes.string,
-      className: PropTypes.string
+      className: PropTypes.string,
     };
   }
 
@@ -40,11 +43,12 @@ class Button extends Component {
   render() {
     const className = [
       ...this.props.className.split(" "),
-      "devtools-button"
+      "devtools-button",
     ].join(" ");
     const props = Object.assign({}, this.props, {
       className,
-      "aria-busy": this.props.busy
+      "aria-busy": this.props.busy.toString(),
+      busy: this.props.busy.toString(),
     });
 
     const classList = ["btn-content"];
@@ -52,12 +56,55 @@ class Button extends Component {
       classList.push("devtools-throbber");
     }
 
-    return (button(props, span({
-      className: classList.join(" "),
-      tabIndex: -1
-    }, this.props.children)));
+    return button(
+      props,
+      span(
+        {
+          className: classList.join(" "),
+          tabIndex: -1,
+        },
+        this.props.children
+      )
+    );
   }
 }
 
-// Exports from this module
-module.exports = Button;
+function ToggleButton(props) {
+  const {
+    active,
+    busy,
+    disabled,
+    label,
+    className,
+    onClick,
+    onKeyDown,
+    tooltip,
+  } = props;
+  const classList = [...className.split(" "), "toggle-button"];
+
+  if (active) {
+    classList.push("checked");
+  }
+
+  if (busy) {
+    classList.push("devtools-throbber");
+  }
+
+  return button(
+    {
+      disabled,
+      "aria-pressed": active === true,
+      "aria-busy": busy,
+      className: classList.join(" "),
+      onClick,
+      onKeyDown,
+      title: tooltip,
+    },
+    label
+  );
+}
+
+module.exports = {
+  Button,
+  ToggleButton,
+};

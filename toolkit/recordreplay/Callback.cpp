@@ -6,7 +6,7 @@
 
 #include "Callback.h"
 
-#include "ipc/ChildIPC.h"
+#include "ipc/ChildInternal.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/RecordReplay.h"
 #include "mozilla/StaticMutex.h"
@@ -20,66 +20,58 @@ namespace recordreplay {
 static ValueIndex* gCallbackData;
 static StaticMutexNotRecorded gCallbackMutex;
 
-void
-RegisterCallbackData(void* aData)
-{
+void RegisterCallbackData(void* aData) {
   MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
   MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
   if (!aData) {
     return;
   }
 
-  RecordReplayAssert("RegisterCallbackData");
-
-  AutoOrderedAtomicAccess at;
+  AutoOrderedAtomicAccess at(&gCallbackData);
   StaticMutexAutoLock lock(gCallbackMutex);
   if (!gCallbackData) {
     gCallbackData = new ValueIndex();
   }
-  gCallbackData->Insert(aData);
+  if (!gCallbackData->Contains(aData)) {
+    gCallbackData->Insert(aData);
+  }
 }
 
-void
-BeginCallback(size_t aCallbackId)
-{
+void BeginCallback(size_t aCallbackId) {
   MOZ_RELEASE_ASSERT(IsRecording());
   MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
 
   Thread* thread = Thread::Current();
   if (thread->IsMainThread()) {
-    child::EndIdleTime();
+    js::EndIdleTime();
   }
   thread->SetPassThrough(false);
+
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
 
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::ExecuteCallback);
   thread->Events().WriteScalar(aCallbackId);
 }
 
-void
-EndCallback()
-{
+void EndCallback() {
   MOZ_RELEASE_ASSERT(IsRecording());
   MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
   MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
 
   Thread* thread = Thread::Current();
   if (thread->IsMainThread()) {
-    child::BeginIdleTime();
+    js::BeginIdleTime();
   }
   thread->SetPassThrough(true);
 }
 
-void
-SaveOrRestoreCallbackData(void** aData)
-{
-  MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsPassedThrough());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
+void SaveOrRestoreCallbackData(void** aData) {
   MOZ_RELEASE_ASSERT(gCallbackData);
 
   Thread* thread = Thread::Current();
-
-  RecordReplayAssert("RestoreCallbackData");
+  RecordingEventSection res(thread);
+  MOZ_RELEASE_ASSERT(res.CanAccessEvents());
 
   thread->Events().RecordOrReplayThreadEvent(ThreadEvent::RestoreCallbackData);
 
@@ -95,48 +87,46 @@ SaveOrRestoreCallbackData(void** aData)
   }
 }
 
-void
-RemoveCallbackData(void* aData)
-{
+void RemoveCallbackData(void* aData) {
   MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
 
   StaticMutexAutoLock lock(gCallbackMutex);
   gCallbackData->Remove(aData);
 }
 
-void
-PassThroughThreadEventsAllowCallbacks(const std::function<void()>& aFn)
-{
-  MOZ_RELEASE_ASSERT(IsRecordingOrReplaying());
-  MOZ_RELEASE_ASSERT(!AreThreadEventsDisallowed());
-
+void PassThroughThreadEventsAllowCallbacks(const std::function<void()>& aFn) {
   Thread* thread = Thread::Current();
+  Maybe<RecordingEventSection> res;
 
   if (IsRecording()) {
     if (thread->IsMainThread()) {
-      child::BeginIdleTime();
+      js::BeginIdleTime();
     }
     thread->SetPassThrough(true);
     aFn();
     if (thread->IsMainThread()) {
-      child::EndIdleTime();
+      js::EndIdleTime();
     }
     thread->SetPassThrough(false);
+
+    res.emplace(thread);
+    MOZ_RELEASE_ASSERT(res->CanAccessEvents());
     thread->Events().RecordOrReplayThreadEvent(ThreadEvent::CallbacksFinished);
   } else {
     while (true) {
-      ThreadEvent ev = (ThreadEvent) thread->Events().ReadScalar();
+      res.emplace(thread);
+      MOZ_RELEASE_ASSERT(res->CanAccessEvents());
+      ThreadEvent ev = thread->Events().ReplayThreadEvent();
       if (ev != ThreadEvent::ExecuteCallback) {
-        if (ev != ThreadEvent::CallbacksFinished) {
-          child::ReportFatalError("Unexpected event while replaying callback events");
-        }
+        MOZ_RELEASE_ASSERT(ev == ThreadEvent::CallbacksFinished);
         break;
       }
       size_t id = thread->Events().ReadScalar();
+      res.reset();
       ReplayInvokeCallback(id);
     }
   }
 }
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla

@@ -1,4 +1,3 @@
-/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -44,7 +43,7 @@ function test_with_thrower() {
   const s = DevToolsUtils.safeErrorString({
     toString: () => {
       throw new Error("Muahahaha");
-    }
+    },
   });
   // Still don't fail, get string back.
   Assert.equal(typeof s, "string");
@@ -52,7 +51,7 @@ function test_with_thrower() {
 
 function test_with_psychotic() {
   const s = DevToolsUtils.safeErrorString({
-    toString: () => Object.create(null)
+    toString: () => Object.create(null),
   });
   // Still get a string out, and no exceptions thrown
   Assert.equal(typeof s, "string");

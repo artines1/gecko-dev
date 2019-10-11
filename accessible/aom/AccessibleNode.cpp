@@ -7,6 +7,7 @@
 #include "mozilla/dom/AccessibleNodeBinding.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/DOMStringList.h"
+#include "mozilla/StaticPrefs_accessibility.h"
 #include "nsIPersistentProperties2.h"
 #include "nsISimpleEnumerator.h"
 
@@ -18,18 +19,9 @@ using namespace mozilla;
 using namespace mozilla::a11y;
 using namespace mozilla::dom;
 
-bool
-AccessibleNode::IsAOMEnabled(JSContext* aCx, JSObject* /*unused*/)
-{
-  static bool sPrefCached = false;
-  static bool sPrefCacheValue = false;
-
-  if (!sPrefCached) {
-    sPrefCached = true;
-    Preferences::AddBoolVarCache(&sPrefCacheValue, "accessibility.AOM.enabled");
-  }
-
-  return nsContentUtils::IsSystemCaller(aCx) || sPrefCacheValue;
+bool AccessibleNode::IsAOMEnabled(JSContext* aCx, JSObject* /*unused*/) {
+  return nsContentUtils::IsSystemCaller(aCx) ||
+         StaticPrefs::accessibility_AOM_enabled();
 }
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AccessibleNode, mRelationProperties,
@@ -43,15 +35,14 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(AccessibleNode)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(AccessibleNode)
 
-AccessibleNode::AccessibleNode(nsINode* aNode) :
-    mDoubleProperties(3),
-    mIntProperties(3),
-    mUIntProperties(6),
-    mBooleanProperties(0),
-    mRelationProperties(3),
-    mStringProperties(16),
-    mDOMNode(aNode)
-{
+AccessibleNode::AccessibleNode(nsINode* aNode)
+    : mDoubleProperties(3),
+      mIntProperties(3),
+      mUIntProperties(6),
+      mBooleanProperties(0),
+      mRelationProperties(3),
+      mStringProperties(16),
+      mDOMNode(aNode) {
   nsAccessibilityService* accService = GetOrCreateAccService();
   if (!accService) {
     return;
@@ -63,25 +54,20 @@ AccessibleNode::AccessibleNode(nsINode* aNode) :
   }
 }
 
-AccessibleNode::~AccessibleNode()
-{
-}
+AccessibleNode::~AccessibleNode() {}
 
-/* virtual */ JSObject*
-AccessibleNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+/* virtual */
+JSObject* AccessibleNode::WrapObject(JSContext* aCx,
+                                     JS::Handle<JSObject*> aGivenProto) {
   return AccessibleNode_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-/* virtual */ ParentObject
-AccessibleNode::GetParentObject() const
-{
+/* virtual */
+ParentObject AccessibleNode::GetParentObject() const {
   return mDOMNode->GetParentObject();
 }
 
-void
-AccessibleNode::GetComputedRole(nsAString& aRole)
-{
+void AccessibleNode::GetComputedRole(nsAString& aRole) {
   if (mIntl) {
     nsAccessibilityService* accService = GetOrCreateAccService();
     if (accService) {
@@ -93,9 +79,7 @@ AccessibleNode::GetComputedRole(nsAString& aRole)
   aRole.AssignLiteral("unknown");
 }
 
-void
-AccessibleNode::GetStates(nsTArray<nsString>& aStates)
-{
+void AccessibleNode::GetStates(nsTArray<nsString>& aStates) {
   nsAccessibilityService* accService = GetOrCreateAccService();
   if (!mIntl || !accService) {
     aStates.AppendElement(NS_LITERAL_STRING("defunct"));
@@ -111,9 +95,7 @@ AccessibleNode::GetStates(nsTArray<nsString>& aStates)
   aStates = mStates->StringArray();
 }
 
-void
-AccessibleNode::GetAttributes(nsTArray<nsString>& aAttributes)
-{
+void AccessibleNode::GetAttributes(nsTArray<nsString>& aAttributes) {
   if (!mIntl) {
     return;
   }
@@ -136,13 +118,12 @@ AccessibleNode::GetAttributes(nsTArray<nsString>& aAttributes)
   }
 }
 
-bool
-AccessibleNode::Is(const Sequence<nsString>& aFlavors)
-{
+bool AccessibleNode::Is(const Sequence<nsString>& aFlavors) {
   nsAccessibilityService* accService = GetOrCreateAccService();
   if (!mIntl || !accService) {
     for (const auto& flavor : aFlavors) {
-      if (!flavor.EqualsLiteral("unknown") && !flavor.EqualsLiteral("defunct")) {
+      if (!flavor.EqualsLiteral("unknown") &&
+          !flavor.EqualsLiteral("defunct")) {
         return false;
       }
     }
@@ -164,9 +145,7 @@ AccessibleNode::Is(const Sequence<nsString>& aFlavors)
   return true;
 }
 
-bool
-AccessibleNode::Has(const Sequence<nsString>& aAttributes)
-{
+bool AccessibleNode::Has(const Sequence<nsString>& aAttributes) {
   if (!mIntl) {
     return false;
   }
@@ -181,11 +160,9 @@ AccessibleNode::Has(const Sequence<nsString>& aAttributes)
   return true;
 }
 
-void
-AccessibleNode::Get(JSContext* aCX, const nsAString& aAttribute,
-                    JS::MutableHandle<JS::Value> aValue,
-                    ErrorResult& aRv)
-{
+void AccessibleNode::Get(JSContext* aCX, const nsAString& aAttribute,
+                         JS::MutableHandle<JS::Value> aValue,
+                         ErrorResult& aRv) {
   if (!mIntl) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -204,8 +181,4 @@ AccessibleNode::Get(JSContext* aCX, const nsAString& aAttribute,
   aValue.set(jsval);
 }
 
-nsINode*
-AccessibleNode::GetDOMNode()
-{
-  return mDOMNode;
-}
+nsINode* AccessibleNode::GetDOMNode() { return mDOMNode; }

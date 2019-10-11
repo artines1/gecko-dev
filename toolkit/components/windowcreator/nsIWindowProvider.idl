@@ -14,12 +14,13 @@
 #include "nsISupports.idl"
 
 %{ C++
-class nsDocShellLoadInfo;
+class nsDocShellLoadState;
 %}
 
+webidl BrowsingContext;
 interface mozIDOMWindowProxy;
 interface nsIURI;
-native nsDocShellLoadInfoPtr(nsDocShellLoadInfo*);
+native nsDocShellLoadStatePtr(nsDocShellLoadState*);
 
 /**
  * The nsIWindowProvider interface exists so that the window watcher's default
@@ -76,7 +77,7 @@ interface nsIWindowProvider : nsISupports
    *        the feature string to the window it returns in any way it sees fit.
    *        See the nsIWindowWatcher interface for details on feature strings.
    *
-   * @param aLoadInfo Specify setup information of the load in the new window
+   * @param aLoadState Specify setup information of the load in the new window
    *
    * @param aWindowIsNew [out] Whether the window being returned was just
    *        created by the window provider implementation.  This can be used by
@@ -97,15 +98,16 @@ interface nsIWindowProvider : nsISupports
    * @see nsIWindowWatcher for more information on aFeatures.
    * @see nsIWebBrowserChrome for more information on aChromeFlags.
    */
-  mozIDOMWindowProxy provideWindow(in mozIDOMWindowProxy aParent,
-                                   in unsigned long aChromeFlags,
-                                   in boolean aCalledFromJS,
-                                   in boolean aPositionSpecified,
-                                   in boolean aSizeSpecified,
-                                   in nsIURI aURI,
-                                   in AString aName,
-                                   in AUTF8String aFeatures,
-                                   in boolean aForceNoOpener,
-                                   in nsDocShellLoadInfoPtr aLoadInfo,
-                                   out boolean aWindowIsNew);
+  BrowsingContext provideWindow(in mozIDOMWindowProxy aParent,
+                                in unsigned long aChromeFlags,
+                                in boolean aCalledFromJS,
+                                in boolean aPositionSpecified,
+                                in boolean aSizeSpecified,
+                                in nsIURI aURI,
+                                in AString aName,
+                                in AUTF8String aFeatures,
+                                in boolean aForceNoOpener,
+                                in boolean aForceNoReferrer,
+                                in nsDocShellLoadStatePtr aLoadState,
+                                out boolean aWindowIsNew);
 };

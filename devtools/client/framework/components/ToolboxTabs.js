@@ -3,17 +3,38 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+  createRef,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
+const {
+  ToolboxTabsOrderManager,
+} = require("devtools/client/framework/toolbox-tabs-order-manager");
+
 const { div } = dom;
 
-const MenuButton = createFactory(require("devtools/client/shared/components/menu/MenuButton"));
-const MenuItem = createFactory(require("devtools/client/shared/components/menu/MenuItem"));
-const MenuList = createFactory(require("devtools/client/shared/components/menu/MenuList"));
-const ToolboxTab = createFactory(require("devtools/client/framework/components/ToolboxTab"));
-const { ToolboxTabsOrderManager } = require("devtools/client/framework/toolbox-tabs-order-manager");
+const ToolboxTab = createFactory(
+  require("devtools/client/framework/components/ToolboxTab")
+);
+
+loader.lazyGetter(this, "MenuButton", function() {
+  return createFactory(
+    require("devtools/client/shared/components/menu/MenuButton")
+  );
+});
+loader.lazyGetter(this, "MenuItem", function() {
+  return createFactory(
+    require("devtools/client/shared/components/menu/MenuItem")
+  );
+});
+loader.lazyGetter(this, "MenuList", function() {
+  return createFactory(
+    require("devtools/client/shared/components/menu/MenuList")
+  );
+});
 
 // 26px is chevron devtools button width.(i.e. tools-chevronmenu)
 const CHEVRON_BUTTON_WIDTH = 26;
@@ -43,6 +64,8 @@ class ToolboxTabs extends Component {
       overflowedTabIds: [],
     };
 
+    this.wrapperEl = createRef();
+
     // Map with tool Id and its width size. This lifecycle is out of React's
     // lifecycle. If a tool is registered, ToolboxTabs will add target tool id
     // to this map. ToolboxTabs will never remove tool id from this cache.
@@ -51,7 +74,12 @@ class ToolboxTabs extends Component {
     this._resizeTimerId = null;
     this.resizeHandler = this.resizeHandler.bind(this);
 
-    this._tabsOrderManager = new ToolboxTabsOrderManager(props.onTabsOrderUpdated);
+    const { toolbox, onTabsOrderUpdated, panelDefinitions } = props;
+    this._tabsOrderManager = new ToolboxTabsOrderManager(
+      toolbox,
+      onTabsOrderUpdated,
+      panelDefinitions
+    );
   }
 
   componentDidMount() {
@@ -72,6 +100,9 @@ class ToolboxTabs extends Component {
     if (this.shouldUpdateToolboxTabs(prevProps, this.props)) {
       this.updateCachedToolTabsWidthMap();
       this.updateOverflowedTabs();
+      this._tabsOrderManager.setCurrentPanelDefinitions(
+        this.props.panelDefinitions
+      );
     }
   }
 
@@ -98,8 +129,11 @@ class ToolboxTabs extends Component {
    * Return true if we should update the overflowed tabs.
    */
   shouldUpdateToolboxTabs(prevProps, nextProps) {
-    if (prevProps.currentToolId !== nextProps.currentToolId ||
-        prevProps.visibleToolboxButtonCount !== nextProps.visibleToolboxButtonCount) {
+    if (
+      prevProps.currentToolId !== nextProps.currentToolId ||
+      prevProps.visibleToolboxButtonCount !==
+        nextProps.visibleToolboxButtonCount
+    ) {
       return true;
     }
 
@@ -112,12 +146,13 @@ class ToolboxTabs extends Component {
    * Update the Map of tool id and tool tab width.
    */
   updateCachedToolTabsWidthMap() {
-    const thisNode = findDOMNode(this);
     const utils = window.windowUtils;
     // Force a reflow before calling getBoundingWithoutFlushing on each tab.
-    thisNode.clientWidth;
+    this.wrapperEl.current.clientWidth;
 
-    for (const tab of thisNode.querySelectorAll(".devtools-tab")) {
+    for (const tab of this.wrapperEl.current.querySelectorAll(
+      ".devtools-tab"
+    )) {
       const tabId = tab.id.replace("toolbox-tab-", "");
       if (!this._cachedToolTabsWidthMap.has(tabId)) {
         const rect = utils.getBoundsWithoutFlushing(tab);
@@ -132,8 +167,10 @@ class ToolboxTabs extends Component {
    * function will not update state.
    */
   updateOverflowedTabs() {
-    const node = findDOMNode(this);
-    const toolboxWidth = parseInt(getComputedStyle(node).width, 10);
+    const toolboxWidth = parseInt(
+      getComputedStyle(this.wrapperEl.current).width,
+      10
+    );
     const { currentToolId } = this.props;
     const enabledTabs = this.props.panelDefinitions.map(def => def.id);
     let sumWidth = 0;
@@ -158,24 +195,32 @@ class ToolboxTabs extends Component {
 
     // If the selected tab is in overflowed tabs, insert it into a visible
     // toolbox.
-    if (!visibleTabs.includes(currentToolId) &&
-        enabledTabs.includes(currentToolId)) {
+    if (
+      !visibleTabs.includes(currentToolId) &&
+      enabledTabs.includes(currentToolId)
+    ) {
       const selectedToolWidth = this._cachedToolTabsWidthMap.get(currentToolId);
-      while ((sumWidth + selectedToolWidth) > toolboxWidth &&
-             visibleTabs.length > 0) {
-        const removingToolId  = visibleTabs.pop();
-        const removingToolWidth = this._cachedToolTabsWidthMap.get(removingToolId);
+      while (
+        sumWidth + selectedToolWidth > toolboxWidth &&
+        visibleTabs.length > 0
+      ) {
+        const removingToolId = visibleTabs.pop();
+        const removingToolWidth = this._cachedToolTabsWidthMap.get(
+          removingToolId
+        );
         sumWidth -= removingToolWidth;
       }
 
       // If toolbox width is narrow, toolbox display only chevron menu.
       // i.e. All tool tabs will overflow.
-      if ((sumWidth + selectedToolWidth) <= toolboxWidth) {
+      if (sumWidth + selectedToolWidth <= toolboxWidth) {
         visibleTabs.push(currentToolId);
       }
     }
 
-    const willOverflowTabs = enabledTabs.filter(id => !visibleTabs.includes(id));
+    const willOverflowTabs = enabledTabs.filter(
+      id => !visibleTabs.includes(id)
+    );
     if (!this.equalToolIdArray(this.state.overflowedTabIds, willOverflowTabs)) {
       this.setState({ overflowedTabIds: willOverflowTabs });
     }
@@ -183,29 +228,32 @@ class ToolboxTabs extends Component {
 
   resizeHandler(evt) {
     window.cancelIdleCallback(this._resizeTimerId);
-    this._resizeTimerId = window.requestIdleCallback(() => {
-      this.updateOverflowedTabs();
-    }, { timeout: 100 });
+    this._resizeTimerId = window.requestIdleCallback(
+      () => {
+        this.updateOverflowedTabs();
+      },
+      { timeout: 100 }
+    );
   }
 
   renderToolsChevronMenuList() {
-    const {
-      panelDefinitions,
-      selectTool,
-    } = this.props;
+    const { panelDefinitions, selectTool } = this.props;
 
     const items = [];
     for (const { id, label, icon } of panelDefinitions) {
       if (this.state.overflowedTabIds.includes(id)) {
-        items.push(MenuItem({
-          id: "tools-chevron-menupopup-" + id,
-          label,
-          type: "checkbox",
-          onClick: () => {
-            selectTool(id, "tab_switch");
-          },
-          icon,
-        }));
+        items.push(
+          MenuItem({
+            key: id,
+            id: "tools-chevron-menupopup-" + id,
+            label,
+            type: "checkbox",
+            onClick: () => {
+              selectTool(id, "tab_switch");
+            },
+            icon,
+          })
+        );
       }
     }
 
@@ -217,9 +265,7 @@ class ToolboxTabs extends Component {
    * presents an overflow.
    */
   renderToolsChevronButton() {
-    const {
-      toolbox,
-    } = this.props;
+    const { toolbox } = this.props;
 
     return MenuButton(
       {
@@ -247,8 +293,6 @@ class ToolboxTabs extends Component {
       selectTool,
     } = this.props;
 
-    this._tabsOrderManager.setCurrentPanelDefinitions(panelDefinitions);
-
     const tabs = panelDefinitions.map(panelDefinition => {
       // Don't display overflowed tab.
       if (!this.state.overflowedTabIds.includes(panelDefinition.id)) {
@@ -267,16 +311,18 @@ class ToolboxTabs extends Component {
 
     return div(
       {
-        className: "toolbox-tabs-wrapper"
+        className: "toolbox-tabs-wrapper",
+        ref: this.wrapperEl,
       },
       div(
         {
           className: "toolbox-tabs",
-          onMouseDown: (e) => this._tabsOrderManager.onMouseDown(e),
+          onMouseDown: e => this._tabsOrderManager.onMouseDown(e),
         },
         tabs,
-        (this.state.overflowedTabIds.length > 0)
-          ? this.renderToolsChevronButton() : null
+        this.state.overflowedTabIds.length > 0
+          ? this.renderToolsChevronButton()
+          : null
       )
     );
   }

@@ -7,7 +7,8 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 import unittest
 
-from compare_locales.tests import ParserTestMixin
+from compare_locales.tests import ParserTestMixin, BaseHelper
+from compare_locales.paths import File
 from compare_locales.parser import (
     Comment,
     DefinesInstruction,
@@ -69,10 +70,11 @@ class TestDefinesParser(ParserTestMixin, unittest.TestCase):
             (Whitespace, '\n\n'),
             ('MOZ_LANGPACK_CREATOR', 'mozilla.org'),
             (Whitespace, '\n\n'),
-            (Comment, 'non-English'),
-            (Whitespace, '\n'),
-            ('MOZ_LANGPACK_CONTRIBUTORS',
-             '<em:contributor>Joe Solon</em:contributor>'),
+            (
+                'MOZ_LANGPACK_CONTRIBUTORS',
+                '<em:contributor>Joe Solon</em:contributor>',
+                'non-English',
+            ),
             (Whitespace, '\n\n'),
             (DefinesInstruction, 'unfilter emptyLines'),
             (Junk, '\n\n')))
@@ -91,9 +93,7 @@ class TestDefinesParser(ParserTestMixin, unittest.TestCase):
             (Whitespace, '\n'),
             (DefinesInstruction, 'filter emptyLines'),
             (Whitespace, '\n\n'),
-            (Comment, u'češtině'),
-            (Whitespace, '\n'),
-            ('seamonkey_l10n_long', ''),
+            ('seamonkey_l10n_long', '', 'češtině'),
             (Whitespace, '\n\n'),
             (DefinesInstruction, 'unfilter emptyLines'),
             (Junk, '\n\n')))
@@ -194,6 +194,58 @@ class TestDefinesParser(ParserTestMixin, unittest.TestCase):
             ('tre', '  '),
             (Whitespace, '\n'),))
 
+    def test_standalone_comments(self):
+        self._test(
+            '''\
+#filter emptyLines
+# One comment
 
-if __name__ == '__main__':
-    unittest.main()
+# Second comment
+
+#define foo
+# bar comment
+#define bar
+
+#unfilter emptyLines
+''',
+            (
+                (DefinesInstruction, 'filter emptyLines'),
+                (Whitespace, '\n'),
+                (Comment, 'One comment'),
+                (Whitespace, '\n\n'),
+                (Comment, 'Second comment'),
+                (Whitespace, '\n\n'),
+                ('foo', ''),
+                (Whitespace, '\n'),
+                ('bar', '', 'bar comment'),
+                (Whitespace, '\n\n'),
+                (DefinesInstruction, 'unfilter emptyLines'),
+                (Whitespace, '\n'),
+            )
+        )
+
+
+class TestChecks(BaseHelper):
+    file = File('defines.inc', 'defines.inc')
+    refContent = b'''\
+#define foo bar
+'''
+
+    def test_ok(self):
+        self._test(
+            b'#define foo other',
+            tuple()
+        )
+
+    def test_bad_encoding(self):
+        self._test(
+            '#define foo touché'.encode('latin-1'),
+            (
+                (
+                    "warning",
+                    17,
+                    "\ufffd in: foo",
+                    "encodings"
+                ),
+            )
+        )

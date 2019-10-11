@@ -10,12 +10,14 @@ with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 
 EXPORTS += [
+    '!CrashAnnotations.h',
     'nsExceptionHandler.h',
 ]
 
 JAR_MANIFESTS += ['jar.mn']
 
 UNIFIED_SOURCES = [
+    'CrashAnnotations.cpp',
     'nsExceptionHandlerUtils.cpp',
 ]
 
@@ -29,7 +31,7 @@ if CONFIG['MOZ_CRASHREPORTER']:
             'breakpad-windows-libxul',
         ]
 
-        if CONFIG['MSVC_HAS_DIA_SDK']:
+        if CONFIG['WIN_DIA_SDK_BIN_DIR']:
             DIRS += ['google-breakpad/src/tools/windows/dump_syms']
 
         if CONFIG['MOZ_CRASHREPORTER_INJECTOR']:
@@ -54,9 +56,10 @@ if CONFIG['MOZ_CRASHREPORTER']:
             'google-breakpad/src/common',
             'google-breakpad/src/common/linux',
             'google-breakpad/src/processor',
-            'google-breakpad/src/tools/linux/dump_syms',
             'rust',
         ]
+        if CONFIG['HOST_OS_ARCH'] == 'Linux':
+            DIRS += ['google-breakpad/src/tools/linux/dump_syms']
 
 
     DIRS += [
@@ -108,6 +111,9 @@ if CONFIG['MOZ_CRASHREPORTER']:
     DEFINES['UNICODE'] = True
     DEFINES['_UNICODE'] = True
 
+    if CONFIG['MOZ_PHC']:
+        DEFINES['MOZ_PHC'] = True
+
     LOCAL_INCLUDES += [
         'google-breakpad/src',
     ]
@@ -125,9 +131,12 @@ else:
         'nsDummyExceptionHandler.cpp',
     ]
 
+# Generate CrashAnnotations.h
+GeneratedFile('CrashAnnotations.h', script='generate_crash_reporter_sources.py',
+              entry_point='emit_header', inputs=[
+                  'CrashAnnotations.h.in',
+                  'CrashAnnotations.yaml',
+              ])
 
 with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'Crash Reporting')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

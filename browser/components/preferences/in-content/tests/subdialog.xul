@@ -7,10 +7,11 @@
 
 <dialog id="subDialog"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         title="Sample sub-dialog" style="width: 32em; height: 5em;"
-        onload="document.getElementById('textbox').focus();"
-        ondialogaccept="acceptSubdialog();">
+        onload="document.getElementById('textbox').focus();">
   <script>
+    document.addEventListener("dialogaccept", acceptSubdialog);
     function acceptSubdialog() {
       window.arguments[0].acceptCount++;
     }
@@ -18,10 +19,10 @@
 
   <description id="desc">A sample sub-dialog for testing</description>
 
-  <textbox id="textbox" value="Default text" />
+  <html:input id="textbox" value="Default text" />
 
   <separator class="thin"/>
 
-  <button oncommand="close();" icon="close" label="Close" />
+  <button oncommand="window.close();" icon="close" label="Close" />
 
 </dialog>

@@ -7,7 +7,11 @@
 // Test the xpcshell-test debug support.  Ideally we should have this test
 // next to the xpcshell support code, but that's tricky...
 
-const {getDeviceFront} = require("devtools/shared/fronts/device");
+// HACK: ServiceWorkerManager requires the "profile-change-teardown" to cleanly
+// shutdown, and setting _profileInitialized to `true` will trigger those
+// notifications (see /testing/xpcshell/head.js).
+// eslint-disable-next-line no-undef
+_profileInitialized = true;
 
 add_task(async function() {
   const testFile = do_get_file("xpcshell_debugging_script.js");
@@ -15,7 +19,7 @@ add_task(async function() {
   // _setupDebuggerServer is from xpcshell-test's head.js
   /* global _setupDebuggerServer */
   let testResumed = false;
-  const DebuggerServer = _setupDebuggerServer([testFile.path], () => {
+  const { DebuggerServer } = _setupDebuggerServer([testFile.path], () => {
     testResumed = true;
   });
   const transport = DebuggerServer.connectPipe();
@@ -23,34 +27,40 @@ add_task(async function() {
   await client.connect();
 
   // Ensure that global actors are available. Just test the device actor.
-  const rootForm = await client.mainRoot.getRoot();
-  const deviceFront = await getDeviceFront(client, rootForm);
+  const deviceFront = await client.mainRoot.getFront("device");
   const desc = await deviceFront.getDescription();
-  equal(desc.geckobuildid, Services.appinfo.platformBuildID, "device actor works");
+  equal(
+    desc.geckobuildid,
+    Services.appinfo.platformBuildID,
+    "device actor works"
+  );
 
-  // Even though we have no tabs, getProcess gives us the chromeDebugger.
-  const response = await client.getProcess();
-
-  const actor = response.form.actor;
-  const [, tabClient] = await client.attachTab(actor);
-  const [, threadClient] = await tabClient.attachThread(null);
+  // Even though we have no tabs, getMainProcess gives us the chrome debugger.
+  const front = await client.mainRoot.getMainProcess();
+  const [, threadFront] = await front.attachThread();
   const onResumed = new Promise(resolve => {
-    threadClient.addOneTimeListener("paused", (event, packet) => {
-      equal(packet.why.type, "breakpoint",
-          "yay - hit the breakpoint at the first line in our script");
+    threadFront.once("paused", packet => {
+      equal(
+        packet.why.type,
+        "breakpoint",
+        "yay - hit the breakpoint at the first line in our script"
+      );
       // Resume again - next stop should be our "debugger" statement.
-      threadClient.addOneTimeListener("paused", (event, packet) => {
-        equal(packet.why.type, "debuggerStatement",
-              "yay - hit the 'debugger' statement in our script");
-        threadClient.resume(resolve);
+      threadFront.once("paused", packet => {
+        equal(
+          packet.why.type,
+          "debuggerStatement",
+          "yay - hit the 'debugger' statement in our script"
+        );
+        threadFront.resume().then(resolve);
       });
-      threadClient.resume();
+      threadFront.resume();
     });
   });
 
   // tell the thread to do the initial resume.  This would cause the
   // xpcshell test harness to resume and load the file under test.
-  threadClient.resume(() => {
+  threadFront.resume().then(() => {
     // should have been told to resume the test itself.
     ok(testResumed);
     // Now load our test script.

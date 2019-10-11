@@ -10,6 +10,10 @@
 #include "mozilla/Attributes.h"
 #include "nsMathMLContainerFrame.h"
 
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
+
 //
 // <mmultiscripts> -- attach prescripts and tensor indices to a base
 // <msub> -- attach a subscript to a base
@@ -17,39 +21,34 @@
 // <msup> -- attach a superscript to a base
 //
 
-class nsMathMLmmultiscriptsFrame : public nsMathMLContainerFrame {
-public:
+class nsMathMLmmultiscriptsFrame final : public nsMathMLContainerFrame {
+ public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmmultiscriptsFrame)
 
-  friend nsIFrame* NS_NewMathMLmmultiscriptsFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
+  friend nsIFrame* NS_NewMathMLmmultiscriptsFrame(
+      mozilla::PresShell* aPresShell, ComputedStyle* aStyle);
 
   NS_IMETHOD
   TransmitAutomaticData() override;
 
-  virtual nsresult
-  Place(DrawTarget*          aDrawTarget,
-        bool                 aPlaceOrigin,
-        ReflowOutput& aDesiredSize) override;
+  virtual nsresult Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
+                         ReflowOutput& aDesiredSize) override;
 
-  static nsresult
-  PlaceMultiScript(nsPresContext*          aPresContext,
-                   DrawTarget*             aDrawTarget,
-                   bool                    aPlaceOrigin,
-                   ReflowOutput&    aDesiredSize,
-                   nsMathMLContainerFrame* aForFrame,
-                   nscoord                 aUserSubScriptShift,
-                   nscoord                 aUserSupScriptShift,
-                   float                   aFontSizeInflation);
+  static nsresult PlaceMultiScript(nsPresContext* aPresContext,
+                                   DrawTarget* aDrawTarget, bool aPlaceOrigin,
+                                   ReflowOutput& aDesiredSize,
+                                   nsMathMLContainerFrame* aForFrame,
+                                   nscoord aUserSubScriptShift,
+                                   nscoord aUserSupScriptShift,
+                                   float aFontSizeInflation);
 
-  uint8_t
-  ScriptIncrement(nsIFrame* aFrame) override;
+  uint8_t ScriptIncrement(nsIFrame* aFrame) override;
 
-protected:
-  explicit nsMathMLmmultiscriptsFrame(ComputedStyle* aStyle)
-    : nsMathMLContainerFrame(aStyle, kClassID) {}
+ protected:
+  explicit nsMathMLmmultiscriptsFrame(ComputedStyle* aStyle,
+                                      nsPresContext* aPresContext)
+      : nsMathMLContainerFrame(aStyle, aPresContext, kClassID) {}
   virtual ~nsMathMLmmultiscriptsFrame();
-
-
 };
 
 #endif /* nsMathMLmmultiscriptsFrame_h___ */

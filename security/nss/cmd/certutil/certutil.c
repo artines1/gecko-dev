@@ -741,6 +741,9 @@ ValidateCert(CERTCertDBHandle *handle, char *name, char *date,
         case 'V':
             usage = certificateUsageSSLServer;
             break;
+        case 'I':
+            usage = certificateUsageIPsec;
+            break;
         case 'S':
             usage = certificateUsageEmailSigner;
             break;
@@ -1359,8 +1362,11 @@ luC(enum usage_level ul, const char *command)
               "%-20s Create extended key usage extension. Possible keywords:\n"
               "%-20s \"serverAuth\", \"clientAuth\",\"codeSigning\",\n"
               "%-20s \"emailProtection\", \"timeStamp\",\"ocspResponder\",\n"
-              "%-20s \"stepUp\", \"msTrustListSign\", \"critical\"\n",
-        "   -6 | --extKeyUsage keyword,keyword,...", "", "", "", "");
+              "%-20s \"stepUp\", \"msTrustListSign\", \"x509Any\",\n"
+              "%-20s \"ipsecIKE\", \"ipsecIKEEnd\", \"ipsecIKEIntermediate\",\n"
+              "%-20s \"ipsecEnd\", \"ipsecTunnel\", \"ipsecUser\",\n"
+              "%-20s \"critical\"\n",
+        "   -6 | --extKeyUsage keyword,keyword,...", "", "", "", "", "", "", "");
     FPS "%-20s Create an email subject alt name extension\n",
         "   -7 emailAddrs");
     FPS "%-20s Create an dns subject alt name extension\n",
@@ -1706,6 +1712,7 @@ luV(enum usage_level ul, const char *command)
     FPS "%-20s Specify certificate usage:\n", "   -u certusage");
     FPS "%-25s C \t SSL Client\n", "");
     FPS "%-25s V \t SSL Server\n", "");
+    FPS "%-25s I \t IPsec\n", "");
     FPS "%-25s L \t SSL CA\n", "");
     FPS "%-25s A \t Any CA\n", "");
     FPS "%-25s Y \t Verify CA\n", "");
@@ -3116,7 +3123,7 @@ certutil_main(int argc, char **argv, PRBool initialize)
         PR_fprintf(PR_STDERR,
                    "%s -%c: specify a nickname (-n) or\n"
                    "   a key ID (-k).\n",
-                   commandToRun, progName);
+                   progName, commandToRun);
         return 255;
     }
 

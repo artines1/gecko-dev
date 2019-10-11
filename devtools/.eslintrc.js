@@ -7,6 +7,7 @@ module.exports = {
   "globals": {
     "exports": true,
     "isWorker": true,
+    "isReplaying": true,
     "loader": true,
     "module": true,
     "reportError": true,
@@ -34,7 +35,6 @@ module.exports = {
       "client/scratchpad/**",
       "client/shared/*.jsm",
       "client/shared/widgets/*.jsm",
-      "client/webide/**",
     ],
     "rules": {
       "consistent-return": "off",
@@ -43,21 +43,9 @@ module.exports = {
     "files": [
       "client/framework/**",
       "client/scratchpad/**",
-      "client/webide/**",
     ],
     "rules": {
       "max-nested-callbacks": "off",
-    }
-  }, {
-    "files": [
-      "client/framework/**",
-      "client/scratchpad/**",
-      "client/shared/*.jsm",
-      "client/shared/widgets/*.jsm",
-      "client/webide/**",
-    ],
-    "rules": {
-      "max-len": "off",
     }
   }, {
     "files": [
@@ -73,7 +61,6 @@ module.exports = {
       "client/scratchpad/**",
       "client/shared/*.jsm",
       "client/shared/widgets/*.jsm",
-      "client/webide/**",
     ],
     "rules": {
       "mozilla/no-aArgs": "off",
@@ -90,9 +77,7 @@ module.exports = {
     "files": [
       "client/framework/**",
       "client/scratchpad/**",
-      "client/shared/AppCacheUtils.jsm",
       "client/shared/widgets/*.jsm",
-      "client/webide/**",
     ],
     "rules": {
       "no-shadow": "off",
@@ -101,34 +86,8 @@ module.exports = {
     "files": [
       "client/framework/**",
       "client/scratchpad/**",
-      "client/webide/**",
     ],
     "rules": {
-      "strict": "off",
-    }
-  }, {
-    "files": [
-      // Note: Bug 1403938 may be removing canvasdebugger, check before
-      // doing more work on enabling these rules.
-      "client/canvasdebugger/**",
-      // Note: Bug 1342237 may be removing shadereditor, check before
-      // doing more work on enabling these rules.
-      "client/shadereditor/**",
-      // Note: Bug 1403944 may be removing webaudioeditor, check before
-      // doing more work on enabling these rules.
-      "client/webaudioeditor/**",
-    ],
-    "rules": {
-      "consistent-return": "off",
-      "max-len": "off",
-      "mozilla/no-aArgs": "off",
-      "mozilla/var-only-at-top-level": "off",
-      "no-redeclare": "off",
-      "no-return-assign": "off",
-      "no-shadow": "off",
-      "no-undef": "off",
-      "no-unused-vars": "off",
-      "no-useless-call": "off",
       "strict": "off",
     }
   }, {
@@ -179,9 +138,8 @@ module.exports = {
 
     // Rules from the mozilla plugin
     "mozilla/no-aArgs": "error",
-    "mozilla/no-single-arg-cu-import": "error",
     // See bug 1224289.
-    "mozilla/reject-importGlobalProperties": "error",
+    "mozilla/reject-importGlobalProperties": ["error", "everything"],
     // devtools/shared/platform is special; see the README.md in that
     // directory for details.  We reject requires using explicit
     // subdirectories of this directory.
@@ -233,26 +191,20 @@ module.exports = {
     // Disallow using variables outside the blocks they are defined (especially
     // since only let and const are used, see "no-var").
     "block-scoped-var": "error",
-    // Enforce one true brace style (opening brace on the same line) and avoid
-    // start and end braces on the same line.
-    "brace-style": ["error", "1tbs", {"allowSingleLine": false}],
     // Require camel case names
-    "camelcase": "error",
-    // Allow trailing commas for easy list extension.  Having them does not
-    // impair readability, but also not required either.
-    "comma-dangle": "off",
+    "camelcase": ["error", { "properties": "never" }],
     // Warn about cyclomatic complexity in functions.
-    "complexity": ["error", 53],
+    // 20 is ESLint's default, and we want to keep it this way to prevent new highly
+    // complex functions from being introduced. However, because Mozilla's eslintrc has
+    // some other value defined, we need to override it here. See bug 1553449 for more
+    // information on complex DevTools functions that are currently excluded.
+    "complexity": ["error", 20],
     // Don't warn for inconsistent naming when capturing this (not so important
     // with auto-binding fat arrow functions).
     "consistent-this": "off",
-    // Enforce curly brace conventions for all control statements.
-    "curly": "error",
     // Don't require a default case in switch statements. Avoid being forced to
     // add a bogus default when you know all possible cases are handled.
     "default-case": "off",
-    // Enforce dots on the next line with property name.
-    "dot-location": ["error", "property"],
     // Allow using == instead of ===, in the interest of landing something since
     // the devtools codebase is split on convention here.
     "eqeqeq": "off",
@@ -266,15 +218,6 @@ module.exports = {
     "func-style": "off",
     // Only useful in a node environment.
     "handle-callback-err": "off",
-    // Tab width.
-    "indent-legacy": ["error", 2, {"SwitchCase": 1, "ArrayExpression": "first", "ObjectExpression": "first"}],
-    // Enforces spacing between keys and values in object literal properties.
-    "key-spacing": ["error", {"beforeColon": false, "afterColon": true}],
-    // Maximum length of a line.
-    "max-len": ["error", 90, 2, {
-      "ignoreUrls": true,
-      "ignorePattern": "data:image\/|\\s*require\\s*\\(|^\\s*loader\\.lazy|-\\*-"
-    }],
     // Maximum depth callbacks can be nested.
     "max-nested-callbacks": ["error", 3],
     // Don't limit the number of parameters that can be used in a function.
@@ -286,14 +229,8 @@ module.exports = {
     // operators are followed by a capital letter. Don't warn when capitalized
     // functions are used without the new operator.
     "new-cap": ["error", {"capIsNew": false}],
-    // Disallow the omission of parentheses when invoking a constructor with no
-    // arguments.
-    "new-parens": "error",
     // Allow use of bitwise operators.
     "no-bitwise": "off",
-    // Disallow the catch clause parameter name being the same as a variable in
-    // the outer scope, to avoid confusion.
-    "no-catch-shadow": "error",
     // Allow using the console API.
     "no-console": "off",
     // Allow using constant expressions in conditions like while (true)
@@ -310,24 +247,14 @@ module.exports = {
     "no-empty": "error",
     // Disallow adding to native types
     "no-extend-native": "error",
-    // Allow unnecessary parentheses, as they may make the code more readable.
-    "no-extra-parens": "off",
     // Disallow fallthrough of case statements, except if there is a comment.
     "no-fallthrough": "error",
-    // Allow the use of leading or trailing decimal points in numeric literals.
-    "no-floating-decimal": "off",
     // Allow comments inline after code.
     "no-inline-comments": "off",
     // Allow mixing regular variable and require declarations (not a node env).
     "no-mixed-requires": "off",
-    // Disallow use of multiple spaces (sometimes used to align const values,
-    // array or object items, etc.). It's hard to maintain and doesn't add that
-    // much benefit.
-    "no-multi-spaces": "error",
     // Disallow use of multiline strings (use template strings instead).
     "no-multi-str": "error",
-    // Disallow multiple empty lines.
-    "no-multiple-empty-lines": ["error", {"max": 1}],
     // Allow use of new operator with the require function.
     "no-new-require": "off",
     // Allow reassignment of function parameters.
@@ -344,32 +271,28 @@ module.exports = {
     "no-proto": "error",
     // Disallow multiple spaces in a regular expression literal.
     "no-regex-spaces": "off",
-    // Allow reserved words being used as object literal keys.
-    "no-reserved-keys": "off",
     // Don't restrict usage of specified node modules (not a node environment).
     "no-restricted-modules": "off",
+    // Prevent using some properties
+    "no-restricted-properties": ["error", {
+      "property": "setupInParent",
+      "message": "avoid child/parent communication with setupInParent"
+    }],
     // Disallow use of assignment in return statement. It is preferable for a
     // single line of code to have only one easily predictable effect.
     "no-return-assign": "error",
     // Allow use of javascript: urls.
     "no-script-url": "off",
-    // Disallow use of comma operator.
-    "no-sequences": "error",
     // Warn about declaration of variables already declared in the outer scope.
     // This isn't an error because it sometimes is useful to use the same name
     // in a small helper function rather than having to come up with another
     // random name.
     // Still, making this a warning can help people avoid being confused.
     "no-shadow": "error",
-    // Disallow space between function identifier and application.
-    "no-spaced-func": "error",
     // Allow use of synchronous methods (not a node environment).
     "no-sync": "off",
     // Allow the use of ternary operators.
     "no-ternary": "off",
-    // Disallow throwing literals (eg. throw "error" instead of
-    // throw new Error("error")).
-    "no-throw-literal": "error",
     // Allow dangling underscores in identifiers (for privates).
     "no-underscore-dangle": "off",
     // Allow use of undefined variable.
@@ -390,28 +313,13 @@ module.exports = {
     "object-shorthand": "off",
     // Allow more than one variable declaration per function.
     "one-var": "off",
-    // Disallow padding within blocks.
-    "padded-blocks": ["error", "never"],
     // Enforce using `let` only when variables are reassigned.
     "prefer-const": ["error", { "destructuring": "all" }],
-    // Don't require quotes around object literal property names.
-    "quote-props": "off",
     // Require use of the second argument for parseInt().
     "radix": "error",
-    // Enforce spacing after semicolons.
-    "semi-spacing": ["error", {"before": false, "after": true}],
     // Don't require to sort variables within the same declaration block.
     // Anyway, one-var is disabled.
     "sort-vars": "off",
-    // Disable the rule that checks if spaces inside {} and [] are there or not.
-    // Our code is split on conventions, and it'd be nice to have "error" rules
-    // instead, one for [] and one for {}. So, disabling until we write them.
-    "space-in-brackets": "off",
-    // Disallow spaces inside parentheses.
-    "space-in-parens": ["error", "never"],
-    // Require spaces before/after unary operators (words on by default,
-    // nonwords off by default).
-    "space-unary-ops": ["error", { "words": true, "nonwords": false }],
     // Require "use strict" to be defined globally in the script.
     "strict": ["error", "global"],
     // Warn about invalid JSDoc comments.
@@ -421,25 +329,14 @@ module.exports = {
     "valid-jsdoc": "off",
     // Allow vars to be declared anywhere in the scope.
     "vars-on-top": "off",
-    // Don't require immediate function invocation to be wrapped in parentheses.
-    "wrap-iife": "off",
-    // Don't require regex literals to be wrapped in parentheses (which
-    // supposedly prevent them from being mistaken for division operators).
-    "wrap-regex": "off",
     // Disallow Yoda conditions (where literal value comes first).
     "yoda": "error",
 
     // And these are the rules that haven't been discussed so far, and that are
     // disabled for now until we introduce them, one at a time.
 
-    // enforce consistent spacing before and after the arrow in arrow functions
-    "arrow-spacing": "off",
-    // enforce consistent spacing inside computed property brackets
-    "computed-property-spacing": "off",
     // Require for-in loops to have an if statement.
     "guard-for-in": "off",
-    // allow/disallow an empty newline after var statement
-    "newline-after-var": "off",
     // disallow the use of alert, confirm, and prompt
     "no-alert": "off",
     // disallow comparisons to null without a type-checking operator
@@ -452,16 +349,12 @@ module.exports = {
     "no-invalid-regexp": "off",
     // disallow irregular whitespace outside of strings and comments
     "no-irregular-whitespace": "off",
-    // disallow usage of __iterator__ property
-    "no-iterator": "off",
     // disallow labels that share a name with a variable
     "no-label-var": "off",
     // disallow unnecessary nested blocks
     "no-lone-blocks": "off",
     // disallow creation of functions within loops
     "no-loop-func": "off",
-    // disallow negation of the left operand of an in expression
-    "no-negated-in-lhs": "off",
     // disallow use of new operator when not part of the assignment or
     // comparison
     "no-new": "off",
@@ -485,12 +378,8 @@ module.exports = {
     "no-useless-concat": "off",
     // disallow use of void operator
     "no-void": "off",
-    // disallow wrapping of non-IIFE statements in parens
-    "no-wrap-func": "off",
     // require assignment operator shorthand where possible or prohibit it
     // entirely
     "operator-assignment": "off",
-    // enforce operators to be placed before or after line breaks
-    "operator-linebreak": "off",
   }
 };

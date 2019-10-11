@@ -6,7 +6,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 -->
 <window title="Mozilla Bug 933681"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml">
@@ -43,7 +43,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   // In the former case, the constructor is invoked without any args; in the
   // latter case, it is invoked with `args` as the arguments list.
   simpleConstructors = ['Object', 'Function', 'Array', 'Boolean', 'Date', 'Number',
-                        'String', 'RegExp', 'ArrayBuffer', 'WeakMap', 'Map', 'Set',
+                        'String', 'RegExp', 'ArrayBuffer', 'WeakMap', 'WeakSet', 'Map', 'Set',
                         {name: 'Promise', args: [function(){}]}].concat(typedArrayClasses)
                                                                 .concat(errorObjectClasses);
 
@@ -149,10 +149,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
     testSet();
 
+    testWeakMap();
+
+    testWeakSet();
+
+    testProxy();
+
     testDataView();
 
-    // We could also test DataView and Iterator here for completeness, but it's
-    // more trouble than it's worth.
+    testNumber();
 
     SimpleTest.finish();
   }
@@ -162,9 +167,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   // Xray-safe.
   //
   // DO NOT CHANGE WTIHOUT REVIEW FROM AN XPCONNECT PEER.
-  var version = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo).version;
-  var isNightlyBuild = version.endsWith("a1");
-  var isReleaseOrBeta = !version.includes("a");
+  var {AppConstants} = SpecialPowers.Cu.import("resource://gre/modules/AppConstants.jsm", {});
+  var isNightlyBuild = AppConstants.NIGHTLY_BUILD;
+  var isReleaseOrBeta = AppConstants.RELEASE_OR_BETA;
   var gPrototypeProperties = {};
   var gConstructorProperties = {};
   function constructorProps(arr) {
@@ -193,9 +198,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     constructorProps(["setPrototypeOf", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors",
                       "keys", "is", "defineProperty", "defineProperties", "create",
                       "getOwnPropertyNames", "getOwnPropertySymbols",
-                      "preventExtensions", "freeze", "isFrozen", "seal",
+                      "preventExtensions", "freeze", "fromEntries", "isFrozen", "seal",
                       "isSealed", "assign", "getPrototypeOf", "values",
-                      "entries", "isExtensible"])
+                      "entries", "isExtensible"]);
   gPrototypeProperties['Array'] =
     ["length", "toSource", "toString", "toLocaleString", "join", "reverse", "sort", "push",
       "pop", "shift", "unshift", "splice", "concat", "slice", "lastIndexOf", "indexOf",
@@ -203,11 +208,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
       "findIndex", "copyWithin", "fill", Symbol.iterator, Symbol.unscopables, "entries", "keys",
       "values", "constructor", "flat", "flatMap"];
   gConstructorProperties['Array'] =
-    constructorProps(["join", "reverse", "sort", "push", "pop", "shift",
-                      "unshift", "splice", "concat", "slice", "isArray",
-                      "lastIndexOf", "indexOf", "forEach", "map", "filter",
-                      "every", "some", "reduce", "reduceRight", "from", "of",
-                      Symbol.species]);
+    constructorProps(["isArray", "from", "of", Symbol.species]);
   for (var c of typedArrayClasses) {
     gPrototypeProperties[c] = ["constructor", "BYTES_PER_ELEMENT"];
     gConstructorProperties[c] = constructorProps(["BYTES_PER_ELEMENT"]);
@@ -234,7 +235,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
   gPrototypeProperties['RegExp'] =
     ["constructor", "toSource", "toString", "compile", "exec", "test",
-     Symbol.match, Symbol.replace, Symbol.search, Symbol.split,
+     Symbol.match, Symbol.matchAll, Symbol.replace, Symbol.search, Symbol.split,
      "flags", "global", "ignoreCase", "multiline", "source", "sticky", "unicode"];
   gConstructorProperties['RegExp'] =
     constructorProps(["input", "lastMatch", "lastParen",
@@ -245,7 +246,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   gPrototypeProperties['Promise'] =
     ["constructor", "catch", "then", "finally", Symbol.toStringTag];
   gConstructorProperties['Promise'] =
-    constructorProps(["resolve", "reject", "all", "race", Symbol.species]);
+    constructorProps(["resolve", "reject", "all", "allSettled", "race", Symbol.species]);
 
   gPrototypeProperties['ArrayBuffer'] =
     ["constructor", "byteLength", "slice", Symbol.toStringTag];
@@ -266,12 +267,23 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   gConstructorProperties['Set'] =
     constructorProps([Symbol.species]);
 
+  gPrototypeProperties['WeakMap'] =
+    ["constructor", Symbol.toStringTag, "get", "has", "set", "delete"];
+  gConstructorProperties['WeakMap'] =
+    constructorProps([]);
+
+  gPrototypeProperties['WeakSet'] =
+    ["constructor", Symbol.toStringTag, "has", "add", "delete"];
+  gConstructorProperties['WeakSet'] =
+    constructorProps([]);
+
   gPrototypeProperties['DataView'] =
     ["constructor", "buffer", "byteLength", "byteOffset", Symbol.toStringTag,
      "getInt8", "getUint8", "getInt16", "getUint16",
      "getInt32", "getUint32", "getFloat32", "getFloat64",
      "setInt8", "setUint8", "setInt16", "setUint16",
-     "setInt32", "setUint32", "setFloat32", "setFloat64"];
+     "setInt32", "setUint32", "setFloat32", "setFloat64",
+     "getBigInt64", "getBigUint64", "setBigInt64", "setBigUint64"]
   gConstructorProperties['DataView'] = constructorProps([]);
 
   // Sort an array that may contain symbols as well as strings.
@@ -313,8 +325,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
         } while (!desc);
         return desc.get || desc.value;
       };
-      ok(xrayProto.hasOwnProperty(name), "proto should have the property as own");
-      ok(!xray.hasOwnProperty(name), "instance should not have the property as own");
+      ok(xrayProto.hasOwnProperty(name), `proto should have the property '${name}' as own`);
+      ok(!xray.hasOwnProperty(name), `instance should not have the property '${name}' as own`);
       let method = lookupCallable(xrayProto);
       is(typeof method, 'function', "Methods from Xrays are functions");
       is(global(method), window, "Methods from Xrays are local");
@@ -457,73 +469,70 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   }
 
   // We will need arraysEqual and testArrayIterators both in this global scope
-  // and in sandboxes, so define them as strings up front.
-  var arraysEqualSource = `function arraysEqual(arr1, arr2, reason) {
-    is(arr1.length, arr2.length, \`\${reason}; lengths should be equal\`)
+  // and in sandboxes.
+  function arraysEqual(arr1, arr2, reason) {
+    is(arr1.length, arr2.length, `${reason}; lengths should be equal`)
     for (var i = 0; i < arr1.length; ++i) {
       if (Array.isArray(arr2[i])) {
-        arraysEqual(arr1[i], arr2[i], \`\${reason}; item at index \${i}\`);
+        arraysEqual(arr1[i], arr2[i], `${reason}; item at index ${i}`);
       } else {
-        is(arr1[i], arr2[i], \`\${reason}; item at index \${i} should be equal\`);
+        is(arr1[i], arr2[i], `${reason}; item at index ${i} should be equal`);
       }
     }
-  }`;
-  eval(arraysEqualSource);
+  }
 
-  var testArrayIteratorsSource = `
-    function testArrayIterators(arrayLike, equivalentArray, reason) {
-    arraysEqual([...arrayLike], equivalentArray, \`\${reason}; spread operator\`);
+  function testArrayIterators(arrayLike, equivalentArray, reason) {
+    arraysEqual([...arrayLike], equivalentArray, `${reason}; spread operator`);
     arraysEqual([...arrayLike.entries()], [...equivalentArray.entries()],
-                \`\${reason}; entries\`);
+                `${reason}; entries`);
     arraysEqual([...arrayLike.keys()], [...equivalentArray.keys()],
-                \`\${reason}; keys\`);
+                `${reason}; keys`);
     if (arrayLike.values) {
       arraysEqual([...arrayLike.values()], equivalentArray,
-                  \`\${reason}; values\`);
+                  `${reason}; values`);
     }
 
     var forEachCopy = [];
     arrayLike.forEach(function(arg) { forEachCopy.push(arg); });
-    arraysEqual(forEachCopy, equivalentArray, \`\${reason}; forEach copy\`);
+    arraysEqual(forEachCopy, equivalentArray, `${reason}; forEach copy`);
 
     var everyCopy = [];
     arrayLike.every(function(arg) { everyCopy.push(arg); return true; });
-    arraysEqual(everyCopy, equivalentArray, \`\${reason}; every() copy\`);
+    arraysEqual(everyCopy, equivalentArray, `${reason}; every() copy`);
 
     var filterCopy = [];
     var filterResult = arrayLike.filter(function(arg) {
       filterCopy.push(arg);
       return true;
     });
-    arraysEqual(filterCopy, equivalentArray, \`\${reason}; filter copy\`);
-    arraysEqual([...filterResult], equivalentArray, \`\${reason}; filter result\`);
+    arraysEqual(filterCopy, equivalentArray, `${reason}; filter copy`);
+    arraysEqual([...filterResult], equivalentArray, `${reason}; filter result`);
 
     var findCopy = [];
     arrayLike.find(function(arg) { findCopy.push(arg); return false; });
-    arraysEqual(findCopy, equivalentArray, \`\${reason}; find() copy\`);
+    arraysEqual(findCopy, equivalentArray, `${reason}; find() copy`);
 
     var findIndexCopy = [];
     arrayLike.findIndex(function(arg) { findIndexCopy.push(arg); return false; });
-    arraysEqual(findIndexCopy, equivalentArray, \`\${reason}; findIndex() copy\`);
+    arraysEqual(findIndexCopy, equivalentArray, `${reason}; findIndex() copy`);
 
     var mapCopy = [];
     var mapResult = arrayLike.map(function(arg) { mapCopy.push(arg); return arg});
-    arraysEqual(mapCopy, equivalentArray, \`\${reason}; map() copy\`);
-    arraysEqual([...mapResult], equivalentArray, \`\${reason}; map() result\`);
+    arraysEqual(mapCopy, equivalentArray, `${reason}; map() copy`);
+    arraysEqual([...mapResult], equivalentArray, `${reason}; map() result`);
 
     var reduceCopy = [];
     arrayLike.reduce(function(_, arg) { reduceCopy.push(arg); }, 0);
-    arraysEqual(reduceCopy, equivalentArray, \`\${reason}; reduce() copy\`);
+    arraysEqual(reduceCopy, equivalentArray, `${reason}; reduce() copy`);
 
     var reduceRightCopy = [];
     arrayLike.reduceRight(function(_, arg) { reduceRightCopy.unshift(arg); }, 0);
-    arraysEqual(reduceRightCopy, equivalentArray, \`\${reason}; reduceRight() copy\`);
+    arraysEqual(reduceRightCopy, equivalentArray, `${reason}; reduceRight() copy`);
 
     var someCopy = [];
     arrayLike.some(function(arg) { someCopy.push(arg); return false; });
-    arraysEqual(someCopy, equivalentArray, \`\${reason}; some() copy\`);
-  }`;
-  eval(testArrayIteratorsSource);
+    arraysEqual(someCopy, equivalentArray, `${reason}; some() copy`);
+  }
 
   function testDate() {
     // toGMTString is handled oddly in the engine. We don't bother to support
@@ -561,7 +570,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
                    get getterSetterProp() { return 3; },
                    set getterSetterProp(x) { },
                    callableProp: function() { },
-                   nonXrayableProp: new WeakMap()
+                   nonXrayableProp: new Map()[Symbol.iterator]()
                    ${symbolProps}
                  });
                  Object.defineProperty(o, "nonConfigurableGetterSetterProp",
@@ -601,7 +610,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
                  Object.defineProperty(trickyArray, 'getterSetterProp', { get: function() { return 3; }, set: function(x) {}, configurable: true});
                  Object.defineProperty(trickyArray, 'nonConfigurableGetterSetterProp', { get: function() { return 5; }, set: function(x) {}});
                  trickyArray.callableProp = function() {};
-                 trickyArray.nonXrayableProp = new WeakMap();
+                 trickyArray.nonXrayableProp = new Map()[Symbol.iterator]();
                  ${symbolProps}
                  trickyArray;`);
 
@@ -778,7 +787,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
       // Can create TypedArray from content ArrayBuffer
       var buffer = new iwin.ArrayBuffer(8);
-      eval(`new ${c}(buffer);`);
+      new window[c](buffer);
 
       var xray = new iwin[c](0);
       var xrayTypedArrayProto = Object.getPrototypeOf(Object.getPrototypeOf(xray));
@@ -791,8 +800,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
       // they'll just run with our principal anyway.
       //
       // But we do want to export is(), since we want ours called.
-      wesb.eval(arraysEqualSource);
-      wesb.eval(testArrayIteratorsSource);
+      wesb.eval(String(arraysEqual));
+      wesb.eval(String(testArrayIterators));
       Cu.exportFunction(is, wesb,
                         { defineAs: "is" });
       wesb.eval('testArrayIterators(t, [0, 0, 3, 0, 0, 0, 0, 0, 0, 0])');
@@ -981,6 +990,62 @@ for (var prop of props) {
     is(t.size, 0, "Set is empty after calling clear");
   }
 
+  function testWeakMap() {
+    testXray('WeakMap', new iwin.WeakMap(), new iwin.WeakMap());
+
+    var key1 = iwin.eval(`var key1 = {}; key1`);
+    var key2 = iwin.eval(`var key2 = []; key2`);
+    var key3 = iwin.eval(`var key3 = /a/; key3`);
+    var key4 = {};
+    var key5 = [];
+    var t = iwin.eval(`new WeakMap([[key1, "a"], [key2, "b"]])`);
+    is(t.get(key1), "a", "key1 has the correct value");
+    is(t.get(key2), "b", "key2 has the correct value");
+    is(t.has(key1), true, "Has key1");
+    is(t.has(key3), false, "Doesn't have key3");
+    is(t.has(key5), false, "Doesn't have key5");
+    is(t.set(key4, 5).get(key4), 5, "Correctly sets key");
+    is(t.get(key1), "a", "key1 has the correct value after modification");
+    is(t.get(key2), "b", "key2 has the correct value after modification");
+    is(t.delete(key1), true, "key1 can be deleted");
+    is(t.delete(key2), true, "key2 can be deleted");
+    is(t.delete(key3), false, "key3 cannot be deleted");
+    is(t.delete(key4), true, "key4 can be deleted");
+    is(t.delete(key5), false, "key5 cannot be deleted");
+  }
+
+  function testWeakSet() {
+    testXray('WeakSet', new iwin.WeakSet(), new iwin.WeakSet());
+
+    var key1 = iwin.eval(`var key1 = {}; key1`);
+    var key2 = iwin.eval(`var key2 = []; key2`);
+    var key3 = iwin.eval(`var key3 = /a/; key3`);
+    var key4 = {};
+    var key5 = [];
+    var t = iwin.eval(`new WeakSet([key1, key2])`);
+    is(t.has(key1), true, "Has key1");
+    is(t.has(key2), true, "Has key2");
+    is(t.has(key3), false, "Doesn't have key3");
+    is(t.has(key5), false, "Doesn't have key5");
+    is(t.add(key4, 5).has(key4), true, "Can add value to set");
+    is(t.delete(key1), true, "key1 can be deleted");
+    is(t.delete(key2), true, "key2 can be deleted");
+    is(t.delete(key3), false, "key3 cannot be deleted");
+    is(t.delete(key4), true, "key4 can be deleted");
+    is(t.delete(key5), false, "key5 cannot be deleted");
+  }
+
+  function testProxy() {
+    let ProxyCtor = iwin.Proxy;
+    is(Object.getOwnPropertyNames(ProxyCtor).sort().toSource(),
+       ["length", "name"].sort().toSource(),
+       "Xrayed Proxy constructor should not have any properties");
+    is(ProxyCtor.prototype, undefined, "Proxy.prototype should not be set");
+    // Proxy.revocable can safely be exposed, but it is not.
+    // Until it is supported, check that the property is not set.
+    is(ProxyCtor.revocable, undefined, "Proxy.reflect is not set");
+  }
+
   function testDataView() {
     testXray('DataView', new iwin.DataView(new iwin.ArrayBuffer(4)),
              new iwin.DataView(new iwin.ArrayBuffer(8)));
@@ -1001,14 +1066,39 @@ for (var prop of props) {
                    "setInt32", "setUint32", "setFloat32", "setFloat64"];
 
       for (const f of get) {
-        is(t[f](0), 0, `${f} is 0 for "${constructor}"`);
+        let x = t[f](0);
+        is(x, 0, `${f} is 0 for "${constructor}"`);
+        is(typeof x, 'number', `typeof ${f} is number for "${constructor}"`);
+      }
+
+      for (const f of ["getBigInt64", "getBigUint64"]) {
+        let x = t[f](0);
+        is(x, BigInt(0), `${f} is 0n for "${constructor}"`);
+        is(typeof x, 'bigint', `typeof ${f} is bigint for "${constructor}"`);
       }
 
       for (let i = 0; i < set.length; i++) {
         t[set[i]](0, 13);
         is(t[get[i]](0), 13, `${get[i]}(0) afer ${set[i]}(0, 13) is 13 for "${constructor}"`);
       }
+
+      for (const k of ["BigInt64", "BigUint64"]) {
+        t["set" + k](0, BigInt(13));
+        is(t["get" + k](0), BigInt(13), `get${k}(0) afer set${k}(0, 13n) is 13n for "${constructor}"`);
+      }
     }
+  }
+
+  function testNumber() {
+    // We don't actually support Xrays to Number yet.  This is testing
+    // that case.  If we add such support, we might have to start
+    // using a different non-Xrayed class here, if we can find one.
+    let xrayCtor = iwin.Number;
+    is(Object.getOwnPropertyNames(xrayCtor).sort().toSource(),
+       Object.getOwnPropertyNames(function() {}).sort().toSource(),
+       "We should not have any static properties on a non-Xrayable constructor");
+    is(xrayCtor.noSuchProperty, undefined,
+       "Where did our noSuchProperty property come from?");
   }
 
   ]]>

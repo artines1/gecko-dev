@@ -16,8 +16,7 @@
     }
   </style>
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -33,7 +32,7 @@
       if (!acc)
         return;
 
-      var [state, /* extraState */] = getStates(aAccOrElmOrID);
+      var [state /* extraState */] = getStates(aAccOrElmOrID);
       if (state & STATE_UNAVAILABLE) {
         var role = getRole(acc);
         if (role != ROLE_GROUPING) {
@@ -107,6 +106,8 @@
 
       // aria-multiselectable
       testStates("aria_multiselectable_listbox",
+                 STATE_MULTISELECTABLE | STATE_EXTSELECTABLE);
+      testStates("aria_multiselectable_tablist",
                  STATE_MULTISELECTABLE | STATE_EXTSELECTABLE);
 
       // aria-pressed
@@ -215,11 +216,12 @@
       testStates("aria_link_link", STATE_LINKED);
       testStates("aria_link_anchor", STATE_SELECTABLE);
 
-      // some weak landmarks
-      testStates("aria_main_link", STATE_LINKED);
-      testStates("aria_navigation_link", STATE_LINKED);
-      testStates("aria_main_anchor", STATE_SELECTABLE);
-      testStates("aria_navigation_anchor", STATE_SELECTABLE);
+      // some landmarks that break accessibility for these native elements
+      // Note that these are illegal uses by web authors as per WAI-ARIA in HTML
+      testStates("aria_main_link", 0, 0, STATE_LINKED);
+      testStates("aria_navigation_link", 0, 0, STATE_LINKED);
+      testStates("aria_main_anchor", 0, 0, STATE_SELECTABLE);
+      testStates("aria_navigation_anchor", 0, 0, STATE_SELECTABLE);
 
       // aria-orientation
       testStates("aria_combobox", 0, 0, 0, EXT_STATE_HORIZONTAL | EXT_STATE_VERTICAL);
@@ -417,6 +419,7 @@
   <div id="aria_modal_false" aria-modal="false">non modal stuff</div>div>
   <div id="aria_multiline_textbox" role="textbox" aria-multiline="true"></div>
   <div id="aria_multiselectable_listbox" role="listbox" aria-multiselectable="true"></div>
+  <div id="aria_multiselectable_tablist" role="tablist" aria-multiselectable="true"></div>
   <div id="aria_pressed_button" role="button" aria-pressed="true">Button</div>
   <button id="aria_pressed_native_button" aria-pressed="true">Button</button>
 

@@ -4,8 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef AccessibleCaretEventHub_h
-#define AccessibleCaretEventHub_h
+#ifndef mozilla_AccessibleCaretEventHub_h
+#define mozilla_AccessibleCaretEventHub_h
 
 #include "mozilla/EventForwards.h"
 #include "mozilla/UniquePtr.h"
@@ -15,17 +15,15 @@
 #include "nsIFrame.h"
 #include "nsIReflowObserver.h"
 #include "nsIScrollObserver.h"
-#include "nsISelectionListener.h"
 #include "nsPoint.h"
 #include "mozilla/RefPtr.h"
 #include "nsWeakReference.h"
 
-class nsIPresShell;
 class nsITimer;
-class nsIDocument;
 
 namespace mozilla {
 class AccessibleCaretManager;
+class PresShell;
 class WidgetKeyboardEvent;
 class WidgetMouseEvent;
 class WidgetTouchEvent;
@@ -61,14 +59,11 @@ class WidgetTouchEvent;
 // Please see the wiki page for more information.
 // https://wiki.mozilla.org/AccessibleCaret
 //
-class AccessibleCaretEventHub
-  : public nsIReflowObserver
-  , public nsIScrollObserver
-  , public nsISelectionListener
-  , public nsSupportsWeakReference
-{
-public:
-  explicit AccessibleCaretEventHub(nsIPresShell* aPresShell);
+class AccessibleCaretEventHub : public nsIReflowObserver,
+                                public nsIScrollObserver,
+                                public nsSupportsWeakReference {
+ public:
+  explicit AccessibleCaretEventHub(PresShell* aPresShell);
   void Init();
   void Terminate();
 
@@ -82,21 +77,14 @@ public:
   NS_DECL_ISUPPORTS
 
   // nsIReflowObserver
-  MOZ_CAN_RUN_SCRIPT
-  NS_IMETHOD Reflow(DOMHighResTimeStamp start,
-                    DOMHighResTimeStamp end) final;
-  MOZ_CAN_RUN_SCRIPT
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  NS_IMETHOD Reflow(DOMHighResTimeStamp start, DOMHighResTimeStamp end) final;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD ReflowInterruptible(DOMHighResTimeStamp start,
                                  DOMHighResTimeStamp end) final;
 
-  // nsISelectionListener
-  MOZ_CAN_RUN_SCRIPT
-  NS_IMETHOD NotifySelectionChanged(nsIDocument* doc,
-                                    dom::Selection* sel,
-                                    int16_t reason) final;
-
   // Override nsIScrollObserver methods.
-  MOZ_CAN_RUN_SCRIPT
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   virtual void ScrollPositionChanged() override;
   MOZ_CAN_RUN_SCRIPT
   virtual void AsyncPanZoomStarted() override;
@@ -107,18 +95,21 @@ public:
   class State;
   State* GetState() const;
 
-protected:
+  MOZ_CAN_RUN_SCRIPT
+  void OnSelectionChange(dom::Document* aDocument, dom::Selection* aSelection,
+                         int16_t aReason);
+
+ protected:
   virtual ~AccessibleCaretEventHub() = default;
 
-#define MOZ_DECL_STATE_CLASS_GETTER(aClassName)                                \
-  class aClassName;                                                            \
+#define MOZ_DECL_STATE_CLASS_GETTER(aClassName) \
+  class aClassName;                             \
   static State* aClassName();
 
-#define MOZ_IMPL_STATE_CLASS_GETTER(aClassName)                                \
-  AccessibleCaretEventHub::State* AccessibleCaretEventHub::aClassName()        \
-  {                                                                            \
-    static class aClassName singleton;                                         \
-    return &singleton;                                                         \
+#define MOZ_IMPL_STATE_CLASS_GETTER(aClassName)                           \
+  AccessibleCaretEventHub::State* AccessibleCaretEventHub::aClassName() { \
+    static class aClassName singleton;                                    \
+    return &singleton;                                                    \
   }
 
   // Concrete state getters
@@ -160,7 +151,7 @@ protected:
   State* mState = NoActionState();
 
   // Will be set to nullptr in Terminate().
-  nsIPresShell* MOZ_NON_OWNING_REF mPresShell = nullptr;
+  PresShell* MOZ_NON_OWNING_REF mPresShell = nullptr;
 
   UniquePtr<AccessibleCaretManager> mManager;
 
@@ -171,7 +162,7 @@ protected:
   nsCOMPtr<nsITimer> mLongTapInjectorTimer;
 
   // Last mouse button down event or touch start event point.
-  nsPoint mPressPoint{ NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE };
+  nsPoint mPressPoint{NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE};
 
   // For filter multitouch event
   int32_t mActiveTouchId = kInvalidTouchId;
@@ -182,12 +173,9 @@ protected:
   // Flag to avoid calling Reflow() callback recursively.
   bool mIsInReflowCallback = false;
 
-  // Simulate long tap if the platform does not support eMouseLongTap events.
-  static bool sUseLongTapInjector;
-
   static const int32_t kMoveStartToleranceInPixel = 5;
   static const int32_t kInvalidTouchId = -1;
-  static const int32_t kDefaultTouchId = 0; // For mouse event
+  static const int32_t kDefaultTouchId = 0;  // For mouse event
 };
 
 // -----------------------------------------------------------------------------
@@ -195,43 +183,48 @@ protected:
 // class, and override the methods to handle the events or callbacks. A concrete
 // state is also responsible for transforming itself to the next concrete state.
 //
-class AccessibleCaretEventHub::State
-{
-public:
+class AccessibleCaretEventHub::State {
+ public:
   virtual const char* Name() const { return ""; }
 
+  MOZ_CAN_RUN_SCRIPT
   virtual nsEventStatus OnPress(AccessibleCaretEventHub* aContext,
                                 const nsPoint& aPoint, int32_t aTouchId,
-                                EventClassID aEventClass)
-  {
+                                EventClassID aEventClass) {
     return nsEventStatus_eIgnore;
   }
 
+  MOZ_CAN_RUN_SCRIPT
   virtual nsEventStatus OnMove(AccessibleCaretEventHub* aContext,
-                               const nsPoint& aPoint)
-  {
+                               const nsPoint& aPoint) {
     return nsEventStatus_eIgnore;
   }
 
-  virtual nsEventStatus OnRelease(AccessibleCaretEventHub* aContext)
-  {
+  MOZ_CAN_RUN_SCRIPT
+  virtual nsEventStatus OnRelease(AccessibleCaretEventHub* aContext) {
     return nsEventStatus_eIgnore;
   }
 
+  MOZ_CAN_RUN_SCRIPT
   virtual nsEventStatus OnLongTap(AccessibleCaretEventHub* aContext,
-                                  const nsPoint& aPoint)
-  {
+                                  const nsPoint& aPoint) {
     return nsEventStatus_eIgnore;
   }
 
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollStart(AccessibleCaretEventHub* aContext) {}
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollEnd(AccessibleCaretEventHub* aContext) {}
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollPositionChanged(AccessibleCaretEventHub* aContext) {}
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnBlur(AccessibleCaretEventHub* aContext,
                       bool aIsLeavingDocument) {}
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnSelectionChanged(AccessibleCaretEventHub* aContext,
-                                  nsIDocument* aDoc, dom::Selection* aSel,
+                                  dom::Document* aDoc, dom::Selection* aSel,
                                   int16_t aReason) {}
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnReflow(AccessibleCaretEventHub* aContext) {}
   virtual void Enter(AccessibleCaretEventHub* aContext) {}
   virtual void Leave(AccessibleCaretEventHub* aContext) {}
@@ -242,6 +235,6 @@ public:
   State& operator=(const State&) = delete;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // AccessibleCaretEventHub_h
+#endif  // mozilla_AccessibleCaretEventHub_h

@@ -1,3 +1,6 @@
+from __future__ import absolute_import, print_function
+
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -5,6 +8,7 @@ from collections import defaultdict
 from mozbuild.base import MozbuildObject
 from mozlint.pathutils import findobject
 from mozlint.parser import Parser
+from mozlint.result import ResultSummary
 
 import pytest
 
@@ -13,6 +17,7 @@ build = MozbuildObject.from_environment(cwd=here)
 
 lintdir = os.path.dirname(here)
 sys.path.insert(0, lintdir)
+logger = logging.getLogger("mozlint")
 
 
 @pytest.fixture(scope='module')
@@ -41,7 +46,7 @@ def paths(root):
     return _inner
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def config(request):
     """Finds, loads and returns the config for the linter name specified by the
     LINTER global variable in the calling module.
@@ -60,7 +65,7 @@ def config(request):
     return parser.parse(config_path)[0]
 
 
-@pytest.fixture(scope='module', autouse=True)
+@pytest.fixture(autouse=True)
 def run_setup(config):
     """Make sure that if the linter named in the LINTER global variable has a
     setup function, it gets called before running the tests.
@@ -72,7 +77,7 @@ def run_setup(config):
     func(build.topsrcdir)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def lint(config, root):
     """Find and return the 'lint' function for the external linter named in the
     LINTER global variable.
@@ -85,7 +90,13 @@ def lint(config, root):
     except (ImportError, ValueError):
         pytest.fail("could not resolve a lint function from '{}'".format(config['payload']))
 
+    ResultSummary.root = root
+
     def wrapper(paths, config=config, root=root, collapse_results=False, **lintargs):
+        lintargs['log'] = logging.LoggerAdapter(logger, {
+            "lintname": config.get("name"),
+            "pid": os.getpid()
+        })
         results = func(paths, config, root=root, **lintargs)
         if not collapse_results:
             return results

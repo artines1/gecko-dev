@@ -40,15 +40,12 @@ Push Information
    the symbolic ref containing ``head_rev`` that should be pulled from
    ``head_repository``.
 
-``include_nightly``
-   Include nightly builds and tests in the graph.
-
 ``owner``
    Email address indicating the person who made the push.  Note that this
    value may be forged and *must not* be relied on for authentication.
 
 ``message``
-   The commit message
+   The try syntax in the commit message, if any.
 
 ``pushlog_id``
    The ID from the ``hg.mozilla.org`` pushlog
@@ -57,6 +54,9 @@ Push Information
    The timestamp of the push to the repository that triggered this decision
    task.  Expressed as an integer seconds since the UNIX epoch.
 
+``hg_branch``
+  The mercurial branch where the revision lives in.
+
 ``build_date``
    The timestamp of the build date. Defaults to ``pushdate`` and falls back to present time of
    taskgraph invocation. Expressed as an integer seconds since the UNIX epoch.
@@ -64,6 +64,9 @@ Push Information
 ``moz_build_date``
    A formatted timestamp of ``build_date``. Expressed as a string with the following
    format: %Y%m%d%H%M%S
+
+``tasks_for``
+   The ``tasks_for`` value used to generate the decision task.
 
 Tree Information
 ----------------
@@ -84,15 +87,17 @@ Try Configuration
 
 ``try_mode``
     The mode in which a try push is operating.  This can be one of
-    ``"try_task_config"``, ``"try_option_syntax"``, or ``None`` meaning no try
+    ``"try_task_config"``, ``"try_option_syntax"``, ``"try_select"`` or ``None`` meaning no try
     input was provided.
+
+    ``"try_select"`` is used by ``mach try fuzzy`` to build a list of tasks to select from.
 
 ``try_options``
     The arguments given as try syntax (as a dictionary), or ``None`` if
     ``try_mode`` is not ``try_option_syntax``.
 
 ``try_task_config``
-    The contents of the ``try_task_config.json`` file, or ``None`` if
+    The contents of the ``try_task_config.json`` file, or ``{}`` if
     ``try_mode`` is not ``try_task_config``.
 
 Target Set
@@ -112,9 +117,6 @@ syntax or reading a project-specific configuration file).
 ``target_tasks_method``
     The method to use to determine the target task set.  This is the suffix of
     one of the functions in ``taskcluster/taskgraph/target_tasks.py``.
-
-``include_nightly``
-    If true, then nightly tasks are eligible for optimization.
 
 ``release_history``
    History of recent releases by platform and locale, used when generating
@@ -154,7 +156,7 @@ Release Promotion
    Specify the next version for version bump tasks.
 
 ``release_type``
-   The type of release being promoted. One of "beta", "devedition", "esr", "rc", or "release".
+   The type of release being promoted. One of "nightly", "beta", "esr60", "esr68", "release-rc", or "release".
 
 ``release_eta``
    The time and date when a release is scheduled to live. This value is passed to Balrog.
@@ -177,6 +179,12 @@ Release Promotion
 ``release_product``
    The product that is being released.
 
+``required_signoffs``
+   A list of signoffs that are required for this release promotion flavor. If specified, and if the corresponding `signoff_urls` url isn't specified, tasks that require these signoffs will not be scheduled.
+
+``signoff_urls``
+   A dictionary of signoff keys to url values. These are the urls marking the corresponding ``required_signoffs`` as signed off.
+
 Comm Push Information
 ---------------------
 
@@ -189,3 +197,10 @@ them are specified, they must all be specified.
 ``comm_head_repository``
 ``comm_head_rev``
 ``comm_head_ref``
+
+Code Review
+-----------
+
+``phabricator_diff``
+   The code review process needs to know the Phabricator Differential diff that
+   started the analysis. This parameter must start with `PHID-DIFF-`

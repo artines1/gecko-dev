@@ -22,39 +22,45 @@
 #include "nsMargin.h"
 #include "nsCOMPtr.h"
 #include "nsStringFwd.h"
-#include "SVGAttrValueWrapper.h"
 #include "nsTArrayForwardDeclare.h"
 #include "nsAtom.h"
-#include "mozilla/AtomArray.h"
-#include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/AtomArray.h"
 #include "mozilla/EnumTypeTraits.h"
+#include "mozilla/MemoryReporting.h"
+#include "mozilla/SVGAttrValueWrapper.h"
 
-class nsIDocument;
 class nsIURI;
 class nsStyledElement;
 struct MiscContainer;
 
 namespace mozilla {
 class DeclarationBlock;
-} // namespace mozilla
+}  // namespace mozilla
 
 #define NS_ATTRVALUE_MAX_STRINGLENGTH_ATOM 12
 
-#define NS_ATTRVALUE_BASETYPE_MASK (uintptr_t(3))
+const uintptr_t NS_ATTRVALUE_BASETYPE_MASK = 3;
 #define NS_ATTRVALUE_POINTERVALUE_MASK (~NS_ATTRVALUE_BASETYPE_MASK)
 
 #define NS_ATTRVALUE_INTEGERTYPE_BITS 4
-#define NS_ATTRVALUE_INTEGERTYPE_MASK (uintptr_t((1 << NS_ATTRVALUE_INTEGERTYPE_BITS) - 1))
+#define NS_ATTRVALUE_INTEGERTYPE_MASK \
+  (uintptr_t((1 << NS_ATTRVALUE_INTEGERTYPE_BITS) - 1))
 #define NS_ATTRVALUE_INTEGERTYPE_MULTIPLIER (1 << NS_ATTRVALUE_INTEGERTYPE_BITS)
-#define NS_ATTRVALUE_INTEGERTYPE_MAXVALUE ((1 << (31 - NS_ATTRVALUE_INTEGERTYPE_BITS)) - 1)
-#define NS_ATTRVALUE_INTEGERTYPE_MINVALUE (-NS_ATTRVALUE_INTEGERTYPE_MAXVALUE - 1)
+#define NS_ATTRVALUE_INTEGERTYPE_MAXVALUE \
+  ((1 << (31 - NS_ATTRVALUE_INTEGERTYPE_BITS)) - 1)
+#define NS_ATTRVALUE_INTEGERTYPE_MINVALUE \
+  (-NS_ATTRVALUE_INTEGERTYPE_MAXVALUE - 1)
 
-#define NS_ATTRVALUE_ENUMTABLEINDEX_BITS (32 - 16 - NS_ATTRVALUE_INTEGERTYPE_BITS)
-#define NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER (1 << (NS_ATTRVALUE_ENUMTABLEINDEX_BITS - 1))
-#define NS_ATTRVALUE_ENUMTABLEINDEX_MAXVALUE (NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER - 1)
-#define NS_ATTRVALUE_ENUMTABLEINDEX_MASK \
-  (uintptr_t((((1 << NS_ATTRVALUE_ENUMTABLEINDEX_BITS) - 1) &~ NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER)))
+#define NS_ATTRVALUE_ENUMTABLEINDEX_BITS \
+  (32 - 16 - NS_ATTRVALUE_INTEGERTYPE_BITS)
+#define NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER \
+  (1 << (NS_ATTRVALUE_ENUMTABLEINDEX_BITS - 1))
+#define NS_ATTRVALUE_ENUMTABLEINDEX_MAXVALUE \
+  (NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER - 1)
+#define NS_ATTRVALUE_ENUMTABLEINDEX_MASK                      \
+  (uintptr_t((((1 << NS_ATTRVALUE_ENUMTABLEINDEX_BITS) - 1) & \
+              ~NS_ATTRVALUE_ENUMTABLE_VALUE_NEEDS_TO_UPPER)))
 
 /**
  * A class used to construct a nsString from a nsStringBuffer (we might
@@ -68,26 +74,25 @@ class DeclarationBlock;
  * at the end of our nsCheapString.
  */
 class nsCheapString : public nsString {
-public:
-  explicit nsCheapString(nsStringBuffer* aBuf)
-  {
-    if (aBuf)
-      aBuf->ToString(aBuf->StorageSize()/sizeof(char16_t) - 1, *this);
+ public:
+  explicit nsCheapString(nsStringBuffer* aBuf) {
+    if (aBuf) aBuf->ToString(aBuf->StorageSize() / sizeof(char16_t) - 1, *this);
   }
 };
 
 class nsAttrValue {
   friend struct MiscContainer;
-public:
+
+ public:
   // This has to be the same as in ValueBaseType
   enum ValueType {
-    eString =       0x00, //   00
-                          //   01  this value indicates a 'misc' struct
-    eAtom =         0x02, //   10
-    eInteger =      0x03, // 0011
-    eColor =        0x07, // 0111
-    eEnum =         0x0B, // 1011  This should eventually die
-    ePercent =      0x0F, // 1111
+    eString = 0x00,   //   00
+                      //   01  this value indicates a 'misc' struct
+    eAtom = 0x02,     //   10
+    eInteger = 0x03,  // 0011
+    eColor = 0x07,    // 0111
+    eEnum = 0x0B,     // 1011  This should eventually die
+    ePercent = 0x0F,  // 1111
     // Values below here won't matter, they'll be always stored in the 'misc'
     // struct.
     eCSSDeclaration = 0x10,
@@ -96,9 +101,9 @@ public:
     eAtomArray,
     eDoubleValue,
     eIntMarginValue,
-    eSVGAngle,
-    eSVGTypesBegin = eSVGAngle,
     eSVGIntegerPair,
+    eSVGTypesBegin = eSVGIntegerPair,
+    eSVGOrient,
     eSVGLength,
     eSVGLengthList,
     eSVGNumberList,
@@ -146,23 +151,28 @@ public:
              const nsAString* aSerialized);
   void SetTo(nsIURI* aValue, const nsAString* aSerialized);
   void SetTo(const nsIntMargin& aValue);
-  void SetTo(const nsSVGAngle& aValue, const nsAString* aSerialized);
-  void SetTo(const nsSVGIntegerPair& aValue, const nsAString* aSerialized);
-  void SetTo(const nsSVGLength2& aValue, const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedIntegerPair& aValue,
+             const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedLength& aValue,
+             const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedNumberPair& aValue,
+             const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedOrient& aValue,
+             const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedPreserveAspectRatio& aValue,
+             const nsAString* aSerialized);
+  void SetTo(const mozilla::SVGAnimatedViewBox& aValue,
+             const nsAString* aSerialized);
   void SetTo(const mozilla::SVGLengthList& aValue,
              const nsAString* aSerialized);
   void SetTo(const mozilla::SVGNumberList& aValue,
              const nsAString* aSerialized);
-  void SetTo(const nsSVGNumberPair& aValue, const nsAString* aSerialized);
   void SetTo(const mozilla::SVGPathData& aValue, const nsAString* aSerialized);
   void SetTo(const mozilla::SVGPointList& aValue, const nsAString* aSerialized);
-  void SetTo(const mozilla::SVGAnimatedPreserveAspectRatio& aValue,
-             const nsAString* aSerialized);
   void SetTo(const mozilla::SVGStringList& aValue,
              const nsAString* aSerialized);
   void SetTo(const mozilla::SVGTransformList& aValue,
              const nsAString* aSerialized);
-  void SetTo(const nsSVGViewBox& aValue, const nsAString* aSerialized);
 
   /**
    * Sets this object with the string or atom representation of aValue.
@@ -192,7 +202,7 @@ public:
   inline int32_t GetIntegerValue() const;
   bool GetColorValue(nscolor& aColor) const;
   inline int16_t GetEnumValue() const;
-  inline float GetPercentValue() const;
+  inline double GetPercentValue() const;
   inline mozilla::AtomArray* GetAtomArrayValue() const;
   inline mozilla::DeclarationBlock* GetCSSDeclarationValue() const;
   inline nsIURI* GetURLValue() const;
@@ -219,7 +229,7 @@ public:
   bool Equals(const nsAttrValue& aOther) const;
   // aCaseSensitive == eIgnoreCase means ASCII case-insenstive matching
   bool Equals(const nsAString& aValue, nsCaseTreatment aCaseSensitive) const;
-  bool Equals(nsAtom* aValue, nsCaseTreatment aCaseSensitive) const;
+  bool Equals(const nsAtom* aValue, nsCaseTreatment aCaseSensitive) const;
 
   /**
    * Compares this object with aOther according to their string representation.
@@ -261,17 +271,12 @@ public:
     // or a value of an enumeration type that can fit within an int16_t.
 
     constexpr EnumTable(const char* aTag, int16_t aValue)
-      : tag(aTag)
-      , value(aValue)
-    {
-    }
+        : tag(aTag), value(aValue) {}
 
-    template<typename T,
-             typename = typename std::enable_if<std::is_enum<T>::value>::type>
+    template <typename T,
+              typename = typename std::enable_if<std::is_enum<T>::value>::type>
     constexpr EnumTable(const char* aTag, T aValue)
-      : tag(aTag)
-      , value(static_cast<int16_t>(aValue))
-    {
+        : tag(aTag), value(static_cast<int16_t>(aValue)) {
       static_assert(mozilla::EnumTypeFitsWithin<T, int16_t>::value,
                     "aValue must be an enum that fits within int16_t");
     }
@@ -293,23 +298,38 @@ public:
    *        cause aDefaultValue->value to be stored as the enumeration value.
    * @return whether the enum value was found or not
    */
-  bool ParseEnumValue(const nsAString& aValue,
-                        const EnumTable* aTable,
-                        bool aCaseSensitive,
-                        const EnumTable* aDefaultValue = nullptr);
+  bool ParseEnumValue(const nsAString& aValue, const EnumTable* aTable,
+                      bool aCaseSensitive,
+                      const EnumTable* aDefaultValue = nullptr);
 
   /**
-   * Parse a string into an integer. Can optionally parse percent (n%).
-   * This method explicitly sets a lower bound of zero on the element,
-   * whether it be percent or raw integer.
+   * Parse a string into a dimension value.  This is similar to
+   * https://html.spec.whatwg.org/multipage/#rules-for-parsing-dimension-values
+   * but drops the fractional part of the value for now, until we figure out how
+   * to store that in our nsAttrValue.
    *
-   * @param aString the string to parse
+   * The resulting value (if the parse succeeds) is one of eInteger,
+   * eDoubleValue, or ePercent, depending on whether we found a fractional part
+   * and whether we found '%' at the end of the value.
+   *
+   * @param aInput the string to parse
    * @return whether the value could be parsed
-   *
-   * @see http://www.whatwg.org/html/#rules-for-parsing-dimension-values
    */
-  bool ParseSpecialIntValue(const nsAString& aString);
+  bool ParseHTMLDimension(const nsAString& aInput) {
+    return DoParseHTMLDimension(aInput, false);
+  }
 
+  /**
+   * Parse a string into a nonzero dimension value.  This implements
+   * https://html.spec.whatwg.org/multipage/#rules-for-parsing-non-zero-dimension-values
+   * subject to the same constraints as ParseHTMLDimension above.
+   *
+   * @param aInput the string to parse
+   * @return whether the value could be parsed
+   */
+  bool ParseNonzeroHTMLDimension(const nsAString& aInput) {
+    return DoParseHTMLDimension(aInput, true);
+  }
 
   /**
    * Parse a string value into an integer.
@@ -330,7 +350,7 @@ public:
    * @return whether the value could be parsed
    */
   bool ParseIntWithBounds(const nsAString& aString, int32_t aMin,
-                            int32_t aMax = INT32_MAX);
+                          int32_t aMax = INT32_MAX);
 
   /**
    * Parse a string value into an integer with a fallback for invalid values.
@@ -400,12 +420,6 @@ public:
   bool ParseDoubleValue(const nsAString& aString);
 
   /**
-   * Parse a lazy URI.  This just sets up the storage for the URI; it
-   * doesn't actually allocate it.
-   */
-  bool ParseLazyURIValue(const nsAString& aString);
-
-  /**
    * Parse a margin string of format 'top, right, bottom, left' into
    * an nsIntMargin.
    *
@@ -429,13 +443,13 @@ public:
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-private:
+ private:
   // These have to be the same as in ValueType
   enum ValueBaseType {
-    eStringBase =    eString,    // 00
-    eOtherBase =     0x01,       // 01
-    eAtomBase =      eAtom,      // 10
-    eIntegerBase =   0x03        // 11
+    eStringBase = eString,  // 00
+    eOtherBase = 0x01,      // 01
+    eAtomBase = eAtom,      // 10
+    eIntegerBase = 0x03     // 11
   };
 
   inline ValueBaseType BaseType() const;
@@ -448,11 +462,14 @@ private:
    * @param aTable   the EnumTable to get the index of.
    * @return         the index of the EnumTable.
    */
-  int16_t  GetEnumTableIndex(const EnumTable* aTable);
+  int16_t GetEnumTableIndex(const EnumTable* aTable);
 
   inline void SetPtrValueAndType(void* aValue, ValueBaseType aType);
   void SetIntValueAndType(int32_t aValue, ValueType aType,
                           const nsAString* aStringValue);
+  // aType can be ePercent or eDoubleValue.
+  void SetDoubleValueAndType(double aValue, ValueType aType,
+                             const nsAString* aStringValue);
   void SetColorValue(nscolor aColor, const nsAString& aString);
   void SetMiscAtomOrString(const nsAString* aValue);
   void ResetMiscAtomOrString();
@@ -471,8 +488,8 @@ private:
   // exist already.
   MiscContainer* EnsureEmptyMiscContainer();
   bool EnsureEmptyAtomArray();
-  already_AddRefed<nsStringBuffer>
-    GetStringBuffer(const nsAString& aValue) const;
+  already_AddRefed<nsStringBuffer> GetStringBuffer(
+      const nsAString& aValue) const;
   // Given an enum table and a particular entry in that table, return
   // the actual integer value we should store.
   int32_t EnumTableEntryToValue(const EnumTable* aEnumTable,
@@ -484,34 +501,32 @@ private:
   static nsTArray<const EnumTable*>* sEnumTableArray;
   static MiscContainer* sMiscContainerCache;
 
+  /**
+   * Helper for ParseHTMLDimension and ParseNonzeroHTMLDimension.
+   *
+   * @param aInput the string to parse
+   * @param aEnsureNonzero whether to fail the parse if the value is 0
+   * @return whether the value could be parsed
+   */
+  bool DoParseHTMLDimension(const nsAString& aInput, bool aEnsureNonzero);
+
   uintptr_t mBits;
 };
 
-inline const nsAttrValue&
-nsAttrValue::operator=(const nsAttrValue& aOther)
-{
+inline const nsAttrValue& nsAttrValue::operator=(const nsAttrValue& aOther) {
   SetTo(aOther);
   return *this;
 }
 
-inline nsAttrValue::ValueBaseType
-nsAttrValue::BaseType() const
-{
+inline nsAttrValue::ValueBaseType nsAttrValue::BaseType() const {
   return static_cast<ValueBaseType>(mBits & NS_ATTRVALUE_BASETYPE_MASK);
 }
 
-inline void*
-nsAttrValue::GetPtr() const
-{
-  NS_ASSERTION(BaseType() != eIntegerBase,
-               "getting pointer from non-pointer");
+inline void* nsAttrValue::GetPtr() const {
+  NS_ASSERTION(BaseType() != eIntegerBase, "getting pointer from non-pointer");
   return reinterpret_cast<void*>(mBits & NS_ATTRVALUE_POINTERVALUE_MASK);
 }
 
-inline bool
-nsAttrValue::IsEmptyString() const
-{
-  return !mBits;
-}
+inline bool nsAttrValue::IsEmptyString() const { return !mBits; }
 
 #endif

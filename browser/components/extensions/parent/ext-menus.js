@@ -1,19 +1,31 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
 
-var {
-  DefaultMap,
-  ExtensionError,
-} = ExtensionUtils;
+ChromeUtils.defineModuleGetter(
+  this,
+  "Bookmarks",
+  "resource://gre/modules/Bookmarks.jsm"
+);
 
-ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
+var { DefaultMap, ExtensionError } = ExtensionUtils;
 
-var {
-  IconDetails,
-} = ExtensionParent;
+var { ExtensionParent } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionParent.jsm"
+);
+
+var { IconDetails } = ExtensionParent;
 
 const ACTION_MENU_TOP_LEVEL_LIMIT = 6;
 
@@ -47,51 +59,167 @@ var gMenuBuilder = {
   // to be displayed. We always clear all the items again when
   // popuphidden fires.
   build(contextData) {
+    contextData = this.maybeOverrideContextData(contextData);
     let xulMenu = contextData.menu;
     xulMenu.addEventListener("popuphidden", this);
     this.xulMenu = xulMenu;
     for (let [, root] of gRootItems) {
-      let rootElement = this.createTopLevelElement(root, contextData);
-      if (rootElement) {
-        this.appendTopLevelElement(rootElement);
-      }
+      this.createAndInsertTopLevelElements(root, contextData, null);
     }
     this.afterBuildingMenu(contextData);
+
+    if (
+      contextData.webExtContextData &&
+      !contextData.webExtContextData.showDefaults
+    ) {
+      // Wait until nsContextMenu.js has toggled the visibility of the default
+      // menu items before hiding the default items.
+      Promise.resolve().then(() => this.hideDefaultMenuItems());
+    }
   },
 
-  // Builds a context menu for browserAction and pageAction buttons.
-  buildActionContextMenu(contextData) {
-    const {menu} = contextData;
+  maybeOverrideContextData(contextData) {
+    let { webExtContextData } = contextData;
+    if (!webExtContextData || !webExtContextData.overrideContext) {
+      return contextData;
+    }
+    let contextDataBase = {
+      menu: contextData.menu,
+      // eslint-disable-next-line no-use-before-define
+      originalViewType: getContextViewType(contextData),
+      originalViewUrl: contextData.inFrame
+        ? contextData.frameUrl
+        : contextData.pageUrl,
+      webExtContextData,
+    };
+    if (webExtContextData.overrideContext === "bookmark") {
+      return {
+        ...contextDataBase,
+        bookmarkId: webExtContextData.bookmarkId,
+        onBookmark: true,
+      };
+    }
+    if (webExtContextData.overrideContext === "tab") {
+      // TODO: Handle invalid tabs more gracefully (instead of throwing).
+      let tab = tabTracker.getTab(webExtContextData.tabId);
+      return {
+        ...contextDataBase,
+        tab,
+        pageUrl: tab.linkedBrowser.currentURI.spec,
+        onTab: true,
+      };
+    }
+    throw new Error(
+      `Unexpected overrideContext: ${webExtContextData.overrideContext}`
+    );
+  },
 
-    const root = gRootItems.get(contextData.extension);
-    if (!root) {
+  canAccessContext(extension, contextData) {
+    if (!extension.privateBrowsingAllowed) {
+      let nativeTab = contextData.tab;
+      if (
+        nativeTab &&
+        PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser)
+      ) {
+        return false;
+      } else if (
+        PrivateBrowsingUtils.isWindowPrivate(contextData.menu.ownerGlobal)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  },
+
+  createAndInsertTopLevelElements(root, contextData, nextSibling) {
+    let rootElements;
+    if (!this.canAccessContext(root.extension, contextData)) {
+      return;
+    }
+    if (contextData.onBrowserAction || contextData.onPageAction) {
+      if (contextData.extension.id !== root.extension.id) {
+        return;
+      }
+      rootElements = this.buildTopLevelElements(
+        root,
+        contextData,
+        ACTION_MENU_TOP_LEVEL_LIMIT,
+        false
+      );
+
+      // Action menu items are prepended to the menu, followed by a separator.
+      nextSibling = nextSibling || this.xulMenu.firstElementChild;
+      if (rootElements.length && !this.itemsToCleanUp.has(nextSibling)) {
+        rootElements.push(
+          this.xulMenu.ownerDocument.createXULElement("menuseparator")
+        );
+      }
+    } else if (contextData.webExtContextData) {
+      let {
+        extensionId,
+        showDefaults,
+        overrideContext,
+      } = contextData.webExtContextData;
+      if (extensionId === root.extension.id) {
+        rootElements = this.buildTopLevelElements(
+          root,
+          contextData,
+          Infinity,
+          false
+        );
+        // The extension menu should be rendered at the top, but after the navigation buttons.
+        nextSibling =
+          nextSibling ||
+          this.xulMenu.querySelector(":scope > #context-sep-navigation + *");
+        if (
+          rootElements.length &&
+          showDefaults &&
+          !this.itemsToCleanUp.has(nextSibling)
+        ) {
+          rootElements.push(
+            this.xulMenu.ownerDocument.createXULElement("menuseparator")
+          );
+        }
+      } else if (!showDefaults && !overrideContext) {
+        // When the default menu items should be hidden, menu items from other
+        // extensions should be hidden too.
+        return;
+      }
+      // Fall through to show default extension menu items.
+    }
+    if (!rootElements) {
+      rootElements = this.buildTopLevelElements(root, contextData, 1, true);
+      if (
+        rootElements.length &&
+        !this.itemsToCleanUp.has(this.xulMenu.lastElementChild)
+      ) {
+        // All extension menu items are appended at the end.
+        // Prepend separator if this is the first extension menu item.
+        rootElements.unshift(
+          this.xulMenu.ownerDocument.createXULElement("menuseparator")
+        );
+      }
+    }
+
+    if (!rootElements.length) {
       return;
     }
 
-    const children = this.buildChildren(root, contextData);
-    const visible = children.slice(0, ACTION_MENU_TOP_LEVEL_LIMIT);
-
-    this.xulMenu = menu;
-    menu.addEventListener("popuphidden", this);
-
-    if (visible.length) {
-      const separator = menu.ownerDocument.createElement("menuseparator");
-      menu.insertBefore(separator, menu.firstChild);
-      this.itemsToCleanUp.add(separator);
-
-      for (const child of visible) {
-        this.itemsToCleanUp.add(child);
-        menu.insertBefore(child, separator);
-      }
+    if (nextSibling) {
+      nextSibling.before(...rootElements);
+    } else {
+      this.xulMenu.append(...rootElements);
     }
-    this.afterBuildingMenu(contextData);
+    for (let item of rootElements) {
+      this.itemsToCleanUp.add(item);
+    }
   },
 
   buildElementWithChildren(item, contextData) {
     const element = this.buildSingleElement(item, contextData);
     const children = this.buildChildren(item, contextData);
     if (children.length) {
-      element.firstChild.append(...children);
+      element.firstElementChild.append(...children);
     }
     return element;
   },
@@ -116,81 +244,89 @@ var gMenuBuilder = {
     return children;
   },
 
-  createTopLevelElement(root, contextData) {
-    let rootElement = this.buildElementWithChildren(root, contextData);
-    if (!rootElement.firstChild || !rootElement.firstChild.childNodes.length) {
-      // If the root has no visible children, there is no reason to show
-      // the root menu item itself either.
-      return null;
-    }
-    rootElement.setAttribute("ext-type", "top-level-menu");
-    rootElement = this.removeTopLevelMenuIfNeeded(rootElement);
+  buildTopLevelElements(root, contextData, maxCount, forceManifestIcons) {
+    let children = this.buildChildren(root, contextData);
 
-    // Display the extension icon on the root element.
-    if (root.extension.manifest.icons) {
-      this.setMenuItemIcon(rootElement, root.extension, contextData, root.extension.manifest.icons);
-    }
-    return rootElement;
-  },
-
-  appendTopLevelElement(rootElement) {
-    if (this.itemsToCleanUp.size === 0) {
-      const separator = this.xulMenu.ownerDocument.createElement("menuseparator");
-      this.itemsToCleanUp.add(separator);
-      this.xulMenu.append(separator);
+    // TODO: Fix bug 1492969 and remove this whole if block.
+    if (
+      children.length === 1 &&
+      maxCount === 1 &&
+      forceManifestIcons &&
+      AppConstants.platform === "linux" &&
+      children[0].getAttribute("type") === "checkbox"
+    ) {
+      // Keep single checkbox items in the submenu on Linux since
+      // the extension icon overlaps the checkbox otherwise.
+      maxCount = 0;
     }
 
-    this.xulMenu.appendChild(rootElement);
-    this.itemsToCleanUp.add(rootElement);
+    if (children.length > maxCount) {
+      // Move excess items into submenu.
+      let rootElement = this.buildSingleElement(root, contextData);
+      rootElement.setAttribute("ext-type", "top-level-menu");
+      rootElement.firstElementChild.append(...children.splice(maxCount - 1));
+      children.push(rootElement);
+    }
+
+    if (forceManifestIcons) {
+      for (let rootElement of children) {
+        // Display the extension icon on the root element.
+        if (root.extension.manifest.icons) {
+          this.setMenuItemIcon(
+            rootElement,
+            root.extension,
+            contextData,
+            root.extension.manifest.icons
+          );
+        } else {
+          this.removeMenuItemIcon(rootElement);
+        }
+      }
+    }
+    return children;
   },
 
   removeSeparatorIfNoTopLevelItems() {
-    if (this.itemsToCleanUp.size === 1) {
-      // Remove the separator if all extension menu items have disappeared.
-      const separator = this.itemsToCleanUp.values().next().value;
-      separator.remove();
-      this.itemsToCleanUp.clear();
-    }
-  },
+    // Extension menu items always have have a non-empty ID.
+    let isNonExtensionSeparator = item =>
+      item.nodeName === "menuseparator" && !item.id;
 
-  removeTopLevelMenuIfNeeded(element) {
-    // If there is only one visible top level element we don't need the
-    // root menu element for the extension.
-    let menuPopup = element.firstChild;
-    if (menuPopup && menuPopup.childNodes.length == 1) {
-      let onlyChild = menuPopup.firstChild;
+    // itemsToCleanUp contains all top-level menu items. A separator should
+    // only be kept if it is next to an extension menu item.
+    let isExtensionMenuItemSibling = item =>
+      item && this.itemsToCleanUp.has(item) && !isNonExtensionSeparator(item);
 
-      // Keep single checkbox items in the submenu on Linux since
-      // the extension icon overlaps the checkbox otherwise.
-      if (AppConstants.platform === "linux" && onlyChild.getAttribute("type") === "checkbox") {
-        return element;
+    for (let item of this.itemsToCleanUp) {
+      if (isNonExtensionSeparator(item)) {
+        if (
+          !isExtensionMenuItemSibling(item.previousElementSibling) &&
+          !isExtensionMenuItemSibling(item.nextElementSibling)
+        ) {
+          item.remove();
+          this.itemsToCleanUp.delete(item);
+        }
       }
-
-      onlyChild.remove();
-      return onlyChild;
     }
-
-    return element;
   },
 
   buildSingleElement(item, contextData) {
     let doc = contextData.menu.ownerDocument;
     let element;
-    if (item.children.length > 0) {
+    if (item.children.length) {
       element = this.createMenuElement(doc, item);
     } else if (item.type == "separator") {
-      element = doc.createElement("menuseparator");
+      element = doc.createXULElement("menuseparator");
     } else {
-      element = doc.createElement("menuitem");
+      element = doc.createXULElement("menuitem");
     }
 
     return this.customizeElement(element, item, contextData);
   },
 
   createMenuElement(doc, item) {
-    let element = doc.createElement("menu");
+    let element = doc.createXULElement("menu");
     // Menu elements need to have a menupopup child for its menu items.
-    let menupopup = doc.createElement("menupopup");
+    let menupopup = doc.createXULElement("menupopup");
     element.appendChild(menupopup);
     return element;
   },
@@ -232,11 +368,14 @@ var gMenuBuilder = {
         if (codePointsToRemove) {
           let ellipsis = "\u2026";
           try {
-            ellipsis = Services.prefs.getComplexValue("intl.ellipsis",
-                                                      Ci.nsIPrefLocalizedString).data;
-          } catch (e) { }
+            ellipsis = Services.prefs.getComplexValue(
+              "intl.ellipsis",
+              Ci.nsIPrefLocalizedString
+            ).data;
+          } catch (e) {}
           codePointsToRemove += 1;
-          selection = selectionArray.slice(0, -codePointsToRemove).join("") + ellipsis;
+          selection =
+            selectionArray.slice(0, -codePointsToRemove).join("") + ellipsis;
         }
 
         label = label.replace(/%s/g, selection);
@@ -247,8 +386,12 @@ var gMenuBuilder = {
 
     element.setAttribute("id", item.elementId);
 
-    if (item.icons) {
-      this.setMenuItemIcon(element, item.extension, contextData, item.icons);
+    if ("icons" in item) {
+      if (item.icons) {
+        this.setMenuItemIcon(element, item.extension, contextData, item.icons);
+      } else {
+        this.removeMenuItemIcon(element);
+      }
     }
 
     if (item.type == "checkbox") {
@@ -268,49 +411,94 @@ var gMenuBuilder = {
       element.setAttribute("disabled", "true");
     }
 
-    element.addEventListener("command", event => { // eslint-disable-line mozilla/balanced-listeners
-      if (event.target !== event.currentTarget) {
+    let button;
+
+    element.addEventListener(
+      "command",
+      event => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+        const wasChecked = item.checked;
+        if (item.type == "checkbox") {
+          item.checked = !item.checked;
+        } else if (item.type == "radio") {
+          // Deselect all radio items in the current radio group.
+          for (let child of item.parent.children) {
+            if (child.type == "radio" && child.groupName == item.groupName) {
+              child.checked = false;
+            }
+          }
+          // Select the clicked radio item.
+          item.checked = true;
+        }
+
+        let { webExtContextData } = contextData;
+        if (
+          contextData.tab &&
+          // If the menu context was overridden by the extension, do not grant
+          // activeTab since the extension also controls the tabId.
+          (!webExtContextData ||
+            webExtContextData.extensionId !== item.extension.id)
+        ) {
+          item.tabManager.addActiveTabPermission(contextData.tab);
+        }
+
+        let info = item.getClickInfo(contextData, wasChecked);
+
+        const map = {
+          shiftKey: "Shift",
+          altKey: "Alt",
+          metaKey: "Command",
+          ctrlKey: "Ctrl",
+        };
+        info.modifiers = Object.keys(map)
+          .filter(key => event[key])
+          .map(key => map[key]);
+        if (event.ctrlKey && AppConstants.platform === "macosx") {
+          info.modifiers.push("MacCtrl");
+        }
+
+        info.button = button;
+
+        // Allow menus to open various actions supported in webext prior
+        // to notifying onclicked.
+        let actionFor = {
+          _execute_page_action: global.pageActionFor,
+          _execute_browser_action: global.browserActionFor,
+          _execute_sidebar_action: global.sidebarActionFor,
+        }[item.command];
+        if (actionFor) {
+          let win = event.target.ownerGlobal;
+          actionFor(item.extension).triggerAction(win);
+        }
+
+        item.extension.emit(
+          "webext-menu-menuitem-click",
+          info,
+          contextData.tab
+        );
+      },
+      { once: true }
+    );
+
+    // eslint-disable-next-line mozilla/balanced-listeners
+    element.addEventListener("click", event => {
+      if (
+        event.target !== event.currentTarget ||
+        // Ignore menu items that are usually not clickeable,
+        // such as separators and parents of submenus and disabled items.
+        element.localName !== "menuitem" ||
+        element.disabled
+      ) {
         return;
       }
-      const wasChecked = item.checked;
-      if (item.type == "checkbox") {
-        item.checked = !item.checked;
-      } else if (item.type == "radio") {
-        // Deselect all radio items in the current radio group.
-        for (let child of item.parent.children) {
-          if (child.type == "radio" && child.groupName == item.groupName) {
-            child.checked = false;
-          }
-        }
-        // Select the clicked radio item.
-        item.checked = true;
+
+      button = event.button;
+      if (event.button) {
+        element.doCommand();
+        contextData.menu.hidePopup();
       }
-
-      if (contextData.tab) {
-        item.tabManager.addActiveTabPermission(contextData.tab);
-      }
-
-      let info = item.getClickInfo(contextData, wasChecked);
-
-      const map = {shiftKey: "Shift", altKey: "Alt", metaKey: "Command", ctrlKey: "Ctrl"};
-      info.modifiers = Object.keys(map).filter(key => event[key]).map(key => map[key]);
-      if (event.ctrlKey && AppConstants.platform === "macosx") {
-        info.modifiers.push("MacCtrl");
-      }
-
-      // Allow menus to open various actions supported in webext prior
-      // to notifying onclicked.
-      let actionFor = {
-        _execute_page_action: global.pageActionFor,
-        _execute_browser_action: global.browserActionFor,
-        _execute_sidebar_action: global.sidebarActionFor,
-      }[item.command];
-      if (actionFor) {
-        let win = event.target.ownerGlobal;
-        actionFor(item.extension).triggerAction(win);
-      }
-
-      item.extension.emit("webext-menu-menuitem-click", info, contextData.tab);
     });
 
     // Don't publish the ID of the root because the root element is
@@ -325,8 +513,11 @@ var gMenuBuilder = {
   setMenuItemIcon(element, extension, contextData, icons) {
     let parentWindow = contextData.menu.ownerGlobal;
 
-    let {icon} = IconDetails.getPreferredIcon(icons, extension,
-                                              16 * parentWindow.devicePixelRatio);
+    let { icon } = IconDetails.getPreferredIcon(
+      icons,
+      extension,
+      16 * parentWindow.devicePixelRatio
+    );
 
     // The extension icons in the manifest are not pre-resolved, since
     // they're sometimes used by the add-on manager when the extension is
@@ -342,72 +533,52 @@ var gMenuBuilder = {
     element.setAttribute("image", resolvedURL);
   },
 
+  // Undo changes from setMenuItemIcon.
+  removeMenuItemIcon(element) {
+    element.removeAttribute("class");
+    element.removeAttribute("image");
+  },
+
   rebuildMenu(extension) {
-    let {contextData} = this;
+    let { contextData } = this;
     if (!contextData) {
       // This happens if the menu is not visible.
       return;
     }
 
-    if (!gShownMenuItems.has(extension)) {
-      // The onShown event was not fired for the extension, so the extension
-      // does not know that a menu is being shown, and therefore they should
-      // not care whether the extension menu is updated.
-      return;
-    }
-
-    if (contextData.onBrowserAction || contextData.onPageAction) {
-      // The action menu can only have items from one extension, so remove all
-      // items (including the separator) and rebuild the action menu (if any).
-      for (let item of this.itemsToCleanUp) {
-        item.remove();
-      }
-      this.itemsToCleanUp.clear();
-      this.buildActionContextMenu(contextData);
-      return;
-    }
-
-    // First find the one and only top-level menu item for the extension.
+    // Find the group of existing top-level items (usually 0 or 1 items)
+    // and remember its position for when the new items are inserted.
     let elementIdPrefix = `${makeWidgetId(extension.id)}-menuitem-`;
-    let oldRoot = null;
-    for (let item = this.xulMenu.lastElementChild; item !== null; item = item.previousElementSibling) {
+    let nextSibling = null;
+    for (let item of this.itemsToCleanUp) {
       if (item.id && item.id.startsWith(elementIdPrefix)) {
-        oldRoot = item;
-        this.itemsToCleanUp.delete(oldRoot);
-        break;
+        nextSibling = item.nextSibling;
+        item.remove();
+        this.itemsToCleanUp.delete(item);
       }
     }
 
     let root = gRootItems.get(extension);
-    let newRoot = root && this.createTopLevelElement(root, contextData);
-    if (newRoot) {
-      this.itemsToCleanUp.add(newRoot);
-      if (oldRoot) {
-        oldRoot.replaceWith(newRoot);
-      } else {
-        this.appendTopLevelElement(newRoot);
-      }
-    } else if (oldRoot) {
-      oldRoot.remove();
-      this.removeSeparatorIfNoTopLevelItems();
+    if (root) {
+      this.createAndInsertTopLevelElements(root, contextData, nextSibling);
     }
+    this.removeSeparatorIfNoTopLevelItems();
   },
 
+  // This should be called once, after constructing the top-level menus, if any.
   afterBuildingMenu(contextData) {
-    if (this.contextData) {
-      // rebuildMenu can trigger us again, but the logic below should run only
-      // once per open menu.
-      return;
-    }
+    let dispatchOnShownEvent = extension => {
+      if (!this.canAccessContext(extension, contextData)) {
+        return;
+      }
 
-    function dispatchOnShownEvent(extension) {
       // Note: gShownMenuItems is a DefaultMap, so .get(extension) causes the
       // extension to be stored in the map even if there are currently no
       // shown menu items. This ensures that the onHidden event can be fired
       // when the menu is closed.
       let menuIds = gShownMenuItems.get(extension);
       extension.emit("webext-menu-shown", menuIds, contextData);
-    }
+    };
 
     if (contextData.onBrowserAction || contextData.onPageAction) {
       dispatchOnShownEvent(contextData.extension);
@@ -416,6 +587,14 @@ var gMenuBuilder = {
     }
 
     this.contextData = contextData;
+  },
+
+  hideDefaultMenuItems() {
+    for (let item of this.xulMenu.children) {
+      if (!this.itemsToCleanUp.has(item)) {
+        item.hidden = true;
+      }
+    }
   },
 
   handleEvent(event) {
@@ -445,7 +624,7 @@ var gMenuBuilder = {
 global.actionContextMenu = function(contextData) {
   contextData.tab = tabTracker.activeTab;
   contextData.pageUrl = contextData.tab.linkedBrowser.currentURI.spec;
-  gMenuBuilder.buildActionContextMenu(contextData);
+  gMenuBuilder.build(contextData);
 };
 
 const contextsMap = {
@@ -479,14 +658,35 @@ const getMenuContexts = contextData => {
   }
 
   // New non-content contexts supported in Firefox are not part of "all".
-  if (!contextData.onBookmark && !contextData.onTab && !contextData.inToolsMenu) {
+  if (
+    !contextData.onBookmark &&
+    !contextData.onTab &&
+    !contextData.inToolsMenu
+  ) {
     contexts.add("all");
   }
 
   return contexts;
 };
 
-function addMenuEventInfo(info, contextData, includeSensitiveData) {
+function getContextViewType(contextData) {
+  if ("originalViewType" in contextData) {
+    return contextData.originalViewType;
+  }
+  if (
+    contextData.webExtBrowserType === "popup" ||
+    contextData.webExtBrowserType === "sidebar"
+  ) {
+    return contextData.webExtBrowserType;
+  }
+  if (contextData.tab && contextData.menu.id === "contentAreaContextMenu") {
+    return "tab";
+  }
+  return undefined;
+}
+
+function addMenuEventInfo(info, contextData, extension, includeSensitiveData) {
+  info.viewType = getContextViewType(contextData);
   if (contextData.onVideo) {
     info.mediaType = "video";
   } else if (contextData.onAudio) {
@@ -502,6 +702,12 @@ function addMenuEventInfo(info, contextData, includeSensitiveData) {
   }
   info.editable = contextData.onEditable || false;
   if (includeSensitiveData) {
+    // menus.getTargetElement requires the "menus" permission, so do not set
+    // targetElementId for extensions with only the "contextMenus" permission.
+    if (contextData.timeStamp && extension.hasPermission("menus")) {
+      // Convert to integer, in case the DOMHighResTimeStamp has a fractional part.
+      info.targetElementId = Math.floor(contextData.timeStamp);
+    }
     if (contextData.onLink) {
       info.linkText = contextData.linkText;
       info.linkUrl = contextData.linkUrl;
@@ -518,6 +724,12 @@ function addMenuEventInfo(info, contextData, includeSensitiveData) {
     if (contextData.isTextSelected) {
       info.selectionText = contextData.selectionText;
     }
+  }
+  // If the context was overridden, then frameUrl should be the URL of the
+  // document in which the menu was opened (instead of undefined, even if that
+  // document is not in a frame).
+  if (contextData.originalViewUrl) {
+    info.frameUrl = contextData.originalViewUrl;
   }
 }
 
@@ -550,12 +762,25 @@ MenuItem.prototype = {
       this[propName] = createProperties[propName];
     }
 
+    if ("icons" in createProperties && createProperties.icons === null) {
+      this.icons = null;
+    }
+
     if (createProperties.documentUrlPatterns != null) {
-      this.documentUrlMatchPattern = new MatchPatternSet(this.documentUrlPatterns);
+      this.documentUrlMatchPattern = new MatchPatternSet(
+        this.documentUrlPatterns,
+        {
+          restrictSchemes: this.extension.restrictSchemes,
+        }
+      );
     }
 
     if (createProperties.targetUrlPatterns != null) {
-      this.targetUrlMatchPattern = new MatchPatternSet(this.targetUrlPatterns, {restrictSchemes: false});
+      this.targetUrlMatchPattern = new MatchPatternSet(this.targetUrlPatterns, {
+        // restrictSchemes default to false when matching links instead of pages
+        // (see Bug 1280370 for a rationale).
+        restrictSchemes: false,
+      });
     }
 
     // If a child MenuItem does not specify any contexts, then it should
@@ -571,6 +796,7 @@ MenuItem.prototype = {
       checked: false,
       contexts: ["all"],
       enabled: true,
+      visible: true,
     });
   },
 
@@ -607,11 +833,15 @@ MenuItem.prototype = {
     }
     let menuMap = gMenuMap.get(this.extension);
     if (!menuMap.has(parentId)) {
-      throw new ExtensionError(`Could not find any MenuItem with id: ${parentId}`);
+      throw new ExtensionError(
+        `Could not find any MenuItem with id: ${parentId}`
+      );
     }
     for (let item = menuMap.get(parentId); item; item = item.parent) {
       if (item === this) {
-        throw new ExtensionError("MenuItem cannot be an ancestor (or self) of its new parent.");
+        throw new ExtensionError(
+          "MenuItem cannot be an ancestor (or self) of its new parent."
+        );
       }
     }
   },
@@ -655,9 +885,11 @@ MenuItem.prototype = {
   get root() {
     let extension = this.extension;
     if (!gRootItems.has(extension)) {
-      let root = new MenuItem(extension,
-                              {title: extension.name},
-                              /* isRoot = */ true);
+      let root = new MenuItem(
+        extension,
+        { title: extension.name },
+        /* isRoot = */ true
+      );
       gRootItems.set(extension, root);
     }
 
@@ -688,9 +920,9 @@ MenuItem.prototype = {
       info.parentMenuItemId = this.parentId;
     }
 
-    addMenuEventInfo(info, contextData, true);
+    addMenuEventInfo(info, contextData, this.extension, true);
 
-    if ((this.type === "checkbox") || (this.type === "radio")) {
+    if (this.type === "checkbox" || this.type === "radio") {
       info.checked = this.checked;
       info.wasChecked = wasChecked;
     }
@@ -699,17 +931,43 @@ MenuItem.prototype = {
   },
 
   enabledForContext(contextData) {
+    if (!this.visible) {
+      return false;
+    }
     let contexts = getMenuContexts(contextData);
     if (!this.contexts.some(n => contexts.has(n))) {
       return false;
+    }
+
+    if (
+      this.viewTypes &&
+      !this.viewTypes.includes(getContextViewType(contextData))
+    ) {
+      return false;
+    }
+
+    let docPattern = this.documentUrlMatchPattern;
+    // When viewTypes is specified, the menu item is expected to be restricted
+    // to documents. So let documentUrlPatterns always apply to the URL of the
+    // document in which the menu was opened. When maybeOverrideContextData
+    // changes the context, contextData.pageUrl does not reflect that URL any
+    // more, so use contextData.originalViewUrl instead.
+    if (docPattern && this.viewTypes && contextData.originalViewUrl) {
+      if (
+        !docPattern.matches(Services.io.newURI(contextData.originalViewUrl))
+      ) {
+        return false;
+      }
+      docPattern = null; // Null it so that it won't be used with pageURI below.
     }
 
     if (contextData.onBookmark) {
       return this.extension.hasPermission("bookmarks");
     }
 
-    let docPattern = this.documentUrlMatchPattern;
-    let pageURI = Services.io.newURI(contextData[contextData.inFrame ? "frameUrl" : "pageUrl"]);
+    let pageURI = Services.io.newURI(
+      contextData[contextData.inFrame ? "frameUrl" : "pageUrl"]
+    );
     if (docPattern && !docPattern.matches(pageURI)) {
       return false;
     }
@@ -724,12 +982,84 @@ MenuItem.prototype = {
       if (contextData.onLink) {
         targetUrls.push(contextData.linkUrl);
       }
-      if (!targetUrls.some(targetUrl => targetPattern.matches(Services.io.newURI(targetUrl)))) {
+      if (
+        !targetUrls.some(targetUrl =>
+          targetPattern.matches(Services.io.newURI(targetUrl))
+        )
+      ) {
         return false;
       }
     }
 
     return true;
+  },
+};
+
+// windowTracker only looks as browser windows, but we're also interested in
+// the Library window.  Helper for menuTracker below.
+const libraryTracker = {
+  libraryWindowType: "Places:Organizer",
+
+  isLibraryWindow(window) {
+    let winType = window.document.documentElement.getAttribute("windowtype");
+    return winType === this.libraryWindowType;
+  },
+
+  init(listener) {
+    this._listener = listener;
+    Services.ww.registerNotification(this);
+
+    // See WindowTrackerBase#*browserWindows in ext-tabs-base.js for why we
+    // can't use the enumerator's windowtype filter.
+    for (let window of Services.wm.getEnumerator("")) {
+      if (window.document.readyState === "complete") {
+        if (this.isLibraryWindow(window)) {
+          this.notify(window);
+        }
+      } else {
+        window.addEventListener("load", this, { once: true });
+      }
+    }
+  },
+
+  // cleanupWindow is called on any library window that's open.
+  uninit(cleanupWindow) {
+    Services.ww.unregisterNotification(this);
+
+    for (let window of Services.wm.getEnumerator("")) {
+      window.removeEventListener("load", this);
+      try {
+        if (this.isLibraryWindow(window)) {
+          cleanupWindow(window);
+        }
+      } catch (e) {
+        Cu.reportError(e);
+      }
+    }
+  },
+
+  // Gets notifications from Services.ww.registerNotification.
+  // Defer actually doing anything until the window's loaded, though.
+  observe(window, topic) {
+    if (topic === "domwindowopened") {
+      window.addEventListener("load", this, { once: true });
+    }
+  },
+
+  // Gets the load event for new windows(registered in observe()).
+  handleEvent(event) {
+    let window = event.target.defaultView;
+    if (this.isLibraryWindow(window)) {
+      this.notify(window);
+    }
+  },
+
+  notify(window) {
+    try {
+      this._listener.call(null, window);
+    } catch (e) {
+      Cu.reportError(e);
+    }
   },
 };
 
@@ -744,17 +1074,16 @@ const menuTracker = {
       this.onWindowOpen(window);
     }
     windowTracker.addOpenListener(this.onWindowOpen);
+    libraryTracker.init(this.onLibraryOpen);
   },
 
   unregister() {
     Services.obs.removeObserver(this, "on-build-contextmenu");
     for (const window of windowTracker.browserWindows()) {
-      for (const id of this.menuIds) {
-        const menu = window.document.getElementById(id);
-        menu.removeEventListener("popupshowing", this);
-      }
+      this.cleanupWindow(window);
     }
     windowTracker.removeOpenListener(this.onWindowOpen);
+    libraryTracker.uninit(this.cleanupLibrary);
   },
 
   observe(subject, topic, data) {
@@ -762,15 +1091,86 @@ const menuTracker = {
     gMenuBuilder.build(subject);
   },
 
-  onWindowOpen(window) {
+  async onWindowOpen(window) {
     for (const id of menuTracker.menuIds) {
       const menu = window.document.getElementById(id);
       menu.addEventListener("popupshowing", menuTracker);
     }
+
+    const sidebarHeader = window.document.getElementById(
+      "sidebar-switcher-target"
+    );
+    sidebarHeader.addEventListener("SidebarShown", menuTracker.onSidebarShown);
+
+    await window.SidebarUI.promiseInitialized;
+
+    if (
+      !window.closed &&
+      window.SidebarUI.currentID === "viewBookmarksSidebar"
+    ) {
+      menuTracker.onSidebarShown({ currentTarget: sidebarHeader });
+    }
+  },
+
+  cleanupWindow(window) {
+    for (const id of this.menuIds) {
+      const menu = window.document.getElementById(id);
+      menu.removeEventListener("popupshowing", this);
+    }
+
+    const sidebarHeader = window.document.getElementById(
+      "sidebar-switcher-target"
+    );
+    sidebarHeader.removeEventListener("SidebarShown", this.onSidebarShown);
+
+    if (window.SidebarUI.currentID === "viewBookmarksSidebar") {
+      let sidebarBrowser = window.SidebarUI.browser;
+      sidebarBrowser.removeEventListener("load", this.onSidebarShown);
+      const menu = sidebarBrowser.contentDocument.getElementById(
+        "placesContext"
+      );
+      menu.removeEventListener("popupshowing", this.onBookmarksContextMenu);
+    }
+  },
+
+  onSidebarShown(event) {
+    // The event target is an element in a browser window, so |window| will be
+    // the browser window that contains the sidebar.
+    const window = event.currentTarget.ownerGlobal;
+    if (window.SidebarUI.currentID === "viewBookmarksSidebar") {
+      let sidebarBrowser = window.SidebarUI.browser;
+      if (sidebarBrowser.contentDocument.readyState !== "complete") {
+        // SidebarUI.currentID may be updated before the bookmark sidebar's
+        // document has finished loading. This sometimes happens when the
+        // sidebar is automatically shown when a new window is opened.
+        sidebarBrowser.addEventListener("load", menuTracker.onSidebarShown, {
+          once: true,
+        });
+        return;
+      }
+      const menu = sidebarBrowser.contentDocument.getElementById(
+        "placesContext"
+      );
+      menu.addEventListener("popupshowing", menuTracker.onBookmarksContextMenu);
+    }
+  },
+
+  onLibraryOpen(window) {
+    const menu = window.document.getElementById("placesContext");
+    menu.addEventListener("popupshowing", menuTracker.onBookmarksContextMenu);
+  },
+
+  cleanupLibrary(window) {
+    const menu = window.document.getElementById("placesContext");
+    menu.removeEventListener(
+      "popupshowing",
+      menuTracker.onBookmarksContextMenu
+    );
   },
 
   handleEvent(event) {
     const menu = event.target;
+
     if (menu.id === "placesContext") {
       const trigger = menu.triggerNode;
       if (!trigger._placesNode) {
@@ -786,14 +1186,34 @@ const menuTracker = {
     if (menu.id === "menu_ToolsPopup") {
       const tab = tabTracker.activeTab;
       const pageUrl = tab.linkedBrowser.currentURI.spec;
-      gMenuBuilder.build({menu, tab, pageUrl, inToolsMenu: true});
+      gMenuBuilder.build({ menu, tab, pageUrl, inToolsMenu: true });
     }
     if (menu.id === "tabContextMenu") {
-      const trigger = menu.triggerNode;
-      const tab = trigger.localName === "tab" ? trigger : tabTracker.activeTab;
+      let trigger = menu.triggerNode;
+      while (trigger && trigger.localName != "tab") {
+        trigger = trigger.parentNode;
+      }
+      const tab = trigger || tabTracker.activeTab;
       const pageUrl = tab.linkedBrowser.currentURI.spec;
-      gMenuBuilder.build({menu, tab, pageUrl, onTab: true});
+      gMenuBuilder.build({ menu, tab, pageUrl, onTab: true });
     }
+  },
+
+  onBookmarksContextMenu(event) {
+    const menu = event.target;
+    const tree = menu.triggerNode.parentElement;
+    const cell = tree.getCellAt(event.x, event.y);
+    const node = tree.view.nodeForTreeIndex(cell.row);
+
+    if (!node.bookmarkGuid || Bookmarks.isVirtualRootItem(node.bookmarkGuid)) {
+      return;
+    }
+
+    gMenuBuilder.build({
+      menu,
+      bookmarkId: node.bookmarkGuid,
+      onBookmark: true,
+    });
   },
 };
 
@@ -807,8 +1227,8 @@ this.menusInternal = class extends ExtensionAPI {
     gMenuMap.set(extension, new Map());
   }
 
-  onShutdown(reason) {
-    let {extension} = this;
+  onShutdown() {
+    let { extension } = this;
 
     if (gMenuMap.has(extension)) {
       gMenuMap.delete(extension);
@@ -822,7 +1242,7 @@ this.menusInternal = class extends ExtensionAPI {
   }
 
   getAPI(context) {
-    let {extension} = context;
+    let { extension } = context;
 
     const menus = {
       refresh() {
@@ -844,12 +1264,20 @@ this.menusInternal = class extends ExtensionAPI {
             // The menus.onShown event is fired before the user has consciously
             // interacted with an extension, so we require permissions before
             // exposing sensitive contextual data.
-            let contextUrl = contextData.inFrame ? contextData.frameUrl : contextData.pageUrl;
+            let contextUrl = contextData.inFrame
+              ? contextData.frameUrl
+              : contextData.pageUrl;
             let includeSensitiveData =
-              (nativeTab && extension.tabManager.hasActiveTabPermission(nativeTab)) ||
+              (nativeTab &&
+                extension.tabManager.hasActiveTabPermission(nativeTab)) ||
               (contextUrl && extension.whiteListedHosts.matches(contextUrl));
 
-            addMenuEventInfo(info, contextData, includeSensitiveData);
+            addMenuEventInfo(
+              info,
+              contextData,
+              extension,
+              includeSensitiveData
+            );
 
             let tab = nativeTab && extension.tabManager.convert(nativeTab);
             fire.sync(info, tab);
@@ -915,10 +1343,11 @@ this.menusInternal = class extends ExtensionAPI {
           name: "menusInternal.onClicked",
           register: fire => {
             let listener = (event, info, nativeTab) => {
-              let {linkedBrowser} = nativeTab || tabTracker.activeTab;
+              let { linkedBrowser } = nativeTab || tabTracker.activeTab;
               let tab = nativeTab && extension.tabManager.convert(nativeTab);
-              context.withPendingBrowser(linkedBrowser,
-                                         () => fire.sync(info, tab));
+              context.withPendingBrowser(linkedBrowser, () =>
+                fire.sync(info, tab)
+              );
             };
 
             extension.on("webext-menu-menuitem-click", listener);

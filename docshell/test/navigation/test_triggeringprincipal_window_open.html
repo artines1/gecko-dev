@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>        
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>        
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   <script type="text/javascript" src="NavigationUtils.js"></script>        
 </head>
@@ -50,7 +50,7 @@ httpWin.onload = function() {
 
   httpWin.close();
   checkFinish();
-}
+};
 
 // ----------------------------------------------------------------------------
 // Test 2: window.open(javascript:)
@@ -71,7 +71,7 @@ jsWin.onload = function() {
 
   jsWin.close();
   checkFinish();
-}
+};
 
 </script>
 </pre>

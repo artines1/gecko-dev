@@ -10,11 +10,11 @@
  * Fluent conversion
  */
 
-/* global content */
+const { FormAutofillUtils } = ChromeUtils.import(
+  "resource://formautofill/FormAutofillUtils.jsm"
+);
 
-ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
-
-const CONTENT_WIN = typeof(window) != "undefined" ? window : this;
+const CONTENT_WIN = typeof window != "undefined" ? window : this;
 
 const L10N_ATTRIBUTES = ["data-localization", "data-localization-region"];
 
@@ -23,19 +23,39 @@ CONTENT_WIN.addEventListener("DOMContentLoaded", function onDCL(evt) {
   let doc = evt.target;
   FormAutofillUtils.localizeMarkup(doc);
 
-  let mutationObserver = new doc.ownerGlobal.MutationObserver(function onMutation(mutations) {
-    for (let mutation of mutations) {
-      if (!mutation.target.hasAttribute(mutation.attributeName)) {
-        // The attribute was removed in the meantime.
-        continue;
+  let mutationObserver = new doc.ownerGlobal.MutationObserver(
+    function onMutation(mutations) {
+      for (let mutation of mutations) {
+        switch (mutation.type) {
+          case "attributes": {
+            if (!mutation.target.hasAttribute(mutation.attributeName)) {
+              // The attribute was removed in the meantime.
+              continue;
+            }
+            FormAutofillUtils.localizeAttributeForElement(
+              mutation.target,
+              mutation.attributeName
+            );
+            break;
+          }
+
+          case "childList": {
+            // We really only care about elements appending inside pages.
+            if (!mutation.addedNodes || !mutation.target.closest(".page")) {
+              break;
+            }
+            FormAutofillUtils.localizeMarkup(mutation.target);
+            break;
+          }
+        }
       }
-      FormAutofillUtils.localizeAttributeForElement(mutation.target, mutation.attributeName);
     }
-  });
+  );
 
   mutationObserver.observe(doc, {
     attributes: true,
     attributeFilter: L10N_ATTRIBUTES,
+    childList: true,
     subtree: true,
   });
 });

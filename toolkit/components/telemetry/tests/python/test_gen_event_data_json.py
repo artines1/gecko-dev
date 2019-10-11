@@ -13,10 +13,15 @@ from os import path
 
 TELEMETRY_ROOT_PATH = path.abspath(path.join(path.dirname(__file__), path.pardir, path.pardir))
 sys.path.append(TELEMETRY_ROOT_PATH)
+# The generators live in "build_scripts", account for that.
+# NOTE: if the generators are moved, this logic will need to be updated.
+sys.path.append(path.join(TELEMETRY_ROOT_PATH, "build_scripts"))
 import gen_event_data   # noqa: E402
 
 
 class TestEventDataJson(unittest.TestCase):
+
+    maxDiff = None
 
     def test_JSON_definitions_generation(self):
         EVENTS_YAML = """
@@ -29,6 +34,8 @@ with.optout:
     description: opt-out event
     release_channel_collection: opt-out
     expiry_version: never
+    products:
+      - firefox
     extra_keys:
       message: a message 1
 with.optin:
@@ -40,6 +47,7 @@ with.optin:
     description: opt-in event
     release_channel_collection: opt-in
     expiry_version: never
+    products: ['firefox', 'fennec', 'geckoview']
     extra_keys:
       message: a message 2
         """
@@ -49,18 +57,22 @@ with.optin:
                 "testme1": {
                     "objects": ["test1"],
                     "expired": False,
+                    "expires": "never",
                     "methods": ["testme1"],
                     "extra_keys": ["message"],
-                    "record_on_release": True
+                    "record_on_release": True,
+                    "products": ["firefox"],
                 }
             },
             "with.optin": {
                 "testme2": {
                     "objects": ["test2"],
                     "expired": False,
+                    "expires": "never",
                     "methods": ["testme2"],
                     "extra_keys": ["message"],
-                    "record_on_release": False
+                    "record_on_release": False,
+                    "products": ["firefox", "fennec", "geckoview"],
                 }
             },
         }

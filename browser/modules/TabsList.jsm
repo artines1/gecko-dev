@@ -4,11 +4,13 @@
 
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "PanelMultiView",
-                               "resource:///modules/PanelMultiView.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "PanelMultiView",
+  "resource:///modules/PanelMultiView.jsm"
+);
 
 var EXPORTED_SYMBOLS = ["TabsPanel"];
-const NSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 function setAttributes(element, attrs) {
   for (let [name, value] of Object.entries(attrs)) {
@@ -21,7 +23,7 @@ function setAttributes(element, attrs) {
 }
 
 class TabsListBase {
-  constructor({className, filterFn, insertBefore, containerNode}) {
+  constructor({ className, filterFn, insertBefore, containerNode }) {
     this.className = className;
     this.filterFn = filterFn;
     this.insertBefore = insertBefore;
@@ -119,10 +121,10 @@ class TabsListBase {
 
   _addTab(newTab) {
     let newRow = this._createRow(newTab);
-    let nextTab = newTab.nextSibling;
+    let nextTab = newTab.nextElementSibling;
 
     while (nextTab && !this.filterFn(nextTab)) {
-      nextTab = nextTab.nextSibling;
+      nextTab = nextTab.nextElementSibling;
     }
 
     if (nextTab) {
@@ -157,7 +159,7 @@ class TabsPanel extends TabsListBase {
   constructor(opts) {
     super({
       ...opts,
-      containerNode: opts.containerNode || opts.view.firstChild,
+      containerNode: opts.containerNode || opts.view.firstElementChild,
     });
     this.view = opts.view;
     this.view.addEventListener(TABS_PANEL_EVENTS.show, this);
@@ -183,6 +185,7 @@ class TabsPanel extends TabsListBase {
           event.target.tab.toggleMuteAudio();
           break;
         }
+      // fall through
       default:
         super.handleEvent(event);
         break;
@@ -215,8 +218,8 @@ class TabsPanel extends TabsListBase {
   }
 
   _createRow(tab) {
-    let {doc} = this;
-    let row = doc.createElementNS(NSXUL, "toolbaritem");
+    let { doc } = this;
+    let row = doc.createXULElement("toolbaritem");
     row.setAttribute("class", "all-tabs-item");
     if (this.className) {
       row.classList.add(this.className);
@@ -225,17 +228,22 @@ class TabsPanel extends TabsListBase {
     row.addEventListener("command", this);
     this.tabToElement.set(tab, row);
 
-    let button = doc.createElementNS(NSXUL, "toolbarbutton");
-    button.setAttribute("class", "all-tabs-button subviewbutton subviewbutton-iconic");
+    let button = doc.createXULElement("toolbarbutton");
+    button.setAttribute(
+      "class",
+      "all-tabs-button subviewbutton subviewbutton-iconic"
+    );
     button.setAttribute("flex", "1");
     button.setAttribute("crop", "right");
     button.tab = tab;
 
     row.appendChild(button);
 
-    let secondaryButton = doc.createElementNS(NSXUL, "toolbarbutton");
+    let secondaryButton = doc.createXULElement("toolbarbutton");
     secondaryButton.setAttribute(
-      "class", "all-tabs-secondary-button subviewbutton subviewbutton-iconic");
+      "class",
+      "all-tabs-secondary-button subviewbutton subviewbutton-iconic"
+    );
     secondaryButton.setAttribute("closemenu", "none");
     secondaryButton.setAttribute("toggle-mute", "true");
     secondaryButton.tab = tab;
@@ -247,10 +255,10 @@ class TabsPanel extends TabsListBase {
   }
 
   _setRowAttributes(row, tab) {
-    setAttributes(row, {selected: tab.selected});
+    setAttributes(row, { selected: tab.selected });
 
     let busy = tab.getAttribute("busy");
-    let button = row.firstChild;
+    let button = row.firstElementChild;
     setAttributes(button, {
       busy,
       label: tab.label,
@@ -264,25 +272,33 @@ class TabsPanel extends TabsListBase {
     setAttributes(secondaryButton, {
       muted: tab.muted,
       soundplaying: tab.soundPlaying,
+      pictureinpicture: tab.pictureinpicture,
       hidden: !(tab.muted || tab.soundPlaying),
     });
   }
 
   _setImageAttributes(row, tab) {
-    let button = row.firstChild;
-    let image = this.doc.getAnonymousElementByAttribute(
-      button, "class", "toolbarbutton-icon") ||
+    let button = row.firstElementChild;
+    let image =
       this.doc.getAnonymousElementByAttribute(
-        button, "class", "toolbarbutton-icon tab-throbber-fallback");
+        button,
+        "class",
+        "toolbarbutton-icon"
+      ) ||
+      this.doc.getAnonymousElementByAttribute(
+        button,
+        "class",
+        "toolbarbutton-icon tab-throbber-tabslist"
+      );
 
     if (image) {
       let busy = tab.getAttribute("busy");
       let progress = tab.getAttribute("progress");
-      setAttributes(image, {busy, progress});
+      setAttributes(image, { busy, progress });
       if (busy) {
-        image.classList.add("tab-throbber-fallback");
+        image.classList.add("tab-throbber-tabslist");
       } else {
-        image.classList.remove("tab-throbber-fallback");
+        image.classList.remove("tab-throbber-tabslist");
       }
     }
   }

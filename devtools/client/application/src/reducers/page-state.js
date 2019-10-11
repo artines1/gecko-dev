@@ -4,14 +4,12 @@
 
 "use strict";
 
-const {
-  UPDATE_DOMAIN,
-} = require("../constants");
+const { UPDATE_DOMAIN } = require("../constants");
 
 function PageState() {
   return {
     // Domain
-    domain: null
+    domain: null,
   };
 }
 
@@ -24,7 +22,7 @@ function pageReducer(state = PageState(), action) {
     case UPDATE_DOMAIN: {
       const { url } = action;
       return {
-        domain: getDomainFromUrl(url)
+        domain: getDomainFromUrl(url),
       };
     }
 

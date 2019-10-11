@@ -4,26 +4,38 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
+BROWSER_CHROME_MANIFESTS += [
+    'test/allocations/browser_allocations_target.ini',
+    'test/browser-rtl.ini',
+    'test/browser-telemetry-startup.ini',
+    'test/browser.ini',
+    'test/metrics/browser_metrics_debugger.ini',
+    'test/metrics/browser_metrics_inspector.ini',
+    'test/metrics/browser_metrics_netmonitor.ini',
+    'test/metrics/browser_metrics_webconsole.ini',
+]
+XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 DIRS += [
     'components',
+    'actions',
+    'reducers',
 ]
 
 DevToolsModules(
-    'attach-thread.js',
     'browser-menus.js',
     'devtools-browser.js',
     'devtools.js',
-    'gDevTools.jsm',
     'menu-item.js',
     'menu.js',
     'selection.js',
     'sidebar.js',
     'source-map-url-service.js',
+    'store-provider.js',
+    'store.js',
     'target-from-url.js',
     'target.js',
-    'toolbox-highlighter-utils.js',
+    'toolbox-context-menu.js',
     'toolbox-host-manager.js',
     'toolbox-hosts.js',
     'toolbox-options.js',

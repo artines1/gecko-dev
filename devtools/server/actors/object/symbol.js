@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +6,12 @@
 
 const protocol = require("devtools/shared/protocol");
 const { symbolSpec } = require("devtools/shared/specs/symbol");
-loader.lazyRequireGetter(this, "createValueGrip", "devtools/server/actors/object/utils", true);
+loader.lazyRequireGetter(
+  this,
+  "createValueGrip",
+  "devtools/server/actors/object/utils",
+  true
+);
 
 /**
  * Creates an actor for the specified symbol.
@@ -65,7 +68,7 @@ const SymbolActor = protocol.ActorClassWithSpec(symbolSpec, {
     if (this.registeredPool && this.registeredPool.symbolActors) {
       delete this.registeredPool.symbolActors[this.symbol];
     }
-  }
+  },
 });
 
 const symbolProtoToString = Symbol.prototype.toString;

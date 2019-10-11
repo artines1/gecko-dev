@@ -6,25 +6,28 @@
 
 # This picks up *hapticfeedback* which is graveyard
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
 with Files("*OSFile*"):
     BUG_COMPONENT = ("Toolkit", "OS.File")
 
 with Files("*ocationProvider*"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
 with Files("windows/*LocationProvider*"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
 with Files("mac/*LocationProvider*"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
+
+with Files("mac/*OSPermissionRequest*"):
+    BUG_COMPONENT = ("Firefox", "Device Permissions")
 
 with Files("linux/*LocationProvider*"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
 with Files("android/*LocationProvider*"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
 with Files("tests/chrome.ini"):
     BUG_COMPONENT = ("Toolkit", "OS.File")
@@ -46,17 +49,24 @@ elif toolkit == 'cocoa':
     DIRS += ['mac']
 elif toolkit == 'android':
     DIRS += ['android']
-elif toolkit == 'gtk3':
+elif toolkit == 'gtk':
     DIRS += ['linux']
+
+if toolkit != 'cocoa':
+    EXPORTS += [
+        'nsOSPermissionRequest.h',
+    ]
 
 XPIDL_SOURCES += [
     'nsIOSFileConstantsService.idl',
+    'nsIOSPermissionRequest.idl',
 ]
 
 XPIDL_MODULE = 'dom_system'
 
 EXPORTS += [
     'nsDeviceSensors.h',
+    'nsOSPermissionRequestBase.h',
 ]
 
 EXPORTS.mozilla += [
@@ -65,12 +75,16 @@ EXPORTS.mozilla += [
 
 UNIFIED_SOURCES += [
     'nsDeviceSensors.cpp',
+    'nsOSPermissionRequestBase.cpp',
     'OSFileConstants.cpp',
 ]
 
-EXTRA_COMPONENTS += [
-    'NetworkGeolocationProvider.js',
-    'NetworkGeolocationProvider.manifest',
+EXTRA_JS_MODULES += [
+    'NetworkGeolocationProvider.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -83,9 +97,6 @@ LOCAL_INCLUDES += [
     '/js/xpconnect/loader',
     '/xpcom/base',
 ]
-
-DEFINES['DLL_PREFIX'] = '"%s"' % CONFIG['DLL_PREFIX']
-DEFINES['DLL_SUFFIX'] = '"%s"' % CONFIG['DLL_SUFFIX']
 
 MOCHITEST_CHROME_MANIFESTS += ['tests/chrome.ini']
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']

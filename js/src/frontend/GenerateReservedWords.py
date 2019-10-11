@@ -7,7 +7,7 @@ import sys
 
 
 def read_reserved_word_list(filename):
-    macro_pat = re.compile(r"^\s*macro\(([^,]+), *[^,]+, *[^\)]+\)\s*\\?$")
+    macro_pat = re.compile(r"^\s*MACRO\(([^,]+), *[^,]+, *[^\)]+\)\s*\\?$")
 
     reserved_word_list = []
     index = 0
@@ -87,7 +87,7 @@ def split_list_per_column(reserved_word_list, column):
         per_column = column_dict.setdefault(word[column], [])
         per_column.append(item)
 
-    return sorted(column_dict.items(), key=lambda (char, word): ord(char))
+    return sorted(column_dict.items())
 
 
 def generate_letter_switch(opt, unprocessed_columns, reserved_word_list,
@@ -170,7 +170,7 @@ def split_list_per_length(reserved_word_list):
         per_length = length_dict.setdefault(len(word), [])
         per_length.append(item)
 
-    return sorted(length_dict.items(), key=lambda (length, word): length)
+    return sorted(length_dict.items())
 
 
 def generate_switch(opt, reserved_word_list):

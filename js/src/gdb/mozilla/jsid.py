@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 # Pretty-printers for JSID values.
 
 import gdb
@@ -20,6 +24,7 @@ class jsid(object):
     TYPE_INT = 0x1
     TYPE_VOID = 0x2
     TYPE_SYMBOL = 0x4
+    TYPE_EMPTY = 0x6
     TYPE_MASK = 0x7
 
     def __init__(self, value, cache):
@@ -49,10 +54,10 @@ class jsid(object):
         elif tag == jsid.TYPE_VOID:
             return "JSID_VOID"
         elif tag == jsid.TYPE_SYMBOL:
-            if bits == jsid.TYPE_SYMBOL:
-                return "JSID_EMPTY"
             body = ((bits & ~jsid.TYPE_MASK)
                     .cast(self.cache.JSSymbol_ptr_t))
+        elif tag == jsid.TYPE_EMPTY:
+            return "JSID_EMPTY"
         else:
             body = "<unrecognized>"
         return '$jsid(%s)' % (body,)

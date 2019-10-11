@@ -6,7 +6,7 @@ Bug 1067491 - Test forcing a gc.
 <head>
   <meta charset="utf-8">
   <title>Memory monitoring actor test</title>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -19,7 +19,7 @@ window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   (async function() {
-    const { memory, client } = await startServerAndGetSelectedTabMemory();
+    const { memory, target } = await startServerAndGetSelectedTabMemory();
 
     let beforeGC, afterGC;
 
@@ -41,7 +41,7 @@ window.onload = function() {
 
     ok(true, "The amount of memory after GC should eventually decrease");
 
-    destroyServerAndFinish(client);
+    destroyServerAndFinish(target);
   })();
 };
 </script>

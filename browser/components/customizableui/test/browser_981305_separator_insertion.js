@@ -8,16 +8,20 @@ var tempElements = [];
 
 function insertTempItemsIntoMenu(parentMenu) {
   // Last element is null to insert at the end:
-  let beforeEls = [parentMenu.firstChild, parentMenu.lastChild, null];
+  let beforeEls = [
+    parentMenu.firstElementChild,
+    parentMenu.lastElementChild,
+    null,
+  ];
   for (let i = 0; i < beforeEls.length; i++) {
-    let sep = document.createElement("menuseparator");
+    let sep = document.createXULElement("menuseparator");
     tempElements.push(sep);
     parentMenu.insertBefore(sep, beforeEls[i]);
-    let menu = document.createElement("menu");
+    let menu = document.createXULElement("menu");
     tempElements.push(menu);
     parentMenu.insertBefore(menu, beforeEls[i]);
     // And another separator for good measure:
-    sep = document.createElement("menuseparator");
+    sep = document.createXULElement("menuseparator");
     tempElements.push(sep);
     parentMenu.insertBefore(sep, beforeEls[i]);
   }
@@ -29,7 +33,10 @@ function checkSeparatorInsertion(menuId, buttonId, subviewId) {
     let menu = document.getElementById(menuId);
     insertTempItemsIntoMenu(menu);
 
-    CustomizableUI.addWidgetToArea(buttonId, CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+    CustomizableUI.addWidgetToArea(
+      buttonId,
+      CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+    );
 
     await waitForOverflowButtonShown();
 
@@ -40,14 +47,21 @@ function checkSeparatorInsertion(menuId, buttonId, subviewId) {
     button.click();
     await BrowserTestUtils.waitForEvent(subview, "ViewShown");
 
-    let subviewBody = subview.firstChild;
-    ok(subviewBody.firstChild, "Subview should have a kid");
-    is(subviewBody.firstChild.localName, "toolbarbutton", "There should be no separators to start with");
+    let subviewBody = subview.firstElementChild;
+    ok(subviewBody.firstElementChild, "Subview should have a kid");
+    is(
+      subviewBody.firstElementChild.localName,
+      "toolbarbutton",
+      "There should be no separators to start with"
+    );
 
     for (let kid of subviewBody.children) {
       if (kid.localName == "menuseparator") {
-        ok(kid.previousSibling && kid.previousSibling.localName != "menuseparator",
-           "Separators should never have another separator next to them, and should never be the first node.");
+        ok(
+          kid.previousElementSibling &&
+            kid.previousElementSibling.localName != "menuseparator",
+          "Separators should never have another separator next to them, and should never be the first node."
+        );
       }
     }
 
@@ -59,7 +73,13 @@ function checkSeparatorInsertion(menuId, buttonId, subviewId) {
   };
 }
 
-add_task(checkSeparatorInsertion("menuWebDeveloperPopup", "developer-button", "PanelUI-developer"));
+add_task(
+  checkSeparatorInsertion(
+    "menuWebDeveloperPopup",
+    "developer-button",
+    "PanelUI-developer"
+  )
+);
 
 registerCleanupFunction(function() {
   for (let el of tempElements) {

@@ -8,83 +8,120 @@
 
 #include "GLContext.h"
 #include "GLContextProvider.h"
+#include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/widget/CompositorWidget.h"
 
 namespace mozilla {
 namespace wr {
 
-/* static */ UniquePtr<RenderCompositor>
-RenderCompositorOGL::Create(RefPtr<widget::CompositorWidget>&& aWidget)
-{
+/* static */
+UniquePtr<RenderCompositor> RenderCompositorOGL::Create(
+    RefPtr<widget::CompositorWidget>&& aWidget) {
   RefPtr<gl::GLContext> gl;
-  gl = gl::GLContextProvider::CreateForCompositorWidget(aWidget, true);
+  gl = gl::GLContextProvider::CreateForCompositorWidget(
+      aWidget, /* aWebRender */ true, /* aForceAccelerated */ true);
   if (!gl || !gl->MakeCurrent()) {
-    gfxCriticalNote << "Failed GL context creation for WebRender: " << gfx::hexa(gl.get());
+    gfxCriticalNote << "Failed GL context creation for WebRender: "
+                    << gfx::hexa(gl.get());
     return nullptr;
   }
   return MakeUnique<RenderCompositorOGL>(std::move(gl), std::move(aWidget));
 }
 
-RenderCompositorOGL::RenderCompositorOGL(RefPtr<gl::GLContext>&& aGL,
-                                         RefPtr<widget::CompositorWidget>&& aWidget)
-  : RenderCompositor(std::move(aWidget))
-  , mGL(aGL)
-{
+RenderCompositorOGL::RenderCompositorOGL(
+    RefPtr<gl::GLContext>&& aGL, RefPtr<widget::CompositorWidget>&& aWidget)
+    : RenderCompositor(std::move(aWidget)),
+      mGL(aGL),
+      mPreviousFrameDoneSync(nullptr),
+      mThisFrameDoneSync(nullptr) {
   MOZ_ASSERT(mGL);
 }
 
-RenderCompositorOGL::~RenderCompositorOGL()
-{
+RenderCompositorOGL::~RenderCompositorOGL() {
+  if (!mGL->MakeCurrent()) {
+    gfxCriticalNote
+        << "Failed to make render context current during destroying.";
+    // Leak resources!
+    mPreviousFrameDoneSync = nullptr;
+    mThisFrameDoneSync = nullptr;
+    return;
+  }
+
+  if (mPreviousFrameDoneSync) {
+    mGL->fDeleteSync(mPreviousFrameDoneSync);
+  }
+  if (mThisFrameDoneSync) {
+    mGL->fDeleteSync(mThisFrameDoneSync);
+  }
 }
 
-bool
-RenderCompositorOGL::BeginFrame()
-{
+bool RenderCompositorOGL::BeginFrame(layers::NativeLayer* aNativeLayer) {
   if (!mGL->MakeCurrent()) {
     gfxCriticalNote << "Failed to make render context current, can't draw.";
     return false;
   }
+
+  if (aNativeLayer) {
+    aNativeLayer->SetSurfaceIsFlipped(true);
+    aNativeLayer->SetGLContext(mGL);
+    Maybe<GLuint> fbo = aNativeLayer->NextSurfaceAsFramebuffer(true);
+    if (!fbo) {
+      return false;
+    }
+    mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, *fbo);
+    mCurrentNativeLayer = aNativeLayer;
+  } else {
+    mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, mGL->GetDefaultFramebuffer());
+  }
+
   return true;
 }
 
-void
-RenderCompositorOGL::EndFrame()
-{
+void RenderCompositorOGL::EndFrame() {
+  InsertFrameDoneSync();
   mGL->SwapBuffers();
+
+  if (mCurrentNativeLayer) {
+    mCurrentNativeLayer->NotifySurfaceReady();
+    mCurrentNativeLayer = nullptr;
+  }
 }
 
-void
-RenderCompositorOGL::Pause()
-{
-#ifdef MOZ_WIDGET_ANDROID
-  if (!mGL || mGL->IsDestroyed()) {
-    return;
+void RenderCompositorOGL::InsertFrameDoneSync() {
+#ifdef XP_MACOSX
+  // Only do this on macOS.
+  // On other platforms, SwapBuffers automatically applies back-pressure.
+  if (StaticPrefs::gfx_core_animation_enabled_AtStartup()) {
+    if (mThisFrameDoneSync) {
+      mGL->fDeleteSync(mThisFrameDoneSync);
+    }
+    mThisFrameDoneSync =
+        mGL->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
   }
-  // ReleaseSurface internally calls MakeCurrent.
-  mGL->ReleaseSurface();
 #endif
 }
 
-bool
-RenderCompositorOGL::Resume()
-{
-#ifdef MOZ_WIDGET_ANDROID
-  if (!mGL || mGL->IsDestroyed()) {
-    return false;
+bool RenderCompositorOGL::WaitForGPU() {
+  if (mPreviousFrameDoneSync) {
+    AUTO_PROFILER_LABEL("Waiting for GPU to finish previous frame", GRAPHICS);
+    mGL->fClientWaitSync(mPreviousFrameDoneSync,
+                         LOCAL_GL_SYNC_FLUSH_COMMANDS_BIT,
+                         LOCAL_GL_TIMEOUT_IGNORED);
+    mGL->fDeleteSync(mPreviousFrameDoneSync);
   }
-  // RenewSurface internally calls MakeCurrent.
-  return mGL->RenewSurface(mWidget);
-#else
+  mPreviousFrameDoneSync = mThisFrameDoneSync;
+  mThisFrameDoneSync = nullptr;
+
   return true;
-#endif
 }
 
-LayoutDeviceIntSize
-RenderCompositorOGL::GetBufferSize()
-{
+void RenderCompositorOGL::Pause() {}
+
+bool RenderCompositorOGL::Resume() { return true; }
+
+LayoutDeviceIntSize RenderCompositorOGL::GetBufferSize() {
   return mWidget->GetClientSize();
 }
 
-
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla

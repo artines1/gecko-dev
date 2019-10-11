@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
 from firefox_puppeteer import PuppeteerMixin
 from marionette_harness import MarionetteTestCase
 
@@ -22,9 +23,6 @@ class TestPageInfoWindow(PuppeteerMixin, MarionetteTestCase):
         self.assertNotEqual(page_info.properties, [])
 
         self.assertEqual(page_info.deck.element.get_property('localName'), 'deck')
-
-        # feed panel
-        self.assertEqual(page_info.deck.feed.element.get_property('localName'), 'vbox')
 
         # general panel
         self.assertEqual(page_info.deck.general.element.get_property('localName'), 'vbox')

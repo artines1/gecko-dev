@@ -3,9 +3,9 @@ python_version = '3.6'
 
 [packages]
 aiohttp = "*"
-datadog = "*"
 mar = "*"
 redo = "*"
 requests = "*"
 scriptworker = "*"
 sh = "*"
+awscli = "*"

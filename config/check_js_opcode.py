@@ -7,6 +7,7 @@
 # This script checks bytecode documentation in js/src/vm/Opcodes.h
 # ----------------------------------------------------------------------------
 
+from __future__ import absolute_import
 from __future__ import print_function
 
 import os
@@ -26,12 +27,13 @@ def log_fail(text):
 
 def check_opcode():
     sys.path.insert(0, os.path.join(topsrcdir, 'js', 'src', 'vm'))
-    import opcode
+    import jsopcode
 
     try:
-        opcode.get_opcodes(topsrcdir)
+        jsopcode.get_opcodes(topsrcdir)
     except Exception as e:
         log_fail(e.args[0])
+        return False
 
     log_pass('ok')
     return True

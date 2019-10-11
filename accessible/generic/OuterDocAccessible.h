@@ -9,6 +9,11 @@
 #include "AccessibleWrap.h"
 
 namespace mozilla {
+
+namespace dom {
+class BrowserBridgeChild;
+}
+
 namespace a11y {
 class DocAccessibleParent;
 
@@ -21,14 +26,26 @@ class DocAccessibleParent;
  * the inner document root.
  */
 
-class OuterDocAccessible final : public AccessibleWrap
-{
-public:
+class OuterDocAccessible final : public AccessibleWrap {
+ public:
   OuterDocAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   NS_INLINE_DECL_REFCOUNTING_INHERITED(OuterDocAccessible, AccessibleWrap)
 
   DocAccessibleParent* RemoteChildDoc() const;
+#if defined(XP_WIN)
+  Accessible* RemoteChildDocAccessible() const;
+#endif
+
+  /**
+   * For iframes in a content process which will be rendered in another content
+   * process, tell the parent process about this OuterDocAccessible
+   * so it can link the trees together when the embedded document is added.
+   * Note that an OuterDocAccessible can be created before the
+   * BrowserBridgeChild or vice versa. Therefore, this must be conditionally
+   * called when either of these is created.
+   */
+  void SendEmbedderAccessible(dom::BrowserBridgeChild* aBridge);
 
   // Accessible
   virtual void Shutdown() override;
@@ -43,19 +60,17 @@ public:
 #if defined(XP_WIN)
   virtual uint32_t ChildCount() const override;
   virtual Accessible* GetChildAt(uint32_t aIndex) const override;
-#endif // defined(XP_WIN)
+#endif  // defined(XP_WIN)
 
-protected:
+ protected:
   virtual ~OuterDocAccessible() override;
 };
 
-inline OuterDocAccessible*
-Accessible::AsOuterDoc()
-{
+inline OuterDocAccessible* Accessible::AsOuterDoc() {
   return IsOuterDoc() ? static_cast<OuterDocAccessible*>(this) : nullptr;
 }
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif

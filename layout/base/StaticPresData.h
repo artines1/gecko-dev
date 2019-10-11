@@ -7,7 +7,7 @@
 #ifndef mozilla_StaticPresData_h
 #define mozilla_StaticPresData_h
 
-#include "nsAutoPtr.h"
+#include "mozilla/UniquePtr.h"
 #include "nsCoord.h"
 #include "nsCOMPtr.h"
 #include "nsFont.h"
@@ -19,24 +19,22 @@ namespace mozilla {
 struct LangGroupFontPrefs {
   // Font sizes default to zero; they will be set in GetFontPreferences
   LangGroupFontPrefs()
-    : mLangGroup(nullptr)
-    , mMinimumFontSize(0)
-    , mDefaultVariableFont()
-    , mDefaultFixedFont(mozilla::eFamily_monospace, 0)
-    , mDefaultSerifFont(mozilla::eFamily_serif, 0)
-    , mDefaultSansSerifFont(mozilla::eFamily_sans_serif, 0)
-    , mDefaultMonospaceFont(mozilla::eFamily_monospace, 0)
-    , mDefaultCursiveFont(mozilla::eFamily_cursive, 0)
-    , mDefaultFantasyFont(mozilla::eFamily_fantasy, 0)
-  {
-    mDefaultVariableFont.fontlist.SetDefaultFontType(mozilla::eFamily_serif);
+      : mLangGroup(nullptr),
+        mMinimumFontSize(0),
+        mDefaultVariableFont(),
+        mDefaultSerifFont(StyleGenericFontFamily::Serif, 0),
+        mDefaultSansSerifFont(StyleGenericFontFamily::SansSerif, 0),
+        mDefaultMonospaceFont(StyleGenericFontFamily::Monospace, 0),
+        mDefaultCursiveFont(StyleGenericFontFamily::Cursive, 0),
+        mDefaultFantasyFont(StyleGenericFontFamily::Fantasy, 0) {
+    mDefaultVariableFont.fontlist.SetDefaultFontType(
+        StyleGenericFontFamily::Serif);
     // We create mDefaultVariableFont.fontlist with defaultType as the
     // fallback font, and not as part of the font list proper. This way,
     // it can be overwritten should there be a language change.
   }
 
-  void Reset()
-  {
+  void Reset() {
     // Throw away any other LangGroupFontPrefs objects:
     mNext = nullptr;
 
@@ -46,7 +44,7 @@ struct LangGroupFontPrefs {
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
     size_t n = 0;
-    LangGroupFontPrefs* curr = mNext;
+    LangGroupFontPrefs* curr = mNext.get();
     while (curr) {
       n += aMallocSizeOf(curr);
 
@@ -55,24 +53,57 @@ struct LangGroupFontPrefs {
       // - mLangGroup
       // - mDefault*Font
 
-      curr = curr->mNext;
+      curr = curr->mNext.get();
     }
     return n;
   }
 
   // Initialize this with the data for a given language
-  void Initialize(nsAtom* aLangGroupAtom);
+  void Initialize(nsStaticAtom* aLangGroupAtom);
 
-  RefPtr<nsAtom> mLangGroup;
+  /**
+   * Get the default font for the given language and generic font ID.
+   * aLanguage may not be nullptr.
+   *
+   * This object is read-only, you must copy the font to modify it.
+   *
+   * For aFontID corresponding to a CSS Generic, the nsFont returned has
+   * its name set to that generic font's name, and its size set to
+   * the user's preference for font size for that generic and the
+   * given language.
+   */
+  const nsFont* GetDefaultFont(StyleGenericFontFamily aFamily) const {
+    switch (aFamily) {
+      // Special (our default variable width font and fixed width font)
+      case StyleGenericFontFamily::None:
+        return &mDefaultVariableFont;
+      // CSS
+      case StyleGenericFontFamily::Serif:
+        return &mDefaultSerifFont;
+      case StyleGenericFontFamily::SansSerif:
+        return &mDefaultSansSerifFont;
+      case StyleGenericFontFamily::Monospace:
+        return &mDefaultMonospaceFont;
+      case StyleGenericFontFamily::Cursive:
+        return &mDefaultCursiveFont;
+      case StyleGenericFontFamily::Fantasy:
+        return &mDefaultFantasyFont;
+        break;
+      default:
+        MOZ_ASSERT_UNREACHABLE("invalid font id");
+        return nullptr;
+    }
+  }
+
+  nsStaticAtom* mLangGroup;
   nscoord mMinimumFontSize;
   nsFont mDefaultVariableFont;
-  nsFont mDefaultFixedFont;
   nsFont mDefaultSerifFont;
   nsFont mDefaultSansSerifFont;
   nsFont mDefaultMonospaceFont;
   nsFont mDefaultCursiveFont;
   nsFont mDefaultFantasyFont;
-  nsAutoPtr<LangGroupFontPrefs> mNext;
+  mozilla::UniquePtr<LangGroupFontPrefs> mNext;
 };
 
 /**
@@ -81,9 +112,8 @@ struct LangGroupFontPrefs {
  * for that functionality. We delegate to it from nsPresContext where
  * appropriate, and use it standalone in some cases as well.
  */
-class StaticPresData
-{
-public:
+class StaticPresData {
+ public:
   // Initialization and shutdown of the singleton. Called exactly once.
   static void Init();
   static void Shutdown();
@@ -91,12 +121,6 @@ public:
   // Gets an instance of the singleton. Infallible between the calls to Init
   // and Shutdown.
   static StaticPresData* Get();
-
-  /**
-   * This table maps border-width enums 'thin', 'medium', 'thick'
-   * to actual nscoord values.
-   */
-  const nscoord* GetBorderWidthTable() { return mBorderWidthTable; }
 
   /**
    * Given a language, get the language group name, which can
@@ -116,13 +140,13 @@ public:
    * to re-call GetLanguageGroup when it is safe to cache, to avoid
    * recomputing the language group again later.
    */
-  nsAtom* GetLangGroup(nsAtom* aLanguage, bool* aNeedsToCache = nullptr) const;
+  nsStaticAtom* GetLangGroup(nsAtom* aLanguage,
+                             bool* aNeedsToCache = nullptr) const;
 
   /**
    * Same as GetLangGroup, but will not cache the result
-   *
    */
-  already_AddRefed<nsAtom> GetUncachedLangGroup(nsAtom* aLanguage) const;
+  nsStaticAtom* GetUncachedLangGroup(nsAtom* aLanguage) const;
 
   /**
    * Fetch the user's font preferences for the given aLanguage's
@@ -140,58 +164,21 @@ public:
    *
    * See comment on GetLangGroup for the usage of aNeedsToCache.
    */
-  const LangGroupFontPrefs* GetFontPrefsForLangHelper(nsAtom* aLanguage,
-                                                      const LangGroupFontPrefs* aPrefs,
-                                                      bool* aNeedsToCache = nullptr) const;
-  /**
-   * Get the default font for the given language and generic font ID.
-   * aLanguage may not be nullptr.
-   *
-   * This object is read-only, you must copy the font to modify it.
-   *
-   * When aFontID is kPresContext_DefaultVariableFontID or
-   * kPresContext_DefaultFixedFontID (which equals
-   * kGenericFont_moz_fixed, which is used for the -moz-fixed generic),
-   * the nsFont returned has its name as a CSS generic family (serif or
-   * sans-serif for the former, monospace for the latter), and its size
-   * as the default font size for variable or fixed fonts for the
-   * language group.
-   *
-   * For aFontID corresponding to a CSS Generic, the nsFont returned has
-   * its name set to that generic font's name, and its size set to
-   * the user's preference for font size for that generic and the
-   * given language.
-   */
-  const nsFont* GetDefaultFontHelper(uint8_t aFontID,
-                                     nsAtom* aLanguage,
-                                     const LangGroupFontPrefs* aPrefs) const;
+  const LangGroupFontPrefs* GetFontPrefsForLang(nsAtom* aLanguage,
+                                                bool* aNeedsToCache = nullptr);
+  const nsFont* GetDefaultFont(uint8_t aFontID, nsAtom* aLanguage,
+                               const LangGroupFontPrefs* aPrefs) const;
 
-  /*
-   * These versions operate on the font pref cache on StaticPresData.
-   */
+  void InvalidateFontPrefs() { mLangGroupFontPrefs.Reset(); }
 
-  const nsFont* GetDefaultFont(uint8_t aFontID, nsAtom* aLanguage) const
-  {
-    MOZ_ASSERT(aLanguage);
-    return GetDefaultFontHelper(aFontID, aLanguage, GetFontPrefsForLang(aLanguage));
-  }
-  const LangGroupFontPrefs* GetFontPrefsForLang(nsAtom* aLanguage, bool* aNeedsToCache = nullptr) const
-  {
-    MOZ_ASSERT(aLanguage);
-    return GetFontPrefsForLangHelper(aLanguage, &mStaticLangGroupFontPrefs, aNeedsToCache);
-  }
-
-  void ResetCachedFontPrefs() { mStaticLangGroupFontPrefs.Reset(); }
-
-private:
+ private:
   StaticPresData();
-  ~StaticPresData() {}
+  ~StaticPresData() = default;
 
   nsLanguageAtomService* mLangService;
-  nscoord mBorderWidthTable[3];
-  LangGroupFontPrefs mStaticLangGroupFontPrefs;
+  LangGroupFontPrefs mLangGroupFontPrefs;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_StaticPresData_h
+#endif  // mozilla_StaticPresData_h

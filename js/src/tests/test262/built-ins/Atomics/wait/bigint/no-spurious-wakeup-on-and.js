@@ -1,11 +1,11 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('BigInt')||!this.hasOwnProperty('SharedArrayBuffer')) -- Atomics,BigInt,SharedArrayBuffer is not enabled unconditionally
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 esid: sec-atomics.wait
 description: >
-  Waiter does not spuriously wake on index which is subject to And operation
+  Waiter does not spuriously nofity on index which is subject to And operation
 includes: [atomicsHelper.js]
 features: [Atomics, BigInt, SharedArrayBuffer, TypedArray]
 ---*/
@@ -32,7 +32,7 @@ $262.agent.start(`
   });
 `);
 
-$262.agent.broadcast(i64a.buffer);
+$262.agent.safeBroadcast(i64a);
 $262.agent.waitUntil(i64a, RUNNING, 1n);
 
 // Try to yield control to ensure the agent actually started to wait.
@@ -50,7 +50,7 @@ assert.sameValue(
   'timed-out',
   '$262.agent.getReport() returns "timed-out"'
 );
-assert.sameValue(Atomics.wake(i64a, 0), 0, 'Atomics.wake(i64a, 0) returns 0');
+assert.sameValue(Atomics.notify(i64a, 0), 0, 'Atomics.notify(i64a, 0) returns 0');
 
 
 

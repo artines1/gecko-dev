@@ -121,7 +121,7 @@ devtools.main:
     release_channel_collection: opt-out
     expiry_version: never
     extra_keys:
-      entrypoint: How was the toolbox opened? CommandLine, ContextMenu, DeveloperToolbar, HamburgerMenu, KeyShortcut, SessionRestore or SystemMenu
+      entrypoint: How was the toolbox opened? CommandLine, ContextMenu, HamburgerMenu, KeyShortcut, SessionRestore or SystemMenu
       first_panel: The name of the first panel opened.
       host: "Toolbox host (positioning): bottom, side, window or other."
       splitconsole: Indicates whether the split console was open.
@@ -158,13 +158,13 @@ this._telemetry = new Telemetry();
 And use the instance to report e.g. tool opening...
 
 ```js
-this._telemetry.toolOpened("mytoolname");
+this._telemetry.toolOpened("mytoolname", sessionId, this);
 ```
 
 ... or closing:
 
 ```js
-this._telemetry.toolClosed("mytoolname");
+this._telemetry.toolClosed("mytoolname", sessionId, this);
 ```
 
 Note that `mytoolname` is the id we declared in the `telemetry.js` module.
@@ -201,7 +201,7 @@ this._telemetry = new Telemetry();
 And use the instance to report e.g. tool opening...
 
 ```js
-this._telemetry.toolOpened("mytoolname");
+this._telemetry.toolOpened("mytoolname", sessionId, this);
 ```
 
 Notes:
@@ -216,9 +216,9 @@ Notes:
 
 Once the probe has been declared in the `Events.yaml` file, you'll need to actually use it in our code.
 
-It is crucial to understand that event telemetry have a string identifier which is constructed from the `category`, `method`, `object` (name) and `value` on which the event occured. This key points to an "extra" object that contains further information about the event (we will give examples later in this section).
+It is crucial to understand that event telemetry have a string identifier which is constructed from the `category`, `method`, `object` (name) and `value` on which the event occurred. This key points to an "extra" object that contains further information about the event (we will give examples later in this section).
 
-Because these "extra" objects can be from completely independant code paths we
+Because these "extra" objects can be from completely independent code paths we
 can send events and leave them in a pending state until all of the expected extra properties have been received.
 
 First, include the telemetry module in each tool that requires telemetry:
@@ -237,12 +237,12 @@ And use the instance to report e.g. tool opening...
 
 ```js
 // Event telemetry is disabled by default so enable it for your category.
-this._telemetry.setEventRecordingEnabled("devtools.main", true);
+this._telemetry.setEventRecordingEnabled(true);
 
 // If you already have all the properties for the event you can send the
 // telemetry event using:
-// this._telemetry.recordEvent(category, method, object, value, extra) e.g.
-this._telemetry.recordEvent("devtools.main", "open", "tools", null, {
+// this._telemetry.recordEvent(method, object, value, extra) e.g.
+this._telemetry.recordEvent("open", "tools", null, {
   "entrypoint": "ContextMenu",
   "first_panel": "Inspector",
   "host": "bottom",
@@ -259,31 +259,31 @@ this._telemetry.recordEvent("devtools.main", "open", "tools", null, {
 // property... we do this before creating the pending event simply to
 // demonstrate that properties can be sent before the pending event is created.
 this._telemetry.addEventProperty(
-  "devtools.main", "open", "tools", null, "entrypoint", "ContextMenu");
+  this, "open", "tools", null, "entrypoint", "ContextMenu");
 
-// In this example `"devtools.main", "open", "tools", null` make up the
+// In this example `"open", "tools", null` make up the
 // signature of the event and needs to be sent with all properties.
 
 // Create the pending event using
-// this._telemetry.preparePendingEvent(category, method, object, value,
+// this._telemetry.preparePendingEvent(this, method, object, value,
 // expectedPropertyNames) e.g.
-this._telemetry.preparePendingEvent("devtools.main", "open", "tools", null,
+this._telemetry.preparePendingEvent(this, "open", "tools", null,
   ["entrypoint", "first_panel", "host", "splitconsole", "width", "session_id"]
 );
 
 // Use the category, method, object, value combinations above to add each
 // property.
 this._telemetry.addEventProperty(
-  "devtools.main", "open", "tools", null, "first_panel", "inspector");
+  this, "open", "tools", null, "first_panel", "inspector");
 this._telemetry.addEventProperty(
-  "devtools.main", "open", "tools", null, "host", "bottom");
+  this, "open", "tools", null, "host", "bottom");
 this._telemetry.addEventProperty(
-  "devtools.main", "open", "tools", null, "splitconsole", false);
+  this, "open", "tools", null, "splitconsole", false);
 this._telemetry.addEventProperty(
-  "devtools.main", "open", "tools", null, "width", 1024);
+  this, "open", "tools", null, "width", 1024);
 
 // You can also add properties in batches using e.g.:
-this._telemetry.addEventProperties("devtools.main", "open", "tools", null, {
+this._telemetry.addEventProperties(this, "open", "tools", null, {
   "first_panel": "inspector",
   "host": "bottom",
   "splitconsole": false,
@@ -315,7 +315,7 @@ To see these warnings, you need to have the `browser.dom.window.dump.enabled` br
 Then, try doing things that trigger telemetry calls (e.g. opening a tool). Imagine we had a typo when reporting the tool was opened:
 
 ```js
-this._telemetry.toolOpened('mytoolnmae');
+this._telemetry.toolOpened('mytoolnmae', sessionId, this);
                                   ^^^^ typo, should be *mytoolname*
 ```
 
@@ -338,31 +338,29 @@ This is best shown via an example:
 "use strict";
 
 const { Toolbox } = require("devtools/client/framework/toolbox");
+const { TelemetryTestUtils } = ChromeUtils.import("resource://testing-common/TelemetryTestUtils.jsm");
 
 const URL = "data:text/html;charset=utf8,browser_toolbox_telemetry_close.js";
-const OPTOUT = Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT;
-const { SIDE, BOTTOM } = Toolbox.HostType;
+const { RIGHT, BOTTOM } = Toolbox.HostType;
 const DATA = [
   {
-    timestamp: null,
     category: "devtools.main",
     method: "close",
     object: "tools",
     value: null,
     extra: {
       host: "right",
-      width: "1440"
+      width: w => w > 0,
     }
   },
   {
-    timestamp: null,
     category: "devtools.main",
     method: "close",
     object: "tools",
     value: null,
     extra: {
       host: "bottom",
-      width: "1440"
+      width: w => w > 0,
     }
   }
 ];
@@ -372,8 +370,7 @@ add_task(async function() {
   Services.telemetry.clearEvents();
 
   // Ensure no events have been logged
-  const snapshot = Services.telemetry.snapshotEvents(OPTOUT, true);
-  ok(!snapshot.parent, "No events have been logged for the main process");
+  TelemetryTestUtils.assertNumberOfEvents(0);
 
   await openAndCloseToolbox("webconsole", SIDE);
   await openAndCloseToolbox("webconsole", BOTTOM);
@@ -383,7 +380,7 @@ add_task(async function() {
 
 async function openAndCloseToolbox(toolId, host) {
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   const toolbox = await gDevTools.showToolbox(target, toolId);
 
   await toolbox.switchHost(host);
@@ -391,27 +388,7 @@ async function openAndCloseToolbox(toolId, host) {
 }
 
 function checkResults() {
-  const snapshot = Services.telemetry.snapshotEvents(OPTOUT, true);
-  const events = snapshot.parent.filter(event => event[1] === "devtools.main" &&
-                                                 event[2] === "close" &&
-                                                 event[3] === "tools" &&
-                                                 event[4] === null
-  );
-
-  for (let i in DATA) {
-    const [ timestamp, category, method, object, value, extra ] = events[i];
-    const expected = DATA[i];
-
-    // ignore timestamp
-    ok(timestamp > 0, "timestamp is greater than 0");
-    is(category, expected.category, "category is correct");
-    is(method, expected.method, "method is correct");
-    is(object, expected.object, "object is correct");
-    is(value, expected.value, "value is correct");
-
-    is(extra.host, expected.extra.host, "host is correct");
-    ok(extra.width > 0, "width is greater than 0");
-  }
+  TelemetryTestUtils.assertEvents(DATA, {category: "devtools.main", method: "close", object: "tools"});
 }
 ```
 

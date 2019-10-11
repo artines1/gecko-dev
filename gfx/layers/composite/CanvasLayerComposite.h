@@ -7,13 +7,13 @@
 #ifndef GFX_CanvasLayerComposite_H
 #define GFX_CanvasLayerComposite_H
 
-#include "Layers.h"                     // for CanvasLayer, etc
-#include "mozilla/Attributes.h"         // for override
-#include "mozilla/RefPtr.h"             // for RefPtr
+#include "Layers.h"                                // for CanvasLayer, etc
+#include "mozilla/Attributes.h"                    // for override
+#include "mozilla/RefPtr.h"                        // for RefPtr
 #include "mozilla/layers/LayerManagerComposite.h"  // for LayerComposite, etc
-#include "mozilla/layers/LayersTypes.h"  // for LayerRenderState, etc
-#include "nsRect.h"                     // for mozilla::gfx::IntRect
-#include "nscore.h"                     // for nsACString
+#include "mozilla/layers/LayersTypes.h"            // for LayerRenderState, etc
+#include "nsRect.h"                                // for mozilla::gfx::IntRect
+#include "nscore.h"                                // for nsACString
 
 namespace mozilla {
 namespace layers {
@@ -23,55 +23,50 @@ class CompositableHost;
 // canvas is identical to compositing an image.
 class ImageHost;
 
-class CanvasLayerComposite : public CanvasLayer,
-                             public LayerComposite
-{
-public:
+class CanvasLayerComposite : public CanvasLayer, public LayerComposite {
+ public:
   explicit CanvasLayerComposite(LayerManagerComposite* aManager);
 
-protected:
+ protected:
   virtual ~CanvasLayerComposite();
 
-public:
-  virtual bool SetCompositableHost(CompositableHost* aHost) override;
+ public:
+  bool SetCompositableHost(CompositableHost* aHost) override;
 
-  virtual void Disconnect() override
-  {
-    Destroy();
-  }
+  void Disconnect() override { Destroy(); }
 
-  virtual void SetLayerManager(HostLayerManager* aManager) override;
+  void SetLayerManager(HostLayerManager* aManager) override;
 
-  virtual Layer* GetLayer() override;
-  virtual void RenderLayer(const gfx::IntRect& aClipRect,
-                           const Maybe<gfx::Polygon>& aGeometry) override;
+  Layer* GetLayer() override;
+  void RenderLayer(const gfx::IntRect& aClipRect,
+                   const Maybe<gfx::Polygon>& aGeometry) override;
 
-  virtual void CleanupResources() override;
+  void CleanupResources() override;
 
-  virtual void GenEffectChain(EffectChain& aEffect) override;
+  void GenEffectChain(EffectChain& aEffect) override;
 
   CompositableHost* GetCompositableHost() override;
 
-  virtual HostLayer* AsHostLayer() override { return this; }
+  HostLayer* AsHostLayer() override { return this; }
 
-  virtual const char* Name() const override { return "CanvasLayerComposite"; }
+  const char* Name() const override { return "CanvasLayerComposite"; }
 
-protected:
+ protected:
   CanvasRenderer* CreateCanvasRendererInternal() override {
     MOZ_CRASH("Incompatible surface type");
     return nullptr;
   }
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
+  void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
-private:
+ private:
   gfx::SamplingFilter GetSamplingFilter();
 
-private:
+ private:
   RefPtr<CompositableHost> mCompositableHost;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* GFX_CanvasLayerComposite_H */

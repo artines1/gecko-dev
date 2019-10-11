@@ -1,27 +1,33 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
 
-const {Ci, Cu} = require("chrome");
+const { Ci, Cu } = require("chrome");
 
-loader.lazyRequireGetter(this, "screenshot", "devtools/server/actors/webconsole/screenshot", true);
-
-// Note that this is only used in WebConsoleCommands, see $0 and pprint().
+// Note that this is only used in WebConsoleCommands, see $0, screenshot and pprint().
 if (!isWorker) {
-  loader.lazyImporter(this, "VariablesView", "resource://devtools/client/shared/widgets/VariablesView.jsm");
+  loader.lazyImporter(
+    this,
+    "VariablesView",
+    "resource://devtools/client/shared/widgets/VariablesView.jsm"
+  );
+  loader.lazyRequireGetter(
+    this,
+    "captureScreenshot",
+    "devtools/shared/screenshot/capture",
+    true
+  );
 }
 
-const CONSOLE_WORKER_IDS = exports.CONSOLE_WORKER_IDS = [
+const CONSOLE_WORKER_IDS = (exports.CONSOLE_WORKER_IDS = [
   "SharedWorker",
   "ServiceWorker",
-  "Worker"
-];
+  "Worker",
+]);
 
 var WebConsoleUtils = {
-
   /**
    * Given a message, return one of CONSOLE_WORKER_IDS if it matches
    * one of those.
@@ -58,7 +64,7 @@ var WebConsoleUtils = {
 
     if (Array.isArray(object)) {
       temp = [];
-      Array.forEach(object, function(value, index) {
+      object.forEach(function(value, index) {
         if (!filter || filter(index, value, object)) {
           temp.push(recursive ? WebConsoleUtils.cloneObject(value) : value);
         }
@@ -67,8 +73,10 @@ var WebConsoleUtils = {
       temp = {};
       for (const key in object) {
         const value = object[key];
-        if (object.hasOwnProperty(key) &&
-            (!filter || filter(key, value, object))) {
+        if (
+          object.hasOwnProperty(key) &&
+          (!filter || filter(key, value, object))
+        ) {
           temp[key] = recursive ? WebConsoleUtils.cloneObject(value) : value;
         }
       }
@@ -81,11 +89,17 @@ var WebConsoleUtils = {
    * Gets the ID of the inner window of this DOM window.
    *
    * @param nsIDOMWindow window
-   * @return integer
-   *         Inner ID for the given window.
+   * @return integer|null
+   *         Inner ID for the given window, null if we can't access it.
    */
   getInnerWindowId: function(window) {
-    return window.windowUtils.currentInnerWindowID;
+    // Might throw with SecurityError: Permission denied to access property "windowUtils"
+    // on cross-origin object.
+    try {
+      return window.windowUtils.currentInnerWindowID;
+    } catch (e) {
+      return null;
+    }
   },
 
   /**
@@ -98,6 +112,10 @@ var WebConsoleUtils = {
    */
   getInnerWindowIDsForFrames: function(window) {
     const innerWindowID = this.getInnerWindowId(window);
+    if (innerWindowID === null) {
+      return [];
+    }
+
     let ids = [innerWindowID];
 
     if (window.frames) {
@@ -130,9 +148,11 @@ var WebConsoleUtils = {
       } catch (ex) {
         // Native getters throw here. See bug 520882.
         // null throws TypeError.
-        if (ex.name != "NS_ERROR_XPC_BAD_CONVERT_JS" &&
-            ex.name != "NS_ERROR_XPC_BAD_OP_ON_WN_PROTO" &&
-            ex.name != "TypeError") {
+        if (
+          ex.name != "NS_ERROR_XPC_BAD_CONVERT_JS" &&
+          ex.name != "NS_ERROR_XPC_BAD_OP_ON_WN_PROTO" &&
+          ex.name != "TypeError"
+        ) {
           throw ex;
         }
       }
@@ -185,14 +205,57 @@ var WebConsoleUtils = {
         if (value === null) {
           return { type: "null" };
         }
-        // Fall through.
+      // Fall through.
       case "function":
         return objectWrapper(value);
       default:
-        console.error("Failed to provide a grip for value of " + typeof value
-                      + ": " + value);
+        console.error(
+          "Failed to provide a grip for value of " + typeof value + ": " + value
+        );
         return null;
     }
+  },
+
+  /**
+   * Remove any frames in a stack that are above a debugger-triggered evaluation
+   * and will correspond with devtools server code, which we never want to show
+   * to the user.
+   *
+   * @param array stack
+   *        An array of frames, with the topmost first, and each of which has a
+   *        'filename' property.
+   * @return array
+   *         An array of stack frames with any devtools server frames removed.
+   *         The original array is not modified.
+   */
+  removeFramesAboveDebuggerEval(stack) {
+    const debuggerEvalFilename = "debugger eval code";
+
+    // Remove any frames for server code above the last debugger eval frame.
+    const evalIndex = stack.findIndex(({ filename }, idx, arr) => {
+      const nextFrame = arr[idx + 1];
+      return (
+        filename == debuggerEvalFilename &&
+        (!nextFrame || nextFrame.filename !== debuggerEvalFilename)
+      );
+    });
+    if (evalIndex != -1) {
+      return stack.slice(0, evalIndex + 1);
+    }
+
+    // In some cases (e.g. evaluated expression with SyntaxError), we might not have a
+    // "debugger eval code" frame but still have internal ones. If that's the case, we
+    // return null as the end user shouldn't see those frames.
+    if (
+      stack.some(
+        ({ filename }) =>
+          filename && filename.startsWith("resource://devtools/")
+      )
+    ) {
+      return null;
+    }
+
+    return stack;
   },
 };
 
@@ -294,9 +357,9 @@ exports.WebConsoleCommands = WebConsoleCommands;
 
 /*
  * Built-in commands.
-  *
-  * A list of helper functions used by Firebug can be found here:
-  *   http://getfirebug.com/wiki/index.php/Command_Line_API
+ *
+ * A list of helper functions used by Firebug can be found here:
+ *   http://getfirebug.com/wiki/index.php/Command_Line_API
  */
 
 /**
@@ -351,7 +414,7 @@ WebConsoleCommands._registerOriginal("$$", function(owner, selector) {
 WebConsoleCommands._registerOriginal("$_", {
   get: function(owner) {
     return owner.consoleActor.getLastConsoleInputEvaluation();
-  }
+  },
 });
 
 /**
@@ -363,7 +426,12 @@ WebConsoleCommands._registerOriginal("$_", {
  *        Context to run the xPath query on. Uses window.document if not set.
  * @return array of Node
  */
-WebConsoleCommands._registerOriginal("$x", function(owner, xPath, context) {
+WebConsoleCommands._registerOriginal("$x", function(
+  owner,
+  xPath,
+  context,
+  resultType = owner.window.XPathResult.ANY_TYPE
+) {
   const nodes = new owner.window.Array();
 
   // Not waiving Xrays, since we want the original Document.evaluate function,
@@ -371,8 +439,33 @@ WebConsoleCommands._registerOriginal("$x", function(owner, xPath, context) {
   const doc = owner.window.document;
   context = context || doc;
 
-  const results = doc.evaluate(xPath, context, null,
-                             owner.window.XPathResult.ANY_TYPE, null);
+  const results = doc.evaluate(xPath, context, null, resultType, null);
+  if (results.resultType === owner.window.XPathResult.NUMBER_TYPE) {
+    return results.numberValue;
+  }
+  if (results.resultType === owner.window.XPathResult.STRING_TYPE) {
+    return results.stringValue;
+  }
+  if (results.resultType === owner.window.XPathResult.BOOLEAN_TYPE) {
+    return results.booleanValue;
+  }
+  if (
+    results.resultType === owner.window.XPathResult.ANY_UNORDERED_NODE_TYPE ||
+    results.resultType === owner.window.XPathResult.FIRST_ORDERED_NODE_TYPE
+  ) {
+    return results.singleNodeValue;
+  }
+  if (
+    results.resultType ===
+      owner.window.XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE ||
+    results.resultType === owner.window.XPathResult.ORDERED_NODE_SNAPSHOT_TYPE
+  ) {
+    for (let i = 0; i < results.snapshotLength; i++) {
+      nodes.push(results.snapshotItem(i));
+    }
+    return nodes;
+  }
+
   let node;
   while ((node = results.iterateNext())) {
     nodes.push(node);
@@ -390,7 +483,7 @@ WebConsoleCommands._registerOriginal("$x", function(owner, xPath, context) {
 WebConsoleCommands._registerOriginal("$0", {
   get: function(owner) {
     return owner.makeDebuggeeValue(owner.selectedNode);
-  }
+  },
 });
 
 /**
@@ -477,7 +570,7 @@ WebConsoleCommands._registerOriginal("cd", function(owner, window) {
   if (!(window instanceof Ci.nsIDOMWindow)) {
     owner.helperResult = {
       type: "error",
-      message: "cdFunctionInvalidArgument"
+      message: "cdFunctionInvalidArgument",
     };
     return;
   }
@@ -510,8 +603,12 @@ WebConsoleCommands._registerOriginal("inspect", function(owner, object) {
  * @return string
  */
 WebConsoleCommands._registerOriginal("pprint", function(owner, object) {
-  if (object === null || object === undefined || object === true ||
-      object === false) {
+  if (
+    object === null ||
+    object === undefined ||
+    object === true ||
+    object === false
+  ) {
     owner.helperResult = {
       type: "error",
       message: "helperFuncUnsupportedTypeError",
@@ -599,17 +696,18 @@ WebConsoleCommands._registerOriginal("copy", function(owner, value) {
  *               The arguments to be passed to the screenshot
  * @return void
  */
-WebConsoleCommands._registerOriginal("screenshot", function(owner, args) {
+WebConsoleCommands._registerOriginal("screenshot", function(owner, args = {}) {
   owner.helperResult = (async () => {
     // creates data for saving the screenshot
-    const value = await screenshot(owner, args);
+    // help is handled on the client side
+    const value = await captureScreenshot(args, owner.window.document);
     return {
       type: "screenshotOutput",
       value,
       // pass args through to the client, so that the client can take care of copying
       // and saving the screenshot data on the client machine instead of on the
       // remote machine
-      args
+      args,
     };
   })();
 });
@@ -617,10 +715,10 @@ WebConsoleCommands._registerOriginal("screenshot", function(owner, args) {
 /**
  * (Internal only) Add the bindings to |owner.sandbox|.
  * This is intended to be used by the WebConsole actor only.
-  *
-  * @param object owner
-  *        The owning object.
-  */
+ *
+ * @param object owner
+ *        The owning object.
+ */
 function addWebConsoleCommands(owner) {
   // Not supporting extra commands in workers yet.  This should be possible to
   // add one by one as long as they don't require jsm, Cu, etc.
@@ -636,7 +734,7 @@ function addWebConsoleCommands(owner) {
         // We force the enumerability and the configurability (so the
         // WebConsoleActor can reconfigure the property).
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
 
       if (typeof command.get === "function") {

@@ -6,10 +6,8 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -90,6 +88,8 @@
           default:
             return INVOKER_ACTION_FAILED;
         }
+        // 0 means the action succeeded.
+        return 0;
       };
 
       this.getEventType = function coalescenceBase_getEventType(aAction) {
@@ -99,6 +99,7 @@
           case kAddElm: case kShowElm:
             return EVENT_SHOW;
         }
+        return 0;
       };
 
       this.getActionName = function coalescenceBase_getActionName(aAction) {
@@ -121,13 +122,13 @@
         var eventType = this.getEventType(aParentAction);
         this.eventSeq = [
           new invokerChecker(eventType, this.parentNode),
-          new invokerChecker(EVENT_REORDER, this.hostNode)
+          new invokerChecker(EVENT_REORDER, this.hostNode),
         ];
 
         // unexpected events
         this.unexpectedEventSeq = [
           new invokerChecker(this.getEventType(aChildAction), this.childNode),
-          new invokerChecker(EVENT_REORDER, this.parentNode)
+          new invokerChecker(EVENT_REORDER, this.parentNode),
         ];
       };
     }
@@ -298,7 +299,7 @@
         new invokerChecker(EVENT_REORDER, getNode(aParentId).parentNode),
         new unexpectedInvokerChecker(EVENT_HIDE, getAccessible(aChild1Id)),
         new unexpectedInvokerChecker(EVENT_HIDE, getAccessible(aChild2Id)),
-        new unexpectedInvokerChecker(EVENT_REORDER, getAccessible(aParentId))
+        new unexpectedInvokerChecker(EVENT_REORDER, getAccessible(aParentId)),
       ];
 
       this.invoke = function removeGrandChildrenNHideParent_invoke() {
@@ -323,7 +324,7 @@
         new invokerChecker(EVENT_HIDE, this.o),
         new invokerChecker(EVENT_REORDER, "t3_lb"),
         new unexpectedInvokerChecker(EVENT_HIDE, this.ofc),
-        new unexpectedInvokerChecker(EVENT_REORDER, this.o)
+        new unexpectedInvokerChecker(EVENT_REORDER, this.o),
       ];
 
       this.invoke = function test3_invoke() {
@@ -356,7 +357,7 @@
         new invokerChecker(EVENT_REORDER, "t4_lb"),
         new unexpectedInvokerChecker(EVENT_HIDE, this.o2fc),
         new unexpectedInvokerChecker(EVENT_REORDER, this.o1),
-        new unexpectedInvokerChecker(EVENT_REORDER, this.o2)
+        new unexpectedInvokerChecker(EVENT_REORDER, this.o2),
       ];
 
       this.invoke = function test4_invoke() {
@@ -391,7 +392,7 @@
         new invokerChecker(EVENT_REORDER, "t5"),
         new unexpectedInvokerChecker(EVENT_HIDE, this.ofc),
         new unexpectedInvokerChecker(EVENT_REORDER, this.o),
-        new unexpectedInvokerChecker(EVENT_REORDER, this.lb)
+        new unexpectedInvokerChecker(EVENT_REORDER, this.lb),
       ];
 
       this.invoke = function test5_invoke() {
@@ -435,7 +436,7 @@
         new unexpectedInvokerChecker(EVENT_REORDER, this.fc),
         new unexpectedInvokerChecker(EVENT_REORDER, this.sc),
         new unexpectedInvokerChecker(EVENT_HIDE, this.owns),
-        new unexpectedInvokerChecker(EVENT_SHOW, this.owns)
+        new unexpectedInvokerChecker(EVENT_SHOW, this.owns),
       ];
 
       this.invoke = function test6_invoke() {
@@ -469,7 +470,7 @@
         new unexpectedInvokerChecker(EVENT_REORDER, getNode("t7_c_directchild")),
         new unexpectedInvokerChecker(EVENT_REORDER, getNode("t7_c_grandchild")),
         new unexpectedInvokerChecker(EVENT_SHOW, () => getNode("t7_c_directchild").firstChild),
-        new unexpectedInvokerChecker(EVENT_SHOW, () => getNode("t7_c_grandchild").firstChild)
+        new unexpectedInvokerChecker(EVENT_SHOW, () => getNode("t7_c_grandchild").firstChild),
       ];
 
       this.invoke = function test7_invoke() {
@@ -543,7 +544,7 @@
         new invokerChecker(EVENT_REORDER, "t9_c3"),
         new invokerChecker(EVENT_REORDER, "t9_c2"),
         new invokerChecker(EVENT_REORDER, "t9_c1"),
-        new unexpectedInvokerChecker(EVENT_SHOW, "t9_c3_moved")
+        new unexpectedInvokerChecker(EVENT_SHOW, "t9_c3_moved"),
       ];
 
       this.invoke = function test9_invoke() {
@@ -586,7 +587,7 @@
         new invokerChecker(EVENT_SHOW, getNode("t10_c2_moved")),
         new invokerChecker(EVENT_REORDER, "t10_c2"),
         new invokerChecker(EVENT_REORDER, "t10_c1"),
-        new invokerChecker(EVENT_REORDER, "t10_c3")
+        new invokerChecker(EVENT_REORDER, "t10_c3"),
       ];
 
       this.invoke = function test10_invoke() {
@@ -622,7 +623,7 @@
         new unexpectedInvokerChecker(EVENT_HIDE, "t11_c2_child"),
         new unexpectedInvokerChecker(EVENT_REORDER, "t11_c1"),
         new unexpectedInvokerChecker(EVENT_REORDER, "t11_c2"),
-        new unexpectedInvokerChecker(EVENT_REORDER, "t11_c3")
+        new unexpectedInvokerChecker(EVENT_REORDER, "t11_c3"),
       ];
 
       this.invoke = function test11_invoke() {

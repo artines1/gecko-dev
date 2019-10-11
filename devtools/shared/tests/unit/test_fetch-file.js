@@ -1,12 +1,13 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
 // Tests for DevToolsUtils.fetch on file:// URI's.
 
-const { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
-const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
+const { FileUtils } = ChromeUtils.import(
+  "resource://gre/modules/FileUtils.jsm"
+);
+const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 const TEST_CONTENT = "aéd";
 
@@ -26,7 +27,7 @@ add_task(async function test_arrow_urls() {
   const url = "resource://gre/modules/XPIProvider.jsm -> file://" + path;
 
   await OS.File.writeAtomic(path, TEST_CONTENT, { encoding: "utf-8" });
-  const { content } = await DevToolsUtils.fetch(url);
+  const { content } = await DevToolsUtils.fetch(url);
 
   deepEqual(content, TEST_CONTENT, "The file contents were correctly read.");
 });
@@ -47,9 +48,12 @@ add_task(async function test_encoding_utf8() {
   const { path } = createTemporaryFile();
   await OS.File.writeAtomic(path, UTF8_TEST_BUFFER);
 
-  const { content } = await DevToolsUtils.fetch(path);
-  deepEqual(content, TEST_CONTENT,
-    "The UTF-8 encoded file was correctly read.");
+  const { content } = await DevToolsUtils.fetch(path);
+  deepEqual(
+    content,
+    TEST_CONTENT,
+    "The UTF-8 encoded file was correctly read."
+  );
 });
 
 /**
@@ -59,21 +63,27 @@ add_task(async function test_encoding_iso_8859_1() {
   const { path } = createTemporaryFile();
   await OS.File.writeAtomic(path, ISO_8859_1_BUFFER);
 
-  const { content } = await DevToolsUtils.fetch(path);
-  deepEqual(content, TEST_CONTENT,
-    "The ISO 8859-1 encoded file was correctly read.");
+  const { content } = await DevToolsUtils.fetch(path);
+  deepEqual(
+    content,
+    TEST_CONTENT,
+    "The ISO 8859-1 encoded file was correctly read."
+  );
 });
 
 /**
  * Test that non-existent files are handled correctly.
  */
 add_task(async function test_missing() {
-  await DevToolsUtils.fetch("file:///file/not/found.right").then(result => {
-    info(result);
-    ok(false, "Fetch resolved unexpectedly when the file was not found.");
-  }, () => {
-    ok(true, "Fetch rejected as expected because the file was not found.");
-  });
+  await DevToolsUtils.fetch("file:///file/not/found.right").then(
+    result => {
+      info(result);
+      ok(false, "Fetch resolved unexpectedly when the file was not found.");
+    },
+    () => {
+      ok(true, "Fetch rejected as expected because the file was not found.");
+    }
+  );
 });
 
 /**

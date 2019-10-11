@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
@@ -10,6 +10,8 @@
 ${helpers.single_keyword(
     "visibility",
     "visible hidden",
+    engines="gecko servo-2013 servo-2020",
+    servo_2020_pref="layout.2020.unimplemented",
     extra_gecko_values="collapse",
     gecko_ffi_name="mVisible",
     animation_value_type="ComputedValue",
@@ -21,11 +23,12 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "writing-mode",
     "horizontal-tb vertical-rl vertical-lr",
+    engines="gecko servo-2013 servo-2020",
     extra_gecko_values="sideways-rl sideways-lr",
-    extra_gecko_aliases="lr=horizontal-tb lr-tb=horizontal-tb \
+    gecko_aliases="lr=horizontal-tb lr-tb=horizontal-tb \
                          rl=horizontal-tb rl-tb=horizontal-tb \
                          tb=vertical-rl   tb-rl=vertical-rl",
-    servo_pref="layout.writing-mode.enabled",
+    servo_2013_pref="layout.writing-mode.enabled",
     animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-writing-mode",
     servo_restyle_damage="rebuild_and_reflow",
@@ -34,21 +37,19 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "direction",
     "ltr rtl",
+    engines="gecko servo-2013 servo-2020",
     animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-direction",
     needs_conversion=True,
     servo_restyle_damage="rebuild_and_reflow",
 )}
 
-// TODO(emilio): Should text-orientation be non-animatable? It affects the
-// WritingMode value, but not the logical -> physical mapping of properties,
-// which is the reason direction / writing-mode are non-animatable.
 ${helpers.single_keyword(
     "text-orientation",
     "mixed upright sideways",
-    extra_gecko_aliases="sideways-right=sideways",
-    products="gecko",
-    animation_value_type="discrete",
+    engines="gecko",
+    gecko_aliases="sideways-right=sideways",
+    animation_value_type="none",
     spec="https://drafts.csswg.org/css-writing-modes/#propdef-text-orientation",
 )}
 
@@ -56,22 +57,22 @@ ${helpers.single_keyword(
 // https://drafts.csswg.org/css-color/
 ${helpers.single_keyword(
     "color-adjust",
-    "economy exact", products="gecko",
-    gecko_pref="layout.css.color-adjust.enabled",
+    "economy exact",
+    engines="gecko",
+    gecko_enum_prefix="StyleColorAdjust",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-color/#propdef-color-adjust",
 )}
 
-<% image_rendering_custom_consts = { "crisp-edges": "CRISPEDGES",
-                                     "-moz-crisp-edges": "CRISPEDGES" } %>
 // According to to CSS-IMAGES-3, `optimizespeed` and `optimizequality` are synonyms for `auto`
 // And, firefox doesn't support `pixelated` yet (https://bugzilla.mozilla.org/show_bug.cgi?id=856337)
 ${helpers.single_keyword(
     "image-rendering",
-    "auto",
-    extra_gecko_values="optimizespeed optimizequality -moz-crisp-edges",
-    extra_servo_values="pixelated crisp-edges",
-    custom_consts=image_rendering_custom_consts,
+    "auto crisp-edges",
+    engines="gecko servo-2013",
+    extra_gecko_values="optimizespeed optimizequality",
+    extra_servo_2013_values="pixelated",
+    gecko_aliases="-moz-crisp-edges=crisp-edges",
     animation_value_type="discrete",
     spec="https://drafts.csswg.org/css-images/#propdef-image-rendering",
 )}
@@ -79,9 +80,8 @@ ${helpers.single_keyword(
 ${helpers.single_keyword(
     "image-orientation",
     "none from-image",
-    products="gecko",
+    engines="gecko",
     gecko_enum_prefix="StyleImageOrientation",
     animation_value_type="discrete",
-    gecko_pref="layout.css.image-orientation.enabled",
     spec="https://drafts.csswg.org/css-images/#propdef-image-orientation",
 )}

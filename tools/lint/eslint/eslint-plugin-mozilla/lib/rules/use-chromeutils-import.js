@@ -18,62 +18,72 @@ function isIdentifier(node, id) {
 }
 
 function isMemberExpression(node, object, member) {
-  return (node.type === "MemberExpression" &&
-          isIdentifier(node.object, object) &&
-          isIdentifier(node.property, member));
+  return (
+    node.type === "MemberExpression" &&
+    isIdentifier(node.object, object) &&
+    isIdentifier(node.property, member)
+  );
 }
 
 module.exports = {
   meta: {
     schema: [
       {
-        "type": "object",
-        "properties": {
-          "allowCu": {
-            "type": "boolean"
-          }
+        type: "object",
+        properties: {
+          allowCu: {
+            type: "boolean",
+          },
         },
-        "additionalProperties": false
-      }
+        additionalProperties: false,
+      },
     ],
-    fixable: "code"
+    fixable: "code",
   },
 
   create(context) {
     return {
-      "CallExpression": function(node) {
+      CallExpression(node) {
         if (node.callee.type !== "MemberExpression") {
           return;
         }
 
-        let {allowCu} = context.options[0] || {};
-        let {callee} = node;
+        let { allowCu } = context.options[0] || {};
+        let { callee } = node;
 
         // Is the expression starting with `Cu` or `Components.utils`?
-        if (((!allowCu && isIdentifier(callee.object, "Cu")) ||
-             isMemberExpression(callee.object, "Components", "utils")) &&
-            isIdentifier(callee.property, "import")) {
+        if (
+          ((!allowCu && isIdentifier(callee.object, "Cu")) ||
+            isMemberExpression(callee.object, "Components", "utils")) &&
+          isIdentifier(callee.property, "import")
+        ) {
           context.report({
             node,
             message: "Please use ChromeUtils.import instead of Cu.import",
             fix(fixer) {
               return fixer.replaceText(callee, "ChromeUtils.import");
-            }
+            },
           });
         }
 
-        if (isMemberExpression(callee, "XPCOMUtils", "defineLazyModuleGetter") &&
-            node.arguments.length < 4) {
+        if (
+          isMemberExpression(callee, "XPCOMUtils", "defineLazyModuleGetter") &&
+          node.arguments.length < 4
+        ) {
           context.report({
             node,
-            message: ("Please use ChromeUtils.defineModuleGetter instead of " +
-                      "XPCOMUtils.defineLazyModuleGetter"),
+            message:
+              "Please use ChromeUtils.defineModuleGetter instead of " +
+              "XPCOMUtils.defineLazyModuleGetter",
             fix(fixer) {
-              return fixer.replaceText(callee, "ChromeUtils.defineModuleGetter");
-            }
+              return fixer.replaceText(
+                callee,
+                "ChromeUtils.defineModuleGetter"
+              );
+            },
           });
         }
-      }
+      },
     };
-  }
+  },
 };

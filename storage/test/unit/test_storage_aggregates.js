@@ -36,7 +36,7 @@ var testSquareAndSumFunction = {
     var retval = this._sas;
     this._sas = 0; // Prepare for next group
     return retval;
-  }
+  },
 };
 
 function test_aggregate_registration() {
@@ -93,9 +93,14 @@ function test_aggregate_result() {
   stmt.finalize();
 }
 
-var tests = [test_aggregate_registration, test_aggregate_no_double_registration,
-             test_aggregate_removal, test_aggregate_no_aliases, test_aggregate_call,
-             test_aggregate_result];
+var tests = [
+  test_aggregate_registration,
+  test_aggregate_no_double_registration,
+  test_aggregate_removal,
+  test_aggregate_no_aliases,
+  test_aggregate_call,
+  test_aggregate_result,
+];
 
 function run_test() {
   setup();

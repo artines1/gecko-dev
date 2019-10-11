@@ -9,7 +9,7 @@
 const TEST_URI = URL_ROOT + "doc_inspector_infobar_01.html";
 
 add_task(async function() {
-  const {inspector, testActor} = await openInspectorForURL(TEST_URI);
+  const { inspector, testActor } = await openInspectorForURL(TEST_URI);
 
   const testData = [
     {
@@ -19,7 +19,7 @@ add_task(async function() {
       id: "top",
       classes: ".class1.class2",
       dims: "500" + " \u00D7 " + "100",
-      arrowed: true
+      arrowed: true,
     },
     {
       selector: "#vertical",
@@ -27,7 +27,7 @@ add_task(async function() {
       tag: "div",
       id: "vertical",
       classes: "",
-      arrowed: false
+      arrowed: false,
       // No dims as they will vary between computers
     },
     {
@@ -37,14 +37,14 @@ add_task(async function() {
       id: "bottom",
       classes: "",
       dims: "500" + " \u00D7 " + "100",
-      arrowed: true
+      arrowed: true,
     },
     {
       selector: "body",
       position: "bottom",
       tag: "body",
       classes: "",
-      arrowed: true
+      arrowed: true,
       // No dims as they will vary between computers
     },
     {
@@ -53,7 +53,7 @@ add_task(async function() {
       tag: "clipPath",
       id: "clip",
       classes: "",
-      arrowed: false
+      arrowed: false,
       // No dims as element is not displayed and we just want to test tag name
     },
   ];
@@ -69,31 +69,43 @@ async function testPosition(test, inspector, testActor) {
   await selectAndHighlightNode(test.selector, inspector);
 
   const position = await testActor.getHighlighterNodeAttribute(
-    "box-model-infobar-container", "position");
+    "box-model-infobar-container",
+    "position"
+  );
   is(position, test.position, "Node " + test.selector + ": position matches");
 
   const tag = await testActor.getHighlighterNodeTextContent(
-    "box-model-infobar-tagname");
+    "box-model-infobar-tagname"
+  );
   is(tag, test.tag, "node " + test.selector + ": tagName matches.");
 
   if (test.id) {
     const id = await testActor.getHighlighterNodeTextContent(
-      "box-model-infobar-id");
+      "box-model-infobar-id"
+    );
     is(id, "#" + test.id, "node " + test.selector + ": id matches.");
   }
 
   const classes = await testActor.getHighlighterNodeTextContent(
-    "box-model-infobar-classes");
+    "box-model-infobar-classes"
+  );
   is(classes, test.classes, "node " + test.selector + ": classes match.");
 
   const arrowed = !(await testActor.getHighlighterNodeAttribute(
-    "box-model-infobar-container", "hide-arrow"));
+    "box-model-infobar-container",
+    "hide-arrow"
+  ));
 
-  is(arrowed, test.arrowed, "node " + test.selector + ": arrow visibility match.");
+  is(
+    arrowed,
+    test.arrowed,
+    "node " + test.selector + ": arrow visibility match."
+  );
 
   if (test.dims) {
     const dims = await testActor.getHighlighterNodeTextContent(
-      "box-model-infobar-dimensions");
+      "box-model-infobar-dimensions"
+    );
     is(dims, test.dims, "node " + test.selector + ": dims match.");
   }
 }

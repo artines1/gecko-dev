@@ -14,40 +14,49 @@ namespace dom {
 class ClientManagerService;
 class ClientSourceParent;
 
-class ClientHandleParent final : public PClientHandleParent
-{
+typedef MozPromise<ClientSourceParent*, nsresult, /* IsExclusive = */ false>
+    SourcePromise;
+
+class ClientHandleParent final : public PClientHandleParent {
   RefPtr<ClientManagerService> mService;
   ClientSourceParent* mSource;
 
+  nsID mClientId;
+  PrincipalInfo mPrincipalInfo;
+
+  // A promise for HandleOps that want to access our ClientSourceParent.
+  // Resolved once FoundSource is called and we have a ClientSourceParent
+  // available.
+  RefPtr<SourcePromise::Private> mSourcePromise;
+
   // PClientHandleParent interface
-  mozilla::ipc::IPCResult
-  RecvTeardown() override;
+  mozilla::ipc::IPCResult RecvTeardown() override;
 
-  void
-  ActorDestroy(ActorDestroyReason aReason) override;
+  void ActorDestroy(ActorDestroyReason aReason) override;
 
-  PClientHandleOpParent*
-  AllocPClientHandleOpParent(const ClientOpConstructorArgs& aArgs) override;
+  PClientHandleOpParent* AllocPClientHandleOpParent(
+      const ClientOpConstructorArgs& aArgs) override;
 
-  bool
-  DeallocPClientHandleOpParent(PClientHandleOpParent* aActor) override;
+  bool DeallocPClientHandleOpParent(PClientHandleOpParent* aActor) override;
 
-  mozilla::ipc::IPCResult
-  RecvPClientHandleOpConstructor(PClientHandleOpParent* aActor,
-                                 const ClientOpConstructorArgs& aArgs) override;
+  mozilla::ipc::IPCResult RecvPClientHandleOpConstructor(
+      PClientHandleOpParent* aActor,
+      const ClientOpConstructorArgs& aArgs) override;
 
-public:
+ public:
   ClientHandleParent();
   ~ClientHandleParent();
 
-  void
-  Init(const IPCClientInfo& aClientInfo);
+  void Init(const IPCClientInfo& aClientInfo);
 
-  ClientSourceParent*
-  GetSource() const;
+  void FoundSource(ClientSourceParent* aSource);
+
+  ClientSourceParent* GetSource() const;
+
+  RefPtr<SourcePromise> EnsureSource();
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // _mozilla_dom_ClientHandleParent_h
+#endif  // _mozilla_dom_ClientHandleParent_h

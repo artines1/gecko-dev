@@ -12,21 +12,20 @@
 #include "SVGGeometryElement.h"
 
 namespace mozilla {
-class DOMSVGPointList;
-
 namespace dom {
+
+class DOMSVGPointList;
 
 typedef SVGGeometryElement SVGPolyElementBase;
 
-class SVGPolyElement : public SVGPolyElementBase
-{
-protected:
-  explicit SVGPolyElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+class SVGPolyElement : public SVGPolyElementBase {
+ protected:
+  explicit SVGPolyElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
-  virtual ~SVGPolyElement();
+  virtual ~SVGPolyElement() = default;
 
-public:
-  //interfaces
+ public:
+  // interfaces
 
   NS_INLINE_DECL_REFCOUNTING_INHERITED(SVGPolyElement, SVGPolyElementBase)
 
@@ -36,30 +35,31 @@ public:
   virtual SVGAnimatedPointList* GetAnimatedPointList() override {
     return &mPoints;
   }
-  virtual nsAtom* GetPointListAttrName() const override {
+  virtual nsStaticAtom* GetPointListAttrName() const override {
     return nsGkAtoms::points;
   }
 
-  // nsSVGElement methods:
+  // SVGElement methods:
   virtual bool HasValidDimensions() const override;
 
   // SVGGeometryElement methods:
-  virtual bool AttributeDefinesGeometry(const nsAtom *aName) override;
+  virtual bool AttributeDefinesGeometry(const nsAtom* aName) override;
   virtual bool IsMarkable() override { return true; }
-  virtual void GetMarkPoints(nsTArray<nsSVGMark> *aMarks) override;
-  virtual bool GetGeometryBounds(Rect* aBounds, const StrokeOptions& aStrokeOptions,
-                                 const Matrix& aToBoundsSpace,
-                                 const Matrix* aToNonScalingStrokeSpace = nullptr) override;
+  virtual void GetMarkPoints(nsTArray<SVGMark>* aMarks) override;
+  virtual bool GetGeometryBounds(
+      Rect* aBounds, const StrokeOptions& aStrokeOptions,
+      const Matrix& aToBoundsSpace,
+      const Matrix* aToNonScalingStrokeSpace = nullptr) override;
 
   // WebIDL
-  already_AddRefed<mozilla::DOMSVGPointList> Points();
-  already_AddRefed<mozilla::DOMSVGPointList> AnimatedPoints();
+  already_AddRefed<DOMSVGPointList> Points();
+  already_AddRefed<DOMSVGPointList> AnimatedPoints();
 
-protected:
+ protected:
   SVGAnimatedPointList mPoints;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif //NS_SVGPOLYELEMENT_H_
+#endif  // NS_SVGPOLYELEMENT_H_

@@ -8,11 +8,17 @@ FINAL_LIBRARY = 'mozglue'
 
 EXPORTS.mozilla += [
     'AutoProfilerLabel.h',
+    'decimal/Decimal.h',
     'PlatformConditionVariable.h',
     'PlatformMutex.h',
     'Printf.h',
     'StackWalk.h',
     'TimeStamp.h',
+]
+
+EXPORTS.mozilla.glue += [
+    'Debug.h',
+    'WinUtils.h',
 ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':
@@ -30,28 +36,28 @@ SOURCES += [
 
 OS_LIBS += CONFIG['REALTIME_LIBS']
 
-DEFINES['IMPL_MFBT'] = True
-
 if CONFIG['OS_ARCH'] == 'WINNT':
+    DIRS += [
+        'interceptor',
+    ]
     EXPORTS += [
         'nsWindowsDllInterceptor.h',
     ]
     EXPORTS.mozilla += [
         'DynamicallyLinkedFunctionPtr.h',
+        'ImportDir.h',
+        'NativeNt.h',
         'WindowsMapRemoteView.h',
+        'WindowsProcessMitigations.h',
     ]
-    EXPORTS.mozilla.interceptor += [
-        'interceptor/MMPolicies.h',
-        'interceptor/PatcherBase.h',
-        'interceptor/PatcherDetour.h',
-        'interceptor/PatcherNopSpace.h',
-        'interceptor/TargetFunction.h',
-        'interceptor/Trampoline.h',
-        'interceptor/VMSharingPolicies.h',
+    EXPORTS.mozilla.glue += [
+        'WindowsUnicode.h',
     ]
     SOURCES += [
         'TimeStamp_windows.cpp',
         'WindowsMapRemoteView.cpp',
+        'WindowsProcessMitigations.cpp',
+        'WindowsUnicode.cpp',
     ]
     OS_LIBS += ['dbghelp']
 elif CONFIG['HAVE_CLOCK_MONOTONIC']:
@@ -75,3 +81,16 @@ else:
         'ConditionVariable_posix.cpp',
         'Mutex_posix.cpp',
     ]
+
+if CONFIG['MOZ_LINKER']:
+    LOCAL_INCLUDES += [
+        '/mozglue/linker',
+    ]
+
+SOURCES += [
+    'decimal/Decimal.cpp',
+]
+
+if CONFIG['CC_TYPE'] == 'clang':
+    # Suppress warnings from third-party V8 Decimal code.
+    SOURCES['decimal/Decimal.cpp'].flags += ['-Wno-implicit-fallthrough']

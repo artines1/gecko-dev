@@ -1,11 +1,3 @@
-// Copyright 2017 Serde Developers
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
 use std::collections::HashSet;
 
 use syn;
@@ -46,7 +38,7 @@ pub fn with_where_predicates(
     generics
         .make_where_clause()
         .predicates
-        .extend(predicates.into_iter().cloned());
+        .extend(predicates.iter().cloned());
     generics
 }
 
@@ -72,7 +64,7 @@ pub fn with_where_predicates_from_variants(
     from_variant: fn(&attr::Variant) -> Option<&[syn::WherePredicate]>,
 ) -> syn::Generics {
     let variants = match cont.data {
-        Data::Enum(_, ref variants) => variants,
+        Data::Enum(ref variants) => variants,
         Data::Struct(_, _) => {
             return generics.clone();
         }
@@ -91,7 +83,8 @@ pub fn with_where_predicates_from_variants(
 // Puts the given bound on any generic type parameters that are used in fields
 // for which filter returns true.
 //
-// For example, the following struct needs the bound `A: Serialize, B: Serialize`.
+// For example, the following struct needs the bound `A: Serialize, B:
+// Serialize`.
 //
 //     struct S<'b, A, B: 'b, C> {
 //         a: A,
@@ -168,15 +161,17 @@ pub fn with_bound(
         associated_type_usage: Vec::new(),
     };
     match cont.data {
-        Data::Enum(_, ref variants) => for variant in variants.iter() {
-            let relevant_fields = variant
-                .fields
-                .iter()
-                .filter(|field| filter(&field.attrs, Some(&variant.attrs)));
-            for field in relevant_fields {
-                visitor.visit_field(field.original);
+        Data::Enum(ref variants) => {
+            for variant in variants.iter() {
+                let relevant_fields = variant
+                    .fields
+                    .iter()
+                    .filter(|field| filter(&field.attrs, Some(&variant.attrs)));
+                for field in relevant_fields {
+                    visitor.visit_field(field.original);
+                }
             }
-        },
+        }
         Data::Struct(_, ref fields) => {
             for field in fields.iter().filter(|field| filter(&field.attrs, None)) {
                 visitor.visit_field(field.original);
@@ -200,15 +195,16 @@ pub fn with_bound(
                 lifetimes: None,
                 // the type parameter that is being bounded e.g. T
                 bounded_ty: syn::Type::Path(bounded_ty),
-                colon_token: Default::default(),
+                colon_token: <Token![:]>::default(),
                 // the bound e.g. Serialize
                 bounds: vec![syn::TypeParamBound::Trait(syn::TraitBound {
                     paren_token: None,
                     modifier: syn::TraitBoundModifier::None,
                     lifetimes: None,
                     path: bound.clone(),
-                })].into_iter()
-                    .collect(),
+                })]
+                .into_iter()
+                .collect(),
             })
         });
 
@@ -233,15 +229,16 @@ pub fn with_self_bound(
             lifetimes: None,
             // the type that is being bounded e.g. MyStruct<'a, T>
             bounded_ty: type_of_item(cont),
-            colon_token: Default::default(),
+            colon_token: <Token![:]>::default(),
             // the bound e.g. Default
             bounds: vec![syn::TypeParamBound::Trait(syn::TraitBound {
                 paren_token: None,
                 modifier: syn::TraitBoundModifier::None,
                 lifetimes: None,
                 path: bound.clone(),
-            })].into_iter()
-                .collect(),
+            })]
+            .into_iter()
+            .collect(),
         }));
     generics
 }
@@ -289,7 +286,7 @@ fn type_of_item(cont: &Container) -> syn::Type {
                 arguments: syn::PathArguments::AngleBracketed(
                     syn::AngleBracketedGenericArguments {
                         colon2_token: None,
-                        lt_token: Default::default(),
+                        lt_token: <Token![<]>::default(),
                         args: cont
                             .generics
                             .params
@@ -309,11 +306,12 @@ fn type_of_item(cont: &Container) -> syn::Type {
                                 }
                             })
                             .collect(),
-                        gt_token: Default::default(),
+                        gt_token: <Token![>]>::default(),
                     },
                 ),
-            }].into_iter()
-                .collect(),
+            }]
+            .into_iter()
+            .collect(),
         },
     })
 }

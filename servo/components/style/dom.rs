@@ -1,36 +1,36 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Types and traits used to access the DOM from style calculation.
 
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use {Atom, LocalName, Namespace, WeakAtom};
-use applicable_declarations::ApplicableDeclarationBlock;
+use crate::applicable_declarations::ApplicableDeclarationBlock;
+#[cfg(feature = "gecko")]
+use crate::context::PostAnimationTasks;
+#[cfg(feature = "gecko")]
+use crate::context::UpdateAnimationsTasks;
+use crate::data::ElementData;
+use crate::element_state::ElementState;
+use crate::font_metrics::FontMetricsProvider;
+use crate::media_queries::Device;
+use crate::properties::{AnimationRules, ComputedValues, PropertyDeclarationBlock};
+use crate::selector_parser::{AttrValue, Lang, PseudoElement, SelectorImpl};
+use crate::shared_lock::Locked;
+use crate::stylist::CascadeData;
+use crate::traversal_flags::TraversalFlags;
+use crate::{Atom, LocalName, Namespace, WeakAtom};
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
-#[cfg(feature = "gecko")]
-use context::PostAnimationTasks;
-#[cfg(feature = "gecko")]
-use context::UpdateAnimationsTasks;
-use data::ElementData;
-use element_state::ElementState;
-use font_metrics::FontMetricsProvider;
-use media_queries::Device;
-use properties::{AnimationRules, ComputedValues, PropertyDeclarationBlock};
-use selector_parser::{AttrValue, PseudoClassStringArg, PseudoElement, SelectorImpl};
-use selectors::Element as SelectorsElement;
 use selectors::matching::{ElementSelectorFlags, QuirksMode, VisitedHandlingMode};
 use selectors::sink::Push;
+use selectors::Element as SelectorsElement;
 use servo_arc::{Arc, ArcBorrow};
-use shared_lock::Locked;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-use stylist::CascadeData;
-use traversal_flags::TraversalFlags;
 
 /// An opaque handle to a node, which, unlike UnsafeNode, cannot be transformed
 /// back into a non-opaque representation. The only safe operation that can be
@@ -342,9 +342,17 @@ pub trait TShadowRoot: Sized + Copy + Clone + PartialEq {
     fn host(&self) -> <Self::ConcreteNode as TNode>::ConcreteElement;
 
     /// Get the style data for this ShadowRoot.
-    fn style_data<'a>(&self) -> &'a CascadeData
+    fn style_data<'a>(&self) -> Option<&'a CascadeData>
     where
         Self: 'a;
+
+    /// Get the list of shadow parts for this shadow root.
+    fn parts<'a>(&self) -> &[<Self::ConcreteNode as TNode>::ConcreteElement]
+    where
+        Self: 'a,
+    {
+        &[]
+    }
 
     /// Get a list of elements with a given ID in this shadow root, sorted by
     /// tree position.
@@ -441,6 +449,11 @@ pub trait TElement:
         None
     }
 
+    /// The ::marker pseudo-element of this element, if it exists.
+    fn marker_pseudo_element(&self) -> Option<Self> {
+        None
+    }
+
     /// Execute `f` for each anonymous content child (apart from ::before and
     /// ::after) whose originating element is `self`.
     fn each_anonymous_content_child<F>(&self, _f: F)
@@ -459,7 +472,9 @@ pub trait TElement:
     fn is_svg_element(&self) -> bool;
 
     /// Return whether this element is an element in the XUL namespace.
-    fn is_xul_element(&self) -> bool { false }
+    fn is_xul_element(&self) -> bool {
+        false
+    }
 
     /// Return the list of slotted nodes of this node.
     fn slotted_nodes(&self) -> &[Self::ConcreteNode] {
@@ -505,6 +520,9 @@ pub trait TElement:
     /// Whether this element has an attribute with a given namespace.
     fn has_attr(&self, namespace: &Namespace, attr: &LocalName) -> bool;
 
+    /// Returns whether this element has a `part` attribute.
+    fn has_part_attr(&self) -> bool;
+
     /// The ID for this element.
     fn id(&self) -> Option<&WeakAtom>;
 
@@ -512,6 +530,13 @@ pub trait TElement:
     fn each_class<F>(&self, callback: F)
     where
         F: FnMut(&Atom);
+
+    /// Internal iterator for the part names of this element.
+    fn each_part<F>(&self, _callback: F)
+    where
+        F: FnMut(&Atom),
+    {
+    }
 
     /// Whether a given element may generate a pseudo-element.
     ///
@@ -635,15 +660,6 @@ pub trait TElement:
         self.unset_dirty_descendants();
     }
 
-    /// Clear all element flags related to dirtiness.
-    ///
-    /// In Gecko, this corresponds to the regular dirty descendants bit, the
-    /// animation-only dirty descendants bit, the lazy frame construction bit,
-    /// and the lazy frame construction descendants bit.
-    unsafe fn clear_dirty_bits(&self) {
-        self.unset_dirty_descendants();
-    }
-
     /// Returns true if this element is a visited link.
     ///
     /// Servo doesn't support visited styles yet.
@@ -763,7 +779,7 @@ pub trait TElement:
     /// Returns the anonymous content for the current element's XBL binding,
     /// given if any.
     ///
-    /// This is used in Gecko for XBL and shadow DOM.
+    /// This is used in Gecko for XBL.
     fn xbl_binding_anonymous_content(&self) -> Option<Self::ConcreteNode> {
         None
     }
@@ -774,11 +790,6 @@ pub trait TElement:
     /// The shadow root which roots the subtree this element is contained in.
     fn containing_shadow(&self) -> Option<<Self::ConcreteNode as TNode>::ConcreteShadowRoot>;
 
-    /// XBL hack for style sharing. :(
-    fn has_same_xbl_proto_binding_as(&self, _other: Self) -> bool {
-        true
-    }
-
     /// Return the element which we can use to look up rules in the selector
     /// maps.
     ///
@@ -786,7 +797,7 @@ pub trait TElement:
     /// element-backed pseudo-element, in which case we return the originating
     /// element.
     fn rule_hash_target(&self) -> Self {
-        if self.implemented_pseudo_element().is_some() {
+        if self.is_pseudo_element() {
             self.pseudo_element_originating_element()
                 .expect("Trying to collect rules for a detached pseudo-element")
         } else {
@@ -794,60 +805,49 @@ pub trait TElement:
         }
     }
 
-    /// Implements Gecko's `nsBindingManager::WalkRules`.
-    ///
-    /// Returns whether to cut off the binding inheritance, that is, whether
-    /// document rules should _not_ apply.
-    fn each_xbl_cascade_data<'a, F>(&self, _: F) -> bool
-    where
-        Self: 'a,
-        F: FnMut(&'a CascadeData, QuirksMode),
-    {
-        false
-    }
-
     /// Executes the callback for each applicable style rule data which isn't
     /// the main document's data (which stores UA / author rules).
     ///
     /// The element passed to the callback is the containing shadow host for the
-    /// data if it comes from Shadow DOM, None if it comes from XBL.
+    /// data if it comes from Shadow DOM.
     ///
     /// Returns whether normal document author rules should apply.
     fn each_applicable_non_document_style_rule_data<'a, F>(&self, mut f: F) -> bool
     where
         Self: 'a,
-        F: FnMut(&'a CascadeData, QuirksMode, Option<Self>),
+        F: FnMut(&'a CascadeData, Self),
     {
-        let mut doc_rules_apply = !self.each_xbl_cascade_data(|data, quirks_mode| {
-            f(data, quirks_mode, None);
-        });
+        use rule_collector::containing_shadow_ignoring_svg_use;
 
-        if let Some(shadow) = self.containing_shadow() {
+        let target = self.rule_hash_target();
+        if !target.matches_user_and_author_rules() {
+            return false;
+        }
+
+        let mut doc_rules_apply = true;
+
+        // Use the same rules to look for the containing host as we do for rule
+        // collection.
+        if let Some(shadow) = containing_shadow_ignoring_svg_use(target) {
             doc_rules_apply = false;
-            f(
-                shadow.style_data(),
-                self.as_node().owner_doc().quirks_mode(),
-                Some(shadow.host()),
-            );
+            if let Some(data) = shadow.style_data() {
+                f(data, shadow.host());
+            }
         }
 
-        if let Some(shadow) = self.shadow_root() {
-            f(
-                shadow.style_data(),
-                self.as_node().owner_doc().quirks_mode(),
-                Some(shadow.host()),
-            );
+        if let Some(shadow) = target.shadow_root() {
+            if let Some(data) = shadow.style_data() {
+                f(data, shadow.host());
+            }
         }
 
-        let mut current = self.assigned_slot();
+        let mut current = target.assigned_slot();
         while let Some(slot) = current {
             // Slots can only have assigned nodes when in a shadow tree.
             let shadow = slot.containing_shadow().unwrap();
-            f(
-                shadow.style_data(),
-                self.as_node().owner_doc().quirks_mode(),
-                Some(shadow.host()),
-            );
+            if let Some(data) = shadow.style_data() {
+                f(data, shadow.host());
+            }
             current = slot.assigned_slot();
         }
 
@@ -886,11 +886,7 @@ pub trait TElement:
     /// of the `xml:lang=""` or `lang=""` attribute to use in place of
     /// looking at the element and its ancestors.  (This argument is used
     /// to implement matching of `:lang()` against snapshots.)
-    fn match_element_lang(
-        &self,
-        override_lang: Option<Option<AttrValue>>,
-        value: &PseudoClassStringArg,
-    ) -> bool;
+    fn match_element_lang(&self, override_lang: Option<Option<AttrValue>>, value: &Lang) -> bool;
 
     /// Returns whether this element is the main body element of the HTML
     /// document it is on.
@@ -904,6 +900,13 @@ pub trait TElement:
         hints: &mut V,
     ) where
         V: Push<ApplicableDeclarationBlock>;
+
+    /// Returns element's local name.
+    fn local_name(&self) -> &<SelectorImpl as selectors::parser::SelectorImpl>::BorrowedLocalName;
+
+    /// Returns element's namespace.
+    fn namespace(&self)
+        -> &<SelectorImpl as selectors::parser::SelectorImpl>::BorrowedNamespaceUrl;
 }
 
 /// TNode and TElement aren't Send because we want to be careful and explicit

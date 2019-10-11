@@ -8,46 +8,42 @@
 #define mozilla_dom_serviceworkerregistrationchild_h__
 
 #include "mozilla/dom/PServiceWorkerRegistrationChild.h"
-#include "mozilla/dom/WorkerHolderToken.h"
 
 namespace mozilla {
 namespace dom {
 
+class IPCWorkerRef;
 class RemoteServiceWorkerRegistrationImpl;
 
-class ServiceWorkerRegistrationChild final : public PServiceWorkerRegistrationChild
-                                           , public WorkerHolderToken::Listener
-{
-  RefPtr<WorkerHolderToken> mWorkerHolderToken;
+class ServiceWorkerRegistrationChild final
+    : public PServiceWorkerRegistrationChild {
+  RefPtr<IPCWorkerRef> mIPCWorkerRef;
   RemoteServiceWorkerRegistrationImpl* mOwner;
   bool mTeardownStarted;
 
+  ServiceWorkerRegistrationChild();
+
   // PServiceWorkerRegistrationChild
-  void
-  ActorDestroy(ActorDestroyReason aReason) override;
+  void ActorDestroy(ActorDestroyReason aReason) override;
 
-  mozilla::ipc::IPCResult
-  RecvUpdateState(const IPCServiceWorkerRegistrationDescriptor& aDescriptor) override;
+  mozilla::ipc::IPCResult RecvUpdateState(
+      const IPCServiceWorkerRegistrationDescriptor& aDescriptor) override;
 
-  // WorkerHolderToken::Listener
-  void
-  WorkerShuttingDown() override;
+  mozilla::ipc::IPCResult RecvFireUpdateFound() override;
 
-public:
-  explicit ServiceWorkerRegistrationChild(WorkerHolderToken* aWorkerHolderToken);
+ public:
+  static ServiceWorkerRegistrationChild* Create();
+
   ~ServiceWorkerRegistrationChild() = default;
 
-  void
-  SetOwner(RemoteServiceWorkerRegistrationImpl* aOwner);
+  void SetOwner(RemoteServiceWorkerRegistrationImpl* aOwner);
 
-  void
-  RevokeOwner(RemoteServiceWorkerRegistrationImpl* aOwner);
+  void RevokeOwner(RemoteServiceWorkerRegistrationImpl* aOwner);
 
-  void
-  MaybeStartTeardown();
+  void MaybeStartTeardown();
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_serviceworkerregistrationchild_h__
+#endif  // mozilla_dom_serviceworkerregistrationchild_h__

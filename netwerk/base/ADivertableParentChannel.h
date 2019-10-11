@@ -18,15 +18,14 @@ namespace net {
 // and FTPChannelParent. Used by ChannelDiverterParent to divert
 // nsIStreamListener callbacks from the child process to a new
 // listener in the parent process.
-class ADivertableParentChannel : public nsISupports
-{
-public:
+class ADivertableParentChannel : public nsISupports {
+ public:
   // Called by ChannelDiverterParent::DivertTo(nsIStreamListener*).
   // The listener should now be used to received nsIStreamListener callbacks,
   // i.e. OnStartRequest, OnDataAvailable and OnStopRequest, as if it had been
   // passed to AsyncOpen for the channel. A reference to the listener will be
   // added and kept until OnStopRequest has completed.
-  virtual void DivertTo(nsIStreamListener *aListener) = 0;
+  virtual void DivertTo(nsIStreamListener* aListener) = 0;
 
   // Called to suspend parent channel in ChannelDiverterParent constructor.
   virtual nsresult SuspendForDiversion() = 0;
@@ -54,7 +53,7 @@ public:
   virtual nsresult CancelDiversion() = 0;
 };
 
-} // namespace net
-} // namespace mozilla
+}  // namespace net
+}  // namespace mozilla
 
 #endif

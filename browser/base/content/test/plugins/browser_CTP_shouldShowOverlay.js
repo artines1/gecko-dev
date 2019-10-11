@@ -16,7 +16,10 @@
  */
 
 var rootDir = getRootDirectory(gTestPath);
-const gTestRoot = rootDir.replace("chrome://mochitests/content/", "http://127.0.0.1:8888/");
+const gTestRoot = rootDir.replace(
+  "chrome://mochitests/content/",
+  "http://127.0.0.1:8888/"
+);
 
 var gTestBrowser = null;
 
@@ -35,10 +38,19 @@ add_task(async function() {
 
   setTestPluginEnabledState(Ci.nsIPluginTag.STATE_CLICKTOPLAY, "Test Plug-in");
 
-  let popupNotification = PopupNotifications.getNotification("click-to-play-plugins", gTestBrowser);
-  ok(!popupNotification, "Sanity check, should not have a click-to-play notification");
+  let popupNotification = PopupNotifications.getNotification(
+    "click-to-play-plugins",
+    gTestBrowser
+  );
+  ok(
+    !popupNotification,
+    "Sanity check, should not have a click-to-play notification"
+  );
 
-  await promiseTabLoadEvent(gBrowser.selectedTab, gTestRoot + "plugin_shouldShowOverlay.html");
+  await promiseTabLoadEvent(
+    gBrowser.selectedTab,
+    gTestRoot + "plugin_shouldShowOverlay.html"
+  );
 
   // Work around for delayed PluginBindingAttached
   await promiseUpdatePluginBindings(gTestBrowser);
@@ -51,12 +63,14 @@ add_task(async function() {
       let plugin = testcase.querySelector("object");
       Assert.ok(plugin, `plugin exists in ${testcase.id}`);
 
-      let overlay = doc.getAnonymousElementByAttribute(plugin, "anonid", "main");
+      let overlay = plugin.openOrClosedShadowRoot.getElementById("main");
       Assert.ok(overlay, `overlay exists in ${testcase.id}`);
 
-      let expectedVisibility = (testcase.getAttribute("shouldshow") == "true");
-      Assert.ok((overlay.getAttribute("sizing") != "blank") == expectedVisibility,
-                `The expected visibility is correct in ${testcase.id}`);
+      let expectedVisibility = testcase.getAttribute("shouldshow") == "true";
+      Assert.ok(
+        (overlay.getAttribute("sizing") != "blank") == expectedVisibility,
+        `The expected visibility is correct in ${testcase.id}`
+      );
     }
   });
 });

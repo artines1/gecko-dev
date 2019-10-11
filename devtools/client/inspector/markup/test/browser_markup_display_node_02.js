@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -33,7 +32,7 @@ const TEST_DATA = [
     selector: "#grid",
     before: {
       textContent: "grid",
-      visible: true
+      visible: true,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -42,14 +41,31 @@ const TEST_DATA = [
       `);
     },
     after: {
-      visible: false
-    }
+      visible: false,
+    },
+  },
+  {
+    desc: "Reusing the 'grid' node, updating the display to 'grid again",
+    selector: "#grid",
+    before: {
+      visible: false,
+    },
+    changeStyle: async function(testActor) {
+      await testActor.eval(`
+        let node = document.getElementById("grid");
+        node.style.display = "grid";
+      `);
+    },
+    after: {
+      textContent: "grid",
+      visible: true,
+    },
   },
   {
     desc: "Showing a 'grid' node by changing its style property",
     selector: "#block",
     before: {
-      visible: false
+      visible: false,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -59,14 +75,14 @@ const TEST_DATA = [
     },
     after: {
       textContent: "grid",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     desc: "Showing a 'flex' node by removing its hidden attribute",
     selector: "#flex",
     before: {
-      visible: false
+      visible: false,
     },
     changeStyle: async function(testActor) {
       await testActor.eval(`
@@ -75,14 +91,15 @@ const TEST_DATA = [
     },
     after: {
       textContent: "flex",
-      visible: true
-    }
-  }
+      visible: true,
+    },
+  },
 ];
 
 add_task(async function() {
-  const {inspector, testActor} = await openInspectorForURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  const { inspector, testActor } = await openInspectorForURL(
+    "data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI)
+  );
 
   for (const data of TEST_DATA) {
     info("Running test case: " + data.desc);
@@ -90,17 +107,30 @@ add_task(async function() {
   }
 });
 
-async function runTestData(inspector, testActor,
-                      {selector, before, changeStyle, after}) {
+async function runTestData(
+  inspector,
+  testActor,
+  { selector, before, changeStyle, after }
+) {
   await selectNode(selector, inspector);
   const container = await getContainerForSelector(selector, inspector);
 
-  const beforeBadge = container.elt.querySelector(".markup-badge[data-display]");
-  is(!!beforeBadge, before.visible,
-    `Display badge is visible as expected for ${selector}: ${before.visible}`);
+  const beforeBadge = container.elt.querySelector(
+    ".inspector-badge.interactive[data-display]"
+  );
+  is(
+    !!beforeBadge,
+    before.visible,
+    `Display badge is visible as expected for ${selector}: ${before.visible}`
+  );
   if (before.visible) {
-    is(beforeBadge.textContent, before.textContent,
-      `Got the correct before display type for ${selector}: ${beforeBadge.textContent}`);
+    is(
+      beforeBadge.textContent,
+      before.textContent,
+      `Got the correct before display type for ${selector}: ${
+        beforeBadge.textContent
+      }`
+    );
   }
 
   info("Listening for the display-change event");
@@ -120,12 +150,21 @@ async function runTestData(inspector, testActor,
   }
   ok(foundContainer, "Container is part of the list of changed nodes");
 
-  const afterBadge = container.elt.querySelector(".markup-badge[data-display]");
-  is(!!afterBadge, after.visible,
-    `Display badge is visible as expected for ${selector}: ${after.visible}`);
+  const afterBadge = container.elt.querySelector(
+    ".inspector-badge.interactive[data-display]"
+  );
+  is(
+    !!afterBadge,
+    after.visible,
+    `Display badge is visible as expected for ${selector}: ${after.visible}`
+  );
   if (after.visible) {
-    is(afterBadge.textContent, after.textContent,
-      `Got the correct after display type for ${selector}: ${afterBadge.textContent}`);
+    is(
+      afterBadge.textContent,
+      after.textContent,
+      `Got the correct after display type for ${selector}: ${
+        afterBadge.textContent
+      }`
+    );
   }
 }
-

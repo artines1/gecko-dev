@@ -18,12 +18,8 @@
 //!
 //! ### Custom Derive
 //! ```
-//! #[macro_use]
-//! extern crate synstructure;
-//! #[macro_use]
-//! extern crate quote;
-//!
-//! fn walkfields_derive(s: synstructure::Structure) -> quote::Tokens {
+//! # use quote::quote;
+//! fn walkfields_derive(s: synstructure::Structure) -> proc_macro2::TokenStream {
 //!     let body = s.each(|bi| quote!{
 //!         walk(#bi)
 //!     });
@@ -39,14 +35,14 @@
 //!     })
 //! }
 //! # const _IGNORE: &'static str = stringify!(
-//! decl_derive!([WalkFields] => walkfields_derive);
+//! synstructure::decl_derive!([WalkFields] => walkfields_derive);
 //! # );
 //!
 //! /*
 //!  * Test Case
 //!  */
 //! fn main() {
-//!     test_derive! {
+//!     synstructure::test_derive! {
 //!         walkfields_derive {
 //!             enum A<T> {
 //!                 B(i32, T),
@@ -91,12 +87,8 @@
 //!
 //! ### Custom Derive
 //! ```
-//! #[macro_use]
-//! extern crate synstructure;
-//! #[macro_use]
-//! extern crate quote;
-//!
-//! fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
+//! # use quote::quote;
+//! fn interest_derive(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
 //!     let body = s.fold(false, |acc, bi| quote!{
 //!         #acc || synstructure_test_traits::Interest::interesting(#bi)
 //!     });
@@ -113,14 +105,14 @@
 //!     })
 //! }
 //! # const _IGNORE: &'static str = stringify!(
-//! decl_derive!([Interest] => interest_derive);
+//! synstructure::decl_derive!([Interest] => interest_derive);
 //! # );
 //!
 //! /*
 //!  * Test Case
 //!  */
 //! fn main() {
-//!     test_derive!{
+//!     synstructure::test_derive!{
 //!         interest_derive {
 //!             enum A<T> {
 //!                 B(i32, T),
@@ -158,37 +150,47 @@
 //! which makes use of this crate, and is fairly simple.
 
 extern crate proc_macro;
-extern crate proc_macro2;
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::{
-    Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput,
-    TraitBound, WhereClause, GenericParam, Data, WherePredicate,
-    TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed,
-    PredicateType, TypePath, token, punctuated,
-};
+use syn::parse::{ParseStream, Parser};
 use syn::visit::{self, Visit};
+use syn::{
+    braced, punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields,
+    FieldsNamed, FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, Token,
+    TraitBound, Type, TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
+};
 
+use quote::{quote_spanned, format_ident, ToTokens};
 // re-export the quote! macro so we can depend on it being around in our macro's
 // implementations.
 #[doc(hidden)]
-pub use quote::*;
+pub use quote::quote;
 
 use unicode_xid::UnicodeXID;
 
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream, TokenTree};
 
 // NOTE: This module has documentation hidden, as it only exports macros (which
 // always appear in the root of the crate) and helper methods / re-exports used
 // in the implementation of those macros.
 #[doc(hidden)]
 pub mod macros;
+
+/// Changes how bounds are added
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AddBounds {
+    /// Add for fields and generics
+    Both,
+    /// Fields only
+    Fields,
+    /// Generics only
+    Generics,
+    /// None
+    None,
+    #[doc(hidden)]
+    __Nonexhaustive,
+}
 
 /// The type of binding to use when generating a pattern.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -204,8 +206,8 @@ pub enum BindStyle {
 }
 
 impl ToTokens for BindStyle {
-    fn to_tokens(&self, tokens: &mut Tokens) {
-        match *self {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
             BindStyle::Move => {}
             BindStyle::MoveMut => quote_spanned!(Span::call_site() => mut).to_tokens(tokens),
             BindStyle::Ref => quote_spanned!(Span::call_site() => ref).to_tokens(tokens),
@@ -231,9 +233,8 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     let mut tys = vec![];
     for (&seen, param) in set.iter().zip(generics.params.iter()) {
         if seen {
-            match *param {
-                GenericParam::Type(ref tparam) => tys.push(&tparam.ident),
-                _ => {}
+            if let GenericParam::Type(tparam) = param {
+                tys.push(&tparam.ident)
             }
         }
     }
@@ -244,30 +245,48 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
 fn sanitize_ident(s: &str) -> Ident {
     let mut res = String::with_capacity(s.len());
     for mut c in s.chars() {
-        if ! UnicodeXID::is_xid_continue(c) { c = '_' }
+        if !UnicodeXID::is_xid_continue(c) {
+            c = '_'
+        }
         // Deduplicate consecutive _ characters.
-        if res.ends_with('_') && c == '_' { continue }
+        if res.ends_with('_') && c == '_' {
+            continue;
+        }
         res.push(c);
     }
-    Ident::from(res)
+    Ident::new(&res, Span::call_site())
 }
 
 // Internal method to merge two Generics objects together intelligently.
-fn merge_generics(into: &mut Generics, from: &Generics) {
+fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     // Try to add the param into `into`, and merge parmas with identical names.
-    'outer: for p in &from.params {
+    for p in &from.params {
         for op in &into.params {
             match (op, p) {
-                (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
+                (GenericParam::Type(otp), GenericParam::Type(tp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if otp.ident == tp.ident {
-                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
-                (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
+                (GenericParam::Lifetime(olp), GenericParam::Lifetime(lp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if olp.lifetime == lp.lifetime {
-                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
                 // We don't support merging Const parameters, because that wouldn't make much sense.
@@ -278,10 +297,29 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
     }
 
     // Add any where clauses from the input generics object.
-    if let Some(ref from_clause) = from.where_clause {
+    if let Some(from_clause) = &from.where_clause {
         into.make_where_clause()
             .predicates
             .extend(from_clause.predicates.iter().cloned());
+    }
+
+    Ok(())
+}
+
+/// Helper method which does the same thing as rustc 1.20's
+/// `Option::get_or_insert_with`. This method is used to keep backwards
+/// compatibility with rustc 1.15.
+fn get_or_insert_with<T, F>(opt: &mut Option<T>, f: F) -> &mut T
+where
+    F: FnOnce() -> T,
+{
+    if opt.is_none() {
+        *opt = Some(f());
+    }
+
+    match opt {
+        Some(v) => v,
+        None => unreachable!(),
     }
 }
 
@@ -307,7 +345,7 @@ pub struct BindingInfo<'a> {
 }
 
 impl<'a> ToTokens for BindingInfo<'a> {
-    fn to_tokens(&self, tokens: &mut Tokens) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         self.binding.to_tokens(tokens);
     }
 }
@@ -323,12 +361,8 @@ impl<'a> BindingInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C(u32),
@@ -337,19 +371,18 @@ impl<'a> BindingInfo<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.variants()[0].bindings()[0].pat(),
+    ///     s.variants()[0].bindings()[0].pat().to_string(),
     ///     quote! {
     ///         ref __binding_0
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn pat(&self) -> Tokens {
+    pub fn pat(&self) -> TokenStream {
         let BindingInfo {
-            ref binding,
-            ref style,
+            binding,
+            style,
             ..
-        } = *self;
+        } = self;
         quote!(#style #binding)
     }
 
@@ -364,12 +397,8 @@ impl<'a> BindingInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -379,9 +408,8 @@ impl<'a> BindingInfo<'a> {
     ///
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
-    ///     &[&(syn::Ident::from("T"))]
+    ///     &[&quote::format_ident!("T")]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         fetch_generics(&self.seen_generics, self.generics)
@@ -414,7 +442,7 @@ pub struct VariantInfo<'a> {
 /// Helper function used by the VariantInfo constructor. Walks all of the types
 /// in `field` and returns a list of the type parameters from `ty_params` which
 /// are referenced in the field.
-fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
+fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
     // Helper type. Discovers all identifiers inside of the visited type,
     // and calls a callback with them.
     struct BoundTypeLocator<'a> {
@@ -427,8 +455,8 @@ fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
         // this desirable?
         fn visit_ident(&mut self, id: &Ident) {
             for (idx, i) in self.generics.params.iter().enumerate() {
-                if let GenericParam::Type(ref tparam) = *i {
-                    if tparam.ident == id {
+                if let GenericParam::Type(tparam) = i {
+                    if tparam.ident == *id {
                         self.result[idx] = true;
                     }
                 }
@@ -447,7 +475,7 @@ fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
 
     let mut btl = BoundTypeLocator {
         result: vec![false; generics.params.len()],
-        generics: generics,
+        generics,
     };
 
     btl.visit_type(&field.ty);
@@ -457,23 +485,26 @@ fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
 
 impl<'a> VariantInfo<'a> {
     fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>, generics: &'a Generics) -> Self {
-        let bindings = match *ast.fields {
+        let bindings = match ast.fields {
             Fields::Unit => vec![],
-            Fields::Unnamed(FieldsUnnamed { unnamed: ref fields, .. }) |
-            Fields::Named(FieldsNamed { named: ref fields, .. }) => {
-                fields.into_iter()
+            Fields::Unnamed(FieldsUnnamed {
+                unnamed: fields,
+                ..
+            })
+            | Fields::Named(FieldsNamed {
+                named: fields, ..
+            }) => {
+                fields
+                    .into_iter()
                     .enumerate()
                     .map(|(i, field)| {
                         BindingInfo {
                             // XXX: This has to be call_site to avoid privacy
                             // when deriving on private fields.
-                            binding: Ident::new(
-                                &format!("__binding_{}", i),
-                                Span::call_site(),
-                            ),
+                            binding: format_ident!("__binding_{}", i),
                             style: BindStyle::Ref,
-                            field: field,
-                            generics: generics,
+                            field,
+                            generics,
                             seen_generics: get_ty_params(field, generics),
                         }
                     })
@@ -482,11 +513,11 @@ impl<'a> VariantInfo<'a> {
         };
 
         VariantInfo {
-            prefix: prefix,
-            bindings: bindings,
+            prefix,
+            bindings,
             omitted_fields: false,
-            ast: ast,
-            generics: generics,
+            ast,
+            generics,
         }
     }
 
@@ -515,12 +546,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -529,48 +556,43 @@ impl<'a> VariantInfo<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.variants()[0].pat(),
+    ///     s.variants()[0].pat().to_string(),
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,)
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn pat(&self) -> Tokens {
-        let mut t = Tokens::new();
+    pub fn pat(&self) -> TokenStream {
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             prefix.to_tokens(&mut t);
             quote!(::).to_tokens(&mut t);
         }
         self.ast.ident.to_tokens(&mut t);
-        match *self.ast.fields {
+        match self.ast.fields {
             Fields::Unit => {
-                assert!(self.bindings.len() == 0);
+                assert!(self.bindings.is_empty());
             }
-            Fields::Unnamed(..) => {
-                token::Paren(Span::call_site()).surround(&mut t, |t| {
-                    for binding in &self.bindings {
-                        binding.pat().to_tokens(t);
-                        quote!(,).to_tokens(t);
-                    }
-                    if self.omitted_fields {
-                        quote!(..).to_tokens(t);
-                    }
-                })
-            }
-            Fields::Named(..) => {
-                token::Brace(Span::call_site()).surround(&mut t, |t| {
-                    for binding in &self.bindings {
-                        binding.field.ident.to_tokens(t);
-                        quote!(:).to_tokens(t);
-                        binding.pat().to_tokens(t);
-                        quote!(,).to_tokens(t);
-                    }
-                    if self.omitted_fields {
-                        quote!(..).to_tokens(t);
-                    }
-                })
-            }
+            Fields::Unnamed(..) => token::Paren(Span::call_site()).surround(&mut t, |t| {
+                for binding in &self.bindings {
+                    binding.pat().to_tokens(t);
+                    quote!(,).to_tokens(t);
+                }
+                if self.omitted_fields {
+                    quote!(..).to_tokens(t);
+                }
+            }),
+            Fields::Named(..) => token::Brace(Span::call_site()).surround(&mut t, |t| {
+                for binding in &self.bindings {
+                    binding.field.ident.to_tokens(t);
+                    quote!(:).to_tokens(t);
+                    binding.pat().to_tokens(t);
+                    quote!(,).to_tokens(t);
+                }
+                if self.omitted_fields {
+                    quote!(..).to_tokens(t);
+                }
+            }),
         }
         t
     }
@@ -582,12 +604,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(usize, usize),
     ///         C{ v: usize },
@@ -596,36 +614,35 @@ impl<'a> VariantInfo<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.variants()[0].construct(|_, i| quote!(#i)),
+    ///     s.variants()[0].construct(|_, i| quote!(#i)).to_string(),
     ///
     ///     quote!{
     ///         A::B(0usize, 1usize,)
-    ///     }
+    ///     }.to_string()
     /// );
     ///
     /// assert_eq!(
-    ///     s.variants()[1].construct(|_, i| quote!(#i)),
+    ///     s.variants()[1].construct(|_, i| quote!(#i)).to_string(),
     ///
     ///     quote!{
     ///         A::C{ v: 0usize, }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn construct<F, T>(&self, mut func: F) -> Tokens
+    pub fn construct<F, T>(&self, mut func: F) -> TokenStream
     where
         F: FnMut(&Field, usize) -> T,
         T: ToTokens,
     {
-        let mut t = Tokens::new();
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             quote!(#prefix ::).to_tokens(&mut t);
         }
         self.ast.ident.to_tokens(&mut t);
 
-        match *self.ast.fields {
+        match &self.ast.fields {
             Fields::Unit => (),
-            Fields::Unnamed(FieldsUnnamed { ref unnamed, .. }) => {
+            Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
                 token::Paren::default().surround(&mut t, |t| {
                     for (i, field) in unnamed.into_iter().enumerate() {
                         func(field, i).to_tokens(t);
@@ -633,7 +650,7 @@ impl<'a> VariantInfo<'a> {
                     }
                 })
             }
-            Fields::Named(FieldsNamed { ref named, .. }) => {
+            Fields::Named(FieldsNamed { named, .. }) => {
                 token::Brace::default().surround(&mut t, |t| {
                     for (i, field) in named.into_iter().enumerate() {
                         field.ident.to_tokens(t);
@@ -655,12 +672,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -669,24 +682,23 @@ impl<'a> VariantInfo<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.variants()[0].each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.variants()[0].each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,) => {
     ///             { println!("{:?}", __binding_0) }
     ///             { println!("{:?}", __binding_1) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn each<F, R>(&self, mut f: F) -> Tokens
+    pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&BindingInfo) -> R,
+        F: FnMut(&BindingInfo<'_>) -> R,
         R: ToTokens,
     {
         let pat = self.pat();
-        let mut body = Tokens::new();
+        let mut body = TokenStream::new();
         for binding in &self.bindings {
             token::Brace::default().surround(&mut body, |body| {
                 f(binding).to_tokens(body);
@@ -704,12 +716,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -718,19 +726,18 @@ impl<'a> VariantInfo<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.variants()[0].fold(quote!(0), |acc, bi| quote!(#acc + #bi)),
+    ///     s.variants()[0].fold(quote!(0), |acc, bi| quote!(#acc + #bi)).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,) => {
     ///             0 + __binding_0 + __binding_1
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn fold<F, I, R>(&self, init: I, mut f: F) -> Tokens
+    pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
-        F: FnMut(Tokens, &BindingInfo) -> R,
+        F: FnMut(TokenStream, &BindingInfo<'_>) -> R,
         I: ToTokens,
         R: ToTokens,
     {
@@ -753,12 +760,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -767,11 +770,11 @@ impl<'a> VariantInfo<'a> {
     /// let mut s = Structure::new(&di);
     ///
     /// s.variants_mut()[0].filter(|bi| {
-    ///     bi.ast().ident == Some("b".into())
+    ///     bi.ast().ident == Some(quote::format_ident!("b"))
     /// });
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ b: ref __binding_1, .. } => {
@@ -780,13 +783,12 @@ impl<'a> VariantInfo<'a> {
     ///         A::C{ a: ref __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter<F>(&mut self, f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> bool,
+        F: FnMut(&BindingInfo<'_>) -> bool,
     {
         let before_len = self.bindings.len();
         self.bindings.retain(f);
@@ -812,12 +814,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -828,7 +826,7 @@ impl<'a> VariantInfo<'a> {
     /// s.variants_mut()[0].bind_with(|bi| BindStyle::RefMut);
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref mut __binding_0, ref mut __binding_1,) => {
@@ -838,13 +836,12 @@ impl<'a> VariantInfo<'a> {
     ///         A::C(ref __binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> BindStyle,
+        F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for binding in &mut self.bindings {
             binding.style = f(&binding);
@@ -863,12 +860,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -879,7 +872,7 @@ impl<'a> VariantInfo<'a> {
     /// s.variants_mut()[0].binding_name(|bi, i| bi.ident.clone().unwrap());
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ a: ref a, b: ref b, } => {
@@ -889,9 +882,8 @@ impl<'a> VariantInfo<'a> {
     ///         A::C{ a: ref __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -914,12 +906,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -929,9 +917,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
-    ///     &[&(syn::Ident::from("T"))]
+    ///     &[&quote::format_ident!("T")]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         let mut flags = Vec::new();
@@ -950,30 +937,45 @@ pub struct Structure<'a> {
     omitted_variants: bool,
     ast: &'a DeriveInput,
     extra_impl: Vec<GenericParam>,
+    extra_predicates: Vec<WherePredicate>,
+    add_bounds: AddBounds,
 }
 
 impl<'a> Structure<'a> {
     /// Create a new `Structure` with the variants and fields from the passed-in
     /// `DeriveInput`.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the provided AST node represents an untagged
+    /// union.
     pub fn new(ast: &'a DeriveInput) -> Self {
-        let variants = match ast.data {
-            Data::Enum(ref data) => {
-                (&data.variants).into_iter()
-                    .map(|v| {
-                        VariantInfo::new(
-                            VariantAst {
-                                attrs: &v.attrs,
-                                ident: &v.ident,
-                                fields: &v.fields,
-                                discriminant: &v.discriminant
-                            },
-                            Some(&ast.ident),
-                            &ast.generics,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            }
-            Data::Struct(ref data) => {
+        Self::try_new(ast).expect("Unable to create synstructure::Structure")
+    }
+
+    /// Create a new `Structure` with the variants and fields from the passed-in
+    /// `DeriveInput`.
+    ///
+    /// Unlike `Structure::new`, this method does not panic if the provided AST
+    /// node represents an untagged union.
+    pub fn try_new(ast: &'a DeriveInput) -> Result<Self> {
+        let variants = match &ast.data {
+            Data::Enum(data) => (&data.variants)
+                .into_iter()
+                .map(|v| {
+                    VariantInfo::new(
+                        VariantAst {
+                            attrs: &v.attrs,
+                            ident: &v.ident,
+                            fields: &v.fields,
+                            discriminant: &v.discriminant,
+                        },
+                        Some(&ast.ident),
+                        &ast.generics,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            Data::Struct(data) => {
                 // SAFETY NOTE: Normally putting an `Expr` in static storage
                 // wouldn't be safe, because it could contain `Term` objects
                 // which use thread-local interning. However, this static always
@@ -983,31 +985,33 @@ impl<'a> Structure<'a> {
                 unsafe impl Sync for UnsafeMakeSync {}
                 static NONE_DISCRIMINANT: UnsafeMakeSync = UnsafeMakeSync(None);
 
-                vec![
-                    VariantInfo::new(
-                        VariantAst {
-                            attrs: &ast.attrs,
-                            ident: &ast.ident,
-                            fields: &data.fields,
-                            discriminant: &NONE_DISCRIMINANT.0,
-                        },
-                        None,
-                        &ast.generics,
-                    ),
-                ]
+                vec![VariantInfo::new(
+                    VariantAst {
+                        attrs: &ast.attrs,
+                        ident: &ast.ident,
+                        fields: &data.fields,
+                        discriminant: &NONE_DISCRIMINANT.0,
+                    },
+                    None,
+                    &ast.generics,
+                )]
             }
             Data::Union(_) => {
-                panic!("synstructure does not handle untagged unions \
-                    (https://github.com/mystor/synstructure/issues/6)");
+                return Err(Error::new_spanned(
+                    ast,
+                    "unexpected unsupported untagged union",
+                ));
             }
         };
 
-        Structure {
-            variants: variants,
+        Ok(Structure {
+            variants,
             omitted_variants: false,
-            ast: ast,
+            ast,
             extra_impl: vec![],
-        }
+            extra_predicates: vec![],
+            add_bounds: AddBounds::Both,
+        })
     }
 
     /// Returns a slice of the variants in this Structure.
@@ -1039,12 +1043,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1053,7 +1053,7 @@ impl<'a> Structure<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,) => {
@@ -1063,16 +1063,15 @@ impl<'a> Structure<'a> {
     ///         A::C(ref __binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn each<F, R>(&self, mut f: F) -> Tokens
+    pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&BindingInfo) -> R,
+        F: FnMut(&BindingInfo<'_>) -> R,
         R: ToTokens,
     {
-        let mut t = Tokens::new();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.each(&mut f).to_tokens(&mut t);
         }
@@ -1093,12 +1092,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1107,7 +1102,7 @@ impl<'a> Structure<'a> {
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
-    ///     s.fold(quote!(0), |acc, bi| quote!(#acc + #bi)),
+    ///     s.fold(quote!(0), |acc, bi| quote!(#acc + #bi)).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,) => {
@@ -1116,17 +1111,16 @@ impl<'a> Structure<'a> {
     ///         A::C(ref __binding_0,) => {
     ///             0 + __binding_0
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn fold<F, I, R>(&self, init: I, mut f: F) -> Tokens
+    pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
-        F: FnMut(Tokens, &BindingInfo) -> R,
+        F: FnMut(TokenStream, &BindingInfo<'_>) -> R,
         I: ToTokens,
         R: ToTokens,
     {
-        let mut t = Tokens::new();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.fold(&init, &mut f).to_tokens(&mut t);
         }
@@ -1145,12 +1139,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1162,7 +1152,7 @@ impl<'a> Structure<'a> {
     ///     s.each_variant(|v| {
     ///         let name = &v.ast().ident;
     ///         quote!(println!(stringify!(#name)))
-    ///     }),
+    ///     }).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref __binding_0, ref __binding_1,) => {
@@ -1171,16 +1161,15 @@ impl<'a> Structure<'a> {
     ///         A::C(ref __binding_0,) => {
     ///             println!(stringify!(C))
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn each_variant<F, R>(&self, mut f: F) -> Tokens
+    pub fn each_variant<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&VariantInfo) -> R,
+        F: FnMut(&VariantInfo<'_>) -> R,
         R: ToTokens,
     {
-        let mut t = Tokens::new();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             let pat = variant.pat();
             let body = f(variant);
@@ -1203,12 +1192,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1216,10 +1201,12 @@ impl<'a> Structure<'a> {
     /// };
     /// let mut s = Structure::new(&di);
     ///
-    /// s.filter(|bi| { bi.ast().ident == Some("a".into()) });
+    /// s.filter(|bi| {
+    ///     bi.ast().ident == Some(quote::format_ident!("a"))
+    /// });
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ a: ref __binding_0, .. } => {
@@ -1228,17 +1215,104 @@ impl<'a> Structure<'a> {
     ///         A::C{ a: ref __binding_0, } => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> bool,
+        F: FnMut(&BindingInfo<'_>) -> bool,
     {
         for variant in &mut self.variants {
             variant.filter(&mut f);
         }
+        self
+    }
+
+    /// Specify additional where predicate bounds which should be generated by
+    /// impl-generating functions such as `gen_impl`, `bound_impl`, and
+    /// `unsafe_bound_impl`.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// // Add an additional where predicate.
+    /// s.add_where_predicate(syn::parse_quote!(T: std::fmt::Display));
+    ///
+    /// assert_eq!(
+    ///     s.bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where T: std::fmt::Display,
+    ///                       T: krate::Trait,
+    ///                       Option<U>: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
+    /// ```
+    pub fn add_where_predicate(&mut self, pred: WherePredicate) -> &mut Self {
+        self.extra_predicates.push(pred);
+        self
+    }
+
+    /// Specify which bounds should be generated by impl-generating functions
+    /// such as `gen_impl`, `bound_impl`, and `unsafe_bound_impl`.
+    ///
+    /// The default behaviour is to generate both field and generic bounds from
+    /// type parameters.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// // Limit bounds to only generics.
+    /// s.add_bounds(AddBounds::Generics);
+    ///
+    /// assert_eq!(
+    ///     s.bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where T: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
+    /// ```
+    pub fn add_bounds(&mut self, mode: AddBounds) -> &mut Self {
+        self.add_bounds = mode;
         self
     }
 
@@ -1253,12 +1327,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1270,20 +1340,19 @@ impl<'a> Structure<'a> {
     /// s.filter_variants(|v| v.ast().ident != "B");
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::C(ref __binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
     ///         _ => {}
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter_variants<F>(&mut self, f: F) -> &mut Self
     where
-        F: FnMut(&VariantInfo) -> bool,
+        F: FnMut(&VariantInfo<'_>) -> bool,
     {
         let before_len = self.variants.len();
         self.variants.retain(f);
@@ -1309,12 +1378,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1325,7 +1390,7 @@ impl<'a> Structure<'a> {
     /// s.bind_with(|bi| BindStyle::RefMut);
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B(ref mut __binding_0, ref mut __binding_1,) => {
@@ -1335,13 +1400,12 @@ impl<'a> Structure<'a> {
     ///         A::C(ref mut __binding_0,) => {
     ///             { println!("{:?}", __binding_0) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> BindStyle,
+        F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for variant in &mut self.variants {
             variant.bind_with(&mut f);
@@ -1360,12 +1424,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1376,7 +1436,7 @@ impl<'a> Structure<'a> {
     /// s.binding_name(|bi, i| bi.ident.clone().unwrap());
     ///
     /// assert_eq!(
-    ///     s.each(|bi| quote!(println!("{:?}", #bi))),
+    ///     s.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ a: ref a, b: ref b, } => {
@@ -1386,9 +1446,8 @@ impl<'a> Structure<'a> {
     ///         A::C{ a: ref a, } => {
     ///             { println!("{:?}", a) }
     ///         }
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -1411,12 +1470,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T, i32),
     ///         C(Option<U>),
@@ -1428,9 +1483,8 @@ impl<'a> Structure<'a> {
     ///
     /// assert_eq!(
     ///     s.referenced_ty_params(),
-    ///     &[&(syn::Ident::from("T"))]
+    ///     &[&quote::format_ident!("T")]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         let mut flags = Vec::new();
@@ -1447,20 +1501,15 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #![recursion_limit="128"]
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
     ///     }
     /// };
     /// let mut s = Structure::new(&di);
-    /// let generic: syn::GenericParam = parse_quote!(X: krate::AnotherTrait);
+    /// let generic: syn::GenericParam = syn::parse_quote!(X: krate::AnotherTrait);
     ///
     /// assert_eq!(
     ///     s.add_impl_generic(generic)
@@ -1468,9 +1517,10 @@ impl<'a> Structure<'a> {
     ///         quote!{
     ///                 fn a() {}
     ///         }
-    ///     ),
+    ///     ).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
@@ -1481,9 +1531,8 @@ impl<'a> Structure<'a> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn add_impl_generic(&mut self, param: GenericParam) -> &mut Self {
         self.extra_impl.push(param);
@@ -1498,47 +1547,68 @@ impl<'a> Structure<'a> {
     /// If the method contains any macros in type position, all parameters will
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
-    pub fn add_trait_bounds(&self, bound: &TraitBound, where_clause: &mut Option<WhereClause>) {
-        let mut seen = HashSet::new();
-        let mut pred = |ty: Type| if !seen.contains(&ty) {
-            seen.insert(ty.clone());
+    pub fn add_trait_bounds(
+        &self,
+        bound: &TraitBound,
+        where_clause: &mut Option<WhereClause>,
+        mode: AddBounds,
+    ) {
+        // If we have any explicit where predicates, make sure to add them first.
+        if !self.extra_predicates.is_empty() {
+            let clause = get_or_insert_with(&mut *where_clause, || WhereClause {
+                where_token: Default::default(),
+                predicates: punctuated::Punctuated::new(),
+            });
+            clause
+                .predicates
+                .extend(self.extra_predicates.iter().cloned());
+        }
 
-            // Ensure we have a where clause, because we need to use it. We
-            // can't use `get_or_insert_with`, because it isn't supported on all
-            // rustc versions we support (this is a Rust 1.20+ feature).
-            if where_clause.is_none() {
-                *where_clause = Some(WhereClause {
+        let mut seen = HashSet::new();
+        let mut pred = |ty: Type| {
+            if !seen.contains(&ty) {
+                seen.insert(ty.clone());
+
+                // Add a predicate.
+                let clause = get_or_insert_with(&mut *where_clause, || WhereClause {
                     where_token: Default::default(),
                     predicates: punctuated::Punctuated::new(),
                 });
+                clause.predicates.push(WherePredicate::Type(PredicateType {
+                    lifetimes: None,
+                    bounded_ty: ty,
+                    colon_token: Default::default(),
+                    bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
+                        .into_iter()
+                        .collect(),
+                }));
             }
-            let clause = where_clause.as_mut().unwrap();
-
-            // Add a predicate.
-            clause.predicates.push(WherePredicate::Type(PredicateType {
-                lifetimes: None,
-                bounded_ty: ty,
-                colon_token: Default::default(),
-                bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
-                    .into_iter()
-                    .collect(),
-            }));
         };
 
         for variant in &self.variants {
             for binding in &variant.bindings {
-                for &seen in &binding.seen_generics {
-                    if seen {
-                        pred(binding.ast().ty.clone());
-                        break;
+                match mode {
+                    AddBounds::Both | AddBounds::Fields => {
+                        for &seen in &binding.seen_generics {
+                            if seen {
+                                pred(binding.ast().ty.clone());
+                                break;
+                            }
+                        }
                     }
+                    _ => {}
                 }
 
-                for param in binding.referenced_ty_params() {
-                    pred(Type::Path(TypePath {
-                        qself: None,
-                        path: (*param).clone().into(),
-                    }));
+                match mode {
+                    AddBounds::Both | AddBounds::Generics => {
+                        for param in binding.referenced_ty_params() {
+                            pred(Type::Path(TypePath {
+                                qself: None,
+                                path: (*param).clone().into(),
+                            }));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1575,12 +1645,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1593,9 +1659,10 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.bound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1605,16 +1672,15 @@ impl<'a> Structure<'a> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn bound_impl<P: ToTokens,B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
-            path.into_tokens(),
-            body.into_tokens(),
+            path.into_token_stream(),
+            body.into_token_stream(),
             quote!(),
-            true,
+            None,
         )
     }
 
@@ -1649,12 +1715,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1667,9 +1729,10 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.unsafe_bound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U>
@@ -1679,16 +1742,15 @@ impl<'a> Structure<'a> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn unsafe_bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn unsafe_bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
-            path.into_tokens(),
-            body.into_tokens(),
+            path.into_token_stream(),
+            body.into_token_stream(),
             quote!(unsafe),
-            true,
+            None,
         )
     }
 
@@ -1716,12 +1778,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1734,25 +1792,25 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.unbound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
-    pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
-            path.into_tokens(),
-            body.into_tokens(),
+            path.into_token_stream(),
+            body.into_token_stream(),
             quote!(),
-            false,
+            Some(AddBounds::None),
         )
     }
 
@@ -1780,12 +1838,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1798,54 +1852,53 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.unsafe_unbound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
     /// ```
     #[deprecated]
-    pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
-            path.into_tokens(),
-            body.into_tokens(),
+            path.into_token_stream(),
+            body.into_token_stream(),
             quote!(unsafe),
-            false,
+            Some(AddBounds::None),
         )
     }
 
     fn impl_internal(
         &self,
-        path: Tokens,
-        body: Tokens,
-        safety: Tokens,
-        add_bounds: bool,
-    ) -> Tokens {
+        path: TokenStream,
+        body: TokenStream,
+        safety: TokenStream,
+        mode: Option<AddBounds>,
+    ) -> TokenStream {
+        let mode = mode.unwrap_or(self.add_bounds);
         let name = &self.ast.ident;
         let mut gen_clone = self.ast.generics.clone();
         gen_clone.params.extend(self.extra_impl.clone().into_iter());
         let (impl_generics, _, _) = gen_clone.split_for_impl();
         let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let bound = syn::parse2::<TraitBound>(path.into())
+        let bound = syn::parse2::<TraitBound>(path)
             .expect("`path` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.cloned();
-        if add_bounds {
-            self.add_trait_bounds(&bound, &mut where_clause);
-        }
+        self.add_trait_bounds(&bound, &mut where_clause, mode);
 
         let dummy_const: Ident = sanitize_ident(&format!(
             "_DERIVE_{}_FOR_{}",
-            (&bound).into_tokens(),
-            name.into_tokens(),
+            (&bound).into_token_stream(),
+            name.into_token_stream(),
         ));
 
         // This function is smart. If a global path is passed, no extern crate
@@ -1854,14 +1907,15 @@ impl<'a> Structure<'a> {
         // scope.
         let mut extern_crate = quote!();
         if bound.path.leading_colon.is_none() {
-            if let Some(ref seg) = bound.path.segments.first() {
-                let seg = seg.value();
+            if let Some(seg) = bound.path.segments.first() {
+                let seg = &seg.ident;
                 extern_crate = quote! { extern crate #seg; };
             }
         }
 
         quote! {
             #[allow(non_upper_case_globals)]
+            #[doc(hidden)]
             const #dummy_const: () = {
                 #extern_crate
                 #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
@@ -1878,7 +1932,7 @@ impl<'a> Structure<'a> {
     ///
     /// # Syntax
     ///
-    /// This function accepts its arguments as a `Tokens`. The recommended way
+    /// This function accepts its arguments as a `TokenStream`. The recommended way
     /// to call this function is passing the result of invoking the `quote!`
     /// macro to it.
     ///
@@ -1961,22 +2015,21 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     ///
+    /// # Errors
+    ///
+    /// This function will generate a `compile_error!` if additional type
+    /// parameters added by `impl<..>` conflict with generic type parameters on
+    /// the original struct.
+    ///
     /// # Panics
     ///
-    /// This function will panic if the input `Tokens` is not well-formed, or
-    /// if additional type parameters added by `impl<..>` conflict with generic
-    /// type parameters on the original struct.
+    /// This function will panic if the input `TokenStream` is not well-formed.
     ///
     /// # Example Usage
     ///
     /// ```
-    /// # #![recursion_limit="128"]
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1992,7 +2045,7 @@ impl<'a> Structure<'a> {
     ///         gen impl krate::Trait for @Self {
     ///             fn a() {}
     ///         }
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
@@ -2005,7 +2058,7 @@ impl<'a> Structure<'a> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
     ///
     /// // NOTE: You can also add extra generics after the impl
@@ -2018,7 +2071,7 @@ impl<'a> Structure<'a> {
     ///         {
     ///             fn a() {}
     ///         }
-    ///     }),
+    ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
     ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
@@ -2032,119 +2085,145 @@ impl<'a> Structure<'a> {
     ///                 fn a() {}
     ///             }
     ///         };
-    ///     }
+    ///     }.to_string()
     /// );
-    /// # }
+    ///
+    /// // NOTE: you can generate multiple traits with a single call
+    /// assert_eq!(
+    ///     s.gen_impl(quote! {
+    ///         extern crate krate;
+    ///
+    ///         gen impl krate::Trait for @Self {
+    ///             fn a() {}
+    ///         }
+    ///
+    ///         gen impl krate::OtherTrait for @Self {
+    ///             fn b() {}
+    ///         }
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::Trait,
+    ///                 U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///
+    ///             impl<T, U> krate::OtherTrait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::OtherTrait,
+    ///                 U: krate::OtherTrait
+    ///             {
+    ///                 fn b() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
     /// ```
-    pub fn gen_impl(&self, cfg: Tokens) -> Tokens {
-        use syn::buffer::{TokenBuffer, Cursor};
-        use syn::synom::PResult;
-        use proc_macro2::TokenStream;
+    ///
+    /// Use `add_bounds` to change which bounds are generated.
+    pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
+        Parser::parse2(
+            |input: ParseStream<'_>| -> Result<TokenStream> { self.gen_impl_parse(input, true) },
+            cfg,
+        )
+        .expect("Failed to parse gen_impl")
+    }
 
-        /* Parsing Logic */
-        fn parse_gen_impl(
-            c: Cursor,
-        ) -> PResult<
-            (
-                Option<token::Unsafe>,
-                TraitBound,
-                TokenStream,
-                syn::Generics,
-            ),
-        > {
-            // `gen`
-            let (id, c) = syn!(c, Ident)?;
-            if id.as_ref() != "gen" {
-                let ((), _) = reject!(c,)?;
-                unreachable!()
+    fn gen_impl_parse(&self, input: ParseStream<'_>, wrap: bool) -> Result<TokenStream> {
+        fn parse_prefix(input: ParseStream<'_>) -> Result<Option<Token![unsafe]>> {
+            if input.parse::<Ident>()? != "gen" {
+                return Err(input.error("Expected keyword `gen`"));
             }
-
-            // `impl` or unsafe impl`
-            let (unsafe_kw, c) = option!(c, keyword!(unsafe))?;
-            let (_, c) = syn!(c, token::Impl)?;
-
-            // NOTE: After this point we assume they meant to write a gen impl,
-            // so we panic if we run into an error.
-
-            // optional `<>`
-            let (mut generics, c) = syn!(c, Generics)
-                .expect("Expected an optional `<>` with generics after `gen impl`");
-
-            // @bound
-            let (bound, c) = syn!(c, TraitBound)
-                .expect("Expected a trait bound after `gen impl`");
-
-            // `for @Self`
-            let (_, c) = keyword!(c, for)
-                .expect("Expected `for` after trait bound");
-            let (_, c) = do_parse!(c, syn!(Token![@]) >> keyword!(Self) >> (()))
-                .expect("Expected `@Self` after `for`");
-
-            // optional `where ...`
-            // XXX: We have to do this awkward if let because option!() doesn't
-            // provide enough type information to call expect().
-            let c = if let Ok((where_clause, c)) = syn!(c, WhereClause) {
-                generics.where_clause = Some(where_clause);
-                c
-            } else { c };
-
-            let ((_, body), c) = braces!(c, syn!(TokenStream))
-                .expect("Expected an impl body after `@Self`");
-
-            Ok(((unsafe_kw, bound, body, generics), c))
+            let safety = input.parse::<Option<Token![unsafe]>>()?;
+            let _ = input.parse::<Token![impl]>()?;
+            Ok(safety)
         }
 
-        let buf = TokenBuffer::new2(cfg.into());
-        let mut c = buf.begin();
         let mut before = vec![];
-
-        // Use uninitialized variables here to avoid using the "break with value"
-        // language feature, which requires Rust 1.19+.
-        let ((unsafe_kw, bound, body, mut generics), after) = {
-            let gen_impl;
-            let cursor;
-
-            loop {
-                if let Ok((gi, c2)) = parse_gen_impl(c) {
-                    gen_impl = gi;
-                    cursor = c2;
-                    break;
-                } else if let Some((tt, c2)) = c.token_tree() {
-                    c = c2;
-                    before.push(tt);
-                } else {
-                    panic!("Expected a gen impl block");
-                }
+        loop {
+            if parse_prefix(&input.fork()).is_ok() {
+                break;
             }
+            before.push(input.parse::<TokenTree>()?);
+        }
 
-            (gen_impl, cursor.token_stream())
-        };
+        // Parse the prefix "for real"
+        let safety = parse_prefix(input)?;
+
+        // optional `<>`
+        let mut generics = input.parse::<Generics>()?;
+
+        // @bound
+        let bound = input.parse::<TraitBound>()?;
+
+        // `for @Self`
+        let _ = input.parse::<Token![for]>()?;
+        let _ = input.parse::<Token![@]>()?;
+        let _ = input.parse::<Token![Self]>()?;
+
+        // optional `where ...`
+        generics.where_clause = input.parse()?;
+
+        // Body of the impl
+        let body;
+        braced!(body in input);
+        let body = body.parse::<TokenStream>()?;
+
+        // Try to parse the next entry in sequence. If this fails, we'll fall
+        // back to just parsing the entire rest of the TokenStream.
+        let maybe_next_impl = self.gen_impl_parse(&input.fork(), false);
+
+        // Eat tokens to the end. Whether or not our speculative nested parse
+        // succeeded, we're going to want to consume the rest of our input.
+        let mut after = input.parse::<TokenStream>()?;
+        if let Ok(stream) = maybe_next_impl {
+            after = stream;
+        }
+        assert!(input.is_empty(), "Should've consumed the rest of our input");
 
         /* Codegen Logic */
         let name = &self.ast.ident;
 
         // Add the generics from the original struct in, and then add any
         // additional trait bounds which we need on the type.
-        merge_generics(&mut generics, &self.ast.generics);
-        self.add_trait_bounds(&bound, &mut generics.where_clause);
+        if let Err(err) = merge_generics(&mut generics, &self.ast.generics) {
+            // Report the merge error as a `compile_error!`, as it may be
+            // triggerable by an end-user.
+            return Ok(err.to_compile_error());
+        }
+
+        self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
         let (impl_generics, _, where_clause) = generics.split_for_impl();
         let (_, ty_generics, _) = self.ast.generics.split_for_impl();
 
-        let dummy_const: Ident = sanitize_ident(&format!(
-            "_DERIVE_{}_FOR_{}",
-            (&bound).into_tokens(),
-            name.into_tokens(),
-        ));
+        let generated = quote! {
+            #(#before)*
+            #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                #body
+            }
+            #after
+        };
 
-        quote! {
-            #[allow(non_upper_case_globals)]
-            const #dummy_const: () = {
-                #(#before)*
-                #unsafe_kw impl #impl_generics #bound for #name #ty_generics #where_clause {
-                    #body
-                }
-                #after
-            };
+        if wrap {
+            let dummy_const: Ident = sanitize_ident(&format!(
+                "_DERIVE_{}_FOR_{}",
+                (&bound).into_token_stream(),
+                name.into_token_stream(),
+            ));
+
+            Ok(quote! {
+                #[allow(non_upper_case_globals)]
+                const #dummy_const: () = {
+                    #generated
+                };
+            })
+        } else {
+            Ok(generated)
         }
     }
 }
@@ -2165,9 +2244,7 @@ impl<'a> Structure<'a> {
 /// # Example
 ///
 /// ```
-/// # extern crate synstructure;
-/// # #[macro_use] extern crate quote;
-/// # fn main() {
+/// # use quote::quote;
 /// assert_eq!(
 ///     synstructure::unpretty_print(quote! {
 ///         #[allow(non_upper_case_globals)]
@@ -2200,7 +2277,6 @@ impl<'a> Structure<'a> {
 /// ;
 /// "
 /// )
-/// # }
 /// ```
 pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut res = String::new();
@@ -2209,18 +2285,76 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut s = &raw_s[..];
     let mut indent = 0;
     while let Some(i) = s.find(&['(', '{', '[', ')', '}', ']', ';'][..]) {
-        match &s[i..i + 1] {
+        match &s[i..=i] {
             "(" | "{" | "[" => indent += 1,
             ")" | "}" | "]" => indent -= 1,
             _ => {}
         }
-        res.push_str(&s[..i + 1]);
+        res.push_str(&s[..=i]);
         res.push('\n');
         for _ in 0..indent {
             res.push_str("    ");
         }
-        s = s[i + 1..].trim_left_matches(' ');
+        s = trim_start_matches(&s[i + 1..], ' ');
     }
     res.push_str(s);
     res
+}
+
+/// `trim_left_matches` has been deprecated in favor of `trim_start_matches`.
+/// This helper silences the warning, as we need to continue using
+/// `trim_left_matches` for rust 1.15 support.
+#[allow(deprecated)]
+fn trim_start_matches(s: &str, c: char) -> &str {
+    s.trim_left_matches(c)
+}
+
+/// Helper trait describing values which may be returned by macro implementation
+/// methods used by this crate's macros.
+pub trait MacroResult {
+    /// Convert this result into a `Result` for further processing / validation.
+    fn into_result(self) -> Result<TokenStream>;
+
+    /// Convert this result into a `proc_macro::TokenStream`, ready to return
+    /// from a native `proc_macro` implementation.
+    ///
+    /// If `into_result()` would return an `Err`, this method should instead
+    /// generate a `compile_error!` invocation to nicely report the error.
+    fn into_stream(self) -> proc_macro::TokenStream;
+}
+
+impl MacroResult for proc_macro::TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self.into())
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self
+    }
+}
+
+impl MacroResult for TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self)
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self.into()
+    }
+}
+
+impl<T: MacroResult> MacroResult for Result<T> {
+    fn into_result(self) -> Result<TokenStream> {
+        match self {
+            Ok(v) => v.into_result(),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        match self {
+            Ok(v) => v.into_stream(),
+            Err(err) => err.to_compile_error().into(),
+        }
+    }
 }

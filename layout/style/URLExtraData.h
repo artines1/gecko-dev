@@ -12,38 +12,44 @@
 #include "mozilla/dom/URL.h"
 #include "mozilla/Move.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/UserAgentStyleSheetID.h"
+#include "ReferrerInfo.h"
 
 #include "nsCOMPtr.h"
 #include "nsIPrincipal.h"
 #include "nsIURI.h"
+#include "nsIReferrerInfo.h"
+
+class nsLayoutStylesheetCache;
 
 namespace mozilla {
 
-struct URLExtraData
-{
+struct URLExtraData {
   URLExtraData(already_AddRefed<nsIURI> aBaseURI,
-               already_AddRefed<nsIURI> aReferrer,
+               already_AddRefed<nsIReferrerInfo> aReferrerInfo,
                already_AddRefed<nsIPrincipal> aPrincipal)
-    : mBaseURI(std::move(aBaseURI))
-    , mReferrer(std::move(aReferrer))
-    , mPrincipal(std::move(aPrincipal))
-      // When we hold the URI data of a style sheet, mReferrer is always
-      // equal to the sheet URI.
-    , mIsChrome(mReferrer ? dom::IsChromeURI(mReferrer) : false)
-  {
+      : mBaseURI(std::move(aBaseURI)),
+        mReferrerInfo(std::move(aReferrerInfo)),
+        mPrincipal(std::move(aPrincipal)) {
     MOZ_ASSERT(mBaseURI);
+    MOZ_ASSERT(mPrincipal);
+    MOZ_ASSERT(mReferrerInfo);
+    // When we hold the URI data of a style sheet, referrer is always
+    // equal to the sheet URI.
+    nsCOMPtr<nsIURI> referrer = mReferrerInfo->GetOriginalReferrer();
+    mIsChrome = referrer ? dom::IsChromeURI(referrer) : false;
   }
 
-  URLExtraData(nsIURI* aBaseURI, nsIURI* aReferrer, nsIPrincipal* aPrincipal)
-    : URLExtraData(do_AddRef(aBaseURI),
-                   do_AddRef(aReferrer),
-                   do_AddRef(aPrincipal)) {}
+  URLExtraData(nsIURI* aBaseURI, nsIReferrerInfo* aReferrerInfo,
+               nsIPrincipal* aPrincipal)
+      : URLExtraData(do_AddRef(aBaseURI), do_AddRef(aReferrerInfo),
+                     do_AddRef(aPrincipal)) {}
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(URLExtraData)
 
   nsIURI* BaseURI() const { return mBaseURI; }
-  nsIURI* GetReferrer() const { return mReferrer; }
-  nsIPrincipal* GetPrincipal() const { return mPrincipal; }
+  nsIReferrerInfo* ReferrerInfo() const { return mReferrerInfo; }
+  nsIPrincipal* Principal() const { return mPrincipal; }
 
   static URLExtraData* Dummy() {
     MOZ_ASSERT(sDummy);
@@ -52,19 +58,24 @@ struct URLExtraData
   static void InitDummy();
   static void ReleaseDummy();
 
-private:
+  // URLExtraData objects that shared style sheets use a sheet ID index to
+  // refer to.
+  static StaticRefPtr<URLExtraData>
+      sShared[size_t(UserAgentStyleSheetID::Count)];
+
+ private:
   ~URLExtraData();
 
   nsCOMPtr<nsIURI> mBaseURI;
-  nsCOMPtr<nsIURI> mReferrer;
+  nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
   nsCOMPtr<nsIPrincipal> mPrincipal;
 
-  // True if mReferrer is a chrome:// URI.
-  const bool mIsChrome;
+  // True if referrer is a chrome:// URI.
+  bool mIsChrome;
 
   static StaticRefPtr<URLExtraData> sDummy;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_URLExtraData_h
+#endif  // mozilla_URLExtraData_h

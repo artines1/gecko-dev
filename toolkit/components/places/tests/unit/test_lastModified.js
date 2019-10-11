@@ -5,24 +5,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 function assert_date_eq(a, b) {
-  if (typeof(a) != "number") {
+  if (typeof a != "number") {
     a = PlacesUtils.toPRTime(a);
   }
-  if (typeof(b) != "number") {
+  if (typeof b != "number") {
     b = PlacesUtils.toPRTime(b);
   }
   Assert.equal(a, b, "The dates should match");
 }
 
- /**
-  * Test that inserting a new bookmark will set lastModified to the same
-  * values as dateAdded.
-  */
+/**
+ * Test that inserting a new bookmark will set lastModified to the same
+ * values as dateAdded.
+ */
 add_task(async function test_bookmarkLastModified() {
   let bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     url: "http://www.mozilla.org/",
-    title: "itemTitle"
+    title: "itemTitle",
   });
 
   let guid = bookmark.guid;
@@ -39,18 +39,20 @@ add_task(async function test_bookmarkLastModified() {
   // we manually increase the time value.  See bug 500640 for details.
   await PlacesUtils.bookmarks.update({
     guid,
-    lastModified: PlacesUtils.toDate(dateAdded + 1000)
+    lastModified: PlacesUtils.toDate(dateAdded + 1000),
   });
 
   bookmark = await PlacesUtils.bookmarks.fetch(guid);
 
   assert_date_eq(bookmark.lastModified, dateAdded + 1000);
-  Assert.ok(bookmark.dateAdded < bookmark.lastModified,
-    "Date added should be earlier than last modified.");
+  Assert.ok(
+    bookmark.dateAdded < bookmark.lastModified,
+    "Date added should be earlier than last modified."
+  );
 
   await PlacesUtils.bookmarks.update({
     guid,
-    dateAdded: PlacesUtils.toDate(dateAdded + 2000)
+    dateAdded: PlacesUtils.toDate(dateAdded + 2000),
   });
 
   bookmark = await PlacesUtils.bookmarks.fetch(guid);
@@ -64,7 +66,7 @@ add_task(async function test_bookmarkLastModified() {
 
   await PlacesUtils.bookmarks.update({
     guid,
-    dateAdded: PlacesUtils.toDate(dateAdded - 10000)
+    dateAdded: PlacesUtils.toDate(dateAdded - 10000),
   });
 
   bookmark = await PlacesUtils.bookmarks.fetch(guid);

@@ -2,128 +2,139 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, unicode_literals
-
 import json
-import os
-from collections import defaultdict
 
 import mozunit
 import mozpack.path as mozpath
 import pytest
 
-from mozlint import ResultContainer
+from mozlint.result import Issue, ResultSummary
 from mozlint import formatters
 
 NORMALISED_PATHS = {
-    'abc': os.path.normpath('a/b/c.txt'),
-    'def': os.path.normpath('d/e/f.txt'),
-    'cwd': mozpath.normpath(os.getcwd()),
+    "abc": mozpath.normpath("a/b/c.txt"),
+    "def": mozpath.normpath("d/e/f.txt"),
+    "root": mozpath.abspath("/fake/root"),
 }
 
 EXPECTED = {
-    'compact': {
-        'kwargs': {},
-        'format': """
-a/b/c.txt: line 1, Error - oh no foo (foo)
-a/b/c.txt: line 4, Error - oh no baz (baz)
-d/e/f.txt: line 4, col 2, Warning - oh no bar (bar-not-allowed)
+    "compact": {
+        "kwargs": {},
+        "format": """
+/fake/root/a/b/c.txt: line 1, Error - oh no foo (foo)
+/fake/root/a/b/c.txt: line 4, col 10, Error - oh no baz (baz)
+/fake/root/a/b/c.txt: line 5, Error - oh no foo-diff (foo-diff)
+/fake/root/d/e/f.txt: line 4, col 2, Warning - oh no bar (bar-not-allowed)
 
-3 problems
+4 problems
 """.strip(),
     },
-    'stylish': {
-        'kwargs': {
-            'disable_colors': True,
-        },
-        'format': """
-a/b/c.txt
-  1  error  oh no foo  (foo)
-  4  error  oh no baz  (baz)
+    "stylish": {
+        "kwargs": {"disable_colors": True},
+        "format": """
+/fake/root/a/b/c.txt
+  1     error  oh no foo       (foo)
+  4:10  error  oh no baz       (baz)
+  5     error  oh no foo-diff  (foo-diff)
+  diff 1
+  - hello
+  + hello2
 
-d/e/f.txt
+/fake/root/d/e/f.txt
   4:2  warning  oh no bar  bar-not-allowed (bar)
 
-\u2716 3 problems (2 errors, 1 warning)
+\u2716 4 problems (3 errors, 1 warning)
 """.strip(),
     },
-    'treeherder': {
-        'kwargs': {},
-        'format': """
-TEST-UNEXPECTED-ERROR | a/b/c.txt:1 | oh no foo (foo)
-TEST-UNEXPECTED-ERROR | a/b/c.txt:4 | oh no baz (baz)
-TEST-UNEXPECTED-WARNING | d/e/f.txt:4:2 | oh no bar (bar-not-allowed)
+    "treeherder": {
+        "kwargs": {},
+        "format": """
+TEST-UNEXPECTED-ERROR | /fake/root/a/b/c.txt:1 | oh no foo (foo)
+TEST-UNEXPECTED-ERROR | /fake/root/a/b/c.txt:4:10 | oh no baz (baz)
+TEST-UNEXPECTED-ERROR | /fake/root/a/b/c.txt:5 | oh no foo-diff (foo-diff)
+TEST-UNEXPECTED-WARNING | /fake/root/d/e/f.txt:4:2 | oh no bar (bar-not-allowed)
 """.strip(),
     },
-    'unix': {
-        'kwargs': {},
-        'format': """
+    "unix": {
+        "kwargs": {},
+        "format": """
 {abc}:1: foo error: oh no foo
-{abc}:4: baz error: oh no baz
+{abc}:4:10: baz error: oh no baz
+{abc}:5: foo-diff error: oh no foo-diff
 {def}:4:2: bar-not-allowed warning: oh no bar
-""".format(**NORMALISED_PATHS).strip(),
+""".format(
+            **NORMALISED_PATHS
+        ).strip(),
     },
-    'summary': {
-        'kwargs': {},
-        'format': """
-{cwd}/a: 2
-{cwd}/d: 1
-""".format(**NORMALISED_PATHS).strip(),
+    "summary": {
+        "kwargs": {},
+        "format": """
+{root}/a: 3 errors
+{root}/d: 0 errors, 1 warning
+""".format(
+            **NORMALISED_PATHS
+        ).strip(),
     },
 }
 
 
 @pytest.fixture
-def results(scope='module'):
+def result(scope="module"):
+    result = ResultSummary('/fake/root')
     containers = (
-        ResultContainer(
-            linter='foo',
-            path='a/b/c.txt',
-            message="oh no foo",
-            lineno=1,
-        ),
-        ResultContainer(
-            linter='bar',
-            path='d/e/f.txt',
+        Issue(linter="foo", path="a/b/c.txt", message="oh no foo", lineno=1),
+        Issue(
+            linter="bar",
+            path="d/e/f.txt",
             message="oh no bar",
             hint="try baz instead",
-            level='warning',
-            lineno=4,
-            column=2,
+            level="warning",
+            lineno="4",
+            column="2",
             rule="bar-not-allowed",
         ),
-        ResultContainer(
-            linter='baz',
-            path='a/b/c.txt',
+        Issue(
+            linter="baz",
+            path="a/b/c.txt",
             message="oh no baz",
             lineno=4,
+            column=10,
             source="if baz:",
         ),
+        Issue(
+            linter="foo-diff",
+            path="a/b/c.txt",
+            message="oh no foo-diff",
+            lineno=5,
+            source="if baz:",
+            diff="diff 1\n- hello\n+ hello2",
+        ),
     )
-    results = defaultdict(list)
+    result = ResultSummary('/fake/root')
     for c in containers:
-        results[c.path].append(c)
-    return results
+        result.issues[c.path].append(c)
+    return result
 
 
 @pytest.mark.parametrize("name", EXPECTED.keys())
-def test_formatters(results, name):
+def test_formatters(result, name):
     opts = EXPECTED[name]
-    fmt = formatters.get(name, **opts['kwargs'])
-    assert fmt(results) == opts['format']
+    fmt = formatters.get(name, **opts["kwargs"])
+    # encoding to str bypasses a UnicodeEncodeError in pytest
+    assert fmt(result).encode("utf-8") == opts["format"].encode("utf-8")
 
 
-def test_json_formatter(results):
-    fmt = formatters.get('json')
-    formatted = json.loads(fmt(results))
+def test_json_formatter(result):
+    fmt = formatters.get("json")
+    formatted = json.loads(fmt(result))
 
-    assert set(formatted.keys()) == set(results.keys())
+    assert set(formatted.keys()) == set(result.issues.keys())
 
-    slots = ResultContainer.__slots__
+    slots = Issue.__slots__
     for errors in formatted.values():
         for err in errors:
             assert all(s in err for s in slots)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     mozunit.main()

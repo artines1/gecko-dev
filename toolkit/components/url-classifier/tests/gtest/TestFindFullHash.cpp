@@ -1,75 +1,54 @@
-#include "safebrowsing.pb.h"
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #include "gtest/gtest.h"
-#include "nsUrlClassifierUtils.h"
 #include "mozilla/Base64.h"
+#include "nsUrlClassifierUtils.h"
+#include "safebrowsing.pb.h"
 
-using namespace mozilla;
-using namespace mozilla::safebrowsing;
-
-namespace {
-
-// |Base64EncodedStringArray| and |MakeBase64EncodedStringArray|
-// works together to make us able to do things "literally" and easily.
-
-// Given a nsCString array, construct an object which can be implicitly
-// casted to |const char**|, where all owning c-style strings have been
-// base64 encoded. The memory life cycle of what the "cast operator"
-// returns is just as the object itself.
-class Base64EncodedStringArray
-{
-public:
-  Base64EncodedStringArray(nsCString aArray[], size_t N);
-  operator const char** () const { return (const char**)&mArray[0]; }
-
-private:
-  // Since we can't guarantee the layout of nsCString (can we?),
-  // an additional nsTArray<nsCString> is required to manage the
-  // allocated string.
-  nsTArray<const char*> mArray;
-  nsTArray<nsCString> mStringStorage;
-};
-
-// Simply used to infer the fixed-array size automatically.
-template<size_t N>
-Base64EncodedStringArray
-MakeBase64EncodedStringArray(nsCString (&aArray)[N])
-{
-  return Base64EncodedStringArray(aArray, N);
+template <size_t N>
+static void ToBase64EncodedStringArray(nsCString (&aInput)[N],
+                                       nsTArray<nsCString>& aEncodedArray) {
+  for (size_t i = 0; i < N; i++) {
+    nsCString encoded;
+    nsresult rv = mozilla::Base64Encode(aInput[i], encoded);
+    NS_ENSURE_SUCCESS_VOID(rv);
+    aEncodedArray.AppendElement(encoded);
+  }
 }
-
-} // end of unnamed namespace.
-
 
 TEST(UrlClassifierFindFullHash, Request)
 {
-  nsCOMPtr<nsIUrlClassifierUtils> urlUtil =
-    do_GetService("@mozilla.org/url-classifier/utils;1");
+  nsUrlClassifierUtils* urlUtil = nsUrlClassifierUtils::GetInstance();
 
-  const char* listNames[] = { "test-phish-proto", "test-unwanted-proto" };
+  nsTArray<nsCString> listNames;
+  listNames.AppendElement("moztest-phish-proto");
+  listNames.AppendElement("moztest-unwanted-proto");
 
-  nsCString listStates[] = { nsCString("sta\x00te1", 7),
-                             nsCString("sta\x00te2", 7) };
+  nsCString listStates[] = {nsCString("sta\x00te1", 7),
+                            nsCString("sta\x00te2", 7)};
+  nsTArray<nsCString> listStateArray;
+  ToBase64EncodedStringArray(listStates, listStateArray);
 
-  nsCString prefixes[] = { nsCString("\x00\x00\x00\x01", 4),
-                           nsCString("\x00\x00\x00\x00\x01", 5),
-                           nsCString("\x00\xFF\x00\x01", 4),
-                           nsCString("\x00\xFF\x00\x01\x11\x23\xAA\xBC", 8),
-                           nsCString("\x00\x00\x00\x01\x00\x01\x98", 7) };
+  nsCString prefixes[] = {nsCString("\x00\x00\x00\x01", 4),
+                          nsCString("\x00\x00\x00\x00\x01", 5),
+                          nsCString("\x00\xFF\x00\x01", 4),
+                          nsCString("\x00\xFF\x00\x01\x11\x23\xAA\xBC", 8),
+                          nsCString("\x00\x00\x00\x01\x00\x01\x98", 7)};
+  nsTArray<nsCString> prefixArray;
+  ToBase64EncodedStringArray(prefixes, prefixArray);
 
   nsCString requestBase64;
   nsresult rv;
-  rv = urlUtil->MakeFindFullHashRequestV4(listNames,
-                                          MakeBase64EncodedStringArray(listStates),
-                                          MakeBase64EncodedStringArray(prefixes),
-                                          ArrayLength(listNames),
-                                          ArrayLength(prefixes),
-                                          requestBase64);
+  rv = urlUtil->MakeFindFullHashRequestV4(listNames, listStateArray,
+                                          prefixArray, requestBase64);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
 
   // Base64 URL decode first.
   FallibleTArray<uint8_t> requestBinary;
-  rv = Base64URLDecode(requestBase64,
-                       Base64URLDecodePaddingPolicy::Require,
+  rv = Base64URLDecode(requestBase64, Base64URLDecodePaddingPolicy::Require,
                        requestBinary);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
 
@@ -79,7 +58,7 @@ TEST(UrlClassifierFindFullHash, Request)
 
   // Compare client states.
   ASSERT_EQ(r.client_states_size(), (int)ArrayLength(listStates));
-  for(int i = 0; i < r.client_states_size(); i++) {
+  for (int i = 0; i < r.client_states_size(); i++) {
     auto s = r.client_states(i);
     ASSERT_TRUE(listStates[i].Equals(nsCString(s.c_str(), s.size())));
   }
@@ -90,8 +69,8 @@ TEST(UrlClassifierFindFullHash, Request)
   ASSERT_EQ(threatInfo.threat_types_size(), (int)ArrayLength(listStates));
   for (int i = 0; i < threatInfo.threat_types_size(); i++) {
     uint32_t expectedThreatType;
-    rv = urlUtil->ConvertListNameToThreatType(nsCString(listNames[i]),
-                                              &expectedThreatType);
+    rv =
+        urlUtil->ConvertListNameToThreatType(listNames[i], &expectedThreatType);
     ASSERT_TRUE(NS_SUCCEEDED(rv));
     ASSERT_EQ(threatInfo.threat_types(i), expectedThreatType);
   }
@@ -114,72 +93,68 @@ struct MyDuration {
   uint32_t mSecs;
   uint32_t mNanos;
 };
-void PopulateDuration(Duration& aDest, const MyDuration& aSrc)
-{
+void PopulateDuration(Duration& aDest, const MyDuration& aSrc) {
   aDest.set_seconds(aSrc.mSecs);
   aDest.set_nanos(aSrc.mNanos);
 }
 
 // The expected match data.
-static MyDuration EXPECTED_MIN_WAIT_DURATION = { 12, 10 };
-static MyDuration EXPECTED_NEG_CACHE_DURATION = { 120, 9 };
+static MyDuration EXPECTED_MIN_WAIT_DURATION = {12, 10};
+static MyDuration EXPECTED_NEG_CACHE_DURATION = {120, 9};
 static const struct ExpectedMatch {
   nsCString mCompleteHash;
   ThreatType mThreatType;
   MyDuration mPerHashCacheDuration;
 } EXPECTED_MATCH[] = {
-  { nsCString("01234567890123456789012345678901"), SOCIAL_ENGINEERING_PUBLIC, { 8, 500 } },
-  { nsCString("12345678901234567890123456789012"), SOCIAL_ENGINEERING_PUBLIC, { 7, 100} },
-  { nsCString("23456789012345678901234567890123"), SOCIAL_ENGINEERING_PUBLIC, { 1, 20 } },
+    {nsCString("01234567890123456789012345678901"),
+     SOCIAL_ENGINEERING_PUBLIC,
+     {8, 500}},
+    {nsCString("12345678901234567890123456789012"),
+     SOCIAL_ENGINEERING_PUBLIC,
+     {7, 100}},
+    {nsCString("23456789012345678901234567890123"),
+     SOCIAL_ENGINEERING_PUBLIC,
+     {1, 20}},
 };
 
-class MyParseCallback final :
-  public nsIUrlClassifierParseFindFullHashCallback {
-public:
+class MyParseCallback final : public nsIUrlClassifierParseFindFullHashCallback {
+ public:
   NS_DECL_ISUPPORTS
 
   explicit MyParseCallback(uint32_t& aCallbackCount)
-    : mCallbackCount(aCallbackCount)
-  {
-  }
+      : mCallbackCount(aCallbackCount) {}
 
   NS_IMETHOD
   OnCompleteHashFound(const nsACString& aCompleteHash,
                       const nsACString& aTableNames,
-                      uint32_t aPerHashCacheDuration) override
-  {
-    Verify(aCompleteHash,
-           aTableNames,
-           aPerHashCacheDuration);
+                      uint32_t aPerHashCacheDuration) override {
+    Verify(aCompleteHash, aTableNames, aPerHashCacheDuration);
 
     return NS_OK;
   }
 
   NS_IMETHOD
   OnResponseParsed(uint32_t aMinWaitDuration,
-                   uint32_t aNegCacheDuration) override
-  {
+                   uint32_t aNegCacheDuration) override {
     VerifyDuration(aMinWaitDuration / 1000, EXPECTED_MIN_WAIT_DURATION);
     VerifyDuration(aNegCacheDuration, EXPECTED_NEG_CACHE_DURATION);
 
     return NS_OK;
   }
 
-private:
-  void
-  Verify(const nsACString& aCompleteHash,
-         const nsACString& aTableNames,
-         uint32_t aPerHashCacheDuration)
-  {
+ private:
+  void Verify(const nsACString& aCompleteHash, const nsACString& aTableNames,
+              uint32_t aPerHashCacheDuration) {
     auto expected = EXPECTED_MATCH[mCallbackCount];
 
     ASSERT_TRUE(aCompleteHash.Equals(expected.mCompleteHash));
 
     // Verify aTableNames
-    nsCOMPtr<nsIUrlClassifierUtils> urlUtil =
-      do_GetService("@mozilla.org/url-classifier/utils;1");
+    nsUrlClassifierUtils* urlUtil = nsUrlClassifierUtils::GetInstance();
+
     nsCString tableNames;
-    nsresult rv = urlUtil->ConvertThreatTypeToListNames(expected.mThreatType, tableNames);
+    nsresult rv =
+        urlUtil->ConvertThreatTypeToListNames(expected.mThreatType, tableNames);
     ASSERT_TRUE(NS_SUCCEEDED(rv));
     ASSERT_TRUE(aTableNames.Equals(tableNames));
 
@@ -188,9 +163,7 @@ private:
     mCallbackCount++;
   }
 
-  void
-  VerifyDuration(uint32_t aToVerify, const MyDuration& aExpected)
-  {
+  void VerifyDuration(uint32_t aToVerify, const MyDuration& aExpected) {
     ASSERT_TRUE(aToVerify == aExpected.mSecs);
   }
 
@@ -201,7 +174,7 @@ private:
 
 NS_IMPL_ISUPPORTS(MyParseCallback, nsIUrlClassifierParseFindFullHashCallback)
 
-} // end of unnamed namespace.
+}  // end of unnamed namespace.
 
 TEST(UrlClassifierFindFullHash, ParseRequest)
 {
@@ -228,32 +201,13 @@ TEST(UrlClassifierFindFullHash, ParseRequest)
   r.SerializeToString(&s);
 
   uint32_t callbackCount = 0;
-  nsCOMPtr<nsIUrlClassifierParseFindFullHashCallback> callback
-    = new MyParseCallback(callbackCount);
+  nsCOMPtr<nsIUrlClassifierParseFindFullHashCallback> callback =
+      new MyParseCallback(callbackCount);
 
-  nsCOMPtr<nsIUrlClassifierUtils> urlUtil =
-    do_GetService("@mozilla.org/url-classifier/utils;1");
-  nsresult rv = urlUtil->ParseFindFullHashResponseV4(nsCString(s.c_str(), s.size()),
-                                                     callback);
+  nsUrlClassifierUtils* urlUtil = nsUrlClassifierUtils::GetInstance();
+  nsresult rv = urlUtil->ParseFindFullHashResponseV4(
+      nsCString(s.c_str(), s.size()), callback);
   NS_ENSURE_SUCCESS_VOID(rv);
 
   ASSERT_EQ(callbackCount, ArrayLength(EXPECTED_MATCH));
-}
-
-
-/////////////////////////////////////////////////////////////
-namespace {
-
-Base64EncodedStringArray::Base64EncodedStringArray(nsCString aArray[],
-                                                   size_t N)
-{
-  for (size_t i = 0; i < N; i++) {
-    nsCString encoded;
-    nsresult rv = Base64Encode(aArray[i], encoded);
-    NS_ENSURE_SUCCESS_VOID(rv);
-    mStringStorage.AppendElement(encoded);
-    mArray.AppendElement(encoded.get());
-  }
-}
-
 }

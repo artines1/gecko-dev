@@ -5,25 +5,12 @@
  */
 
 interface nsISupports;
-interface IID;
 
-[NoInterfaceObject,
- // Need Exposed here, because this is a mixin onto things like Event
- // that are exposed in workers.
- Exposed=(Window,Worker,System)]
-interface LegacyQueryInterface {
+[Exposed=Window]
+interface mixin LegacyQueryInterface {
   // Legacy QueryInterface, only exposed to chrome code on the main thread.
-  [Exposed=(Window,System), ChromeOnly]
-  nsISupports QueryInterface(IID iid);
+  [Exposed=Window, ChromeOnly]
+  nsISupports QueryInterface(any iid);
 };
 
-DOMParser implements LegacyQueryInterface;
-Document implements LegacyQueryInterface;
-DocumentFragment implements LegacyQueryInterface;
-Element implements LegacyQueryInterface;
-Event implements LegacyQueryInterface;
-Selection implements LegacyQueryInterface;
-TreeColumns implements LegacyQueryInterface;
-TreeContentView implements LegacyQueryInterface;
-Window implements LegacyQueryInterface;
-XMLHttpRequest implements LegacyQueryInterface;
+Element includes LegacyQueryInterface;

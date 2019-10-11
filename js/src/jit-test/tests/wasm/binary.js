@@ -47,9 +47,9 @@ assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(codeId))), CompileError,
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(dataId))), CompileError, sectionError("data"));
 
 // unknown sections are unconditionally rejected
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42))), CompileError, unknownSection);
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42, 0))), CompileError, unknownSection);
-assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(42, 1, 0))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37, 0))), CompileError, unknownSection);
+assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(37, 1, 0))), CompileError, unknownSection);
 
 // user sections have special rules
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(0))), CompileError, sectionError("custom"));  // no length
@@ -115,20 +115,7 @@ assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection
 wasmEval(moduleWithSections([v2vSigSection, declSection([0,0,0]), tableSection(4), elemSection([{offset:0, elems:[0,1,0,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
 wasmEval(moduleWithSections([sigSection([v2vSig,i2vSig]), declSection([0,0,1]), tableSection(3), elemSection([{offset:0,elems:[0,1,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
 
-function invalidTableSection2() {
-    var body = [];
-    body.push(...varU32(2));           // number of tables
-    body.push(...varU32(AnyFuncCode));
-    body.push(...varU32(0x0));
-    body.push(...varU32(0));
-    body.push(...varU32(AnyFuncCode));
-    body.push(...varU32(0x0));
-    body.push(...varU32(0));
-    return { name: tableId, body };
-}
-
 wasmEval(moduleWithSections([tableSection0()]));
-assertErrorMessage(() => wasmEval(moduleWithSections([invalidTableSection2()])), CompileError, /number of tables must be at most one/);
 
 wasmEval(moduleWithSections([memorySection(0)]));
 
@@ -245,11 +232,11 @@ assertErrorMessage(() => wasmEval(moduleWithSections([
 
 // Diagnose nonstandard block signature types.
 for (var bad of [0xff, 0, 1, 0x3f])
-    assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([v2vSig]), declSection([0]), bodySection([funcBody({locals:[], body:[BlockCode, bad, EndCode]})])])), CompileError, /invalid inline block type/);
+    assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([v2vSig]), declSection([0]), bodySection([funcBody({locals:[], body:[BlockCode, bad, EndCode]})])])), CompileError, /invalid .*block type/);
 
 // Ensure all invalid opcodes rejected
-for (let i = FirstInvalidOpcode; i <= LastInvalidOpcode; i++) {
-    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[i]})])]);
+for (let op of undefinedOpcodes) {
+    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[op]})])]);
     assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
     assertEq(WebAssembly.validate(binary), false);
 }
@@ -257,7 +244,10 @@ for (let i = FirstInvalidOpcode; i <= LastInvalidOpcode; i++) {
 // Prefixed opcodes
 
 function checkIllegalPrefixed(prefix, opcode) {
-    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix, opcode]})])]);
+    let binary = moduleWithSections([v2vSigSection,
+                                     declSection([0]),
+                                     bodySection([funcBody({locals:[],
+                                                            body:[prefix, ...varU32(opcode)]})])]);
     assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
     assertEq(WebAssembly.validate(binary), false);
 }
@@ -266,26 +256,29 @@ function checkIllegalPrefixed(prefix, opcode) {
 //
 // June 2017 threads draft:
 //
-//  0x00 .. 0x02 are wait/wake ops
+//  0x00 .. 0x03 are wait/wake/fence ops
 //  0x10 .. 0x4f are primitive atomic ops
 
-for (let i = 3; i < 0x10; i++)
+for (let i = 0x4; i < 0x10; i++)
     checkIllegalPrefixed(ThreadPrefix, i);
 
 for (let i = 0x4f; i < 0x100; i++)
     checkIllegalPrefixed(ThreadPrefix, i);
 
-// Illegal Numeric opcodes
-//
-// Feb 2018 numeric draft:
-//
-//  0x00 .. 0x07 are saturating truncation ops.  0x40 and 0x41 are
-//  from the bulk memory proposal.  0x40/0x41 are unofficial values,
-//  until such time as there is an official assignment for memory.copy/fill
-//  subopcodes.
+// Illegal Misc opcodes
+
+var reservedMisc =
+    { // Saturating conversions (standardized)
+      0x00: true, 0x01: true, 0x02: true, 0x03: true, 0x04: true, 0x05: true, 0x06: true, 0x07: true,
+      // Bulk memory (proposed)
+      0x08: true, 0x09: true, 0x0a: true, 0x0b: true, 0x0c: true, 0x0d: true, 0x0e: true,
+      // Table (proposed)
+      0x0f: true, 0x10: true, 0x11: true, 0x12: true,
+      // Structure operations (experimental, internal)
+      0x50: true, 0x51: true, 0x52: true, 0x53: true };
 
 for (let i = 0; i < 256; i++) {
-    if (i <= 0x07 || i == 0x40 || i == 0x41)
+    if (reservedMisc.hasOwnProperty(i))
         continue;
     checkIllegalPrefixed(MiscPrefix, i);
 }
@@ -299,9 +292,10 @@ for (let i = 0; i < 256; i++)
     checkIllegalPrefixed(MozPrefix, i);
 
 for (let prefix of [ThreadPrefix, MiscPrefix, SimdPrefix, MozPrefix]) {
-    // Prefix without a subsequent opcode
-    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix]})])]);
-    assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
+    // Prefix without a subsequent opcode.  We must ask funcBody not to add an
+    // End code after the prefix, so the body really is just the prefix byte.
+    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix]}, /*withEndCode=*/false)])]);
+    assertErrorMessage(() => wasmEval(binary), CompileError, /unable to read opcode/);
     assertEq(WebAssembly.validate(binary), false);
 }
 

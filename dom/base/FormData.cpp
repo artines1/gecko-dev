@@ -16,17 +16,23 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-FormData::FormData(nsISupports* aOwner)
-  : HTMLFormSubmission(nullptr, EmptyString(), UTF_8_ENCODING, nullptr)
-  , mOwner(aOwner)
-{
+FormData::FormData(nsISupports* aOwner, NotNull<const Encoding*> aEncoding,
+                   Element* aOriginatingElement)
+    : HTMLFormSubmission(nullptr, EmptyString(), aEncoding,
+                         aOriginatingElement),
+      mOwner(aOwner) {}
+
+FormData::FormData(const FormData& aFormData)
+    : HTMLFormSubmission(aFormData.mActionURL, aFormData.mTarget,
+                         aFormData.mEncoding, aFormData.mOriginatingElement) {
+  mOwner = aFormData.mOwner;
+  mFormData = aFormData.mFormData;
 }
 
 namespace {
 
-already_AddRefed<File>
-GetOrCreateFileCalledBlob(Blob& aBlob, ErrorResult& aRv)
-{
+already_AddRefed<File> GetOrCreateFileCalledBlob(Blob& aBlob,
+                                                 ErrorResult& aRv) {
   // If this is file, we can just use it
   RefPtr<File> file = aBlob.ToFile();
   if (file) {
@@ -42,10 +48,8 @@ GetOrCreateFileCalledBlob(Blob& aBlob, ErrorResult& aRv)
   return file.forget();
 }
 
-already_AddRefed<File>
-GetBlobForFormDataStorage(Blob& aBlob, const Optional<nsAString>& aFilename,
-                          ErrorResult& aRv)
-{
+already_AddRefed<File> GetBlobForFormDataStorage(
+    Blob& aBlob, const Optional<nsAString>& aFilename, ErrorResult& aRv) {
   // Forcing a filename
   if (aFilename.WasPassed()) {
     RefPtr<File> file = aBlob.ToFile(aFilename.Value(), aRv);
@@ -59,7 +63,7 @@ GetBlobForFormDataStorage(Blob& aBlob, const Optional<nsAString>& aFilename,
   return GetOrCreateFileCalledBlob(aBlob, aRv);
 }
 
-} // namespace
+}  // namespace
 
 // -------------------------------------------------------------------------
 // nsISupports
@@ -98,27 +102,20 @@ NS_INTERFACE_MAP_END
 
 // -------------------------------------------------------------------------
 // HTMLFormSubmission
-nsresult
-FormData::GetEncodedSubmission(nsIURI* aURI,
-                               nsIInputStream** aPostDataStream,
-                               nsCOMPtr<nsIURI>& aOutURI)
-{
+nsresult FormData::GetEncodedSubmission(nsIURI* aURI,
+                                        nsIInputStream** aPostDataStream,
+                                        nsCOMPtr<nsIURI>& aOutURI) {
   MOZ_ASSERT_UNREACHABLE("Shouldn't call FormData::GetEncodedSubmission");
   return NS_OK;
 }
 
-void
-FormData::Append(const nsAString& aName, const nsAString& aValue,
-                 ErrorResult& aRv)
-{
+void FormData::Append(const nsAString& aName, const nsAString& aValue,
+                      ErrorResult& aRv) {
   AddNameValuePair(aName, aValue);
 }
 
-void
-FormData::Append(const nsAString& aName, Blob& aBlob,
-                 const Optional<nsAString>& aFilename,
-                 ErrorResult& aRv)
-{
+void FormData::Append(const nsAString& aName, Blob& aBlob,
+                      const Optional<nsAString>& aFilename, ErrorResult& aRv) {
   RefPtr<File> file = GetBlobForFormDataStorage(aBlob, aFilename, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return;
@@ -127,28 +124,22 @@ FormData::Append(const nsAString& aName, Blob& aBlob,
   AddNameBlobOrNullPair(aName, file);
 }
 
-void
-FormData::Append(const nsAString& aName, Directory* aDirectory)
-{
+void FormData::Append(const nsAString& aName, Directory* aDirectory) {
   AddNameDirectoryPair(aName, aDirectory);
 }
 
-void
-FormData::Delete(const nsAString& aName)
-{
+void FormData::Delete(const nsAString& aName) {
   // We have to use this slightly awkward for loop since uint32_t >= 0 is an
   // error for being always true.
-  for (uint32_t i = mFormData.Length(); i-- > 0; ) {
+  for (uint32_t i = mFormData.Length(); i-- > 0;) {
     if (aName.Equals(mFormData[i].name)) {
       mFormData.RemoveElementAt(i);
     }
   }
 }
 
-void
-FormData::Get(const nsAString& aName,
-              Nullable<OwningBlobOrDirectoryOrUSVString>& aOutValue)
-{
+void FormData::Get(const nsAString& aName,
+                   Nullable<OwningBlobOrDirectoryOrUSVString>& aOutValue) {
   for (uint32_t i = 0; i < mFormData.Length(); ++i) {
     if (aName.Equals(mFormData[i].name)) {
       aOutValue.SetValue() = mFormData[i].value;
@@ -159,10 +150,8 @@ FormData::Get(const nsAString& aName,
   aOutValue.SetNull();
 }
 
-void
-FormData::GetAll(const nsAString& aName,
-                 nsTArray<OwningBlobOrDirectoryOrUSVString>& aValues)
-{
+void FormData::GetAll(const nsAString& aName,
+                      nsTArray<OwningBlobOrDirectoryOrUSVString>& aValues) {
   for (uint32_t i = 0; i < mFormData.Length(); ++i) {
     if (aName.Equals(mFormData[i].name)) {
       OwningBlobOrDirectoryOrUSVString* element = aValues.AppendElement();
@@ -171,9 +160,7 @@ FormData::GetAll(const nsAString& aName,
   }
 }
 
-bool
-FormData::Has(const nsAString& aName)
-{
+bool FormData::Has(const nsAString& aName) {
   for (uint32_t i = 0; i < mFormData.Length(); ++i) {
     if (aName.Equals(mFormData[i].name)) {
       return true;
@@ -183,9 +170,7 @@ FormData::Has(const nsAString& aName)
   return false;
 }
 
-nsresult
-FormData::AddNameBlobOrNullPair(const nsAString& aName, Blob* aBlob)
-{
+nsresult FormData::AddNameBlobOrNullPair(const nsAString& aName, Blob* aBlob) {
   RefPtr<File> file;
 
   if (!aBlob) {
@@ -205,9 +190,8 @@ FormData::AddNameBlobOrNullPair(const nsAString& aName, Blob* aBlob)
   return NS_OK;
 }
 
-nsresult
-FormData::AddNameDirectoryPair(const nsAString& aName, Directory* aDirectory)
-{
+nsresult FormData::AddNameDirectoryPair(const nsAString& aName,
+                                        Directory* aDirectory) {
   MOZ_ASSERT(aDirectory);
 
   FormDataTuple* data = mFormData.AppendElement();
@@ -215,14 +199,13 @@ FormData::AddNameDirectoryPair(const nsAString& aName, Directory* aDirectory)
   return NS_OK;
 }
 
-FormData::FormDataTuple*
-FormData::RemoveAllOthersAndGetFirstFormDataTuple(const nsAString& aName)
-{
+FormData::FormDataTuple* FormData::RemoveAllOthersAndGetFirstFormDataTuple(
+    const nsAString& aName) {
   FormDataTuple* lastFoundTuple = nullptr;
   uint32_t lastFoundIndex = mFormData.Length();
   // We have to use this slightly awkward for loop since uint32_t >= 0 is an
   // error for being always true.
-  for (uint32_t i = mFormData.Length(); i-- > 0; ) {
+  for (uint32_t i = mFormData.Length(); i-- > 0;) {
     if (aName.Equals(mFormData[i].name)) {
       if (lastFoundTuple) {
         // The one we found earlier was not the first one, we can remove it.
@@ -237,11 +220,8 @@ FormData::RemoveAllOthersAndGetFirstFormDataTuple(const nsAString& aName)
   return lastFoundTuple;
 }
 
-void
-FormData::Set(const nsAString& aName, Blob& aBlob,
-              const Optional<nsAString>& aFilename,
-              ErrorResult& aRv)
-{
+void FormData::Set(const nsAString& aName, Blob& aBlob,
+                   const Optional<nsAString>& aFilename, ErrorResult& aRv) {
   FormDataTuple* tuple = RemoveAllOthersAndGetFirstFormDataTuple(aName);
   if (tuple) {
     RefPtr<File> file = GetBlobForFormDataStorage(aBlob, aFilename, aRv);
@@ -255,10 +235,8 @@ FormData::Set(const nsAString& aName, Blob& aBlob,
   }
 }
 
-void
-FormData::Set(const nsAString& aName, const nsAString& aValue,
-              ErrorResult& aRv)
-{
+void FormData::Set(const nsAString& aName, const nsAString& aValue,
+                   ErrorResult& aRv) {
   FormDataTuple* tuple = RemoveAllOthersAndGetFirstFormDataTuple(aName);
   if (tuple) {
     SetNameValuePair(tuple, aName, aValue);
@@ -267,43 +245,29 @@ FormData::Set(const nsAString& aName, const nsAString& aValue,
   }
 }
 
-uint32_t
-FormData::GetIterableLength() const
-{
-  return mFormData.Length();
-}
+uint32_t FormData::GetIterableLength() const { return mFormData.Length(); }
 
-const nsAString&
-FormData::GetKeyAtIndex(uint32_t aIndex) const
-{
+const nsAString& FormData::GetKeyAtIndex(uint32_t aIndex) const {
   MOZ_ASSERT(aIndex < mFormData.Length());
   return mFormData[aIndex].name;
 }
 
-const OwningBlobOrDirectoryOrUSVString&
-FormData::GetValueAtIndex(uint32_t aIndex) const
-{
+const OwningBlobOrDirectoryOrUSVString& FormData::GetValueAtIndex(
+    uint32_t aIndex) const {
   MOZ_ASSERT(aIndex < mFormData.Length());
   return mFormData[aIndex].value;
 }
 
-void
-FormData::SetNameValuePair(FormDataTuple* aData,
-                           const nsAString& aName,
-                           const nsAString& aValue,
-                           bool aWasNullBlob)
-{
+void FormData::SetNameValuePair(FormDataTuple* aData, const nsAString& aName,
+                                const nsAString& aValue, bool aWasNullBlob) {
   MOZ_ASSERT(aData);
   aData->name = aName;
   aData->wasNullBlob = aWasNullBlob;
   aData->value.SetAsUSVString() = aValue;
 }
 
-void
-FormData::SetNameFilePair(FormDataTuple* aData,
-                          const nsAString& aName,
-                          File* aFile)
-{
+void FormData::SetNameFilePair(FormDataTuple* aData, const nsAString& aName,
+                               File* aFile) {
   MOZ_ASSERT(aData);
   MOZ_ASSERT(aFile);
 
@@ -312,11 +276,9 @@ FormData::SetNameFilePair(FormDataTuple* aData,
   aData->value.SetAsBlob() = aFile;
 }
 
-void
-FormData::SetNameDirectoryPair(FormDataTuple* aData,
-                               const nsAString& aName,
-                               Directory* aDirectory)
-{
+void FormData::SetNameDirectoryPair(FormDataTuple* aData,
+                                    const nsAString& aName,
+                                    Directory* aDirectory) {
   MOZ_ASSERT(aData);
   MOZ_ASSERT(aDirectory);
 
@@ -325,54 +287,75 @@ FormData::SetNameDirectoryPair(FormDataTuple* aData,
   aData->value.SetAsDirectory() = aDirectory;
 }
 
-/* virtual */ JSObject*
-FormData::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+/* virtual */
+JSObject* FormData::WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) {
   return FormData_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-/* static */ already_AddRefed<FormData>
-FormData::Constructor(const GlobalObject& aGlobal,
-                      const Optional<NonNull<HTMLFormElement> >& aFormElement,
-                      ErrorResult& aRv)
-{
+/* static */
+already_AddRefed<FormData> FormData::Constructor(
+    const GlobalObject& aGlobal,
+    const Optional<NonNull<HTMLFormElement> >& aFormElement, ErrorResult& aRv) {
   RefPtr<FormData> formData = new FormData(aGlobal.GetAsSupports());
   if (aFormElement.WasPassed()) {
-    aRv = aFormElement.Value().WalkFormElements(formData);
+    aRv = aFormElement.Value().ConstructEntryList(formData);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return nullptr;
+    }
+
+    // Step 9. Return a shallow clone of entry list.
+    // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#constructing-form-data-set
+    if (StaticPrefs::dom_formdata_event_enabled()) {
+      formData = formData->Clone();
+    }
   }
+
   return formData.forget();
 }
 
 // contentTypeWithCharset can be set to the contentType or
 // contentType+charset based on what the spec says.
 // See: https://fetch.spec.whatwg.org/#concept-bodyinit-extract
-nsresult
-FormData::GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
-                      nsACString& aContentTypeWithCharset, nsACString& aCharset) const
-{
+nsresult FormData::GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
+                               nsACString& aContentTypeWithCharset,
+                               nsACString& aCharset) const {
   FSMultipartFormData fs(nullptr, EmptyString(), UTF_8_ENCODING, nullptr);
-
-  for (uint32_t i = 0; i < mFormData.Length(); ++i) {
-    if (mFormData[i].wasNullBlob) {
-      MOZ_ASSERT(mFormData[i].value.IsUSVString());
-      fs.AddNameBlobOrNullPair(mFormData[i].name, nullptr);
-    } else if (mFormData[i].value.IsUSVString()) {
-      fs.AddNameValuePair(mFormData[i].name,
-                          mFormData[i].value.GetAsUSVString());
-    } else if (mFormData[i].value.IsBlob()) {
-      fs.AddNameBlobOrNullPair(mFormData[i].name,
-                               mFormData[i].value.GetAsBlob());
-    } else {
-      MOZ_ASSERT(mFormData[i].value.IsDirectory());
-      fs.AddNameDirectoryPair(mFormData[i].name,
-                              mFormData[i].value.GetAsDirectory());
-    }
-  }
+  nsresult rv = CopySubmissionDataTo(&fs);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   fs.GetContentType(aContentTypeWithCharset);
   aCharset.Truncate();
   *aContentLength = 0;
   NS_ADDREF(*aBody = fs.GetSubmissionBody(aContentLength));
+
+  return NS_OK;
+}
+
+already_AddRefed<FormData> FormData::Clone() {
+  RefPtr<FormData> formData = new FormData(*this);
+  return formData.forget();
+}
+
+nsresult FormData::CopySubmissionDataTo(
+    HTMLFormSubmission* aFormSubmission) const {
+  MOZ_ASSERT(aFormSubmission, "Must have FormSubmission!");
+  for (size_t i = 0; i < mFormData.Length(); ++i) {
+    if (mFormData[i].wasNullBlob) {
+      MOZ_ASSERT(mFormData[i].value.IsUSVString());
+      aFormSubmission->AddNameBlobOrNullPair(mFormData[i].name, nullptr);
+    } else if (mFormData[i].value.IsUSVString()) {
+      aFormSubmission->AddNameValuePair(mFormData[i].name,
+                                        mFormData[i].value.GetAsUSVString());
+    } else if (mFormData[i].value.IsBlob()) {
+      aFormSubmission->AddNameBlobOrNullPair(mFormData[i].name,
+                                             mFormData[i].value.GetAsBlob());
+    } else {
+      MOZ_ASSERT(mFormData[i].value.IsDirectory());
+      aFormSubmission->AddNameDirectoryPair(
+          mFormData[i].name, mFormData[i].value.GetAsDirectory());
+    }
+  }
 
   return NS_OK;
 }

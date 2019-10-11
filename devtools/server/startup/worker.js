@@ -9,8 +9,8 @@
 
 /*
  * Worker debugger script that listens for requests to start a `DebuggerServer` for a
- * worker in a process.  Loaded into a specific worker during
- * `DebuggerServer.connectToWorker` which is called from the same process as the worker.
+ * worker in a process.  Loaded into a specific worker during worker-connector.js'
+ * `connectToWorker` which is called from the same process as the worker.
  */
 
 // This function is used to do remote procedure calls from the worker to the
@@ -20,12 +20,14 @@
 this.rpc = function(method, ...params) {
   const id = nextId++;
 
-  postMessage(JSON.stringify({
-    type: "rpc",
-    method: method,
-    params: params,
-    id: id
-  }));
+  postMessage(
+    JSON.stringify({
+      type: "rpc",
+      method: method,
+      params: params,
+      id: id,
+    })
+  );
 
   const deferred = defer();
   rpcDeferreds[id] = deferred;
@@ -35,12 +37,13 @@ this.rpc = function(method, ...params) {
 loadSubScript("resource://devtools/shared/worker/loader.js");
 
 var defer = worker.require("devtools/shared/defer");
+var EventEmitter = worker.require("devtools/shared/event-emitter");
 var { ActorPool } = worker.require("devtools/server/actors/common");
 var { ThreadActor } = worker.require("devtools/server/actors/thread");
 var { WebConsoleActor } = worker.require("devtools/server/actors/webconsole");
 var { TabSources } = worker.require("devtools/server/actors/utils/TabSources");
 var makeDebugger = worker.require("devtools/server/actors/utils/make-debugger");
-var { DebuggerServer } = worker.require("devtools/server/main");
+var { DebuggerServer } = worker.require("devtools/server/debugger-server");
 
 DebuggerServer.init();
 DebuggerServer.createRootActor = function() {
@@ -59,7 +62,7 @@ this.addEventListener("message", function(event) {
       const connection = DebuggerServer.connectToParent(packet.id, this);
       connections[packet.id] = {
         connection,
-        rpcs: []
+        rpcs: [],
       };
 
       // Step 4: Create a thread actor for the connection to the parent.
@@ -68,18 +71,26 @@ this.addEventListener("message", function(event) {
 
       let sources = null;
 
+      const makeWorkerDebugger = makeDebugger.bind(null, {
+        findDebuggees: () => {
+          return [this.global];
+        },
+
+        shouldAddNewGlobalAsDebuggee: () => {
+          return true;
+        },
+      });
+
       const parent = {
         actorID: packet.id,
 
-        makeDebugger: makeDebugger.bind(null, {
-          findDebuggees: () => {
-            return [this.global];
-          },
-
-          shouldAddNewGlobalAsDebuggee: () => {
-            return true;
-          },
-        }),
+        get dbg() {
+          if (!this._dbg) {
+            this._dbg = makeWorkerDebugger();
+          }
+          return this._dbg;
+        },
+        makeDebugger: makeWorkerDebugger,
 
         get sources() {
           if (sources === null) {
@@ -88,8 +99,14 @@ this.addEventListener("message", function(event) {
           return sources;
         },
 
-        window: global
+        window: global,
+
+        onThreadAttached() {
+          postMessage(JSON.stringify({ type: "attached" }));
+        },
       };
+
+      EventEmitter.decorate(parent);
 
       const threadActor = new ThreadActor(parent, global);
       pool.addActor(threadActor);
@@ -102,12 +119,14 @@ this.addEventListener("message", function(event) {
 
       // Step 5: Send a response packet to the parent to notify
       // it that a connection has been established.
-      postMessage(JSON.stringify({
-        type: "connected",
-        id: packet.id,
-        threadActor: threadActor.actorID,
-        consoleActor: consoleActor.actorID,
-      }));
+      postMessage(
+        JSON.stringify({
+          type: "connected",
+          id: packet.id,
+          threadActor: threadActor.actorID,
+          consoleActor: consoleActor.actorID,
+        })
+      );
       break;
 
     case "disconnect":

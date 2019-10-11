@@ -42,20 +42,22 @@ LOCAL_INCLUDES += [
     '/dom/offline',
     '/dom/storage',
     '/dom/svg',
-    '/dom/xbl',
     '/dom/xslt/base',
     '/dom/xslt/xml',
     '/dom/xslt/xpath',
     '/dom/xslt/xslt',
     '/dom/xul',
     '/editor/composer',
-    '/extensions/cookie',
+    '/extensions/permissions',
     '/js/xpconnect/loader',
     '/js/xpconnect/src',
     '/netwerk/base',
     '/netwerk/cookie',
     '/view',
 ]
+
+if CONFIG['MOZ_XBL']:
+    LOCAL_INCLUDES += ['/dom/xbl']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     LOCAL_INCLUDES += [
@@ -71,11 +73,9 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
         '/dom/system/android',
     ]
 
-if CONFIG['MOZ_WEBSPEECH']:
-    LOCAL_INCLUDES += [
-        '/dom/media/webspeech/recognition',
-        '/dom/media/webspeech/synth',
-    ]
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
 
 FINAL_LIBRARY = 'xul'
 

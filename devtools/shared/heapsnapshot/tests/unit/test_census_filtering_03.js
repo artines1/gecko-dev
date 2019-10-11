@@ -46,7 +46,7 @@ function run_test() {
     other: {
       "js::Shape": { bytes: 80, count: 8 },
     },
-    domNode: {}
+    domNode: {},
   };
 
   const EXPECTED = {
@@ -61,5 +61,7 @@ function run_test() {
     reportLeafIndex: undefined,
   };
 
-  compareCensusViewData(BREAKDOWN, REPORT, EXPECTED, { filter: "zzzzzzzzzzzzzzzzzzzz" });
+  compareCensusViewData(BREAKDOWN, REPORT, EXPECTED, {
+    filter: "zzzzzzzzzzzzzzzzzzzz",
+  });
 }

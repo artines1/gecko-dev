@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,13 +5,17 @@
 "use strict";
 
 define(function(require, exports, module) {
-  const { createFactory, Component } = require("devtools/client/shared/vendor/react");
+  const {
+    createFactory,
+    Component,
+  } = require("devtools/client/shared/vendor/react");
   const dom = require("devtools/client/shared/vendor/react-dom-factories");
   const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
   const { createFactories } = require("devtools/client/shared/react-utils");
 
-  const TreeView =
-    createFactory(require("devtools/client/shared/components/tree/TreeView"));
+  const TreeView = createFactory(
+    require("devtools/client/shared/components/tree/TreeView")
+  );
   const { JsonToolbar } = createFactories(require("./JsonToolbar"));
 
   const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
@@ -38,7 +40,7 @@ define(function(require, exports, module) {
           PropTypes.array,
           PropTypes.object,
           PropTypes.bool,
-          PropTypes.number
+          PropTypes.number,
         ]),
         dataSize: PropTypes.number,
         expandedNodes: PropTypes.instanceOf(Set),
@@ -86,27 +88,24 @@ define(function(require, exports, module) {
       }
 
       // Render the value (summary) using Reps library.
-      return Rep(Object.assign({}, props, {
-        cropLimit: 50,
-        noGrip: true,
-        openLink(str) {
-          try {
-            const u = new URL(str);
-            if (u.protocol == "https:" || u.protocol == "http:") {
-              window.open(str, "_blank");
-            }
-          } catch (ex) { /* the link might be bust, then we do nothing */ }
-        },
-      }));
+      return Rep(
+        Object.assign({}, props, {
+          cropLimit: 50,
+          noGrip: true,
+          isInContentPage: true,
+        })
+      );
     }
 
     renderTree() {
       // Append custom column for displaying values. This column
       // Take all available horizontal space.
-      const columns = [{
-        id: "value",
-        width: "100%"
-      }];
+      const columns = [
+        {
+          id: "value",
+          width: "100%",
+        },
+      ];
 
       // Render tree component.
       return TreeView({
@@ -124,24 +123,25 @@ define(function(require, exports, module) {
       const data = this.props.data;
 
       if (!isObject(data)) {
-        content = div({className: "jsonPrimitiveValue"}, Rep({
-          object: data
-        }));
-      } else if (data instanceof Error) {
-        content = div({className: "jsonParseError"},
-          data + ""
+        content = div(
+          { className: "jsonPrimitiveValue" },
+          Rep({
+            object: data,
+          })
         );
+      } else if (data instanceof Error) {
+        content = div({ className: "jsonParseError" }, data + "");
       } else {
         content = this.renderTree();
       }
 
-      return (
-        div({className: "jsonPanelBox tab-panel-inner"},
-          JsonToolbar({actions: this.props.actions, dataSize: this.props.dataSize}),
-          div({className: "panelContent"},
-            content
-          )
-        )
+      return div(
+        { className: "jsonPanelBox tab-panel-inner" },
+        JsonToolbar({
+          actions: this.props.actions,
+          dataSize: this.props.dataSize,
+        }),
+        div({ className: "panelContent" }, content)
       );
     }
   }

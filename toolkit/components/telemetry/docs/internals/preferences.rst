@@ -28,7 +28,7 @@ mozconfig Defines
 
   When Defined (which it is on most platforms):
 
-  * includes ``toolkit/components/telemetry/healthreport-prefs.js`` (which sets ``datareporting.healthreport.{infoURL|uploadEnabled}``)
+  * Sets ``datareporting.healthreport.{infoURL|uploadEnabled}`` in ``modules/libpref/init/all.js``.
 
 ``MOZ_DATA_REPORTING``
 
@@ -102,11 +102,12 @@ Preferences
 
 ``toolkit.telemetry.server``
 
-  The server Telemetry pings are sent to.
+  The server Telemetry pings are sent to. Change requires restart.
 
 ``toolkit.telemetry.log.level``
 
-  This sets the Telemetry logging verbosity per ``Log.jsm``, with ``Trace`` or ``0`` being the most verbose and the default being ``Warn``.
+  This sets the Telemetry logging verbosity per ``Log.jsm``. The available levels, in descending order of verbosity, are ``Trace``, ``Debug``, ``Config``, ``Info``, ``Warn``, ``Error`` and ``Fatal`` with the default being ``Warn``.
+
   By default logging goes only the console service.
 
 ``toolkit.telemetry.log.dump``
@@ -162,10 +163,31 @@ Preferences
   The maximum frequency at which an :doc:`../data/event-ping` will be sent.
   Default is 10 (minutes).
 
+``toolkit.telemetry.ecosystemtelemetry.enabled``
+
+  Whether :doc:`../data/ecosystem-telemetry` is enabled.
+  Default is false. Change requires restart.
+
 ``toolkit.telemetry.overrideUpdateChannel``
 
   Override the ``channel`` value that is reported via Telemetry.
   This is useful for distinguishing different types of builds that otherwise still report as the same update channel.
+
+``toolkit.telemetry.ipcBatchTimeout``
+
+  How long, in milliseconds, we batch accumulations from child processes before
+  sending them to the parent process.
+  Default is 2000 (milliseconds).
+
+``toolkit.telemetry.prioping.enabled``
+
+  Whether the :doc:`../data/prio-ping` is enabled.
+  Defaults to true. Change requires restart.
+
+``toolkit.telemetry.prioping.dataLimit``
+
+  The number of encoded prio payloads which triggers an immediate :doc:`../data/prio-ping` with reason "max".
+  Default is 10 payloads.
 
 Data-choices notification
 -------------------------
@@ -211,11 +233,21 @@ GeckoView
 
 ``toolkit.telemetry.isGeckoViewMode``
 
-   Whether or not Telemetry needs to run in :doc:`GeckoView <../internals/geckoview>` mode. If true, measurements persistence is enabled. Defaults to false on all products except GeckoView.
+   Whether or not Telemetry needs to run in :doc:`GeckoView <../internals/geckoview>` mode. If true, and ``toolkit.telemetry.geckoview.streaming`` is false,  measurements persistence is enabled. Defaults to false on all products except GeckoView.
 
 ``toolkit.telemetry.geckoPersistenceTimeout``
 
    The interval that governs how frequently measurements are saved to disk, in milliseconds. Defaults to 60000 (60 seconds).
+
+``toolkit.telemetry.geckoview.streaming``
+
+   Whether the GeckoView mode we're running in is the variety that uses the :doc:`GeckoView Streaming Telemetry API <../internals/geckoview-streaming>` or not.
+   Defaults to false.
+
+``toolkit.telemetry.geckoview.batchDurationMS``
+
+   The duration in milliseconds over which `GeckoView Streaming Telemetry <../internals/geckoview-streaming>` will batch accumulations before passing it on to its delegate.
+   Defaults to 5000.
 
 Testing
 -------
@@ -258,6 +290,18 @@ The following prefs are for testing purpose only.
 
   If true, allows recording opt-in Telemetry on the Release channel. Requires a restart.
 
+``toolkit.telemetry.untrustedModulesPing.frequency``
+
+  Interval, in seconds, between "untrustedModules" ping transmissions.
+
 ``toolkit.telemetry.healthping.enabled``
 
   If false, sending health pings is disabled. Defaults to true.
+
+``toolkit.telemetry.testing.disableFuzzingDelay``
+
+  If true, ping sending is not delayed when sending between 0am and 1am local time.
+
+``toolkit.telemetry.testing.overrideProductsCheck``
+
+  If true, allow all probes to be recorded no matter what the current product is.

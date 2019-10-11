@@ -6,10 +6,8 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -30,11 +28,10 @@
       this.DOMNode = getNode(aNodeOrID);
       this.eventSeq = [ new invokerChecker(aValuetext ?
                                            EVENT_TEXT_VALUE_CHANGE :
-                                           EVENT_VALUE_CHANGE, this.DOMNode)
+                                           EVENT_VALUE_CHANGE, this.DOMNode),
         ];
 
       this.invoke = function changeARIAValue_invoke() {
-
         // Note: this should not fire an EVENT_VALUE_CHANGE when aria-valuetext
         // is not empty
         if (aValuenow != undefined)
@@ -64,7 +61,7 @@
     function changeValue(aID, aValue) {
       this.DOMNode = getNode(aID);
       this.eventSeq = [new invokerChecker(EVENT_TEXT_VALUE_CHANGE,
-                                          this.DOMNode)
+                                          this.DOMNode),
         ];
 
       this.invoke = function changeValue_invoke() {
@@ -122,7 +119,7 @@
         [ new invokerChecker(EVENT_TEXT_VALUE_CHANGE, getAccessible(aID)) ];
 
       this.invoke = function changeSelectValue_invoke() {
-        getNode(aID).focus();
+        getAccessible(aID).takeFocus();
         synthesizeKey(aKey, {}, window);
       };
 
@@ -141,7 +138,7 @@
       // Test initial values
       testValue("slider_vn", "5", 5, 0, 1000, 0);
       testValue("slider_vnvt", "plain", 0, 0, 5, 0);
-      testValue("slider_vt", "hi", 0, 0, 3, 0);
+      testValue("slider_vt", "hi", 1.5, 0, 3, 0);
       testValue("scrollbar", "5", 5, 0, 1000, 0);
       testValue("splitter", "5", 5, 0, 1000, 0);
       testValue("progress", "22%", 22, 0, 100, 0);
@@ -167,6 +164,12 @@
 
       gQueue.push(new changeSelectValue("select", "VK_DOWN", "2nd"));
       gQueue.push(new changeSelectValue("select", "3", "3rd"));
+
+      let iframeSelect = getAccessible("selectIframe").firstChild.firstChild;
+      gQueue.push(new changeSelectValue(iframeSelect, "VK_DOWN", "2"));
+
+      let shadowSelect = getAccessible("selectShadow").firstChild;
+      gQueue.push(new changeSelectValue(shadowSelect, "VK_DOWN", "2"));
 
       gQueue.invoke(); // Will call SimpleTest.finish();
     }
@@ -247,5 +250,24 @@
     <option>2nd</option>
     <option>3rd</option>
   </select>
+
+  <iframe id="selectIframe"
+    src="data:text/html,<select id='iframeSelect'><option>1</option><option>2</option></select>">
+  </iframe>
+
+  <div id="selectShadow"></div>
+  <script>
+    let host = document.getElementById("selectShadow");
+    let shadow = host.attachShadow({mode: "open"});
+    let select = document.createElement("select");
+    select.id = "shadowSelect";
+    let option = document.createElement("option");
+    option.textContent = "1";
+    select.appendChild(option);
+    option = document.createElement("option");
+    option.textContent = "2";
+    select.appendChild(option);
+    shadow.appendChild(select);
+  </script>
 </body>
 </html>

@@ -2,32 +2,33 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 function run_test() {
-  const { MessageContext } = ChromeUtils.import("resource://gre/modules/MessageContext.jsm", {});
+  const { FluentBundle, FluentResource } =
+    ChromeUtils.import("resource://gre/modules/Fluent.jsm");
 
-  test_methods_presence(MessageContext);
-  test_methods_calling(MessageContext);
+  test_methods_presence(FluentBundle);
+  test_methods_calling(FluentBundle, FluentResource);
 
   ok(true);
 }
 
-function test_methods_presence(MessageContext) {
-  const ctx = new MessageContext(["en-US", "pl"]);
-  equal(typeof ctx.addMessages, "function");
-  equal(typeof ctx.format, "function");
+function test_methods_presence(FluentBundle) {
+  const bundle = new FluentBundle(["en-US", "pl"]);
+  equal(typeof bundle.addResource, "function");
+  equal(typeof bundle.formatPattern, "function");
 }
 
-function test_methods_calling(MessageContext) {
-  const ctx = new MessageContext(["en-US", "pl"], {
-    useIsolating: false
+function test_methods_calling(FluentBundle, FluentResource) {
+  const bundle = new FluentBundle(["en-US", "pl"], {
+    useIsolating: false,
   });
-  ctx.addMessages("key = Value");
+  bundle.addResource(new FluentResource("key = Value"));
 
-  const msg = ctx.getMessage("key");
-  equal(ctx.format(msg), "Value");
+  const msg = bundle.getMessage("key");
+  equal(bundle.formatPattern(msg.value), "Value");
 
-  ctx.addMessages("key2 = Hello { $name }");
+  bundle.addResource(new FluentResource("key2 = Hello { $name }"));
 
-  const msg2 = ctx.getMessage("key2");
-  equal(ctx.format(msg2, { name: "Amy" }), "Hello Amy");
+  const msg2 = bundle.getMessage("key2");
+  equal(bundle.formatPattern(msg2.value, { name: "Amy" }), "Hello Amy");
   ok(true);
 }

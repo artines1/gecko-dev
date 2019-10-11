@@ -1,19 +1,25 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
+requestLongerTimeout(3);
+
 // Tests that the keybindings for opening and closing the inspector work as expected
 // Can probably make this a shared test that tests all of the tools global keybindings
-const TEST_URL = "data:text/html,<html><head><title>Test for the " +
-                 "highlighter keybindings</title></head><body>" +
-                 "<h1>Keybindings!</h1></body></html>";
+const TEST_URL =
+  "data:text/html,<html><head><title>Test for the " +
+  "highlighter keybindings</title></head><body>" +
+  "<h1>Keybindings!</h1></body></html>";
 
-const {gDevToolsBrowser} = require("devtools/client/framework/devtools-browser");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
+const {
+  gDevToolsBrowser,
+} = require("devtools/client/framework/devtools-browser");
+ChromeUtils.defineModuleGetter(
+  this,
+  "AppConstants",
+  "resource://gre/modules/AppConstants.jsm"
+);
 const isMac = AppConstants.platform == "macosx";
 
 const allKeys = [];
@@ -35,11 +41,11 @@ function buildDevtoolsKeysetMap(keyset) {
         ctrlKey: modifiers.match("ctrl"),
         altKey: modifiers.match("alt"),
         metaKey: modifiers.match("meta"),
-        accelKey: modifiers.match("accel")
+        accelKey: modifiers.match("accel"),
       },
       synthesizeKey: function() {
         EventUtils.synthesizeKey(this.key, this.modifierOpt);
-      }
+      },
     });
   });
 }
@@ -51,12 +57,6 @@ function setupKeyBindingsTest() {
 }
 
 add_task(async function() {
-  // Use the new debugger frontend because the old one swallows the netmonitor shortcut:
-  // https://bugzilla.mozilla.org/show_bug.cgi?id=1370442#c7
-  await SpecialPowers.pushPrefEnv({set: [
-    ["devtools.debugger.new-debugger-frontend", true]
-  ]});
-
   await addTab(TEST_URL);
   await new Promise(done => waitForFocus(done));
 
@@ -86,16 +86,16 @@ add_task(async function() {
   await webconsoleShouldBeSelected();
 
   onSelectTool = gDevTools.once("select-tool-command");
-  const jsdebugger = allKeys.filter(({ toolId }) => toolId === "jsdebugger")[0];
-  jsdebugger.synthesizeKey();
-  await onSelectTool;
-  await jsdebuggerShouldBeSelected();
-
-  onSelectTool = gDevTools.once("select-tool-command");
   const netmonitor = allKeys.filter(({ toolId }) => toolId === "netmonitor")[0];
   netmonitor.synthesizeKey();
   await onSelectTool;
   await netmonitorShouldBeSelected();
+
+  onSelectTool = gDevTools.once("select-tool-command");
+  const jsdebugger = allKeys.filter(({ toolId }) => toolId === "jsdebugger")[0];
+  jsdebugger.synthesizeKey();
+  await onSelectTool;
+  await jsdebuggerShouldBeSelected();
 
   if (isMac) {
     info("On MacOS, we check the extra inspector shortcut too");
@@ -110,21 +110,21 @@ add_task(async function() {
   async function inspectorShouldBeOpenAndHighlighting(inspector) {
     is(toolbox.currentToolId, "inspector", "Correct tool has been loaded");
 
-    await toolbox.once("picker-started");
+    await toolbox.nodePicker.once("picker-started");
 
     ok(true, "picker-started event received, highlighter started");
     inspector.synthesizeKey();
 
-    await toolbox.once("picker-stopped");
+    await toolbox.nodePicker.once("picker-stopped");
     ok(true, "picker-stopped event received, highlighter stopped");
-  }
-
-  function webconsoleShouldBeSelected() {
-    is(toolbox.currentToolId, "webconsole", "webconsole should be selected.");
   }
 
   function jsdebuggerShouldBeSelected() {
     is(toolbox.currentToolId, "jsdebugger", "jsdebugger should be selected.");
+  }
+
+  function webconsoleShouldBeSelected() {
+    is(toolbox.currentToolId, "webconsole", "webconsole should be selected.");
   }
 
   function netmonitorShouldBeSelected() {

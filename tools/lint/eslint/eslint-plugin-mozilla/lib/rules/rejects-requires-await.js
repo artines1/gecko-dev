@@ -11,30 +11,32 @@
 module.exports = {
   meta: {
     messages: {
-      rejectRequiresAwait: "Assert.rejects needs to be preceded by await."
-    }
+      rejectRequiresAwait: "Assert.rejects needs to be preceded by await.",
+    },
   },
 
   create(context) {
     return {
-      "CallExpression": function(node) {
+      CallExpression(node) {
         if (node.callee.type === "MemberExpression") {
           let memexp = node.callee;
-          if (memexp.object.type === "Identifier" &&
-              memexp.object.name === "Assert" &&
-              memexp.property.type === "Identifier" &&
-              memexp.property.name === "rejects") {
+          if (
+            memexp.object.type === "Identifier" &&
+            memexp.object.name === "Assert" &&
+            memexp.property.type === "Identifier" &&
+            memexp.property.name === "rejects"
+          ) {
             // We have ourselves an Assert.rejects.
 
             if (node.parent.type !== "AwaitExpression") {
               context.report({
                 node,
-                messageId: "rejectRequiresAwait"
+                messageId: "rejectRequiresAwait",
               });
             }
           }
         }
-      }
+      },
     };
-  }
+  },
 };

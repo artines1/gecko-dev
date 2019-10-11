@@ -4,17 +4,23 @@
 
 "use strict";
 
-const {
-  UPDATE_WORKERS,
-} = require("../constants");
+const { UPDATE_CAN_DEBUG_WORKERS, UPDATE_WORKERS } = require("../constants");
 
 function updateWorkers(workers) {
   return {
     type: UPDATE_WORKERS,
-    workers
+    workers,
+  };
+}
+
+function updateCanDebugWorkers(canDebugWorkers) {
+  return {
+    type: UPDATE_CAN_DEBUG_WORKERS,
+    canDebugWorkers,
   };
 }
 
 module.exports = {
+  updateCanDebugWorkers,
   updateWorkers,
 };

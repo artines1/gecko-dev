@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -16,7 +15,10 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,<p>test browser last window closing</p>");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html;charset=utf8,<p>test browser last window closing</p>"
+  );
 }
 
 function runTests({ Scratchpad }) {
@@ -25,7 +27,7 @@ function runTests({ Scratchpad }) {
   let button;
 
   Services.prompt = {
-    confirmEx: () => button
+    confirmEx: () => button,
   };
 
   Scratchpad.dirty = true;

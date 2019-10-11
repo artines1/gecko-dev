@@ -8,15 +8,41 @@ UNIFIED_SOURCES += [
     'TestBufferedInputStream.cpp',
     'TestHeaders.cpp',
     'TestHttpAuthUtils.cpp',
+    'TestIsValidIp.cpp',
     'TestMIMEInputStream.cpp',
     'TestMozURL.cpp',
-    'TestPACMan.cpp',
-    'TestPartiallySeekableInputStream.cpp',
     'TestProtocolProxyService.cpp',
     'TestReadStreamToString.cpp',
     'TestServerTimingHeader.cpp',
     'TestStandardURL.cpp',
-    'TestURIMutator.cpp',
+]
+
+# skip the test on windows10-aarch64
+if not(CONFIG['OS_TARGET'] == 'WINNT' and CONFIG['CPU_ARCH'] == 'aarch64'):
+    UNIFIED_SOURCES += [
+        'TestPACMan.cpp',
+        'TestPartiallySeekableInputStream.cpp',
+        'TestURIMutator.cpp',
+    ]
+
+# run the test on windows only
+if (CONFIG['OS_TARGET'] == 'WINNT'):
+    UNIFIED_SOURCES += [
+        'TestNetworkLinkIdHashingWindows.cpp'
+    ]
+
+# run the test on mac only
+if (CONFIG['OS_TARGET'] == 'Darwin'):
+    UNIFIED_SOURCES += [
+        'TestNetworkLinkIdHashingDarwin.cpp'
+    ]
+
+TEST_HARNESS_FILES.gtest += [
+    'urltestdata.json',
+]
+
+USE_LIBS += [
+    'jsoncpp',
 ]
 
 TEST_DIRS += [
@@ -25,8 +51,21 @@ TEST_DIRS += [
 
 LOCAL_INCLUDES += [
     '/netwerk/base',
+    '/toolkit/components/jsoncpp/include',
     '/xpcom/tests/gtest',
 ]
+
+# windows includes only
+if (CONFIG['OS_TARGET'] == 'WINNT'):
+    LOCAL_INCLUDES += [
+        '/netwerk/system/win32'
+    ]
+
+# mac includes only
+if (CONFIG['OS_TARGET'] == 'Darwin'):
+    LOCAL_INCLUDES += [
+        '/netwerk/system/mac'
+    ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

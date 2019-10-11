@@ -1,97 +1,133 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "ExtensionStorage",
-                               "resource://gre/modules/ExtensionStorage.jsm");
-ChromeUtils.defineModuleGetter(this, "ExtensionStorageIDB",
-                               "resource://gre/modules/ExtensionStorageIDB.jsm");
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
-                               "resource://gre/modules/TelemetryStopwatch.jsm");
-
-// Telemetry histogram keys for the JSONFile backend.
-const storageGetHistogram = "WEBEXT_STORAGE_LOCAL_GET_MS";
-const storageSetHistogram = "WEBEXT_STORAGE_LOCAL_SET_MS";
-// Telemetry  histogram keys for the IndexedDB backend.
-const storageGetIDBHistogram = "WEBEXT_STORAGE_LOCAL_IDB_GET_MS";
-const storageSetIDBHistogram = "WEBEXT_STORAGE_LOCAL_IDB_SET_MS";
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionStorage",
+  "resource://gre/modules/ExtensionStorage.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionStorageIDB",
+  "resource://gre/modules/ExtensionStorageIDB.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionTelemetry",
+  "resource://gre/modules/ExtensionTelemetry.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Services",
+  "resource://gre/modules/Services.jsm"
+);
 
 // Wrap a storage operation in a TelemetryStopWatch.
-async function measureOp(histogram, fn) {
+async function measureOp(telemetryMetric, extension, fn) {
   const stopwatchKey = {};
-  TelemetryStopwatch.start(histogram, stopwatchKey);
+  telemetryMetric.stopwatchStart(extension, stopwatchKey);
   try {
     let result = await fn();
-    TelemetryStopwatch.finish(histogram, stopwatchKey);
+    telemetryMetric.stopwatchFinish(extension, stopwatchKey);
     return result;
   } catch (err) {
-    TelemetryStopwatch.cancel(histogram, stopwatchKey);
+    telemetryMetric.stopwatchCancel(extension, stopwatchKey);
     throw err;
   }
 }
 
 this.storage = class extends ExtensionAPI {
-  getLocalFileBackend(context, {deserialize, serialize}) {
+  getLocalFileBackend(context, { deserialize, serialize }) {
     return {
       get(keys) {
-        return measureOp(storageGetHistogram, () => {
-          return context.childManager.callParentAsyncFunction(
-            "storage.local.JSONFileBackend.get",
-            [serialize(keys)]).then(deserialize);
-        });
+        return measureOp(
+          ExtensionTelemetry.storageLocalGetJSON,
+          context.extension,
+          () => {
+            return context.childManager
+              .callParentAsyncFunction("storage.local.JSONFileBackend.get", [
+                serialize(keys),
+              ])
+              .then(deserialize);
+          }
+        );
       },
       set(items) {
-        return measureOp(storageSetHistogram, () => {
-          return context.childManager.callParentAsyncFunction(
-            "storage.local.JSONFileBackend.set", [serialize(items)]);
-        });
+        return measureOp(
+          ExtensionTelemetry.storageLocalSetJSON,
+          context.extension,
+          () => {
+            return context.childManager.callParentAsyncFunction(
+              "storage.local.JSONFileBackend.set",
+              [serialize(items)]
+            );
+          }
+        );
       },
       remove(keys) {
         return context.childManager.callParentAsyncFunction(
-          "storage.local.JSONFileBackend.remove", [serialize(keys)]);
+          "storage.local.JSONFileBackend.remove",
+          [serialize(keys)]
+        );
       },
       clear() {
         return context.childManager.callParentAsyncFunction(
-          "storage.local.JSONFileBackend.clear", []);
+          "storage.local.JSONFileBackend.clear",
+          []
+        );
       },
     };
   }
 
-  getLocalIDBBackend(context, {fireOnChanged, serialize, storagePrincipal}) {
+  getLocalIDBBackend(context, { fireOnChanged, serialize, storagePrincipal }) {
     let dbPromise;
     async function getDB() {
       if (dbPromise) {
         return dbPromise;
       }
 
-      dbPromise = ExtensionStorageIDB.open(storagePrincipal).catch(err => {
-        // Reset the cached promise if it has been rejected, so that the next
-        // API call is going to retry to open the DB.
-        dbPromise = null;
-        throw err;
-      });
+      const persisted = context.extension.hasPermission("unlimitedStorage");
+      dbPromise = ExtensionStorageIDB.open(storagePrincipal, persisted).catch(
+        err => {
+          // Reset the cached promise if it has been rejected, so that the next
+          // API call is going to retry to open the DB.
+          dbPromise = null;
+          throw err;
+        }
+      );
 
       return dbPromise;
     }
 
     return {
       get(keys) {
-        return measureOp(storageGetIDBHistogram, async () => {
-          const db = await getDB();
-          return db.get(keys);
-        });
+        return measureOp(
+          ExtensionTelemetry.storageLocalGetIDB,
+          context.extension,
+          async () => {
+            const db = await getDB();
+            return db.get(keys);
+          }
+        );
       },
       set(items) {
-        return measureOp(storageSetIDBHistogram, async () => {
-          const db = await getDB();
-          const changes = await db.set(items, {
-            serialize: ExtensionStorage.serialize,
-          });
+        return measureOp(
+          ExtensionTelemetry.storageLocalSetIDB,
+          context.extension,
+          async () => {
+            const db = await getDB();
+            const changes = await db.set(items, {
+              serialize: ExtensionStorage.serialize,
+            });
 
-          if (changes) {
-            fireOnChanged(changes);
+            if (changes) {
+              fireOnChanged(changes);
+            }
           }
-        });
+        );
       },
       async remove(keys) {
         const db = await getDB();
@@ -113,9 +149,12 @@ this.storage = class extends ExtensionAPI {
   }
 
   getAPI(context) {
-    const {extension} = context;
+    const { extension } = context;
     const serialize = ExtensionStorage.serializeForContext.bind(null, context);
-    const deserialize = ExtensionStorage.deserializeForContext.bind(null, context);
+    const deserialize = ExtensionStorage.deserializeForContext.bind(
+      null,
+      context
+    );
 
     function sanitize(items) {
       // The schema validator already takes care of arrays (which are only allowed
@@ -142,7 +181,10 @@ this.storage = class extends ExtensionAPI {
       // it uses the underlying message manager since the child context (or its ProxyContentParent counterpart
       // running in the main process) may be gone by the time we call this, and so we can't use the childManager
       // abstractions (e.g. callParentAsyncFunction or callParentFunctionNoReturn).
-      Services.cpmm.sendAsyncMessage(`Extension:StorageLocalOnChanged:${extension.uuid}`, changes);
+      Services.cpmm.sendAsyncMessage(
+        `Extension:StorageLocalOnChanged:${extension.uuid}`,
+        changes
+      );
     }
 
     // If the selected backend for the extension is not known yet, we have to lazily detect it
@@ -155,7 +197,7 @@ this.storage = class extends ExtensionAPI {
       } = await ExtensionStorageIDB.selectBackend(context);
 
       if (!backendEnabled) {
-        return this.getLocalFileBackend(context, {deserialize, serialize});
+        return this.getLocalFileBackend(context, { deserialize, serialize });
       }
 
       return this.getLocalIDBBackend(context, {
@@ -170,7 +212,10 @@ this.storage = class extends ExtensionAPI {
 
     const useStorageIDBBackend = extension.getSharedData("storageIDBBackend");
     if (useStorageIDBBackend === false) {
-      selectedBackend = this.getLocalFileBackend(context, {deserialize, serialize});
+      selectedBackend = this.getLocalFileBackend(context, {
+        deserialize,
+        serialize,
+      });
     } else if (useStorageIDBBackend === true) {
       selectedBackend = this.getLocalIDBBackend(context, {
         storagePrincipal: extension.getSharedData("storageIDBPrincipal"),
@@ -189,11 +234,13 @@ this.storage = class extends ExtensionAPI {
           // Discover the selected backend if it is not known yet.
           if (!selectedBackend) {
             if (!promiseStorageLocalBackend) {
-              promiseStorageLocalBackend = getStorageLocalBackend().catch(err => {
-                // Clear the cached promise if it has been rejected.
-                promiseStorageLocalBackend = null;
-                throw err;
-              });
+              promiseStorageLocalBackend = getStorageLocalBackend().catch(
+                err => {
+                  // Clear the cached promise if it has been rejected.
+                  promiseStorageLocalBackend = null;
+                  throw err;
+                }
+              );
             }
 
             // If the storage.local method is not 'get' (which doesn't change any of the stored data),
@@ -201,9 +248,18 @@ this.storage = class extends ExtensionAPI {
             // if this context has been destroyed in the meantime.
             if (method !== "get") {
               // Let the outer try to catch rejections returned by the backend methods.
-              const result = await context.childManager.callParentAsyncFunction(
-                "storage.local.callMethodInParentProcess", [method, args]);
-              return result;
+              try {
+                const result = await context.childManager.callParentAsyncFunction(
+                  "storage.local.callMethodInParentProcess",
+                  [method, args]
+                );
+                return result;
+              } catch (err) {
+                // Just return the rejection as is, the error has been normalized in the
+                // parent process by callMethodInParentProcess and the original error
+                // logged in the browser console.
+                return Promise.reject(err);
+              }
             }
 
             // Get the selected backend and cache it for the next API calls from this context.
@@ -214,10 +270,7 @@ this.storage = class extends ExtensionAPI {
           const result = await selectedBackend[method](...args);
           return result;
         } catch (err) {
-          // Ensure that the error we throw is converted into an ExtensionError
-          // (e.g. DataCloneError instances raised from the internal IndexedDB
-          // operation have to be converted to be accessible to the extension code).
-          throw new ExtensionUtils.ExtensionError(String(err));
+          throw ExtensionStorageIDB.normalizeStorageError(err);
         }
       };
     }
@@ -229,32 +282,34 @@ this.storage = class extends ExtensionAPI {
         sync: {
           get(keys) {
             keys = sanitize(keys);
-            return context.childManager.callParentAsyncFunction("storage.sync.get", [
-              keys,
-            ]);
+            return context.childManager.callParentAsyncFunction(
+              "storage.sync.get",
+              [keys]
+            );
           },
           set(items) {
             items = sanitize(items);
-            return context.childManager.callParentAsyncFunction("storage.sync.set", [
-              items,
-            ]);
+            return context.childManager.callParentAsyncFunction(
+              "storage.sync.set",
+              [items]
+            );
           },
         },
 
         managed: {
           get(keys) {
-            return context.childManager.callParentAsyncFunction("storage.managed.get", [
-              serialize(keys),
-            ]).then(deserialize);
+            return context.childManager
+              .callParentAsyncFunction("storage.managed.get", [serialize(keys)])
+              .then(deserialize);
           },
           set(items) {
-            return Promise.reject({message: "storage.managed is read-only"});
+            return Promise.reject({ message: "storage.managed is read-only" });
           },
           remove(keys) {
-            return Promise.reject({message: "storage.managed is read-only"});
+            return Promise.reject({ message: "storage.managed is read-only" });
           },
           clear() {
-            return Promise.reject({message: "storage.managed is read-only"});
+            return Promise.reject({ message: "storage.managed is read-only" });
           },
         },
 
@@ -270,7 +325,9 @@ this.storage = class extends ExtensionAPI {
               fire.raw(changes, area);
             };
 
-            let parent = context.childManager.getParentEvent("storage.onChanged");
+            let parent = context.childManager.getParentEvent(
+              "storage.onChanged"
+            );
             parent.addListener(onChanged);
             return () => {
               parent.removeListener(onChanged);

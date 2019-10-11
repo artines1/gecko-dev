@@ -7,19 +7,15 @@
 #include "ServiceWorkerRegistrationChild.h"
 
 #include "RemoteServiceWorkerRegistrationImpl.h"
+#include "mozilla/dom/WorkerRef.h"
 
 namespace mozilla {
 namespace dom {
 
 using mozilla::ipc::IPCResult;
 
-void
-ServiceWorkerRegistrationChild::ActorDestroy(ActorDestroyReason aReason)
-{
-  if (mWorkerHolderToken) {
-    mWorkerHolderToken->RemoveListener(this);
-    mWorkerHolderToken = nullptr;
-  }
+void ServiceWorkerRegistrationChild::ActorDestroy(ActorDestroyReason aReason) {
+  mIPCWorkerRef = nullptr;
 
   if (mOwner) {
     mOwner->RevokeActor(this);
@@ -27,50 +23,63 @@ ServiceWorkerRegistrationChild::ActorDestroy(ActorDestroyReason aReason)
   }
 }
 
-IPCResult
-ServiceWorkerRegistrationChild::RecvUpdateState(const IPCServiceWorkerRegistrationDescriptor& aDescriptor)
-{
+IPCResult ServiceWorkerRegistrationChild::RecvUpdateState(
+    const IPCServiceWorkerRegistrationDescriptor& aDescriptor) {
   if (mOwner) {
     mOwner->UpdateState(ServiceWorkerRegistrationDescriptor(aDescriptor));
   }
   return IPC_OK();
 }
 
-void
-ServiceWorkerRegistrationChild::WorkerShuttingDown()
-{
-  MaybeStartTeardown();
-}
-
-ServiceWorkerRegistrationChild::ServiceWorkerRegistrationChild(WorkerHolderToken* aWorkerHolderToken)
-  : mWorkerHolderToken(aWorkerHolderToken)
-  , mOwner(nullptr)
-  , mTeardownStarted(false)
-{
-  if (mWorkerHolderToken) {
-    mWorkerHolderToken->AddListener(this);
+IPCResult ServiceWorkerRegistrationChild::RecvFireUpdateFound() {
+  if (mOwner) {
+    mOwner->FireUpdateFound();
   }
+  return IPC_OK();
 }
 
-void
-ServiceWorkerRegistrationChild::SetOwner(RemoteServiceWorkerRegistrationImpl* aOwner)
-{
+// static
+ServiceWorkerRegistrationChild* ServiceWorkerRegistrationChild::Create() {
+  ServiceWorkerRegistrationChild* actor = new ServiceWorkerRegistrationChild();
+
+  if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_DIAGNOSTIC_ASSERT(workerPrivate);
+
+    RefPtr<IPCWorkerRefHelper<ServiceWorkerRegistrationChild>> helper =
+        new IPCWorkerRefHelper<ServiceWorkerRegistrationChild>(actor);
+
+    actor->mIPCWorkerRef = IPCWorkerRef::Create(
+        workerPrivate, "ServiceWorkerRegistrationChild",
+        [helper] { helper->Actor()->MaybeStartTeardown(); });
+
+    if (NS_WARN_IF(!actor->mIPCWorkerRef)) {
+      delete actor;
+      return nullptr;
+    }
+  }
+
+  return actor;
+}
+
+ServiceWorkerRegistrationChild::ServiceWorkerRegistrationChild()
+    : mOwner(nullptr), mTeardownStarted(false) {}
+
+void ServiceWorkerRegistrationChild::SetOwner(
+    RemoteServiceWorkerRegistrationImpl* aOwner) {
   MOZ_DIAGNOSTIC_ASSERT(!mOwner);
   MOZ_DIAGNOSTIC_ASSERT(aOwner);
   mOwner = aOwner;
 }
 
-void
-ServiceWorkerRegistrationChild::RevokeOwner(RemoteServiceWorkerRegistrationImpl* aOwner)
-{
+void ServiceWorkerRegistrationChild::RevokeOwner(
+    RemoteServiceWorkerRegistrationImpl* aOwner) {
   MOZ_DIAGNOSTIC_ASSERT(mOwner);
   MOZ_DIAGNOSTIC_ASSERT(aOwner == mOwner);
   mOwner = nullptr;
 }
 
-void
-ServiceWorkerRegistrationChild::MaybeStartTeardown()
-{
+void ServiceWorkerRegistrationChild::MaybeStartTeardown() {
   if (mTeardownStarted) {
     return;
   }
@@ -78,5 +87,5 @@ ServiceWorkerRegistrationChild::MaybeStartTeardown()
   Unused << SendTeardown();
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

@@ -7,16 +7,18 @@
 #ifndef mozilla_dom_timeout_h
 #define mozilla_dom_timeout_h
 
+#include "mozilla/dom/PopupBlocker.h"
+#include "mozilla/dom/TimeoutHandler.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsGlobalWindow.h"
-#include "nsITimeoutHandler.h"
+#include "GeckoProfiler.h"
 
 class nsIEventTarget;
 class nsIPrincipal;
 class nsIEventTarget;
+class nsGlobalWindowInner;
 
 namespace mozilla {
 namespace dom {
@@ -26,17 +28,14 @@ namespace dom {
  * timeout.  Holds a strong reference to an nsITimeoutHandler, which
  * abstracts the language specific cruft.
  */
-class Timeout final
-  : public LinkedListElement<RefPtr<Timeout>>
-{
-public:
+class Timeout final : public LinkedListElement<RefPtr<Timeout>> {
+ public:
   Timeout();
 
   NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(Timeout)
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(Timeout)
 
-  enum class Reason : uint8_t
-  {
+  enum class Reason : uint8_t {
     eTimeoutOrInterval,
     eIdleCallbackTimeout,
   };
@@ -47,10 +46,16 @@ public:
   // Can only be called when not frozen.
   const TimeStamp& When() const;
 
+  const TimeStamp& SubmitTime() const;
+
   // Can only be called when frozen.
   const TimeDuration& TimeRemaining() const;
 
-private:
+#ifdef MOZ_GECKO_PROFILER
+  UniqueProfilerBacktrace TakeProfilerBacktrace() { return std::move(mCause); }
+#endif
+
+ private:
   // mWhen and mTimeRemaining can't be in a union, sadly, because they
   // have constructors.
   // Nominal time to run this timeout.  Use only when timeouts are not
@@ -60,9 +65,14 @@ private:
   // Remaining time to wait.  Used only when timeouts are frozen.
   TimeDuration mTimeRemaining;
 
+  // Time that the timeout started, restarted, or was frozen.  Useful for
+  // logging time from (virtual) start of a timer until the time it fires
+  // (or is cancelled, etc)
+  TimeStamp mSubmitTime;
+
   ~Timeout() = default;
 
-public:
+ public:
   // Public member variables in this section.  Please don't add to this list
   // or mix methods with these.  The interleaving public/private sections
   // is necessary as we migrate members to private while still trying to
@@ -72,10 +82,14 @@ public:
   RefPtr<nsGlobalWindowInner> mWindow;
 
   // The language-specific information about the callback.
-  nsCOMPtr<nsITimeoutHandler> mScriptHandler;
+  RefPtr<TimeoutHandler> mScriptHandler;
 
   // Interval
   TimeDuration mInterval;
+
+#ifdef MOZ_GECKO_PROFILER
+  UniqueProfilerBacktrace mCause;
+#endif
 
   // Returned as value of setTimeout()
   uint32_t mTimeoutId;
@@ -84,9 +98,13 @@ public:
   // when sync loops trigger nested firing.
   uint32_t mFiringId;
 
+#ifdef DEBUG
+  int64_t mFiringIndex;
+#endif
+
   // The popup state at timeout creation time if not created from
   // another timeout
-  PopupControlState mPopupState;
+  PopupBlocker::PopupControlState mPopupState;
 
   // Used to allow several reasons for setting a timeout, where each
   // 'Reason' value is using a possibly overlapping set of id:s.
@@ -104,12 +122,9 @@ public:
 
   // True if this is a repeating/interval timer
   bool mIsInterval;
-
-  // True if this is a timeout coming from a tracking script
-  bool mIsTracking;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_timeout_h
+#endif  // mozilla_dom_timeout_h

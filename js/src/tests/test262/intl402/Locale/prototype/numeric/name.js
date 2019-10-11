@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -14,15 +13,12 @@ includes: [propertyHelper.js]
 features: [Intl.Locale]
 ---*/
 
-const propdesc = Object.getOwnPropertyDescriptor(Intl.Locale.prototype, "numeric");
-if (propdesc !== undefined) {
-  const getter = propdesc.get;
-  verifyProperty(getter, "name", {
-    value: "get numeric",
-    writable: false,
-    enumerable: false,
-    configurable: true,
-  });
-}
+const getter = Object.getOwnPropertyDescriptor(Intl.Locale.prototype, "numeric").get;
+verifyProperty(getter, "name", {
+  value: "get numeric",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 reportCompare(0, 0);

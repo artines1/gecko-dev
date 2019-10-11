@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "Geolocation")
+    BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
 EXPORTS += [
     'nsGeoPosition.h',
@@ -46,7 +46,7 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     LOCAL_INCLUDES += [
         '/dom/system/windows',
     ]
-elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
+elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     if CONFIG['MOZ_GPSD']:
         LOCAL_INCLUDES += [
             '/dom/system/linux',

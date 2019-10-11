@@ -9,13 +9,18 @@
 
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
-  this);
+  this
+);
 
-const {DebuggerClient} = require("devtools/shared/client/debugger-client");
-const {DebuggerServer} = require("devtools/server/main");
+const { DebuggerClient } = require("devtools/shared/client/debugger-client");
+const {
+  ActorRegistry,
+} = require("devtools/server/actors/utils/actor-registry");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 
 const PATH = "browser/devtools/server/tests/browser/";
-const MAIN_DOMAIN = "http://test1.example.org/" + PATH;
+const TEST_DOMAIN = "http://test1.example.org";
+const MAIN_DOMAIN = `${TEST_DOMAIN}/${PATH}`;
 const ALT_DOMAIN = "http://sectest1.example.org/" + PATH;
 const ALT_DOMAIN_SECURED = "https://sectest1.example.org:443/" + PATH;
 
@@ -37,61 +42,53 @@ waitForExplicitFinish();
  */
 var addTab = async function(url) {
   info(`Adding a new tab with URL: ${url}`);
-  const tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, url);
+  const tab = (gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, url));
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
-  info(`Tab added and URL ${url} loaded`);
+  info(`Tab added a URL ${url} loaded`);
 
   return tab.linkedBrowser;
 };
 
+// does almost the same thing as addTab, but directly returns an object
+async function addTabTarget(url) {
+  info(`Adding a new tab with URL: ${url}`);
+  const tab = (gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, url));
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  info(`Tab added a URL ${url} loaded`);
+  return getTargetForTab(tab);
+}
+
+async function getTargetForTab(tab) {
+  const target = await TargetFactory.forTab(tab);
+  info("Attaching to the active tab.");
+  await target.attach();
+  return target;
+}
+
 async function initAnimationsFrontForUrl(url) {
-  const {AnimationsFront} = require("devtools/shared/fronts/animation");
-  const {InspectorFront} = require("devtools/shared/fronts/inspector");
+  const { inspector, walker, target } = await initInspectorFront(url);
+  const animations = await target.getFront("animations");
 
-  await addTab(url);
-
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const inspector = InspectorFront(client, form);
-  const walker = await inspector.getWalker();
-  const animations = AnimationsFront(client, form);
-
-  return {inspector, walker, animations, client};
+  return { inspector, walker, animations, target };
 }
 
 async function initLayoutFrontForUrl(url) {
-  const {InspectorFront} = require("devtools/shared/fronts/inspector");
-
-  await addTab(url);
-
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const inspector = InspectorFront(client, form);
-  const walker = await inspector.getWalker();
+  const { inspector, walker, target } = await initInspectorFront(url);
   const layout = await walker.getLayoutInspector();
 
-  return {inspector, walker, layout, client};
+  return { inspector, walker, layout, target };
 }
 
 async function initAccessibilityFrontForUrl(url) {
-  const {AccessibilityFront} = require("devtools/shared/fronts/accessibility");
-  const {InspectorFront} = require("devtools/shared/fronts/inspector");
-
-  await addTab(url);
-
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const inspector = InspectorFront(client, form);
-  const walker = await inspector.getWalker();
-  const accessibility = AccessibilityFront(client, form);
+  const target = await addTabTarget(url);
+  const inspector = await target.getFront("inspector");
+  const walker = inspector.walker;
+  const accessibility = await target.getFront("accessibility");
 
   await accessibility.bootstrap();
 
-  return {inspector, walker, accessibility, client};
+  return { inspector, walker, accessibility, target };
 }
 
 function initDebuggerServer() {
@@ -107,23 +104,19 @@ function initDebuggerServer() {
 }
 
 async function initPerfFront() {
-  const {PerfFront} = require("devtools/shared/fronts/perf");
-
   initDebuggerServer();
   const client = new DebuggerClient(DebuggerServer.connectPipe());
   await waitUntilClientConnected(client);
-  const rootForm = await getRootForm(client);
-  const front = PerfFront(client, rootForm);
-  return {front, client};
+  const front = await client.mainRoot.getFront("perf");
+  return { front, client };
 }
 
-/**
- * Gets the RootActor form from a DebuggerClient.
- * @param {DebuggerClient} client
- * @return {RootActor} Resolves when connected.
- */
-function getRootForm(client) {
-  return client.listTabs();
+async function initInspectorFront(url) {
+  const target = await addTabTarget(url);
+  const inspector = await target.getFront("inspector");
+  const walker = inspector.walker;
+
+  return { inspector, walker, target };
 }
 
 /**
@@ -132,24 +125,7 @@ function getRootForm(client) {
  * @return {Promise} Resolves when connected.
  */
 function waitUntilClientConnected(client) {
-  return new Promise(resolve => {
-    client.addOneTimeListener("connected", resolve);
-  });
-}
-
-/**
- * Connect a debugger client.
- *
- * @param {DebuggerClient}
- * @return {Promise} Resolves to the targetActor form for the selected tab when the client
- *         is connected.
- */
-function connectDebuggerClient(client) {
-  return client.connect()
-    .then(() => client.listTabs())
-    .then(tabs => {
-      return tabs.tabs[tabs.selected];
-    });
+  return client.once("connected");
 }
 
 /**
@@ -167,14 +143,18 @@ function once(target, eventName, useCapture = false) {
     for (const [add, remove] of [
       ["addEventListener", "removeEventListener"],
       ["addListener", "removeListener"],
-      ["on", "off"]
+      ["on", "off"],
     ]) {
-      if ((add in target) && (remove in target)) {
-        target[add](eventName, function onEvent(...aArgs) {
-          info("Got event: '" + eventName + "' on " + target + ".");
-          target[remove](eventName, onEvent, useCapture);
-          resolve(...aArgs);
-        }, useCapture);
+      if (add in target && remove in target) {
+        target[add](
+          eventName,
+          function onEvent(...aArgs) {
+            info("Got event: '" + eventName + "' on " + target + ".");
+            target[remove](eventName, onEvent, useCapture);
+            resolve(...aArgs);
+          },
+          useCapture
+        );
         break;
       }
     }
@@ -231,13 +211,19 @@ function waitUntil(predicate, interval = 10) {
   });
 }
 
-function waitForMarkerType(front, types, predicate,
-                           unpackFun = (name, data) => data.markers,
-                           eventName = "timeline-data") {
+function waitForMarkerType(
+  front,
+  types,
+  predicate,
+  unpackFun = (name, data) => data.markers,
+  eventName = "timeline-data"
+) {
   types = [].concat(types);
-  predicate = predicate || function() {
-    return true;
-  };
+  predicate =
+    predicate ||
+    function() {
+      return true;
+    };
   let filteredMarkers = [];
   const { promise, resolve } = defer();
 
@@ -249,13 +235,16 @@ function waitForMarkerType(front, types, predicate,
     }
 
     const markers = unpackFun(name, data);
-    info("Got markers: " + JSON.stringify(markers, null, 2));
+    info("Got markers");
 
     filteredMarkers = filteredMarkers.concat(
-      markers.filter(m => types.includes(m.name)));
+      markers.filter(m => types.includes(m.name))
+    );
 
-    if (types.every(t => filteredMarkers.some(m => m.name === t)) &&
-        predicate(filteredMarkers)) {
+    if (
+      types.every(t => filteredMarkers.some(m => m.name === t)) &&
+      predicate(filteredMarkers)
+    ) {
       front.off(eventName, handler);
       resolve(filteredMarkers);
     }
@@ -296,10 +285,23 @@ function checkA11yFront(front, expected, expectedFront) {
     is(front, expectedFront, "Matching accessibility front");
   }
 
+  // Clone the front so we could modify some values for comparison.
+  front = Object.assign(front);
   for (const key in expected) {
-    if (["actions", "states", "attributes"].includes(key)) {
-      SimpleTest.isDeeply(front[key], expected[key],
-        `Accessible Front has correct ${key}`);
+    if (key === "checks") {
+      const { CONTRAST } = front[key];
+      // Contrast values are rounded to two digits after the decimal point.
+      if (CONTRAST && CONTRAST.value) {
+        CONTRAST.value = parseFloat(CONTRAST.value.toFixed(2));
+      }
+    }
+
+    if (["actions", "states", "attributes", "checks"].includes(key)) {
+      SimpleTest.isDeeply(
+        front[key],
+        expected[key],
+        `Accessible Front has correct ${key}`
+      );
     } else {
       is(front[key], expected[key], `accessibility front has correct ${key}`);
     }
@@ -326,7 +328,8 @@ async function waitForA11yShutdown() {
   }
 
   await getA11yInitOrShutdownPromise().then(data =>
-    data === "0" ? Promise.resolve() : Promise.reject());
+    data === "0" ? Promise.resolve() : Promise.reject()
+  );
 }
 
 /**
@@ -339,5 +342,6 @@ async function waitForA11yInit() {
   }
 
   await getA11yInitOrShutdownPromise().then(data =>
-    data === "1" ? Promise.resolve() : Promise.reject());
+    data === "1" ? Promise.resolve() : Promise.reject()
+  );
 }

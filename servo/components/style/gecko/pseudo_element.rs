@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Gecko's definition of a pseudo-element.
 //!
@@ -8,15 +8,16 @@
 //! `pseudo_element_definition.mako.rs`. If you touch that file, you probably
 //! need to update the checked-in files for Servo.
 
+use crate::gecko_bindings::structs::{self, PseudoStyleType};
+use crate::properties::longhands::display::computed_value::T as Display;
+use crate::properties::{ComputedValues, PropertyFlags};
+use crate::selector_parser::{PseudoElementCascadeType, SelectorImpl};
+use crate::str::{starts_with_ignore_ascii_case, string_as_ascii_lowercase};
+use crate::string_cache::Atom;
+use crate::values::serialize_atom_identifier;
 use cssparser::ToCss;
-use gecko_bindings::structs::{self, CSSPseudoElementType};
-use properties::{ComputedValues, PropertyFlags};
-use properties::longhands::display::computed_value::T as Display;
-use selector_parser::{NonTSPseudoClass, PseudoElementCascadeType, SelectorImpl};
 use std::fmt;
-use string_cache::Atom;
 use thin_slice::ThinBoxedSlice;
-use values::serialize_atom_identifier;
 
 include!(concat!(
     env!("OUT_DIR"),
@@ -26,12 +27,23 @@ include!(concat!(
 impl ::selectors::parser::PseudoElement for PseudoElement {
     type Impl = SelectorImpl;
 
-    fn supports_pseudo_class(&self, pseudo_class: &NonTSPseudoClass) -> bool {
-        if !self.supports_user_action_state() {
-            return false;
-        }
+    // ::slotted() should support all tree-abiding pseudo-elements, see
+    // https://drafts.csswg.org/css-scoping/#slotted-pseudo
+    // https://drafts.csswg.org/css-pseudo-4/#treelike
+    #[inline]
+    fn valid_after_slotted(&self) -> bool {
+        matches!(
+            *self,
+            PseudoElement::Before |
+                PseudoElement::After |
+                PseudoElement::Marker |
+                PseudoElement::Placeholder
+        )
+    }
 
-        return pseudo_class.is_safe_user_action_state();
+    #[inline]
+    fn accepts_state_pseudo_classes(&self) -> bool {
+        self.supports_user_action_state()
     }
 }
 
@@ -55,13 +67,6 @@ impl PseudoElement {
 
         PseudoElementCascadeType::Lazy
     }
-
-    /// Whether cascading this pseudo-element makes it inherit all properties,
-    /// even reset ones.
-    ///
-    /// This is used in Servo for anonymous boxes, though it's likely broken.
-    #[inline]
-    pub fn inherits_all(&self) -> bool { false }
 
     /// Whether the pseudo-element should inherit from the default computed
     /// values instead of from the parent element.
@@ -103,6 +108,18 @@ impl PseudoElement {
     #[inline]
     pub fn is_after(&self) -> bool {
         *self == PseudoElement::After
+    }
+
+    /// Whether this pseudo-element is the ::marker pseudo.
+    #[inline]
+    pub fn is_marker(&self) -> bool {
+        *self == PseudoElement::Marker
+    }
+
+    /// Whether this pseudo-element is the ::selection pseudo.
+    #[inline]
+    pub fn is_selection(&self) -> bool {
+        *self == PseudoElement::Selection
     }
 
     /// Whether this pseudo-element is ::first-letter.
@@ -165,17 +182,23 @@ impl PseudoElement {
     /// Property flag that properties must have to apply to this pseudo-element.
     #[inline]
     pub fn property_restriction(&self) -> Option<PropertyFlags> {
-        match *self {
-            PseudoElement::FirstLetter => Some(PropertyFlags::APPLIES_TO_FIRST_LETTER),
-            PseudoElement::FirstLine => Some(PropertyFlags::APPLIES_TO_FIRST_LINE),
-            PseudoElement::Placeholder => Some(PropertyFlags::APPLIES_TO_PLACEHOLDER),
-            _ => None,
-        }
+        Some(match *self {
+            PseudoElement::FirstLetter => PropertyFlags::APPLIES_TO_FIRST_LETTER,
+            PseudoElement::FirstLine => PropertyFlags::APPLIES_TO_FIRST_LINE,
+            PseudoElement::Placeholder => PropertyFlags::APPLIES_TO_PLACEHOLDER,
+            PseudoElement::Cue => PropertyFlags::APPLIES_TO_CUE,
+            PseudoElement::Marker if static_prefs::pref!("layout.css.marker.restricted") => {
+                PropertyFlags::APPLIES_TO_MARKER
+            },
+            _ => return None,
+        })
     }
 
     /// Whether this pseudo-element should actually exist if it has
     /// the given styles.
     pub fn should_exist(&self, style: &ComputedValues) -> bool {
+        debug_assert!(self.is_eager());
+
         if style.get_box().clone_display() == Display::None {
             return false;
         }

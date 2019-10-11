@@ -1,4 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,7 +16,7 @@ const KEY_PREFIX = /^--/;
 // default value for flags
 const DEFAULT_VALUE = true;
 const COMMAND_DEFAULT_FLAG = {
-  screenshot: "filename"
+  screenshot: "filename",
 };
 
 /**
@@ -34,7 +33,10 @@ function formatCommand(string) {
   if (!isCommand(string)) {
     throw Error("formatCommand was called without `:`");
   }
-  const tokens = string.trim().split(/\s+/).map(createToken);
+  const tokens = string
+    .trim()
+    .split(/\s+/)
+    .map(createToken);
   const { command, args } = parseCommand(tokens);
   const argsString = formatArgs(args);
   return `${command}(${argsString})`;
@@ -50,9 +52,7 @@ function formatCommand(string) {
  * @returns String formatted as ` { key: value, ... } ` or an empty string
  */
 function formatArgs(args) {
-  return Object.keys(args).length ?
-    JSON.stringify(args) :
-    "";
+  return Object.keys(args).length ? JSON.stringify(args) : "";
 }
 
 /**
@@ -113,10 +113,14 @@ function parseCommand(tokens) {
       const nextToken = tokens[nextTokenIndex];
       let values = args[token.value] || DEFAULT_VALUE;
       if (nextToken && nextToken.type === ARG) {
-        const { value, offset } = collectString(nextToken, tokens, nextTokenIndex);
+        const { value, offset } = collectString(
+          nextToken,
+          tokens,
+          nextTokenIndex
+        );
         // in order for JSON.stringify to correctly output values, they must be correctly
         // typed
-        // As per the GCLI documentation, we can only have one value associated with a
+        // As per the old GCLI documentation, we can only have one value associated with a
         // flag but multiple flags with the same name can exist and should be combined
         // into and array.  Here we are associating only the value on the right hand
         // side if it is of type `arg` as a single value; the second case initializes
@@ -148,7 +152,7 @@ function parseCommand(tokens) {
   return { command, args };
 }
 
-const stringChars = ["\"", "'", "`"];
+const stringChars = ['"', "'", "`"];
 function isStringChar(testChar) {
   return stringChars.includes(testChar);
 }

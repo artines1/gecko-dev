@@ -1,50 +1,55 @@
-use std::io::Read;
+use serde_json;
 use std::marker::PhantomData;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
-use hyper::header::{ContentType, CacheControl, CacheDirective};
-use hyper::mime::{Mime, TopLevel, SubLevel, Attr, Value};
-use hyper::method::Method;
-use hyper::Result;
-use hyper::server::{Handler, Listening, Request, Response, Server};
-use hyper::status::StatusCode;
-use hyper::uri::RequestUri::AbsolutePath;
+use http::{self, Method, StatusCode};
+use tokio::net::TcpListener;
+use tokio::reactor::Handle;
+use warp::{self, Buf, Filter, Rejection};
 
-use command::{WebDriverMessage, WebDriverCommand};
-use error::{WebDriverResult, WebDriverError, ErrorStatus};
-use httpapi::{WebDriverHttpApi, WebDriverExtensionRoute, VoidWebDriverExtensionRoute};
-use response::{CloseWindowResponse, WebDriverResponse};
+use crate::command::{WebDriverCommand, WebDriverMessage};
+use crate::error::{ErrorStatus, WebDriverError, WebDriverResult};
+use crate::httpapi::{
+    standard_routes, Route, VoidWebDriverExtensionRoute, WebDriverExtensionRoute,
+};
+use crate::response::{CloseWindowResponse, WebDriverResponse};
+use crate::Parameters;
 
+// Silence warning about Quit being unused for now.
+#[allow(dead_code)]
 enum DispatchMessage<U: WebDriverExtensionRoute> {
-    HandleWebDriver(WebDriverMessage<U>, Sender<WebDriverResult<WebDriverResponse>>),
-    Quit
+    HandleWebDriver(
+        WebDriverMessage<U>,
+        Sender<WebDriverResult<WebDriverResponse>>,
+    ),
+    Quit,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Session {
-    pub id: String
+    pub id: String,
 }
 
 impl Session {
     fn new(id: String) -> Session {
-        Session {
-            id: id
-        }
+        Session { id }
     }
 }
 
-pub trait WebDriverHandler<U: WebDriverExtensionRoute=VoidWebDriverExtensionRoute> : Send {
-    fn handle_command(&mut self, session: &Option<Session>, msg: WebDriverMessage<U>) -> WebDriverResult<WebDriverResponse>;
+pub trait WebDriverHandler<U: WebDriverExtensionRoute = VoidWebDriverExtensionRoute>: Send {
+    fn handle_command(
+        &mut self,
+        session: &Option<Session>,
+        msg: WebDriverMessage<U>,
+    ) -> WebDriverResult<WebDriverResponse>;
     fn delete_session(&mut self, session: &Option<Session>);
 }
 
 #[derive(Debug)]
-struct Dispatcher<T: WebDriverHandler<U>,
-                  U: WebDriverExtensionRoute> {
+struct Dispatcher<T: WebDriverHandler<U>, U: WebDriverExtensionRoute> {
     handler: T,
     session: Option<Session>,
     extension_type: PhantomData<U>,
@@ -53,13 +58,13 @@ struct Dispatcher<T: WebDriverHandler<U>,
 impl<T: WebDriverHandler<U>, U: WebDriverExtensionRoute> Dispatcher<T, U> {
     fn new(handler: T) -> Dispatcher<T, U> {
         Dispatcher {
-            handler: handler,
+            handler,
             session: None,
             extension_type: PhantomData,
         }
     }
 
-    fn run(&mut self, msg_chan: Receiver<DispatchMessage<U>>) {
+    fn run(&mut self, msg_chan: &Receiver<DispatchMessage<U>>) {
         loop {
             match msg_chan.recv() {
                 Ok(DispatchMessage::HandleWebDriver(msg, resp_chan)) => {
@@ -70,10 +75,10 @@ impl<T: WebDriverHandler<U>, U: WebDriverExtensionRoute> Dispatcher<T, U> {
 
                     match resp {
                         Ok(WebDriverResponse::NewSession(ref new_session)) => {
-                            self.session = Some(Session::new(new_session.sessionId.clone()));
+                            self.session = Some(Session::new(new_session.session_id.clone()));
                         }
-                        Ok(WebDriverResponse::CloseWindow(CloseWindowResponse { ref window_handles })) => {
-                            if window_handles.len() == 0 {
+                        Ok(WebDriverResponse::CloseWindow(CloseWindowResponse(ref handles))) => {
+                            if handles.is_empty() {
                                 debug!("Last window was closed, deleting session");
                                 self.delete_session();
                             }
@@ -88,7 +93,7 @@ impl<T: WebDriverHandler<U>, U: WebDriverExtensionRoute> Dispatcher<T, U> {
                     };
                 }
                 Ok(DispatchMessage::Quit) => break,
-                Err(_) => panic!("Error receiving message in handler"),
+                Err(e) => panic!("Error receiving message in handler: {:?}", e),
             }
         }
     }
@@ -101,166 +106,233 @@ impl<T: WebDriverHandler<U>, U: WebDriverExtensionRoute> Dispatcher<T, U> {
 
     fn check_session(&self, msg: &WebDriverMessage<U>) -> WebDriverResult<()> {
         match msg.session_id {
-            Some(ref msg_session_id) => {
-                match self.session {
-                    Some(ref existing_session) => {
-                        if existing_session.id != *msg_session_id {
-                            Err(WebDriverError::new(
-                                ErrorStatus::InvalidSessionId,
-                                format!("Got unexpected session id {}",
-                                        msg_session_id)))
-                        } else {
-                            Ok(())
-                        }
-                    },
-                    None => Ok(())
+            Some(ref msg_session_id) => match self.session {
+                Some(ref existing_session) => {
+                    if existing_session.id != *msg_session_id {
+                        Err(WebDriverError::new(
+                            ErrorStatus::InvalidSessionId,
+                            format!("Got unexpected session id {}", msg_session_id),
+                        ))
+                    } else {
+                        Ok(())
+                    }
                 }
+                None => Ok(()),
             },
             None => {
                 match self.session {
                     Some(_) => {
                         match msg.command {
                             WebDriverCommand::Status => Ok(()),
-                            WebDriverCommand::NewSession(_) => {
-                                Err(WebDriverError::new(
-                                    ErrorStatus::SessionNotCreated,
-                                    "Session is already started"))
-                            },
+                            WebDriverCommand::NewSession(_) => Err(WebDriverError::new(
+                                ErrorStatus::SessionNotCreated,
+                                "Session is already started",
+                            )),
                             _ => {
                                 //This should be impossible
                                 error!("Got a message with no session id");
                                 Err(WebDriverError::new(
                                     ErrorStatus::UnknownError,
-                                    "Got a command with no session?!"))
+                                    "Got a command with no session?!",
+                                ))
                             }
                         }
+                    }
+                    None => match msg.command {
+                        WebDriverCommand::NewSession(_) => Ok(()),
+                        WebDriverCommand::Status => Ok(()),
+                        _ => Err(WebDriverError::new(
+                            ErrorStatus::InvalidSessionId,
+                            "Tried to run a command before creating a session",
+                        )),
                     },
-                    None => {
-                        match msg.command {
-                            WebDriverCommand::NewSession(_) => Ok(()),
-                            WebDriverCommand::Status => Ok(()),
-                            _ => Err(WebDriverError::new(
-                                ErrorStatus::InvalidSessionId,
-                                "Tried to run a command before creating a session"))
-                        }
-                    }
                 }
             }
         }
     }
 }
 
-#[derive(Debug)]
-struct HttpHandler<U: WebDriverExtensionRoute> {
-    chan: Mutex<Sender<DispatchMessage<U>>>,
-    api: Mutex<WebDriverHttpApi<U>>
+pub struct Listener {
+    guard: Option<thread::JoinHandle<()>>,
+    pub socket: SocketAddr,
 }
 
-impl <U: WebDriverExtensionRoute> HttpHandler<U> {
-    fn new(api: WebDriverHttpApi<U>, chan: Sender<DispatchMessage<U>>) -> HttpHandler<U> {
-        HttpHandler {
-            chan: Mutex::new(chan),
-            api: Mutex::new(api)
-        }
-    }
-}
-
-impl<U: WebDriverExtensionRoute> Handler for HttpHandler<U> {
-    fn handle(&self, req: Request, res: Response) {
-        let mut req = req;
-        let mut res = res;
-
-        let mut body = String::new();
-        if let Method::Post = req.method {
-            req.read_to_string(&mut body).unwrap();
-        }
-
-        debug!("-> {} {} {}", req.method, req.uri, body);
-
-        match req.uri {
-            AbsolutePath(path) => {
-                let msg_result = {
-                    // The fact that this locks for basically the whole request doesn't
-                    // matter as long as we are only handling one request at a time.
-                    match self.api.lock() {
-                        Ok(ref api) => api.decode_request(req.method, &path[..], &body[..]),
-                        Err(_) => return,
-                    }
-                };
-                let (status, resp_body) = match msg_result {
-                    Ok(message) => {
-                        let (send_res, recv_res) = channel();
-                        match self.chan.lock() {
-                            Ok(ref c) => {
-                                let res =
-                                    c.send(DispatchMessage::HandleWebDriver(message, send_res));
-                                match res {
-                                    Ok(x) => x,
-                                    Err(_) => {
-                                        error!("Something terrible happened");
-                                        return;
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                error!("Something terrible happened");
-                                return;
-                            }
-                        }
-                        match recv_res.recv() {
-                            Ok(data) => {
-                                match data {
-                                    Ok(response) => (StatusCode::Ok, response.to_json_string()),
-                                    Err(err) => (err.http_status(), err.to_json_string()),
-                                }
-                            }
-                            Err(e) => panic!("Error reading response: {:?}", e),
-                        }
-                    }
-                    Err(err) => (err.http_status(), err.to_json_string()),
-                };
-
-                debug!("<- {} {}", status, resp_body);
-
-                {
-                    let resp_status = res.status_mut();
-                    *resp_status = status;
-                }
-                res.headers_mut()
-                    .set(ContentType(Mime(TopLevel::Application,
-                                          SubLevel::Json,
-                                          vec![(Attr::Charset, Value::Utf8)])));
-                res.headers_mut()
-                    .set(CacheControl(vec![CacheDirective::NoCache]));
-
-                res.send(&resp_body.as_bytes()).unwrap();
-            }
-            _ => {}
-        }
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = self.guard.take().map(|j| j.join());
     }
 }
 
 pub fn start<T, U>(
     address: SocketAddr,
     handler: T,
-    extension_routes: &[(Method, &str, U)],
-) -> Result<Listening>
+    extension_routes: Vec<(Method, &'static str, U)>,
+) -> ::std::io::Result<Listener>
 where
     T: 'static + WebDriverHandler<U>,
-    U: 'static + WebDriverExtensionRoute,
+    U: 'static + WebDriverExtensionRoute + Send + Sync,
 {
+    let listener = StdTcpListener::bind(address)?;
+    let addr = listener.local_addr()?;
     let (msg_send, msg_recv) = channel();
 
-    let api = WebDriverHttpApi::new(extension_routes);
-    let http_handler = HttpHandler::new(api, msg_send);
-    let mut server = Server::http(address)?;
-    server.keep_alive(Some(Duration::from_secs(90)));
+    let builder = thread::Builder::new().name("webdriver server".to_string());
+    let handle = builder.spawn(move || {
+        let listener = TcpListener::from_std(listener, &Handle::default()).unwrap();
+        let wroutes = build_warp_routes(&extension_routes, msg_send.clone());
+        warp::serve(wroutes).run_incoming(listener.incoming());
+    })?;
 
     let builder = thread::Builder::new().name("webdriver dispatcher".to_string());
     builder.spawn(move || {
         let mut dispatcher = Dispatcher::new(handler);
-        dispatcher.run(msg_recv);
+        dispatcher.run(&msg_recv);
     })?;
 
-    server.handle(http_handler)
+    Ok(Listener {
+        guard: Some(handle),
+        socket: addr,
+    })
+}
+
+fn build_warp_routes<U: 'static + WebDriverExtensionRoute + Send + Sync>(
+    ext_routes: &[(Method, &'static str, U)],
+    chan: Sender<DispatchMessage<U>>,
+) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> {
+    let chan = Arc::new(Mutex::new(chan));
+    let mut std_routes = standard_routes::<U>();
+    let (method, path, res) = std_routes.pop().unwrap();
+    let mut wroutes = build_route(method, path, res, chan.clone());
+    for (method, path, res) in std_routes {
+        wroutes = wroutes
+            .or(build_route(method, path, res.clone(), chan.clone()))
+            .unify()
+            .boxed()
+    }
+    for (method, path, res) in ext_routes {
+        wroutes = wroutes
+            .or(build_route(
+                method.clone(),
+                path,
+                Route::Extension(res.clone()),
+                chan.clone(),
+            ))
+            .unify()
+            .boxed()
+    }
+    wroutes
+}
+
+fn build_route<U: 'static + WebDriverExtensionRoute + Send + Sync>(
+    method: Method,
+    path: &'static str,
+    route: Route<U>,
+    chan: Arc<Mutex<Sender<DispatchMessage<U>>>>,
+) -> warp::filters::BoxedFilter<(impl warp::Reply,)> {
+    // Create an empty filter based on the provided method and append an empty hashmap to it. The
+    // hashmap will be used to store path parameters.
+    let mut subroute = match method {
+        Method::GET => warp::get2().boxed(),
+        Method::POST => warp::post2().boxed(),
+        Method::DELETE => warp::delete2().boxed(),
+        Method::OPTIONS => warp::options().boxed(),
+        Method::PUT => warp::put2().boxed(),
+        _ => panic!("Unsupported method"),
+    }
+    .or(warp::head())
+    .unify()
+    .map(Parameters::new)
+    .boxed();
+
+    // For each part of the path, if it's a normal part, just append it to the current filter,
+    // otherwise if it's a parameter (a named enclosed in { }), we take that parameter and insert
+    // it into the hashmap created earlier.
+    for part in path.split('/') {
+        if part.is_empty() {
+            continue;
+        } else if part.starts_with('{') {
+            assert!(part.ends_with('}'));
+
+            subroute = subroute
+                .and(warp::path::param())
+                .map(move |mut params: Parameters, param: String| {
+                    let name = &part[1..part.len() - 1];
+                    params.insert(name.to_string(), param);
+                    params
+                })
+                .boxed();
+        } else {
+            subroute = subroute.and(warp::path(part)).boxed();
+        }
+    }
+
+    // Finally, tell warp that the path is complete
+    subroute
+        .and(warp::path::end())
+        .and(warp::path::full())
+        .and(warp::method())
+        .and(warp::body::concat())
+        .map(
+            move |params, full_path: warp::path::FullPath, method, body: warp::body::FullBody| {
+                if method == Method::HEAD {
+                    return warp::reply::with_status("".into(), StatusCode::OK);
+                }
+                let body = String::from_utf8(body.collect::<Vec<u8>>());
+                if body.is_err() {
+                    return warp::reply::with_status(
+                        "The body wasn't valid UTF-8".to_string(),
+                        StatusCode::BAD_REQUEST,
+                    );
+                }
+                let body = body.unwrap();
+
+                debug!("-> {} {} {}", method, full_path.as_str(), body);
+                let msg_result = WebDriverMessage::from_http(
+                    route.clone(),
+                    &params,
+                    &body,
+                    method == Method::POST,
+                );
+
+                let (status, resp_body) = match msg_result {
+                    Ok(message) => {
+                        let (send_res, recv_res) = channel();
+                        match chan.lock() {
+                            Ok(ref c) => {
+                                let res =
+                                    c.send(DispatchMessage::HandleWebDriver(message, send_res));
+                                match res {
+                                    Ok(x) => x,
+                                    Err(e) => panic!("Error: {:?}", e),
+                                }
+                            }
+                            Err(e) => panic!("Error reading response: {:?}", e),
+                        }
+
+                        match recv_res.recv() {
+                            Ok(data) => match data {
+                                Ok(response) => {
+                                    (StatusCode::OK, serde_json::to_string(&response).unwrap())
+                                }
+                                Err(e) => (e.http_status(), serde_json::to_string(&e).unwrap()),
+                            },
+                            Err(e) => panic!("Error reading response: {:?}", e),
+                        }
+                    }
+                    Err(e) => (e.http_status(), serde_json::to_string(&e).unwrap()),
+                };
+
+                debug!("<- {} {}", status, resp_body);
+                warp::reply::with_status(resp_body, status)
+            },
+        )
+        .with(warp::reply::with::header(
+            http::header::CONTENT_TYPE,
+            "application/json; charset=utf-8",
+        ))
+        .with(warp::reply::with::header(
+            http::header::CACHE_CONTROL,
+            "no-cache",
+        ))
+        .boxed()
 }

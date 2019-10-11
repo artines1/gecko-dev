@@ -6,11 +6,13 @@
 #include "CustomMatchers.h"
 
 void MustReturnFromCallerChecker::registerMatchers(MatchFinder *AstMatcher) {
-  // Look for a call to a MOZ_MUST_RETURN_FROM_CALLER function
+  // Look for a call to a MOZ_MUST_RETURN_FROM_CALLER member
   AstMatcher->addMatcher(
-      callExpr(callee(functionDecl(isMozMustReturnFromCaller())),
-               anyOf(hasAncestor(lambdaExpr().bind("containing-lambda")),
-                     hasAncestor(functionDecl().bind("containing-func"))))
+      cxxMemberCallExpr(
+              on(declRefExpr(to(parmVarDecl()))),
+              callee(functionDecl(isMozMustReturnFromCaller())),
+              anyOf(hasAncestor(lambdaExpr().bind("containing-lambda")),
+                    hasAncestor(functionDecl().bind("containing-func"))))
           .bind("call"),
       this);
 }
@@ -48,7 +50,7 @@ void MustReturnFromCallerChecker::check(
   assert(Block && "This statement should be within the CFG!");
 
   if (!immediatelyReturns(Block, Result.Context, CallIndex + 1)) {
-    diag(Call->getLocStart(),
+    diag(Call->getBeginLoc(),
          "You must immediately return after calling this function",
          DiagnosticIDs::Error);
   }
@@ -84,7 +86,7 @@ bool MustReturnFromCallerChecker::immediatelyReturns(
     if (auto CE = dyn_cast<CallExpr>(AfterTrivials)) {
       auto Callee = CE->getDirectCallee();
       if (Callee &&
-          hasCustomAnnotation(Callee, "moz_may_call_after_must_return")) {
+          hasCustomAttribute<moz_may_call_after_must_return>(Callee)) {
         continue;
       }
 

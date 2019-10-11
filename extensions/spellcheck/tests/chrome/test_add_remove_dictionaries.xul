@@ -3,10 +3,10 @@
 
 <window title="Add and remove dictionaries test"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         onload="RunTest();">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml">
@@ -22,9 +22,7 @@ function getMisspelledWords(editor) {
 
 function getDictionaryList(editor) {
   var spellchecker = editor.getInlineSpellChecker(true).spellChecker;
-  var o1 = {};
-  spellchecker.GetDictionaryList(o1, {});
-  return o1.value;
+  return spellchecker.GetDictionaryList();
 }
 
 function getCurrentDictionary(editor) {
@@ -66,7 +64,7 @@ function RunTest() {
   ok(map.exists());
   hunspell.addDirectory(map);
 
-  ChromeUtils.import(
+  const {onSpellCheck} = ChromeUtils.import(
     "resource://testing-common/AsyncSpellCheckTestHelper.jsm");
   onSpellCheck(textbox, function () {
 
@@ -125,5 +123,5 @@ function RunTest() {
 }
   ]]>
   </script>
-  <textbox id="textbox" spellcheck="true" value="created imply Frühstück tomorrow qwertyu"/>
+  <html:input id="textbox" spellcheck="true" value="created imply Frühstück tomorrow qwertyu"/>
 </window>

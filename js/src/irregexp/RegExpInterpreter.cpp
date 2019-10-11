@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99: */
+ * vim: set ts=8 sts=2 et sw=2 tw=80: */
 
 // Copyright 2011 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
@@ -130,8 +130,9 @@ irregexp::InterpretCode(JSContext* cx, const uint8_t* byteCode, const CharT* cha
     if (!stack.init())
         return RegExpRunStatus_Error;
 
-    int32_t numRegisters = Load32Aligned(pc);
-    pc += 4;
+    auto header = reinterpret_cast<const RegExpByteCodeHeader*>(byteCode);
+    int32_t numRegisters = header->numRegisters;
+    pc += sizeof(RegExpByteCodeHeader);
 
     // Most of the time we need 8 or fewer registers.  Specify an initial
     // size of 8 here, therefore, so that the vector contents can be stack
@@ -498,6 +499,8 @@ irregexp::InterpretCode(JSContext* cx, const uint8_t* byteCode, const CharT* cha
         }
     }
 }
+
+#undef BYTECODE
 
 template RegExpRunStatus
 irregexp::InterpretCode(JSContext* cx, const uint8_t* byteCode, const Latin1Char* chars, size_t current,

@@ -1,4 +1,4 @@
-use secure::ring::aead::{seal_in_place, open_in_place, Algorithm, AES_256_GCM};
+use secure::ring::aead::{seal_in_place, open_in_place, Aad, Algorithm, Nonce, AES_256_GCM};
 use secure::ring::aead::{OpeningKey, SealingKey};
 use secure::ring::rand::{SecureRandom, SystemRandom};
 use secure::{base64, Key};
@@ -46,9 +46,11 @@ impl<'a> PrivateJar<'a> {
             return Err("length of decoded data is <= NONCE_LEN");
         }
 
-        let ad = name.as_bytes();
+        let ad = Aad::from(name.as_bytes());
         let key = OpeningKey::new(ALGO, &self.key).expect("opening key");
         let (nonce, sealed) = data.split_at_mut(NONCE_LEN);
+        let nonce = Nonce::try_assume_unique_for_key(nonce)
+            .expect("invalid length of `nonce`");
         let unsealed = open_in_place(&key, nonce, ad, 0, sealed)
             .map_err(|_| "invalid key/nonce/value: bad seal")?;
 
@@ -104,6 +106,44 @@ impl<'a> PrivateJar<'a> {
     /// assert_eq!(jar.private(&key).get("name").unwrap().value(), "value");
     /// ```
     pub fn add(&mut self, mut cookie: Cookie<'static>) {
+        self.encrypt_cookie(&mut cookie);
+
+        // Add the sealed cookie to the parent.
+        self.parent.add(cookie);
+    }
+
+    /// Adds an "original" `cookie` to parent jar. The cookie's value is
+    /// encrypted with authenticated encryption assuring confidentiality,
+    /// integrity, and authenticity. Adding an original cookie does not affect
+    /// the [`CookieJar::delta()`](struct.CookieJar.html#method.delta)
+    /// computation. This method is intended to be used to seed the cookie jar
+    /// with cookies received from a client's HTTP message.
+    ///
+    /// For accurate `delta` computations, this method should not be called
+    /// after calling `remove`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cookie::{CookieJar, Cookie, Key};
+    ///
+    /// let key = Key::generate();
+    /// let mut jar = CookieJar::new();
+    /// jar.private(&key).add_original(Cookie::new("name", "value"));
+    ///
+    /// assert_eq!(jar.iter().count(), 1);
+    /// assert_eq!(jar.delta().count(), 0);
+    /// ```
+    pub fn add_original(&mut self, mut cookie: Cookie<'static>) {
+        self.encrypt_cookie(&mut cookie);
+
+        // Add the sealed cookie to the parent.
+        self.parent.add_original(cookie);
+    }
+
+    /// Encrypts the cookie's value with
+    /// authenticated encryption assuring confidentiality, integrity, and authenticity.
+    fn encrypt_cookie(&self, cookie: &mut Cookie) {
         let mut data;
         let output_len = {
             // Create the `SealingKey` structure.
@@ -118,9 +158,11 @@ impl<'a> PrivateJar<'a> {
             let (nonce, in_out) = data.split_at_mut(NONCE_LEN);
             SystemRandom::new().fill(nonce).expect("couldn't random fill nonce");
             in_out[..cookie_val.len()].copy_from_slice(cookie_val);
+            let nonce = Nonce::try_assume_unique_for_key(nonce)
+                .expect("invalid length of `nonce`");
 
             // Use cookie's name as associated data to prevent value swapping.
-            let ad = cookie.name().as_bytes();
+            let ad = Aad::from(cookie.name().as_bytes());
 
             // Perform the actual sealing operation and get the output length.
             seal_in_place(&key, nonce, ad, in_out, overhead).expect("in-place seal")
@@ -129,9 +171,6 @@ impl<'a> PrivateJar<'a> {
         // Base64 encode the nonce and encrypted value.
         let sealed_value = base64::encode(&data[..(NONCE_LEN + output_len)]);
         cookie.set_value(sealed_value);
-
-        // Add the sealed cookie to the parent.
-        self.parent.add(cookie);
     }
 
     /// Removes `cookie` from the parent jar.

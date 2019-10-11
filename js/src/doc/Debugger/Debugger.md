@@ -37,10 +37,6 @@ its prototype:
     Debugger API (e.g, [`Debugger.Source`][source]) for purposes other than
     step debugging a target JavaScript program.
 
-`allowWasmBinarySource`
-:   A boolean value indicating whether WebAssembly sources will be available
-    in binary form. The WebAssembly text generation will be disabled.
-
 `collectCoverageInfo`
 :   A boolean value indicating whether code coverage should be enabled inside
     each debuggee of this `Debugger` instance. Changing this flag value will
@@ -165,6 +161,24 @@ compartment.
 
     SpiderMonkey only calls `onEnterFrame` to report
     [visible][vf], non-`"debugger"` frames.
+
+<code>onNativeCall(<i>callee</i>, <i>reason</i>)</code>
+:   A call to a native function is being made from a debuggee realm.
+    <i>callee</i> is a [`Debugger.Object`] for the function being called, and
+    <i>reason</i> is a string describing the reason the call was made, and
+    has one of the following values:
+
+    `get`: The native is the getter for a property which is being accessed.
+    `set`: The native is the setter for a property being written to.
+    `call`: Any call not fitting into the above categories.
+
+    This method should return a [resumption value][rv] specifying how the
+    debuggee's execution should proceed.
+
+    SpiderMonkey only calls `onNativeCall` hooks when execution is inside a
+    debugger evaluation associated with the debugger that has the `onNativeCall`
+    hook.  Such evaluation methods include `Debugger.Object.executeInGlobal`,
+    `Debugger.Frame.eval`, and associated methods.
 
 <code>onExceptionUnwind(<i>frame</i>, <i>value</i>)</code>
 :   The exception <i>value</i> has been thrown, and has propagated to
@@ -357,25 +371,9 @@ other kinds of objects.
     [visible frame][vf] currently on the calling thread's stack, or `null`
     if there are no visible frames on the stack.
 
-<code>findSources([<i>query</i>]) <i>(not yet implemented)</i></code>
-:   Return an array of all [`Debugger.Source`][source] instances matching
-    <i>query</i>. Each source appears only once in the array. <i>Query</i>
-    is an object whose properties restrict which sources are returned; a
-    source must meet all the criteria given by <i>query</i> to be returned.
-    If <i>query</i> is omitted, we return all sources of all debuggee
+<code>findSources()</code>
+:   Return an array of all [`Debugger.Source`][source] instances of all debuggee
     scripts.
-
-    <i>Query</i> may have the following properties:
-
-    `url`
-    :   The source's `url` property must be equal to this value.
-
-    `global`
-    :   The source must have been evaluated in the scope of the given global
-        object. If this property's value is a [`Debugger.Object`][object] instance
-        belonging to this `Debugger` instance, then its referent is used. If the
-        object is not a global object, then the global in whose scope it was
-        allocated is used.
 
     Note that the result may include sources that can no longer ever be
     used by the debuggee: say, eval code that has finished running, or
@@ -427,6 +425,12 @@ other kinds of objects.
     eval code that has finished running, or unreachable functions. Whether
     such scripts appear can be affected by the garbage collector's
     behavior, so this function's behavior is not entirely deterministic.
+
+<code>findSourceURLs()</code>
+:   Return an array of strings containing the URLs of all known sources that
+    have been created in any debuggee realm.  The array will have one entry for
+    each source, so may have duplicates.  The URLs for the realms are
+    occasionally purged and the returned array might not be complete.
 
 <code>findObjects([<i>query</i>])</code>
 :   Return an array of [`Debugger.Object`][object] instances referring to each
@@ -501,6 +505,10 @@ other kinds of objects.
      `Debugger.Object` owned by this `Debugger`. Otherwise, if `value` is some
      other kind of object, and hence not a proper debuggee value, throw a
      TypeError instead.
+
+<code>adoptSource(<i>source</i>)</code>
+:    Given `source` of type `Debugger.Source` which is owned by an arbitrary
+     `Debugger`, return an equivalent `Debugger.Source` owned by this `Debugger`.
 
 ## Static methods of the Debugger Object
 

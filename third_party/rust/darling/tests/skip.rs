@@ -2,7 +2,10 @@
 
 #[macro_use]
 extern crate darling;
+#[macro_use]
 extern crate syn;
+#[macro_use]
+extern crate quote;
 
 use darling::FromDeriveInput;
 
@@ -16,7 +19,7 @@ pub struct Lorem {
 }
 
 /// Verify variant-level and field-level skip work correctly for enums.
-#[derive(Debug, FromMetaItem)]
+#[derive(Debug, FromMeta)]
 pub enum Sit {
     Amet(bool),
 
@@ -28,19 +31,22 @@ pub enum Sit {
     Bar {
         hello: bool,
         #[darling(skip)]
-        world: u8
-    }
+        world: u8,
+    },
 }
 
 #[test]
 fn verify_skipped_field_not_required() {
-    let di = syn::parse_str(r#"
+    let di = parse_quote! {
         #[skip_test(ipsum = "Hello")]
         struct Baz;
-    "#).unwrap();
+    };
 
-    assert_eq!(Lorem::from_derive_input(&di).unwrap(), Lorem {
-        ipsum: "Hello".to_string(),
-        dolor: 0,
-    });
+    assert_eq!(
+        Lorem::from_derive_input(&di).unwrap(),
+        Lorem {
+            ipsum: "Hello".to_string(),
+            dolor: 0,
+        }
+    );
 }

@@ -93,6 +93,14 @@ from its prototype:
 :   True if this instance refers to a `JSScript` for an async function, defined
     with an `async function` expression or statement. False otherwise.
 
+`isFunction`
+:   True if this instance refers to a `JSScript` for a function. False
+    otherwise.
+
+`isModule`
+:   True if this instance refers to a `JSScript` that was parsed and loaded
+    as an ECMAScript module. False otherwise.
+
 `displayName`
 :   **If the instance refers to a `JSScript`**, this is the script's display
     name, if it has one. If the script has no display name &mdash; for example,
@@ -147,6 +155,31 @@ from its prototype:
     which this script's code starts, within the file or document named by
     `url`.
 
+`startColumn`
+:   **If the instance refers to a `JSScript`**, the zero-indexed number of the
+    column at which this script's code starts, within the file or document
+    named by `url`.  For functions, this is the start of the function's
+    arguments:
+    ```language-js
+    function f() { ... }
+    //        ^ start (column 10)
+    let g = x => x*x;
+    //      ^ start (column 8)
+    let h = (x) => x*x;
+    //      ^ start (column 8)
+    ```
+    For default class constructors, it is the start of the `class` keyword:
+    ```language-js
+    let MyClass = class { };
+    //            ^ start (column 14)
+    ```
+    For scripts from other sources, such as `eval` or the `Function`
+    constructor, it is typically 0:
+    ```language-js
+    let f = new Function("  console.log('hello world');");
+    //                    ^ start (column 0, from the string's perspective)
+    ```
+
 `lineCount`
 :   **If the instance refers to a `JSScript`**, the number of lines this
     script's code occupies, within the file or document named by `url`.
@@ -200,6 +233,167 @@ from its prototype:
 The functions described below may only be called with a `this` value
 referring to a `Debugger.Script` instance; they may not be used as
 methods of other kinds of objects.
+
+`getChildScripts()`
+:   **If the instance refers to a `JSScript`**, return a new array whose
+    elements are Debugger.Script objects for each function
+    in this script. Only direct children are included; nested
+    children can be reached by walking the tree.
+
+    **If the instance refers to WebAssembly code**, throw a `TypeError`.
+
+<code>getPossibleBreakpoints(<i>query</i>)</code>
+:   Query for the recommended breakpoint locations available in SpiderMonkey.
+    Returns a result array of objects with the following properties:
+      * `offset: number` - The offset the breakpoint.
+      * `lineNumber: number` - The line number of the breakpoint.
+      * `columnNumber: number` - The column number of the breakpoint.
+      * `isStepStart: boolean` - True if SpiderMonkey recommends that the
+        breakpoint be treated as a step location when users of debuggers
+        step to the next item. This _roughly_ translates to the start of
+        each statement, though not entirely.
+
+    The `query` argument can be used to filter the set of breakpoints.
+    The `query` object can contain the following properties:
+
+      * `minOffset: number` - The inclusive lower bound of `offset` values to include.
+      * `maxOffset: number` - The exclusive upper bound of `offset` values to include.
+      * `line: number` - Limit to breakpoints on the given line.
+      * `minLine: number` - The inclusive lower bound of lines to include.
+      * `minColumn: number` - The inclusive lower bound of the line/minLine column to include.
+      * `maxLine: number` - The exclusive upper bound of lines to include.
+      * `maxColumn: number` - The exclusive upper bound of the line/maxLine column to include.
+
+<code>getPossibleBreakpointOffsets(<i>query</i>)</code>
+:   Query for the recommended breakpoint locations available in SpiderMonkey.
+    Identical to getPossibleBreakpoints except this returns an array of `offset`
+    values instead of offset metadata objects.
+
+<code>getOffsetMetadata(<i>offset</i>)</code>
+:   Get metadata about a given bytecode offset.
+    Returns an object with the following properties:
+      * `lineNumber: number` - The line number of the breakpoint.
+      * `columnNumber: number` - The column number of the breakpoint.
+      * `isBreakpoint: boolean` - True if this offset qualifies as a breakpoint,
+        defined using the same semantics used for `getPossibleBreakpoints()`.
+      * `isStepStart: boolean` - True if SpiderMonkey recommends that the
+        breakpoint be treated as a step location when users of debuggers
+        step to the next item. This _roughly_ translates to the start of
+        each statement, though not entirely.
+
+<code>setBreakpoint(<i>offset</i>, <i>handler</i>)</code>
+:   **If the instance refers to a `JSScript`**, set a breakpoint at the
+    bytecode instruction at <i>offset</i> in this script, reporting hits to
+    the `hit` method of <i>handler</i>. If <i>offset</i> is not a valid offset
+    in this script, throw an error.
+
+    When execution reaches the given instruction, SpiderMonkey calls the
+    `hit` method of <i>handler</i>, passing a [`Debugger.Frame`][frame]
+    instance representing the currently executing stack frame. The `hit`
+    method's return value should be a [resumption value][rv], determining
+    how execution should continue.
+
+    Any number of breakpoints may be set at a single location; when control
+    reaches that point, SpiderMonkey calls their handlers in an unspecified
+    order.
+
+    Any number of breakpoints may use the same <i>handler</i> object.
+
+    Breakpoint handler method calls are cross-compartment, intra-thread
+    calls: the call takes place in the same thread that hit the breakpoint,
+    and in the compartment containing the handler function (typically the
+    debugger's compartment).
+
+    The new breakpoint belongs to the [`Debugger`][debugger-object] instance to
+    which this script belongs. Disabling the [`Debugger`][debugger-object]
+    instance disables this breakpoint; and removing a global from the
+    [`Debugger`][debugger-object] instance's set of debuggees clears all the
+    breakpoints belonging to that [`Debugger`][debugger-object] instance in that
+    global's scripts.
+
+<code>getBreakpoints([<i>offset</i>])</code>
+:   **If the instance refers to a `JSScript`**, return an array containing the
+    handler objects for all the breakpoints set at <i>offset</i> in this
+    script. If <i>offset</i> is omitted, return the handlers of all
+    breakpoints set anywhere in this script. If <i>offset</i> is present, but
+    not a valid offset in this script, throw an error.
+
+    **If the instance refers to WebAssembly code**, throw a `TypeError`.
+
+<code>clearBreakpoint(handler, [<i>offset</i>])</code>
+:   **If the instance refers to a `JSScript`**, remove all breakpoints set in
+    this [`Debugger`][debugger-object] instance that use <i>handler</i> as
+    their handler. If <i>offset</i> is given, remove only those breakpoints
+    set at <i>offset</i> that use <i>handler</i>; if <i>offset</i> is not a
+    valid offset in this script, throw an error.
+
+    Note that, if breakpoints using other handler objects are set at the
+    same location(s) as <i>handler</i>, they remain in place.
+
+<code>clearAllBreakpoints([<i>offset</i>])</code>
+:   **If the instance refers to a `JSScript`**, remove all breakpoints set in
+    this script. If <i>offset</i> is present, remove all breakpoints set at
+    that offset in this script; if <i>offset</i> is not a valid bytecode
+    offset in this script, throw an error.
+
+<code>getSuccessorOffsets(<i>offset</i>)</code>
+:   **If the instance refers to a `JSScript`**, return an array
+    containing the offsets of all bytecodes in the script which are
+    immediate successors of <i>offset</i> via non-exceptional control
+    flow paths.
+
+<code>getPredecessorOffsets(<i>offset</i>)</code>
+:   **If the instance refers to a `JSScript`**, return an array
+    containing the offsets of all bytecodes in the script for which
+    <i>offset</i> is an immediate successor via non-exceptional
+    control flow paths.
+
+<code>getEffectfulOffsets()</code>
+:   **If the instance refers to a `JSScript`**, return an array
+    containing the offsets of all bytecodes in the script which can have direct
+    side effects that are visible outside the currently executing frame.  This
+    includes, for example, operations that set properties or elements on
+    objects, or that may set names in environments created outside the frame.
+
+`getOffsetsCoverage()`:
+:   **If the instance refers to a `JSScript`**, return `null` or an array which
+    contains information about the coverage of all opcodes. The elements of
+    the array are objects, each of which describes a single opcode, and
+    contains the following properties:
+
+    * lineNumber: the line number of the current opcode.
+
+    * columnNumber: the column number of the current opcode.
+
+    * offset: the bytecode instruction offset of the current opcode.
+
+    * count: the number of times the current opcode got executed.
+
+    If this script has no coverage, or if it is not instrumented, then this
+    function will return `null`. To ensure that the debuggee is instrumented,
+    the flag `Debugger.collectCoverageInfo` should be set to `true`.
+
+    **If the instance refers to WebAssembly code**, throw a `TypeError`.
+
+<code>isInCatchScope([<i>offset</i>])</code>
+:   **If the instance refers to a `JSScript`**, this is `true` if this offset
+    falls within the scope of a try block, and `false` otherwise.
+
+    **If the instance refers to WebAssembly code**, throw a `TypeError`.
+
+`setInstrumentationId(id)`:
+:   **If the instance refers to a `JSScript`**, set the value which will be
+    supplied as the script's ID to instrumentation callbacks in the script's
+    realm. See `Debugger.Object.setInstrumentation()`.
+
+    **If the instance refers to WebAssembly code**, throw a `TypeError`.
+
+### Deprecated Debugger.Script Prototype Functions
+
+The following functions have all been deprecated in favor of `getOffsetMetadata`,
+`getPossibleBreakpoints`, and `getPossibleBreakpointOffsets`. These functions
+all have an under-defined concept of what offsets are and are not included
+in their results.
 
 `getAllOffsets()`
 :   **If the instance refers to a `JSScript`**, return an array <i>L</i>
@@ -292,104 +486,3 @@ methods of other kinds of objects.
 
     * isEntryPoint: true if the offset is a column entry point, as
       would be reported by getAllColumnOffsets(); otherwise false.
-
-<code>getSuccessorOffsets(<i>offset</i>)</code>
-:   **If the instance refers to a `JSScript`**, return an array
-    containing the offsets of all bytecodes in the script which are
-    immediate successors of <i>offset</i> via non-exceptional control
-    flow paths.
-
-<code>getPredecessorOffsets(<i>offset</i>)</code>
-:   **If the instance refers to a `JSScript`**, return an array
-    containing the offsets of all bytecodes in the script for which
-    <i>offset</i> is an immediate successor via non-exceptional
-    control flow paths.
-
-`getOffsetsCoverage()`:
-:   **If the instance refers to a `JSScript`**, return `null` or an array which
-    contains informations about the coverage of all opcodes. The elements of
-    the array are objects, each of which describes a single opcode, and
-    contains the following properties:
-
-    * lineNumber: the line number of the current opcode.
-
-    * columnNumber: the column number of the current opcode.
-
-    * offset: the bytecode instruction offset of the current opcode.
-
-    * count: the number of times the current opcode got executed.
-
-    If this script has no coverage, or if it is not instrumented, then this
-    function will return `null`. To ensure that the debuggee is instrumented,
-    the flag `Debugger.collectCoverageInfo` should be set to `true`.
-
-    **If the instance refers to WebAssembly code**, throw a `TypeError`.
-
-`getChildScripts()`
-:   **If the instance refers to a `JSScript`**, return a new array whose
-    elements are Debugger.Script objects for each function
-    in this script. Only direct children are included; nested
-    children can be reached by walking the tree.
-
-    **If the instance refers to WebAssembly code**, throw a `TypeError`.
-
-<code>setBreakpoint(<i>offset</i>, <i>handler</i>)</code>
-:   **If the instance refers to a `JSScript`**, set a breakpoint at the
-    bytecode instruction at <i>offset</i> in this script, reporting hits to
-    the `hit` method of <i>handler</i>. If <i>offset</i> is not a valid offset
-    in this script, throw an error.
-
-    When execution reaches the given instruction, SpiderMonkey calls the
-    `hit` method of <i>handler</i>, passing a [`Debugger.Frame`][frame]
-    instance representing the currently executing stack frame. The `hit`
-    method's return value should be a [resumption value][rv], determining
-    how execution should continue.
-
-    Any number of breakpoints may be set at a single location; when control
-    reaches that point, SpiderMonkey calls their handlers in an unspecified
-    order.
-
-    Any number of breakpoints may use the same <i>handler</i> object.
-
-    Breakpoint handler method calls are cross-compartment, intra-thread
-    calls: the call takes place in the same thread that hit the breakpoint,
-    and in the compartment containing the handler function (typically the
-    debugger's compartment).
-
-    The new breakpoint belongs to the [`Debugger`][debugger-object] instance to
-    which this script belongs. Disabling the [`Debugger`][debugger-object]
-    instance disables this breakpoint; and removing a global from the
-    [`Debugger`][debugger-object] instance's set of debuggees clears all the
-    breakpoints belonging to that [`Debugger`][debugger-object] instance in that
-    global's scripts.
-
-<code>getBreakpoints([<i>offset</i>])</code>
-:   **If the instance refers to a `JSScript`**, return an array containing the
-    handler objects for all the breakpoints set at <i>offset</i> in this
-    script. If <i>offset</i> is omitted, return the handlers of all
-    breakpoints set anywhere in this script. If <i>offset</i> is present, but
-    not a valid offset in this script, throw an error.
-
-    **If the instance refers to WebAssembly code**, throw a `TypeError`.
-
-<code>clearBreakpoint(handler, [<i>offset</i>])</code>
-:   **If the instance refers to a `JSScript`**, remove all breakpoints set in
-    this [`Debugger`][debugger-object] instance that use <i>handler</i> as
-    their handler. If <i>offset</i> is given, remove only those breakpoints
-    set at <i>offset</i> that use <i>handler</i>; if <i>offset</i> is not a
-    valid offset in this script, throw an error.
-
-    Note that, if breakpoints using other handler objects are set at the
-    same location(s) as <i>handler</i>, they remain in place.
-
-<code>clearAllBreakpoints([<i>offset</i>])</code>
-:   **If the instance refers to a `JSScript`**, remove all breakpoints set in
-    this script. If <i>offset</i> is present, remove all breakpoints set at
-    that offset in this script; if <i>offset</i> is not a valid bytecode
-    offset in this script, throw an error.
-
-<code>isInCatchScope([<i>offset</i>])</code>
-:   **If the instance refers to a `JSScript`**, this is `true` if this offset
-    falls within the scope of a try block, and `false` otherwise.
-
-    **If the instance refers to WebAssembly code**, throw a `TypeError`.

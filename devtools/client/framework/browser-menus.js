@@ -12,12 +12,24 @@
  * - devtools/client/definitions for tool-specifics entries
  */
 
-const {Cu} = require("chrome");
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const MENUS_L10N = new LocalizationHelper("devtools/client/locales/menus.properties");
+const { Cu } = require("chrome");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const MENUS_L10N = new LocalizationHelper(
+  "devtools/client/locales/menus.properties"
+);
 
-loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
-loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
+loader.lazyRequireGetter(
+  this,
+  "gDevTools",
+  "devtools/client/framework/devtools",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "gDevToolsBrowser",
+  "devtools/client/framework/devtools-browser",
+  true
+);
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
 
 let telemetry = null;
@@ -33,7 +45,7 @@ function l10n(key) {
 /**
  * Create a xul:menuitem element
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which menus are to be added.
  * @param {String} id
  *        Element id.
@@ -48,7 +60,7 @@ function l10n(key) {
  * @return XULMenuItemElement
  */
 function createMenuItem({ doc, id, label, accesskey, isCheckbox }) {
-  const menuitem = doc.createElement("menuitem");
+  const menuitem = doc.createXULElement("menuitem");
   menuitem.id = id;
   menuitem.setAttribute("label", label);
   if (accesskey) {
@@ -66,7 +78,7 @@ function createMenuItem({ doc, id, label, accesskey, isCheckbox }) {
  *
  * @param {Object} toolDefinition
  *        Tool definition of the tool to add a menu entry.
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which the tool menu item is to be added.
  */
 function createToolMenuElements(toolDefinition, doc) {
@@ -78,17 +90,21 @@ function createToolMenuElements(toolDefinition, doc) {
     return;
   }
 
-  const oncommand = function(id, event) {
-    const window = event.target.ownerDocument.defaultView;
-    gDevToolsBrowser.selectToolCommand(window.gBrowser, id, Cu.now());
-    sendEntryPointTelemetry();
+  const oncommand = async function(id, event) {
+    try {
+      const window = event.target.ownerDocument.defaultView;
+      await gDevToolsBrowser.selectToolCommand(window, id, Cu.now());
+      sendEntryPointTelemetry(window);
+    } catch (e) {
+      console.error(`Exception while opening ${id}: ${e}\n${e.stack}`);
+    }
   }.bind(null, id);
 
   const menuitem = createMenuItem({
     doc,
     id: "menuitem_" + id,
     label: toolDefinition.menuLabel || toolDefinition.label,
-    accesskey: toolDefinition.accesskey
+    accesskey: toolDefinition.accesskey,
   });
   // Refer to the key in order to display the key shortcut at menu ends
   // This <key> element is being created by devtools/client/devtools-startup.js
@@ -96,7 +112,7 @@ function createToolMenuElements(toolDefinition, doc) {
   menuitem.addEventListener("command", oncommand);
 
   return {
-    menuitem
+    menuitem,
   };
 }
 
@@ -106,17 +122,20 @@ function createToolMenuElements(toolDefinition, doc) {
  * `devtools/startup/devtools-startup.js` but that codepath is only used the
  * first time a toolbox is opened for a tab.
  */
-function sendEntryPointTelemetry() {
+function sendEntryPointTelemetry(window) {
   if (!telemetry) {
     telemetry = new Telemetry();
   }
 
-  telemetry.addEventProperty(
-    "devtools.main", "open", "tools", null, "shortcut", ""
-  );
+  telemetry.addEventProperty(window, "open", "tools", null, "shortcut", "");
 
   telemetry.addEventProperty(
-    "devtools.main", "open", "tools", null, "entrypoint", "SystemMenu"
+    window,
+    "open",
+    "tools",
+    null,
+    "entrypoint",
+    "SystemMenu"
   );
 }
 
@@ -124,7 +143,7 @@ function sendEntryPointTelemetry() {
  * Create xul menuitem, key elements for a given tool.
  * And then insert them into browser DOM.
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which the tool is to be registered.
  * @param {Object} toolDefinition
  *        Tool definition of the tool to register.
@@ -153,7 +172,7 @@ exports.insertToolMenuElements = insertToolMenuElements;
  *
  * @param {string} toolId
  *        Id of the tool to add a menu entry for
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which the tool menu item is to be removed from
  */
 function removeToolFromMenu(toolId, doc) {
@@ -172,7 +191,7 @@ exports.removeToolFromMenu = removeToolFromMenu;
 /**
  * Add all tools to the developer tools menu of a window.
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which the tool items are to be added.
  */
 function addAllToolsToMenu(doc) {
@@ -205,7 +224,7 @@ function addAllToolsToMenu(doc) {
 /**
  * Add global menus that are not panel specific.
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which menus are to be added.
  */
 function addTopLevelItems(doc) {
@@ -214,7 +233,7 @@ function addTopLevelItems(doc) {
   const { menuitems } = require("../menus");
   for (const item of menuitems) {
     if (item.separator) {
-      const separator = doc.createElement("menuseparator");
+      const separator = doc.createXULElement("menuseparator");
       separator.id = item.id;
       menuItems.appendChild(separator);
     } else {
@@ -226,7 +245,7 @@ function addTopLevelItems(doc) {
         id,
         label: l10n(l10nKey + ".label"),
         accesskey: l10n(l10nKey + ".accesskey"),
-        isCheckbox: item.checkbox
+        isCheckbox: item.checkbox,
       });
       menuitem.addEventListener("command", item.oncommand);
       menuItems.appendChild(menuitem);
@@ -247,7 +266,7 @@ function addTopLevelItems(doc) {
   const menu = doc.getElementById("menuWebDeveloperPopup");
   menu.appendChild(menuItems);
 
-  // There is still "Page Source" menuitem hardcoded into browser.xul. Instead
+  // There is still "Page Source" menuitem hardcoded into browser.xhtml. Instead
   // of manually inserting everything around it, move it to the expected
   // position.
   const pageSource = doc.getElementById("menu_pageSource");
@@ -258,7 +277,7 @@ function addTopLevelItems(doc) {
 /**
  * Remove global menus that are not panel specific.
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which menus are to be added.
  */
 function removeTopLevelItems(doc) {
@@ -275,19 +294,21 @@ function removeTopLevelItems(doc) {
 /**
  * Add menus to a browser document
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which menus are to be added.
  */
 exports.addMenus = function(doc) {
   addTopLevelItems(doc);
 
   addAllToolsToMenu(doc);
+
+  require("../webreplay/menu").addWebReplayMenu(doc);
 };
 
 /**
  * Remove menus from a browser document
  *
- * @param {XULDocument} doc
+ * @param {HTMLDocument} doc
  *        The document to which menus are to be removed.
  */
 exports.removeMenus = function(doc) {

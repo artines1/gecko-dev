@@ -3,7 +3,7 @@
 
 function* runTests() {
   yield SpecialPowers.pushPrefEnv({
-    set: [["dom.ipc.processCount", 1]]
+    set: [["dom.ipc.processCount", 1]],
   });
 
   let url1 = "http://example.com/1";
@@ -26,14 +26,20 @@ function* runTests() {
       break;
     }
   }
-  is(BackgroundPageThumbs._thumbBrowser, undefined,
-     "Thumb browser should be destroyed after timeout.");
+  is(
+    BackgroundPageThumbs._thumbBrowser,
+    undefined,
+    "Thumb browser should be destroyed after timeout."
+  );
   BackgroundPageThumbs._destroyBrowserTimeout = defaultTimeout;
 
   yield bgCapture(url2);
   ok(thumbnailExists(url2), "Second file should exist after capture.");
   removeThumbnail(url2);
 
-  isnot(BackgroundPageThumbs._thumbBrowser, undefined,
-        "Thumb browser should exist immediately after capture.");
+  isnot(
+    BackgroundPageThumbs._thumbBrowser,
+    undefined,
+    "Thumb browser should exist immediately after capture."
+  );
 }

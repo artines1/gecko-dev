@@ -6,9 +6,15 @@ add_task(async function test_protocol_trimming() {
   for (let prot of ["http", "https", "ftp"]) {
     let visit = {
       // Include the protocol in the query string to ensure we get matches (see bug 1059395)
-      uri: NetUtil.newURI(prot + "://www.mozilla.org/test/?q=" + prot + encodeURIComponent("://") + "www.foo"),
+      uri: NetUtil.newURI(
+        prot +
+          "://www.mozilla.org/test/?q=" +
+          prot +
+          encodeURIComponent("://") +
+          "www.foo"
+      ),
       title: "Test title",
-      transition: TRANSITION_TYPED
+      transition: TRANSITION_TYPED,
     };
     await PlacesTestUtils.addVisits(visit);
 
@@ -19,15 +25,15 @@ add_task(async function test_protocol_trimming() {
       matches: [
         {
           value: prot + "://www.mozilla.org/",
-          comment: prot == "http" ? "www.mozilla.org"
-                                  : prot + "://www.mozilla.org",
+          comment:
+            prot == "http" ? "www.mozilla.org" : prot + "://www.mozilla.org",
           style: ["autofill", "heuristic"],
         },
         {
           value: visit.uri.spec,
           comment: visit.title,
           style: ["favicon"],
-        }
+        },
       ],
     });
 
@@ -38,15 +44,15 @@ add_task(async function test_protocol_trimming() {
       matches: [
         {
           value: "www.mozilla.org/",
-          comment: prot == "http" ? "www.mozilla.org"
-                                  : prot + "://www.mozilla.org",
+          comment:
+            prot == "http" ? "www.mozilla.org" : prot + "://www.mozilla.org",
           style: ["autofill", "heuristic"],
         },
         {
           value: visit.uri.spec,
           comment: visit.title,
           style: ["favicon"],
-        }
+        },
       ],
     });
 
@@ -60,17 +66,16 @@ add_task(async function test_protocol_trimming() {
       prot + "://www.mo te",
       "www. ",
       "www. mo",
-      "www.mo te"
+      "www.mo te",
     ];
     for (input of inputs) {
       info("Searching for: " + input);
       await check_autocomplete({
         search: input,
-        matches: [{uri: visit.uri, title: visit.title}],
+        matches: [{ uri: visit.uri, title: visit.title }],
       });
     }
 
     await cleanup();
   }
 });
-

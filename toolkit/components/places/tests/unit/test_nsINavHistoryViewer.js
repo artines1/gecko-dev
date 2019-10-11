@@ -14,8 +14,6 @@ var resultObserver = {
     this.removedNode = node;
   },
 
-  nodeAnnotationChanged() {},
-
   newTitle: "",
   nodeChangedByTitle: null,
   nodeTitleChanged(node, newTitle) {
@@ -26,9 +24,7 @@ var resultObserver = {
   newAccessCount: 0,
   newTime: 0,
   nodeChangedByHistoryDetails: null,
-  nodeHistoryDetailsChanged(node,
-                            oldVisitDate,
-                            oldVisitCount) {
+  nodeHistoryDetailsChanged(node, oldVisitDate, oldVisitCount) {
     this.nodeChangedByHistoryDetails = node;
     this.newTime = node.time;
     this.newAccessCount = node.accessCount;
@@ -72,7 +68,7 @@ var resultObserver = {
     this.closedContainer = null;
     this.invalidatedContainer = null;
     this.sortingMode = null;
-  }
+  },
 };
 
 var testURI = uri("http://mozilla.com");
@@ -135,7 +131,7 @@ add_task(async function check_history_query() {
 add_task(async function check_bookmarks_query() {
   let options = PlacesUtils.history.getNewQueryOptions();
   let query = PlacesUtils.history.getNewQuery();
-  query.setParents([PlacesUtils.bookmarks.menuGuid], 1);
+  query.setParents([PlacesUtils.bookmarks.menuGuid]);
   let result = PlacesUtils.history.executeQuery(query, options);
   result.addObserver(resultObserver);
   let root = result.root;
@@ -148,7 +144,7 @@ add_task(async function check_bookmarks_query() {
   let testBookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     url: testURI,
-    title: "foo"
+    title: "foo",
   });
   Assert.equal("foo", resultObserver.insertedNode.title);
   Assert.equal(testURI.spec, resultObserver.insertedNode.uri);
@@ -168,7 +164,7 @@ add_task(async function check_bookmarks_query() {
   let testBookmark2 = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     url: "http://google.com",
-    title: "foo"
+    title: "foo",
   });
 
   await PlacesUtils.bookmarks.update({
@@ -187,7 +183,10 @@ add_task(async function check_bookmarks_query() {
   // nsINavHistoryResultObserver.sortingChanged
   resultObserver.invalidatedContainer = null;
   result.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_TITLE_ASCENDING;
-  Assert.equal(resultObserver.sortingMode, Ci.nsINavHistoryQueryOptions.SORT_BY_TITLE_ASCENDING);
+  Assert.equal(
+    resultObserver.sortingMode,
+    Ci.nsINavHistoryQueryOptions.SORT_BY_TITLE_ASCENDING
+  );
   Assert.equal(resultObserver.invalidatedContainer, result.root);
 
   root.containerOpen = false;

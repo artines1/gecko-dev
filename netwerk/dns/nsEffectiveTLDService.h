@@ -8,43 +8,63 @@
 
 #include "nsIEffectiveTLDService.h"
 
-#include "nsIMemoryReporter.h"
-#include "nsString.h"
-#include "nsCOMPtr.h"
+#include "mozilla/AutoMemMap.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Dafsa.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/MruCache.h"
+#include "mozilla/RWLock.h"
+
+#include "nsCOMPtr.h"
+#include "nsHashKeys.h"
+#include "nsIMemoryReporter.h"
+#include "nsIObserver.h"
+#include "nsString.h"
 
 class nsIIDNService;
 
-class nsEffectiveTLDService final
-  : public nsIEffectiveTLDService
-  , public nsIMemoryReporter
-{
-public:
+class nsEffectiveTLDService final : public nsIEffectiveTLDService,
+                                    public nsIObserver,
+                                    public nsIMemoryReporter {
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEFFECTIVETLDSERVICE
   NS_DECL_NSIMEMORYREPORTER
+  NS_DECL_NSIOBSERVER
 
   nsEffectiveTLDService();
   nsresult Init();
 
+  static nsEffectiveTLDService* GetInstance();
+
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
 
-private:
-  nsresult GetBaseDomainInternal(nsCString &aHostname, int32_t aAdditionalParts, nsACString &aBaseDomain);
-  nsresult NormalizeHostname(nsCString &aHostname);
+ private:
+  nsresult GetBaseDomainInternal(nsCString& aHostname, int32_t aAdditionalParts,
+                                 nsACString& aBaseDomain);
+  nsresult NormalizeHostname(nsCString& aHostname);
   ~nsEffectiveTLDService();
 
-  nsCOMPtr<nsIIDNService>     mIDNService;
+  nsCOMPtr<nsIIDNService> mIDNService;
 
   // The DAFSA provides a compact encoding of the rather large eTLD list.
-  mozilla::Dafsa mGraph;
+  mozilla::Maybe<mozilla::Dafsa> mGraph;
 
-  struct TLDCacheEntry
-  {
+  // Memory map used for a new updated dafsa
+  mozilla::loader::AutoMemMap mDafsaMap;
+
+  // Lock for mGraph and mDafsaMap
+  mozilla::RWLock mGraphLock;
+
+  // Note that the cache entries here can record entries that were cached
+  // successfully or unsuccessfully.  mResult must be checked before using an
+  // entry.  If it's a success error code, the cache entry is valid and can be
+  // used.
+  struct TLDCacheEntry {
     nsCString mHost;
     nsCString mBaseDomain;
+    nsresult mResult;
   };
 
   // We use a small most recently used cache to compensate for DAFSA lookups
@@ -55,22 +75,17 @@ private:
   // cache the result. During standard browsing the same domains are repeatedly
   // fed into |GetBaseDomainInternal| so this ends up being an effective
   // mitigation getting about a 99% hit rate with four tabs open.
-  //
-  // A size of 31 is used rather than a more logical power-of-two such as 32
-  // since it is a prime number and provides fewer collisions when when used
-  // with our hash algorithms.
-  static const uint32_t kTableSize = 31;
-  TLDCacheEntry mMruTable[kTableSize];
+  struct TldCache
+      : public mozilla::MruCache<nsACString, TLDCacheEntry, TldCache> {
+    static mozilla::HashNumber Hash(const nsACString& aKey) {
+      return mozilla::HashString(aKey);
+    }
+    static bool Match(const nsACString& aKey, const TLDCacheEntry& aVal) {
+      return aKey == aVal.mHost;
+    }
+  };
 
-  /**
-   * Performs a lookup on the MRU table and provides a pointer to the hash
-   * entry that matched or should be used for adding this host.
-   *
-   * @param aHost The host to lookup.
-   * @param aEntry Out param, the entry in the MRU table to use.
-   * @return True if a match was found, false if there was a miss.
-   */
-  inline bool LookupForAdd(const nsACString& aHost, TLDCacheEntry** aEntry);
+  TldCache mMruTable;
 };
 
-#endif // EffectiveTLDService_h
+#endif  // EffectiveTLDService_h

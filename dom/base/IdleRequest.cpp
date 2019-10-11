@@ -20,16 +20,11 @@ namespace mozilla {
 namespace dom {
 
 IdleRequest::IdleRequest(IdleRequestCallback* aCallback, uint32_t aHandle)
-  : mCallback(aCallback)
-  , mHandle(aHandle)
-  , mTimeoutHandle(Nothing())
-{
+    : mCallback(aCallback), mHandle(aHandle), mTimeoutHandle(Nothing()) {
   MOZ_DIAGNOSTIC_ASSERT(mCallback);
 }
 
-IdleRequest::~IdleRequest()
-{
-}
+IdleRequest::~IdleRequest() {}
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(IdleRequest)
 
@@ -47,36 +42,26 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(IdleRequest, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(IdleRequest, Release)
 
-void
-IdleRequest::SetTimeoutHandle(int32_t aHandle)
-{
+void IdleRequest::SetTimeoutHandle(int32_t aHandle) {
   mTimeoutHandle = Some(aHandle);
 }
 
-uint32_t
-IdleRequest::GetTimeoutHandle() const
-{
+uint32_t IdleRequest::GetTimeoutHandle() const {
   MOZ_DIAGNOSTIC_ASSERT(mTimeoutHandle.isSome());
   return mTimeoutHandle.value();
 }
 
-nsresult
-IdleRequest::IdleRun(nsPIDOMWindowInner* aWindow,
-                     DOMHighResTimeStamp aDeadline,
-                     bool aDidTimeout)
-{
+void IdleRequest::IdleRun(nsPIDOMWindowInner* aWindow,
+                          DOMHighResTimeStamp aDeadline, bool aDidTimeout) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(mCallback);
 
-  ErrorResult error;
   RefPtr<IdleDeadline> deadline =
-    new IdleDeadline(aWindow, aDidTimeout, aDeadline);
-  mCallback->Call(*deadline, error, "requestIdleCallback handler");
-
-  mCallback = nullptr;
-  error.SuppressException();
-  return error.StealNSResult();
+      new IdleDeadline(aWindow, aDidTimeout, aDeadline);
+  RefPtr<IdleRequestCallback> callback(mCallback.forget());
+  MOZ_ASSERT(!mCallback);
+  callback->Call(*deadline, "requestIdleCallback handler");
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

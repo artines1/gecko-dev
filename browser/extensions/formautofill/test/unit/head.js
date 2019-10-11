@@ -4,53 +4,131 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
-ChromeUtils.import("resource://gre/modules/FormLikeFactory.jsm");
-ChromeUtils.import("resource://testing-common/FileTestUtils.jsm");
-ChromeUtils.import("resource://testing-common/MockDocument.jsm");
-ChromeUtils.import("resource://testing-common/TestUtils.jsm");
+var { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { ObjectUtils } = ChromeUtils.import(
+  "resource://gre/modules/ObjectUtils.jsm"
+);
+var { FormLikeFactory } = ChromeUtils.import(
+  "resource://gre/modules/FormLikeFactory.jsm"
+);
+var { AddonTestUtils, MockAsyncShutdown } = ChromeUtils.import(
+  "resource://testing-common/AddonTestUtils.jsm"
+);
+var { ExtensionTestUtils } = ChromeUtils.import(
+  "resource://testing-common/ExtensionXPCShellUtils.jsm"
+);
+var { FileTestUtils } = ChromeUtils.import(
+  "resource://testing-common/FileTestUtils.jsm"
+);
+var { MockDocument } = ChromeUtils.import(
+  "resource://testing-common/MockDocument.jsm"
+);
+var { sinon } = ChromeUtils.import("resource://testing-common/Sinon.jsm");
+var { TestUtils } = ChromeUtils.import(
+  "resource://testing-common/TestUtils.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "DownloadPaths",
-                               "resource://gre/modules/DownloadPaths.jsm");
-ChromeUtils.defineModuleGetter(this, "FileUtils",
-                               "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManagerPrivate",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "DownloadPaths",
+  "resource://gre/modules/DownloadPaths.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FileUtils",
+  "resource://gre/modules/FileUtils.jsm"
+);
 
-XPCOMUtils.defineLazyServiceGetter(this, "resProto",
-                                   "@mozilla.org/network/protocol;1?name=resource",
-                                   "nsISubstitutingProtocolHandler");
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionParent",
+  "resource://gre/modules/ExtensionParent.jsm"
+);
+
+{
+  // We're going to register a mock file source
+  // with region names based on en-US. This is
+  // necessary for tests that expect to match
+  // on region code display names.
+  const { L10nRegistry, FileSource } = ChromeUtils.import(
+    "resource://gre/modules/L10nRegistry.jsm"
+  );
+
+  const fs = {
+    "toolkit/intl/regionNames.ftl": `
+region-name-us = United States
+region-name-nz = New Zeland
+region-name-au = Australia
+region-name-ca = Canada
+region-name-tw = Taiwan
+    `,
+  };
+
+  L10nRegistry.loadSync = function(url) {
+    if (!fs.hasOwnProperty(url)) {
+      return false;
+    }
+    return fs[url];
+  };
+
+  let locales = Services.locale.packagedLocales;
+  const mockSource = new FileSource("mock", locales, "");
+  L10nRegistry.registerSource(mockSource);
+}
 
 do_get_profile();
 
-// ================================================
-// Load mocking/stubbing library, sinon
-// docs: http://sinonjs.org/releases/v2.3.2/
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
-Services.scriptloader.loadSubScript("resource://testing-common/sinon-2.3.2.js", this);
-/* globals sinon */
-// ================================================
-
-// Load our bootstrap extension manifest so we can access our chrome/resource URIs.
 const EXTENSION_ID = "formautofill@mozilla.org";
-let extensionDir = Services.dirsvc.get("GreD", Ci.nsIFile);
-extensionDir.append("browser");
-extensionDir.append("features");
-extensionDir.append(EXTENSION_ID);
-let bootstrapFile = extensionDir.clone();
-bootstrapFile.append("bootstrap.js");
-let bootstrapURI = Services.io.newFileURI(bootstrapFile).spec;
-// If the unpacked extension doesn't exist, use the packed version.
-if (!extensionDir.exists()) {
-  extensionDir = extensionDir.parent;
-  extensionDir.append(EXTENSION_ID + ".xpi");
-  let jarURI = Services.io.newFileURI(extensionDir);
-  bootstrapURI = "jar:" + jarURI.spec + "!/bootstrap.js";
-}
-Components.manager.addBootstrappedManifestLocation(extensionDir);
 
-let resURI = Services.io.newURI("chrome/res/", null, Services.io.newURI(bootstrapURI));
-resProto.setSubstitution("formautofill", resURI);
+AddonTestUtils.init(this);
+AddonTestUtils.overrideCertDB();
+
+async function loadExtension() {
+  AddonTestUtils.createAppInfo(
+    "xpcshell@tests.mozilla.org",
+    "XPCShell",
+    "1",
+    "1.9.2"
+  );
+  await AddonTestUtils.promiseStartupManager();
+
+  let extensionPath = Services.dirsvc.get("GreD", Ci.nsIFile);
+  extensionPath.append("browser");
+  extensionPath.append("features");
+  extensionPath.append(EXTENSION_ID);
+
+  if (!extensionPath.exists()) {
+    extensionPath.leafName = `${EXTENSION_ID}.xpi`;
+  }
+
+  let startupPromise = new Promise(resolve => {
+    const { apiManager } = ExtensionParent;
+    function onReady(event, extension) {
+      if (extension.id == EXTENSION_ID) {
+        apiManager.off("ready", onReady);
+        resolve();
+      }
+    }
+
+    apiManager.on("ready", onReady);
+  });
+
+  await AddonManager.installTemporaryAddon(extensionPath);
+  await startupPromise;
+}
 
 // Returns a reference to a temporary file that is guaranteed not to exist and
 // is cleaned up later. See FileTestUtils.getTempFile for details.
@@ -58,11 +136,27 @@ function getTempFile(leafName) {
   return FileTestUtils.getTempFile(leafName);
 }
 
-async function initProfileStorage(fileName, records, collectionName = "addresses") {
-  let {FormAutofillStorage} = ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm", {});
+async function initProfileStorage(
+  fileName,
+  records,
+  collectionName = "addresses"
+) {
+  let { FormAutofillStorage } = ChromeUtils.import(
+    "resource://formautofill/FormAutofillStorage.jsm",
+    null
+  );
   let path = getTempFile(fileName).path;
   let profileStorage = new FormAutofillStorage(path);
   await profileStorage.initialize();
+
+  // AddonTestUtils inserts its own directory provider that manages TmpD.
+  // It removes that directory at shutdown, which races with shutdown
+  // handing in JSONFile/DeferredTask (which is used by FormAutofillStorage).
+  // Avoid the race by explicitly finalizing any formautofill JSONFile
+  // instances created manually by individual tests when the test finishes.
+  registerCleanupFunction(function finalizeAutofillStorage() {
+    return profileStorage._finalize();
+  });
 
   if (!records || !Array.isArray(records)) {
     return profileStorage;
@@ -71,11 +165,10 @@ async function initProfileStorage(fileName, records, collectionName = "addresses
   let onChanged = TestUtils.topicObserved(
     "formautofill-storage-changed",
     (subject, data) =>
-      data == "add" &&
-      subject.wrappedJSObject.collectionName == collectionName
+      data == "add" && subject.wrappedJSObject.collectionName == collectionName
   );
   for (let record of records) {
-    Assert.ok(profileStorage[collectionName].add(record));
+    Assert.ok(await profileStorage[collectionName].add(record));
     await onChanged;
   }
   await profileStorage._saveImmediately();
@@ -83,12 +176,23 @@ async function initProfileStorage(fileName, records, collectionName = "addresses
 }
 
 function verifySectionFieldDetails(sections, expectedResults) {
-  Assert.equal(sections.length, expectedResults.length, "Expected section count.");
+  Assert.equal(
+    sections.length,
+    expectedResults.length,
+    "Expected section count."
+  );
   sections.forEach((sectionInfo, sectionIndex) => {
     let expectedSectionInfo = expectedResults[sectionIndex];
     info("FieldName Prediction Results: " + sectionInfo.map(i => i.fieldName));
-    info("FieldName Expected Results:   " + expectedSectionInfo.map(i => i.fieldName));
-    Assert.equal(sectionInfo.length, expectedSectionInfo.length, "Expected field count.");
+    info(
+      "FieldName Expected Results:   " +
+        expectedSectionInfo.map(i => i.fieldName)
+    );
+    Assert.equal(
+      sectionInfo.length,
+      expectedSectionInfo.length,
+      "Expected field count."
+    );
 
     sectionInfo.forEach((field, fieldIndex) => {
       let expectedField = expectedSectionInfo[fieldIndex];
@@ -99,15 +203,27 @@ function verifySectionFieldDetails(sections, expectedResults) {
   });
 }
 
-function runHeuristicsTest(patterns, fixturePathPrefix) {
-  ChromeUtils.import("resource://formautofill/FormAutofillHeuristics.jsm");
-  ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
+var FormAutofillHeuristics, LabelUtils;
+var AddressDataLoader, FormAutofillUtils;
+
+async function runHeuristicsTest(patterns, fixturePathPrefix) {
+  add_task(async function setup() {
+    ({ FormAutofillHeuristics, LabelUtils } = ChromeUtils.import(
+      "resource://formautofill/FormAutofillHeuristics.jsm"
+    ));
+    ({ AddressDataLoader, FormAutofillUtils } = ChromeUtils.import(
+      "resource://formautofill/FormAutofillUtils.jsm"
+    ));
+  });
 
   patterns.forEach(testPattern => {
     add_task(async function() {
       info("Starting test fixture: " + testPattern.fixturePath);
       let file = do_get_file(fixturePathPrefix + testPattern.fixturePath);
-      let doc = MockDocument.createTestDocumentFromFile("http://localhost:8080/test/", file);
+      let doc = MockDocument.createTestDocumentFromFile(
+        "http://localhost:8080/test/",
+        file
+      );
 
       let forms = [];
 
@@ -118,13 +234,17 @@ function runHeuristicsTest(patterns, fixturePathPrefix) {
         }
       }
 
-      Assert.equal(forms.length, testPattern.expectedResult.length, "Expected form count.");
+      Assert.equal(
+        forms.length,
+        testPattern.expectedResult.length,
+        "Expected form count."
+      );
 
       forms.forEach((form, formIndex) => {
         let sections = FormAutofillHeuristics.getFormInfo(form);
         verifySectionFieldDetails(
           sections.map(section => section.fieldDetails),
-          testPattern.expectedResult[formIndex],
+          testPattern.expectedResult[formIndex]
         );
       });
     });
@@ -145,7 +265,7 @@ function runHeuristicsTest(patterns, fixturePathPrefix) {
  *          been synced yet.
  */
 function getSyncChangeCounter(records, guid) {
-  let record = records._findByGUID(guid, {includeDeleted: true});
+  let record = records._findByGUID(guid, { includeDeleted: true });
   if (!record) {
     return -1;
   }
@@ -181,17 +301,38 @@ function objectMatches(object, fields) {
 
 add_task(async function head_initialize() {
   Services.prefs.setStringPref("extensions.formautofill.available", "on");
-  Services.prefs.setBoolPref("extensions.formautofill.creditCards.available", true);
-  Services.prefs.setBoolPref("extensions.formautofill.heuristics.enabled", true);
+  Services.prefs.setBoolPref(
+    "extensions.formautofill.creditCards.available",
+    true
+  );
+  Services.prefs.setBoolPref(
+    "extensions.formautofill.heuristics.enabled",
+    true
+  );
   Services.prefs.setBoolPref("extensions.formautofill.section.enabled", true);
   Services.prefs.setBoolPref("dom.forms.autocomplete.formautofill", true);
 
   // Clean up after every test.
   registerCleanupFunction(function head_cleanup() {
     Services.prefs.clearUserPref("extensions.formautofill.available");
-    Services.prefs.clearUserPref("extensions.formautofill.creditCards.available");
+    Services.prefs.clearUserPref(
+      "extensions.formautofill.creditCards.available"
+    );
     Services.prefs.clearUserPref("extensions.formautofill.heuristics.enabled");
     Services.prefs.clearUserPref("extensions.formautofill.section.enabled");
     Services.prefs.clearUserPref("dom.forms.autocomplete.formautofill");
+  });
+
+  await loadExtension();
+});
+
+let OSKeyStoreTestUtils;
+add_task(async function os_key_store_setup() {
+  ({ OSKeyStoreTestUtils } = ChromeUtils.import(
+    "resource://testing-common/OSKeyStoreTestUtils.jsm"
+  ));
+  OSKeyStoreTestUtils.setup();
+  registerCleanupFunction(async function cleanup() {
+    await OSKeyStoreTestUtils.cleanup();
   });
 });

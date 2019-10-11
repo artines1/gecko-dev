@@ -37,13 +37,17 @@
 # It uses the C preprocessor to process its inputs.
 
 from __future__ import with_statement
+
+import errno
 import re
 import sys
 import os
 import subprocess
 import shlex
-import which
+
 import buildconfig
+import mozpack.path as mozpath
+from mozfile import which
 
 
 def ToCAsciiArray(lines):
@@ -86,8 +90,11 @@ namespace %(namespace)s {
 
 
 def embed(cxx, preprocessorOption, cppflags, msgs, sources, c_out, js_out, namespace, env):
+    objdir = os.getcwd()
+    # Use relative pathnames to avoid path translation issues in WSL.
     combinedSources = '\n'.join([msgs] + ['#include "%(s)s"' %
-                                          {'s': source} for source in sources])
+                                          {'s': mozpath.relpath(source, objdir)}
+                                          for source in sources])
     args = cppflags + ['-D%(k)s=%(v)s' % {'k': k, 'v': env[k]} for k in env]
     preprocessed = preprocess(cxx, preprocessorOption, combinedSources, args)
     processed = '\n'.join([line for line in preprocessed.splitlines() if
@@ -109,7 +116,11 @@ def embed(cxx, preprocessorOption, cppflags, msgs, sources, c_out, js_out, names
 
 def preprocess(cxx, preprocessorOption, source, args=[]):
     if (not os.path.exists(cxx[0])):
-        cxx[0] = which.which(cxx[0])
+        binary = cxx[0]
+        cxx[0] = which(binary)
+        if not cxx[0]:
+            raise OSError(errno.ENOENT, "%s not found on PATH" % binary)
+
     # Clang seems to complain and not output anything if the extension of the
     # input is not something it recognizes, so just fake a .cpp here.
     tmpIn = 'self-hosting-cpp-input.cpp'

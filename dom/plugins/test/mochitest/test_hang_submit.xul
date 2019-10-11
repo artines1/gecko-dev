@@ -4,10 +4,8 @@
                  type="text/css"?>
 <window title="Basic Plugin Tests"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js" />
   <script type="application/javascript" src="plugin-utils.js"></script>
   <script type="application/javascript">
     setTestPluginEnabledState(SpecialPowers.Ci.nsIPluginTag.STATE_ENABLED);
@@ -20,8 +18,8 @@
 SimpleTest.waitForExplicitFinish();
 SimpleTest.ignoreAllUncaughtExceptions();
 
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(Ci.nsICrashReporter);
 const SERVER_URL = "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs";
@@ -115,18 +113,20 @@ var testObserver = {
   }
 };
 
-function onPluginCrashed(aEvent) {
+async function onPluginCrashed(aEvent) {
   ok(true, "Plugin crashed notification received");
   is(aEvent.type, "PluginCrashed", "event is correct type");
 
-  let submitButton = document.getAnonymousElementByAttribute(aEvent.target,
-                                                             "class",
-                                                             "submitButton");
+  await SimpleTest.promiseWaitForCondition(
+    () => aEvent.target.openOrClosedShadowRoot.getElementById("submitButton"),
+    "Waiting for submit button to exist."
+  );
+  let submitButton = aEvent.target.openOrClosedShadowRoot.getElementById("submitButton");
   // try to submit this report
   sendMouseEvent({type:'click'}, submitButton, window);
 }
 
-function runTests() {
+async function runTests() {
   // Default plugin hang timeout is too high for mochitests
   Services.prefs.setIntPref("dom.ipc.plugins.timeoutSecs", 1);
 
@@ -145,6 +145,8 @@ function runTests() {
   document.addEventListener("PluginCrashed", onPluginCrashed, false);
 
   var pluginElement = document.getElementById("plugin1");
+  await SimpleTest.promiseWaitForCondition(() => pluginElement.hang !== undefined,
+                                           "Waited too long for plugin to activate");
   try {
     (async function() {
       // Clear data in CrashManager in case previous tests caused something

@@ -16,21 +16,16 @@
 #include "mozilla/net/DNS.h"
 #include "prerror.h"
 
-#define REQUEST  0x68656c6f
+#define REQUEST 0x68656c6f
 #define RESPONSE 0x6f6c6568
 #define MULTICAST_TIMEOUT 2000
 
-enum TestPhase {
-  TEST_OUTPUT_STREAM,
-  TEST_SEND_API,
-  TEST_MULTICAST,
-  TEST_NONE
-};
+enum TestPhase { TEST_OUTPUT_STREAM, TEST_SEND_API, TEST_MULTICAST, TEST_NONE };
 
 static TestPhase phase = TEST_NONE;
 
-static bool CheckMessageContent(nsIUDPMessage *aMessage, uint32_t aExpectedContent)
-{
+static bool CheckMessageContent(nsIUDPMessage* aMessage,
+                                uint32_t aExpectedContent) {
   nsCString data;
   aMessage->GetData(data);
 
@@ -41,7 +36,8 @@ static bool CheckMessageContent(nsIUDPMessage *aMessage, uint32_t aExpectedConte
   uint32_t rawLen = rawData.Length();
 
   if (len != rawLen) {
-    ADD_FAILURE() << "Raw data length " << rawLen << " does not match String data length " << len;
+    ADD_FAILURE() << "Raw data length " << rawLen
+                  << " does not match String data length " << len;
     return false;
   }
 
@@ -58,13 +54,13 @@ static bool CheckMessageContent(nsIUDPMessage *aMessage, uint32_t aExpectedConte
   }
 
   if (len != sizeof(uint32_t)) {
-    ADD_FAILURE() << "Message length mismatch, expected " << sizeof(uint32_t) <<
-      " got " << len;
+    ADD_FAILURE() << "Message length mismatch, expected " << sizeof(uint32_t)
+                  << " got " << len;
     return false;
   }
   if (input != aExpectedContent) {
-    ADD_FAILURE() << "Message content mismatch, expected 0x" <<
-      std::hex << aExpectedContent << " got 0x" << input;
+    ADD_FAILURE() << "Message content mismatch, expected 0x" << std::hex
+                  << aExpectedContent << " got 0x" << input;
     return false;
   }
 
@@ -74,15 +70,12 @@ static bool CheckMessageContent(nsIUDPMessage *aMessage, uint32_t aExpectedConte
 /*
  * UDPClientListener: listens for incomming UDP packets
  */
-class UDPClientListener : public nsIUDPSocketListener
-{
-protected:
+class UDPClientListener : public nsIUDPSocketListener {
+ protected:
   virtual ~UDPClientListener();
 
-public:
-  explicit UDPClientListener(WaitForCondition* waiter)
-    : mWaiter(waiter)
-  { }
+ public:
+  explicit UDPClientListener(WaitForCondition* waiter) : mWaiter(waiter) {}
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIUDPSOCKETLISTENER
@@ -95,8 +88,8 @@ NS_IMPL_ISUPPORTS(UDPClientListener, nsIUDPSocketListener)
 UDPClientListener::~UDPClientListener() = default;
 
 NS_IMETHODIMP
-UDPClientListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message)
-{
+UDPClientListener::OnPacketReceived(nsIUDPSocket* socket,
+                                    nsIUDPMessage* message) {
   mResult = NS_OK;
 
   uint16_t port;
@@ -108,16 +101,18 @@ UDPClientListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message
 
   if (TEST_SEND_API == phase && CheckMessageContent(message, REQUEST)) {
     uint32_t count;
-    const uint32_t data = RESPONSE;
-    mResult = socket->SendWithAddr(fromAddr, (const uint8_t*)&data,
-                                   sizeof(uint32_t), &count);
+    nsTArray<uint8_t> data;
+    const uint32_t dataBuffer = RESPONSE;
+    data.AppendElements((const uint8_t*)&dataBuffer, sizeof(uint32_t));
+    mResult = socket->SendWithAddr(fromAddr, data, &count);
     if (mResult == NS_OK && count == sizeof(uint32_t)) {
       SUCCEED();
     } else {
       ADD_FAILURE();
     }
     return NS_OK;
-  } else if (TEST_OUTPUT_STREAM != phase || !CheckMessageContent(message, RESPONSE)) {
+  } else if (TEST_OUTPUT_STREAM != phase ||
+             !CheckMessageContent(message, RESPONSE)) {
     mResult = NS_ERROR_FAILURE;
   }
 
@@ -127,8 +122,7 @@ UDPClientListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message
 }
 
 NS_IMETHODIMP
-UDPClientListener::OnStopListening(nsIUDPSocket*, nsresult)
-{
+UDPClientListener::OnStopListening(nsIUDPSocket*, nsresult) {
   mWaiter->Notify();
   return NS_OK;
 }
@@ -136,15 +130,12 @@ UDPClientListener::OnStopListening(nsIUDPSocket*, nsresult)
 /*
  * UDPServerListener: listens for incomming UDP packets
  */
-class UDPServerListener : public nsIUDPSocketListener
-{
-protected:
+class UDPServerListener : public nsIUDPSocketListener {
+ protected:
   virtual ~UDPServerListener();
 
-public:
-  explicit UDPServerListener(WaitForCondition* waiter)
-    : mWaiter(waiter)
-  { }
+ public:
+  explicit UDPServerListener(WaitForCondition* waiter) : mWaiter(waiter) {}
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIUDPSOCKETLISTENER
@@ -158,8 +149,8 @@ NS_IMPL_ISUPPORTS(UDPServerListener, nsIUDPSocketListener)
 UDPServerListener::~UDPServerListener() = default;
 
 NS_IMETHODIMP
-UDPServerListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message)
-{
+UDPServerListener::OnPacketReceived(nsIUDPSocket* socket,
+                                    nsIUDPMessage* message) {
   mResult = NS_OK;
 
   uint16_t port;
@@ -170,8 +161,7 @@ UDPServerListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message
   fromAddr->GetAddress(ip);
   SUCCEED();
 
-  if (TEST_OUTPUT_STREAM == phase && CheckMessageContent(message, REQUEST))
-  {
+  if (TEST_OUTPUT_STREAM == phase && CheckMessageContent(message, REQUEST)) {
     nsCOMPtr<nsIOutputStream> outstream;
     message->GetOutputStream(getter_AddRefs(outstream));
 
@@ -187,7 +177,8 @@ UDPServerListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message
     return NS_OK;
   } else if (TEST_MULTICAST == phase && CheckMessageContent(message, REQUEST)) {
     mResult = NS_OK;
-  } else if (TEST_SEND_API != phase || !CheckMessageContent(message, RESPONSE)) {
+  } else if (TEST_SEND_API != phase ||
+             !CheckMessageContent(message, RESPONSE)) {
     mResult = NS_ERROR_FAILURE;
   }
 
@@ -197,8 +188,7 @@ UDPServerListener::OnPacketReceived(nsIUDPSocket* socket, nsIUDPMessage* message
 }
 
 NS_IMETHODIMP
-UDPServerListener::OnStopListening(nsIUDPSocket*, nsresult)
-{
+UDPServerListener::OnStopListening(nsIUDPSocket*, nsresult) {
   mWaiter->Notify();
   return NS_OK;
 }
@@ -206,16 +196,13 @@ UDPServerListener::OnStopListening(nsIUDPSocket*, nsresult)
 /**
  * Multicast timer callback: detects delivery failure
  */
-class MulticastTimerCallback : public nsITimerCallback
-{
-protected:
+class MulticastTimerCallback : public nsITimerCallback {
+ protected:
   virtual ~MulticastTimerCallback();
 
-public:
+ public:
   explicit MulticastTimerCallback(WaitForCondition* waiter)
-    : mResult(NS_ERROR_NOT_INITIALIZED)
-    , mWaiter(waiter)
-  { }
+      : mResult(NS_ERROR_NOT_INITIALIZED), mWaiter(waiter) {}
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITIMERCALLBACK
@@ -229,8 +216,7 @@ NS_IMPL_ISUPPORTS(MulticastTimerCallback, nsITimerCallback)
 MulticastTimerCallback::~MulticastTimerCallback() = default;
 
 NS_IMETHODIMP
-MulticastTimerCallback::Notify(nsITimer* timer)
-{
+MulticastTimerCallback::Notify(nsITimer* timer) {
   if (TEST_MULTICAST != phase) {
     return NS_OK;
   }
@@ -276,10 +262,12 @@ TEST(TestUDPSocket, TestUDPSocketMain)
 
   // Write data to server
   uint32_t count;
-  const uint32_t data = REQUEST;
+  nsTArray<uint8_t> data;
+  const uint32_t dataBuffer = REQUEST;
+  data.AppendElements((const uint8_t*)&dataBuffer, sizeof(uint32_t));
 
   phase = TEST_OUTPUT_STREAM;
-  rv = client->Send(NS_LITERAL_CSTRING("127.0.0.1"), serverPort, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = client->Send(NS_LITERAL_CSTRING("127.0.0.1"), serverPort, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -298,7 +286,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   clientAddr.inet.ip = PR_htonl(127 << 24 | 1);
 
   phase = TEST_SEND_API;
-  rv = server->SendWithAddress(&clientAddr, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = server->SendWithAddress(&clientAddr, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -327,7 +315,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   // Send multicast ping
   timerCb->mResult = NS_OK;
   timer->InitWithCallback(timerCb, MULTICAST_TIMEOUT, nsITimer::TYPE_ONE_SHOT);
-  rv = client->SendWithAddress(&multicastAddr, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = client->SendWithAddress(&multicastAddr, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -345,7 +333,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   // Send multicast ping
   timerCb->mResult = NS_OK;
   timer->InitWithCallback(timerCb, MULTICAST_TIMEOUT, nsITimer::TYPE_ONE_SHOT);
-  rv = client->SendWithAddress(&multicastAddr, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = client->SendWithAddress(&multicastAddr, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -367,7 +355,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   // Send multicast ping
   timerCb->mResult = NS_OK;
   timer->InitWithCallback(timerCb, MULTICAST_TIMEOUT, nsITimer::TYPE_ONE_SHOT);
-  rv = client->SendWithAddress(&multicastAddr, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = client->SendWithAddress(&multicastAddr, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -389,7 +377,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   // Send multicast ping
   timerCb->mResult = NS_OK;
   timer->InitWithCallback(timerCb, MULTICAST_TIMEOUT, nsITimer::TYPE_ONE_SHOT);
-  rv = client->SendWithAddress(&multicastAddr, (uint8_t*)&data, sizeof(uint32_t), &count);
+  rv = client->SendWithAddress(&multicastAddr, data, &count);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
   EXPECT_EQ(count, sizeof(uint32_t));
 
@@ -398,7 +386,7 @@ TEST(TestUDPSocket, TestUDPSocketMain)
   ASSERT_FALSE(NS_SUCCEEDED(timerCb->mResult));
   timer->Cancel();
 
-  goto close; // suppress warning about unused label
+  goto close;  // suppress warning about unused label
 
 close:
   // Close server

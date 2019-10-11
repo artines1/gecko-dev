@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +8,15 @@ const { ActorPool } = require("devtools/server/actors/common");
 const { createValueGrip } = require("devtools/server/actors/object/utils");
 const { ActorClassWithSpec } = require("devtools/shared/protocol");
 const { frameSpec } = require("devtools/shared/specs/frame");
+
+function formatDisplayName(frame) {
+  if (frame.type === "call") {
+    const callee = frame.callee;
+    return callee.name || callee.userDisplayName || callee.displayName;
+  }
+
+  return `(${frame.type})`;
+}
 
 /**
  * An actor for a specified stack frame.
@@ -74,12 +81,7 @@ const FrameActor = ActorClassWithSpec(frameSpec, {
    */
   form: function() {
     const threadActor = this.threadActor;
-    const form = { actor: this.actorID,
-                   type: this.frame.type };
-    if (this.frame.type === "call") {
-      form.callee = createValueGrip(this.frame.callee, threadActor._pausePool,
-        threadActor.objectGrip);
-    }
+    const form = { actor: this.actorID, type: this.frame.type };
 
     // NOTE: ignoreFrameEnvironment lets the client explicitly avoid
     // populating form environments on pause.
@@ -91,17 +93,21 @@ const FrameActor = ActorClassWithSpec(frameSpec, {
     }
 
     if (this.frame.type != "wasmcall") {
-      form.this = createValueGrip(this.frame.this, threadActor._pausePool,
-        threadActor.objectGrip);
+      form.this = createValueGrip(
+        this.frame.this,
+        threadActor._pausePool,
+        threadActor.objectGrip
+      );
     }
 
+    form.displayName = formatDisplayName(this.frame);
     form.arguments = this._args();
     if (this.frame.script) {
-      const generatedLocation = this.threadActor.sources.getFrameLocation(this.frame);
+      const location = this.threadActor.sources.getFrameLocation(this.frame);
       form.where = {
-        source: generatedLocation.generatedSourceActor.form(),
-        line: generatedLocation.generatedLine,
-        column: generatedLocation.generatedColumn
+        actor: location.sourceActor.actorID,
+        line: location.line,
+        column: location.column,
       };
     }
 
@@ -117,9 +123,15 @@ const FrameActor = ActorClassWithSpec(frameSpec, {
       return [];
     }
 
-    return this.frame.arguments.map(arg => createValueGrip(arg,
-      this.threadActor._pausePool, this.threadActor.objectGrip));
-  }
+    return this.frame.arguments.map(arg =>
+      createValueGrip(
+        arg,
+        this.threadActor._pausePool,
+        this.threadActor.objectGrip
+      )
+    );
+  },
 });
 
 exports.FrameActor = FrameActor;
+exports.formatDisplayName = formatDisplayName;

@@ -84,10 +84,8 @@ function test_clear() {
 function test_enumerate() {
   var arr = create_n_element_array(5);
   Assert.equal(5, arr.length);
-  var en = arr.enumerate();
   var i = 0;
-  while (en.hasMoreElements()) {
-    let str = en.getNext();
+  for (let str of arr.enumerate()) {
     Assert.ok(str instanceof Ci.nsISupportsString);
     Assert.equal(str.data, "element " + i);
     i++;
@@ -127,6 +125,7 @@ var tests = [
 ];
 
 function run_test() {
-  for (var i = 0; i < tests.length; i++)
+  for (var i = 0; i < tests.length; i++) {
     tests[i]();
+  }
 }

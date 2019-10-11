@@ -7,7 +7,7 @@
  *
  * Do not confuse with RTCPeerConnection. This interface is purely for
  * communication between the PeerConnection JS DOM binding and the C++
- * implementation in SIPCC.
+ * implementation.
  *
  * See media/webrtc/signaling/include/PeerConnectionImpl.h
  *
@@ -16,8 +16,11 @@
 interface nsISupports;
 
 /* Must be created first. Observer events will be dispatched on the thread provided */
-[ChromeOnly, Constructor]
+[ChromeOnly,
+ Exposed=Window]
 interface PeerConnectionImpl  {
+  constructor();
+
   /* Must be called first. Observer events dispatched on the thread provided */
   [Throws]
   void initialize(PeerConnectionObserver observer, Window window,
@@ -26,7 +29,7 @@ interface PeerConnectionImpl  {
 
   /* JSEP calls */
   [Throws]
-  void createOffer(optional RTCOfferOptions options);
+  void createOffer(optional RTCOfferOptions options = {});
   [Throws]
   void createAnswer();
   [Throws]
@@ -91,9 +94,12 @@ interface PeerConnectionImpl  {
    * into the SDP.
    */
   [Throws]
-  void addIceCandidate(DOMString candidate, DOMString mid, unsigned short level);
+  void addIceCandidate(DOMString candidate,
+                       DOMString mid,
+                       DOMString ufrag,
+                       unsigned short? level);
 
-  /* Puts the SIPCC engine back to 'kIdle', shuts down threads, deletes state */
+  /* Shuts down threads, deletes state */
   [Throws]
   void close();
 
@@ -108,16 +114,14 @@ interface PeerConnectionImpl  {
   attribute RTCCertificate certificate;
   [Constant]
   readonly attribute DOMString fingerprint;
-  readonly attribute DOMString localDescription;
   readonly attribute DOMString currentLocalDescription;
   readonly attribute DOMString pendingLocalDescription;
-  readonly attribute DOMString remoteDescription;
   readonly attribute DOMString currentRemoteDescription;
   readonly attribute DOMString pendingRemoteDescription;
 
-  readonly attribute PCImplIceConnectionState iceConnectionState;
-  readonly attribute PCImplIceGatheringState iceGatheringState;
-  readonly attribute PCImplSignalingState signalingState;
+  readonly attribute RTCIceConnectionState iceConnectionState;
+  readonly attribute RTCIceGatheringState iceGatheringState;
+  readonly attribute RTCSignalingState signalingState;
   attribute DOMString id;
 
   [SetterThrows]

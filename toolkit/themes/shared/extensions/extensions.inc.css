@@ -13,16 +13,17 @@
   min-height: 39px;
 }
 
-.view-pane > .list > scrollbox {
-  padding-right: 48px;
-  padding-left: 48px;
+.view-pane > .list {
+  padding-right: 24px;
+  padding-left: 24px;
 }
-
 
 /*** global warnings ***/
 
 .global-warning-container {
   overflow-x: hidden;
+  margin-right: 28px;
+  margin-left: 28px;
 }
 
 .global-warning {
@@ -97,8 +98,13 @@
 
 .alert-container {
   -moz-box-align: center;
-  margin-right: 48px;
-  margin-left: 48px;
+  margin-right: 28px;
+  margin-left: 28px;
+  margin-bottom: 10px;
+}
+
+.html-alert-container {
+  margin-bottom: 0;
 }
 
 .alert-spacer-before {
@@ -154,9 +160,12 @@ button.warning {
 /*** category selector ***/
 
 #categories {
-  /* With photon this should be 70px but there are some hidden forward/back
-     buttons that are 39px tall above this. */
-  padding-top: 31px;
+  /* Make room for outlines */
+  padding: 1px;
+}
+
+#categories > .category {
+  -moz-box-align: center;
 }
 
 #categories > .category[disabled] {
@@ -166,6 +175,7 @@ button.warning {
   opacity: 0;
   transition-property: min-height, opacity;
   transition-duration: 1s, 0.8s;
+  -moz-user-input: none; /* Prevents list item selection during animation. */
 }
 
 #categories > .category:not([disabled]) {
@@ -232,11 +242,21 @@ button.warning {
 
 /*** header ***/
 
-#header {
-  margin-top: 20px;
-  margin-bottom: 20px;
-  margin-right: 48px;
-  margin-left: 48px;
+#header-inner {
+  margin: 20px 4px 4px;
+  width: 692px;
+}
+
+#header-search {
+  margin-top: 0;
+  margin-bottom: 0;
+  min-height: 32px;
+}
+
+#search-label {
+  margin: 0;
+  margin-inline-end: 4px;
+  margin-bottom: 2px;
 }
 
 @media (max-width: 600px) {
@@ -245,45 +265,60 @@ button.warning {
   }
 }
 
-.view-header {
-  margin: 0 48px;
-  border-bottom: 1px solid var(--in-content-box-border-color);
-}
-
+#go-back,
 #header-utils-btn {
-  height: 30px;
-  line-height: 20px;
-  border-color: var(--in-content-box-border-color);
-  background-color: var(--in-content-page-background);
-  padding-right: 10px;
-  padding-left: 10px;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  min-width: auto;
+  margin-inline-end: 0;
 }
 
-#header-utils-btn:not([disabled="true"]):active:hover,
-#header-utils-btn[open="true"] {
-  padding-bottom: 0px;
-  padding-top: 0px;
-  background-color: var(--in-content-box-background-active);
+#header-utils-btn > .button-box > hbox > .button-icon {
+  list-style-image: url("chrome://mozapps/skin/extensions/utilities.svg");
 }
 
-.header-button {
-  -moz-appearance: none;
-  border: 1px solid;
-  border-radius: 2px;
+#header-utils-btn > .button-box > .button-menu-dropmarker {
+  display: block;
+  list-style-image: url("chrome://global/skin/icons/arrow-dropdown-12.svg");
+  width: 12px;
+  margin-inline-start: 5px;
+  margin-inline-end: 1px; /* Match the 1px margin-inline-start on the icon. */
 }
 
-.header-button[disabled="true"] > .toolbarbutton-icon {
-  opacity: 0.4;
-}
-
-.header-button:not([disabled="true"]):hover,
-#header-utils-btn:not([disabled="true"]):hover {
-  background-color: #ebebeb;
-  cursor: pointer;
-}
-
-.header-button > .toolbarbutton-text {
+#go-back > .button-box > .button-text,
+#header-utils-btn > .button-box > hbox > .button-text {
   display: none;
+}
+
+#go-back {
+  margin-inline-start: 0;
+  margin-inline-end: 16px;
+}
+
+#go-back > .button-box > .button-icon {
+  list-style-image: url("chrome://global/skin/icons/calendar-arrow-left.svg");
+  margin: 0;
+}
+
+#go-back > .button-box > .button-icon:-moz-locale-dir(rtl) {
+  list-style-image: url("chrome://global/skin/icons/calendar-arrow-right.svg");
+}
+
+#heading {
+  /* This should be margin-top: 26px to match preferences, but we want to lower
+   * .header-name to be closer to centre with the buttons. */
+  margin-top: 21px;
+  margin-bottom: 16px;
+}
+
+.header-name {
+  /* Add some top margin to try to centre the heading next to the back button. */
+  margin-top: 5px;
+}
+
+.heading-inner {
+  width: 664px;
+  margin-inline-start: 28px;
 }
 
 /*** discover view ***/
@@ -329,43 +364,13 @@ button.warning {
   background-color: transparent;
 }
 
-.list > scrollbox > .scrollbox-innerbox {
-  border: 1px dotted transparent;
-}
-
-.list:-moz-focusring > scrollbox > .scrollbox-innerbox {
-  border-color: var(--in-content-border-focus);
-}
-
-richlistbox.list > richlistitem.addon {
-  color: var(--in-content-text-color);
-  border-bottom: 1px solid var(--in-content-box-border-color);
-  padding: 5px;
-  background-origin: border-box;
-}
-
-.addon:not(:only-child):last-child {
-  border-bottom-width: 0;
-}
-
-.details {
-  cursor: pointer;
-  margin: 0;
-  margin-inline-start: 10px;
-}
-
-.icon-container {
-  width: 48px;
-  height: 48px;
-  margin: 3px 7px;
-  -moz-box-align: center;
-  -moz-box-pack: center;
-}
-
 .icon {
   list-style-image: url("chrome://mozapps/skin/extensions/extensionGeneric.svg");
-  max-width: 32px;
-  max-height: 32px;
+  max-width: 24px;
+  max-height: 24px;
+  margin-inline-end: 16px;
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 .content-inner-container {
@@ -374,6 +379,15 @@ richlistbox.list > richlistitem.addon {
 
 .addon[active="false"] .icon {
   filter: grayscale(1);
+}
+
+.addon label,
+.addon {
+  cursor: pointer;
+}
+
+.relnotes-container {
+  cursor: auto;
 }
 
 .addon-view[type="theme"] .icon {
@@ -385,7 +399,7 @@ richlistbox.list > richlistitem.addon {
 }
 
 .addon-view[type="plugin"] .icon {
-  list-style-image: url("chrome://mozapps/skin/plugins/pluginGeneric.svg");
+  list-style-image: url("chrome://global/skin/plugins/pluginGeneric.svg");
 }
 
 .addon-view[type="dictionary"] .icon {
@@ -397,10 +411,30 @@ richlistbox.list > richlistitem.addon {
 }
 
 .name-container {
-  font-size: 1.3rem;
-  font-weight: bold;
+  font-weight: 600;
   -moz-box-align: end;
   -moz-box-flex: 1;
+}
+
+.privateBrowsing-notice {
+  background-color: var(--purple-70);
+  color: #fff;
+  margin: 4px 0 0;
+  padding: 4px 5px 3px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  -moz-user-focus: ignore;
+  transition-property: color, background-color;
+  transition-timing-function: var(--animation-curve);
+  transition-duration: 150ms;
+}
+
+.message-container {
+  /* private-browsing-notice.max-width(664)
+     - message-bar.padding(8)
+     - message-bar-icon.computed-width(28) */
+  max-width: 628px;
+  min-width: 628px;
 }
 
 .legacy-warning {
@@ -411,7 +445,7 @@ richlistbox.list > richlistitem.addon {
   font-weight: 600;
   -moz-user-focus: ignore;
   transition-property: color, background-color;
-  transition-timing-function: cubic-bezier(.07,.95,0,1);
+  transition-timing-function: var(--animation-curve);
   transition-duration: 150ms;
 }
 
@@ -431,13 +465,12 @@ richlistbox.list > richlistitem.addon {
 }
 
 .creator {
-  font-weight: bold;
+  font-size: 1.2rem;
 }
 
 .description-container {
-  margin-inline-start: 6px;
   -moz-box-align: center;
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 .description {
@@ -452,7 +485,15 @@ richlistbox.list > richlistitem.addon {
   -moz-box-align: center;
 }
 
-.content-container,
+.addon-view[type="theme"] .icon:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
+}
+
+.content-container {
+  -moz-box-align: center;
+}
+
+#updates-list > .addon > .content-container,
 .basicinfo-container {
   -moz-box-align: start;
 }
@@ -483,8 +524,7 @@ richlistbox.list > richlistitem.addon {
   -moz-box-pack: start;
 }
 
-.status-container,
-.control-container {
+.status-container {
   -moz-box-pack: end;
 }
 
@@ -546,29 +586,31 @@ richlistbox.list > richlistitem.addon {
                                     transparent 75%);
 }
 .addon-view[notification="warning"] {
-  --view-highlight-color: #F9F5E5;
+  --view-highlight-color: rgb(208, 176, 47, 0.1);
 }
 
 .addon-view[notification="error"] {
-  --view-highlight-color: #FFE8E9;
+  --view-highlight-color: rgb(255, 0, 13, 0.1);
 }
 
 .addon-view[pending="enable"],
 .addon-view[pending="upgrade"],
 .addon-view[pending="install"] {
-  --view-highlight-color: #EFFAF2;
+  --view-highlight-color: rgb(61, 194, 97, 0.1);
 }
 
 .addon-view[pending="disable"],
 .addon-view[pending="uninstall"] {
-  --view-highlight-color: #F2F2F2;
+  --view-highlight-color: rgb(128, 128, 128, 0.1);
 }
 
 .list > .addon[selected] {
-  background-color: var(--in-content-page-background);
-  color: var(--in-content-page-color);
-  padding-inline-start: 1px; /* compensate the 4px border */
-  border-inline-start: solid 4px var(--in-content-border-focus);
+  background-color: var(--in-content-box-background);
+}
+
+.list:focus > .addon[selected] {
+  box-shadow: var(--card-shadow-focus);
+  color: var(--in-content-text-color);
 }
 
 #addon-list .addon[active="false"] > .content-container > .content-inner-container {
@@ -589,7 +631,7 @@ richlistbox.list > richlistitem.addon {
 .addon[status="uninstalled"] > .container {
   -moz-box-align: center;
   padding: 4px 20px;
-  background-color: #FDFFA8;
+  background-color: rgb(255, 255, 0, 0.1);
   border-radius: 8px;
   font-size: 120%;
 }
@@ -601,9 +643,8 @@ richlistbox.list > richlistitem.addon {
 
 /*** detail view ***/
 
-#detail-view > .scrollbox-innerbox {
-  margin-right: 48px;
-  margin-left: 48px;
+#detail-view {
+  padding: 8px 28px;
 }
 
 #detail-view .loading {
@@ -617,15 +658,16 @@ richlistbox.list > richlistitem.addon {
 }
 
 .detail-view-container {
-  padding-inline-end: 2em;
-  padding-bottom: 2em;
-  font-size: 1.25rem;
-  color: #333;
+  width: 664px;
 }
 
 #detail-notifications {
   margin-top: 1em;
   margin-bottom: 2em;
+}
+
+#detail-view:not([notification="warning"]):not([notification="error"]):not([pending]) #detail-notifications {
+  display: none;
 }
 
 #detail-notifications .warning,
@@ -636,22 +678,23 @@ richlistbox.list > richlistitem.addon {
 
 #detail-icon-container {
   width: 64px;
-  margin-inline-end: 10px;
   margin-top: 6px;
 }
 
 #detail-icon {
-  max-width: 64px;
-  max-height: 64px;
+  max-width: 32px;
+  max-height: 32px;
 }
 
-#detail-summary {
-  margin-bottom: 2em;
+.name-container > label,
+#detail-creator,
+#detail-name-container > label {
+  margin-inline-start: 0;
 }
 
-#detail-name-container {
-  font-size: 2.5rem;
-  font-weight: normal;
+#detail-controls {
+  margin-inline-start: -4px;
+  margin-inline-end: -4px;
 }
 
 #detail-screenshot-box {
@@ -685,11 +728,44 @@ richlistbox.list > richlistitem.addon {
 }
 
 #detail-desc-container {
-  margin-bottom: 2em;
+  line-height: 1.3;
+  margin: 1em 0;
+}
+
+#detail-controls > button {
+  margin-bottom: 0;
+}
+
+.addon.card {
+  background-origin: border-box;
+  color: var(--in-content-text-color);
+  margin: 8px 4px;
+  max-width: 664px;
+  /* The .addon-control element on the end has 4px of margin, remove it
+   * from the padding to stay balanced (also the 1px border for high-contrast). */
+  padding-inline-end: calc(var(--card-padding) - 5px);
+}
+
+.list:focus > .addon[selected] {
+  /* Needed for high-contrast where the border will appear. */
+  border: 2px solid transparent;
+  /* Remove the border from the overall padding. */
+  padding: calc(var(--card-padding) - 2px);
+  /* The .addon-control element on the end has 4px of margin, remove it
+   * from the padding to stay balanced (also the 2px border). */
+  padding-inline-end: calc(var(--card-padding) - 6px);
+}
+
+.addon-detail.card:hover {
+  box-shadow: var(--card-shadow);
+}
+
+.addon.card > .card-heading-image {
+  margin-inline-end: -12px;
 }
 
 #detail-desc, #detail-fulldesc {
-  margin-inline-start: 6px;
+  margin-inline-start: 0;
   /* This is necessary to fix layout issues with multi-line descriptions, see
      bug 592712*/
   outline: solid transparent;
@@ -721,23 +797,13 @@ richlistbox.list > richlistitem.addon {
 }
 
 #detail-contrib-btn {
-  color: var(--in-content-selected-text);
-  text-shadow: none;
-  border: 1px solid transparent;
-  list-style-image: url("chrome://mozapps/skin/extensions/heart.png");
-  background-color: var(--in-content-primary-button-background);
+  -moz-context-properties: fill;
+  fill: currentColor;
+  list-style-image: url("chrome://global/skin/icons/heart.svg");
 }
 
 #detail-contrib-btn .button-icon {
   margin-inline-end: 5px;
-}
-
-#detail-contrib-btn:not(:active):hover {
-  background-color: var(--in-content-primary-button-background-hover);
-}
-
-#detail-contrib-btn:active:hover {
-  background-color: var(--in-content-primary-button-background-active);
 }
 
 #detail-grid {
@@ -760,11 +826,6 @@ richlistbox.list > richlistitem.addon {
   -moz-box-align: center;
   min-height: 35px;
   line-height: 20px;
-  text-shadow: 0 1px 1px #fefffe;
-}
-
-#detail-controls {
-  margin-bottom: 1em;
 }
 
 .inline-options-browser {
@@ -777,7 +838,7 @@ richlistbox.list > richlistitem.addon {
 }
 
 .preferences-description {
-  font-size: 90.9%;
+  font-size: 1.1rem;
   color: graytext;
   margin-top: -2px;
   margin-inline-start: 2em;
@@ -788,6 +849,18 @@ richlistbox.list > richlistitem.addon {
   display: none;
 }
 
+.detail-row-footer {
+  padding-bottom: 6px;
+}
+
+.detail-row-footer > .preferences-description {
+  margin-inline-start: 6px;
+  margin-top: 0;
+  margin-bottom: 0;
+  /* card-width - card-padding - description-margins */
+  width: calc(664px - 32px - 11px);
+  color: var(--in-content-deemphasized-text);
+}
 
 /*** creator ***/
 
@@ -838,6 +911,7 @@ richlistbox.list > richlistitem.addon {
 }
 
 .download-progress .progress {
+  -moz-box-flex: 1;
   -moz-appearance: none;
   background-color: transparent;
   padding: 0;
@@ -930,8 +1004,13 @@ richlistbox.list > richlistitem.addon {
   display: none;
 }
 
-.no-auto-hide .addon-control {
-  display: block !important;
+.addon-control {
+  cursor: default;
+  margin-top: 0;
+  margin-bottom: 0;
+  min-height: auto;
+  min-width: auto;
+  padding: 2px 4px;
 }
 
 button.button-link {
@@ -957,23 +1036,6 @@ button.button-link:not([disabled="true"]):active:hover {
   background-color: transparent;
   color: #0A84FF;
   text-decoration: none;
-}
-
-.addon-control.replacement {
-  background-color: var(--in-content-primary-button-background);
-  border-color: var(--in-content-primary-button-background);
-  color: var(--in-content-selected-text);
-}
-
-.addon-control.replacement:active,
-.addon-control.replacement:hover {
-  background-color: var(--in-content-primary-button-background-hover);
-  border-color: var(--in-content-primary-button-background-hover);
-}
-
-.addon-control.replacement:active:hover {
-  background-color: var(--in-content-primary-button-background-active);
-  border-color: var(--in-content-primary-button-background-active);
 }
 
 /*** telemetry experiments ***/
@@ -1006,7 +1068,7 @@ button.button-link:not([disabled="true"]):active:hover {
 /*** info UI for add-ons that have been disabled for being unsigned ***/
 
 #show-disabled-unsigned-extensions:not(:hover) {
-  background-color: #fcf8ed;
+  background-color: rgba(218, 170, 37, 0.05);
 }
 
 #disabled-unsigned-addons-info,

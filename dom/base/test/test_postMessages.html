@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>Test for postMessages cloning/transferring objects</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 
@@ -244,10 +244,10 @@ function runTests(obj) {
     return new Promise(function(r, rr) {
       var mc = new MessageChannel();
       obj.send(42, [mc.port1]).then(function(received) {
-        ok(received.ports.length, 1, "MessagePort has been transferred");
+        is(received.ports.length, 1, "MessagePort has been transferred");
         mc.port2.postMessage("hello world");
         received.ports[0].onmessage = function(e) {
-          ok(e.data, "hello world", "Ports are connected!");
+          is(e.data, "hello world", "Ports are connected!");
           r();
         }
       });
@@ -316,7 +316,7 @@ function test_windowToWindow() {
     clonableObjectsEveryWhere: true,
     clonableObjectsSameProcess: true,
     transferableObjects: true,
-    send: function(what, ports) {
+    send(what, ports) {
       return new Promise(function(r, rr) {
         resolve = r;
 
@@ -329,7 +329,7 @@ function test_windowToWindow() {
       });
     },
 
-    finished: function() {
+    finished() {
       onmessage = null;
       next();
     }
@@ -370,7 +370,7 @@ function test_windowToIframeURL(url) {
       clonableObjectsEveryWhere: true,
       clonableObjectsSameProcess: true,
       transferableObjects: true,
-      send: function(what, ports) {
+      send(what, ports) {
         return new Promise(function(r, rr) {
           resolve = r;
           try {
@@ -382,7 +382,7 @@ function test_windowToIframeURL(url) {
         });
       },
 
-      finished: function() {
+      finished() {
         document.body.removeChild(ifr);
         onmessage = null;
         next();
@@ -403,7 +403,7 @@ function test_workers() {
   w.onmessage = function(e) {
     is(e.data, 'ok', "Worker ready!");
 
-    w.onmessage = function(e) {
+    w.onmessage = function(e1) {
       if (!resolve) {
         ok(false, "Unexpected message!");
         return;
@@ -411,26 +411,26 @@ function test_workers() {
 
       let tmp = resolve;
       resolve = null;
-      tmp({ data: e.data, ports: e.ports });
+      tmp({ data: e1.data, ports: e1.ports });
     }
 
     runTests({
       clonableObjectsEveryWhere: true,
       clonableObjectsSameProcess: true,
       transferableObjects: true,
-      send: function(what, ports) {
+      send(what, ports) {
         return new Promise(function(r, rr) {
           resolve = r;
           try {
             w.postMessage(what, ports);
-          } catch(e) {
+          } catch(ex) {
             resolve = null;
             rr();
           }
         });
       },
 
-      finished: function() {
+      finished() {
         onmessage = null;
         next();
       }
@@ -462,7 +462,7 @@ function test_broadcastChannel() {
     clonableObjectsEveryWhere: true,
     clonableObjectsSameProcess: false,
     transferableObjects: false,
-    send: function(what, ports) {
+    send(what, ports) {
       return new Promise(function(r, rr) {
         if (ports.length) {
           rr();
@@ -474,7 +474,7 @@ function test_broadcastChannel() {
       });
     },
 
-    finished: function() {
+    finished() {
       onmessage = null;
       next();
     }
@@ -493,7 +493,7 @@ function test_broadcastChannel_inWorkers() {
   w.onmessage = function(e) {
     is(e.data, 'ok', "Worker ready!");
 
-    w.onmessage = function(e) {
+    w.onmessage = function(e1) {
       if (!resolve) {
         ok(false, "Unexpected message!");
         return;
@@ -501,14 +501,14 @@ function test_broadcastChannel_inWorkers() {
 
       let tmp = resolve;
       resolve = null;
-      tmp({ data: e.data, ports: e.ports });
+      tmp({ data: e1.data, ports: e1.ports });
     }
 
     runTests({
       clonableObjectsEveryWhere: true,
       clonableObjectsSameProcess: false,
       transferableObjects: false,
-      send: function(what, ports) {
+      send(what, ports) {
         return new Promise(function(r, rr) {
           if (ports.length) {
             rr();
@@ -520,7 +520,7 @@ function test_broadcastChannel_inWorkers() {
         });
       },
 
-      finished: function() {
+      finished() {
         onmessage = null;
         next();
       }
@@ -550,7 +550,7 @@ function test_messagePort() {
     clonableObjectsEveryWhere: true,
     clonableObjectsSameProcess: false,
     transferableObjects: true,
-    send: function(what, ports) {
+    send(what, ports) {
       return new Promise(function(r, rr) {
         resolve = r;
         try {
@@ -562,7 +562,7 @@ function test_messagePort() {
       });
     },
 
-    finished: function() {
+    finished() {
       onmessage = null;
       next();
     }
@@ -581,7 +581,7 @@ function test_messagePort_inWorkers() {
   w.onmessage = function(e) {
     is(e.data, 'ok', "Worker ready!");
 
-    w.onmessage = function(e) {
+    w.onmessage = function(e1) {
       if (!resolve) {
         ok(false, "Unexpected message!");
         return;
@@ -589,26 +589,26 @@ function test_messagePort_inWorkers() {
 
       let tmp = resolve;
       resolve = null;
-      tmp({ data: e.data, ports: e.ports });
+      tmp({ data: e1.data, ports: e1.ports });
     }
 
     runTests({
       clonableObjectsEveryWhere: true,
       clonableObjectsSameProcess: false,
       transferableObjects: true,
-      send: function(what, ports) {
+      send(what, ports) {
         return new Promise(function(r, rr) {
           resolve = r;
           try {
             mc.port1.postMessage(what, ports);
-          } catch(e) {
+          } catch(ex) {
             resolve = null;
             rr();
           }
         });
       },
 
-      finished: function() {
+      finished() {
         onmessage = null;
         next();
       }

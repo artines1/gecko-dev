@@ -7,13 +7,13 @@
 #include "../contentproc/plugin-container.cpp"
 
 #include "mozilla/Bootstrap.h"
-#include "mozilla/WindowsDllBlocklist.h"
+#if defined(XP_WIN)
+#  include "mozilla/WindowsDllBlocklist.h"
+#endif  // defined(XP_WIN)
 
 using namespace mozilla;
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
 #ifdef HAS_DLL_BLOCKLIST
   DllBlocklist_Initialize(eDllBlocklistInitFlagIsChildProcess);
 #endif
@@ -22,5 +22,9 @@ main(int argc, char *argv[])
   if (!bootstrap) {
     return 2;
   }
-  return content_process_main(bootstrap.get(), argc, argv);
+  int ret = content_process_main(bootstrap.get(), argc, argv);
+#if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
+  DllBlocklist_Shutdown();
+#endif
+  return ret;
 }

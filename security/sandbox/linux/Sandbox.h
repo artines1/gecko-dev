@@ -17,15 +17,14 @@
 
 namespace mozilla {
 
-namespace dom {
-class MaybeFileDesc;
-} // namespace dom
+namespace ipc {
+class FileDescriptor;
+}  // namespace ipc
 
 // This must be called early, before glib creates any worker threads.
 // (See bug 1176099.)
 MOZ_EXPORT void SandboxEarlyInit();
 
-#ifdef MOZ_CONTENT_SANDBOX
 // A collection of sandbox parameters that have to be extracted from
 // prefs or other libxul facilities and passed down, because
 // libmozsandbox can't link against the APIs to read them.
@@ -45,22 +44,22 @@ struct ContentProcessSandboxParams {
   // wouldn't.
   std::vector<int> mSyscallWhitelist;
 
-  static ContentProcessSandboxParams ForThisProcess(const dom::MaybeFileDesc& aBroker);
+  static ContentProcessSandboxParams ForThisProcess(
+      const Maybe<ipc::FileDescriptor>& aBroker);
 };
 
 // Call only if SandboxInfo::CanSandboxContent() returns true.
 // (No-op if the sandbox is disabled.)
 // isFileProcess determines whether we allow system wide file reads.
 MOZ_EXPORT bool SetContentProcessSandbox(ContentProcessSandboxParams&& aParams);
-#endif
 
-#ifdef MOZ_GMP_SANDBOX
 // Call only if SandboxInfo::CanSandboxMedia() returns true.
 // (No-op if MOZ_DISABLE_GMP_SANDBOX is set.)
 // aFilePath is the path to the plugin file.
-MOZ_EXPORT void SetMediaPluginSandbox(const char *aFilePath);
-#endif
+MOZ_EXPORT void SetMediaPluginSandbox(const char* aFilePath);
 
-} // namespace mozilla
+MOZ_EXPORT void SetRemoteDataDecoderSandbox(int aBroker);
 
-#endif // mozilla_Sandbox_h
+}  // namespace mozilla
+
+#endif  // mozilla_Sandbox_h

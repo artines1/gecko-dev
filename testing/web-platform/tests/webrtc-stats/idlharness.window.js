@@ -7,8 +7,8 @@
 
 idl_test(
   ['webrtc-stats'],
-  [], // No deps
+  ['webrtc'],
   idl_array => {
     // No interfaces to test
-  },
-  'webrtc-stats interfaces.');
+  }
+);

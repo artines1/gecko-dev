@@ -30,8 +30,10 @@ add_task(async function() {
 
   // Check the database was corrupt.
   // nsBrowserGlue uses databaseStatus to manage initialization.
-  Assert.equal(PlacesUtils.history.databaseStatus,
-               PlacesUtils.history.DATABASE_STATUS_CORRUPT);
+  Assert.equal(
+    PlacesUtils.history.databaseStatus,
+    PlacesUtils.history.DATABASE_STATUS_CORRUPT
+  );
 
   // The test will continue once import has finished.
   await promiseTopicObserved("places-browser-init-complete");
@@ -39,7 +41,7 @@ add_task(async function() {
   // Check that bookmarks html has been restored.
   let bm = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    index: 0
+    index: 0,
   });
   Assert.equal(bm.title, "example");
 });

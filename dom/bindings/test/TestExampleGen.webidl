@@ -3,23 +3,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-[Constructor,
- Constructor(DOMString str),
- Constructor(unsigned long num, boolean? boolArg),
- Constructor(TestInterface? iface),
- Constructor(unsigned long arg1, IndirectlyImplementedInterface iface),
- Constructor(Date arg1),
- Constructor(ArrayBuffer arrayBuf),
- Constructor(Uint8Array typedArr),
- // Constructor(long arg1, long arg2, (TestInterface or OnlyForUseInConstructor) arg3),
- NamedConstructor=Example,
+[NamedConstructor=Example,
  NamedConstructor=Example(DOMString str),
  NamedConstructor=Example2(DictForConstructor dict, any any1, object obj1,
                            object? obj2, sequence<Dict> seq, optional any any2,
                            optional object obj3, optional object? obj4),
- NamedConstructor=Example2((long or record<DOMString, any>) arg1)
+ NamedConstructor=Example2((long or record<DOMString, any>) arg1),
+ Exposed=Window,
  ]
 interface TestExampleInterface {
+  constructor();
+  constructor(DOMString str);
+  constructor(unsigned long num, boolean? boolArg);
+  constructor(TestInterface? iface);
+  constructor(unsigned long arg1, TestInterface iface);
+  constructor(Date arg1);
+  constructor(ArrayBuffer arrayBuf);
+  constructor(Uint8Array typedArr);
+  // constructor(long arg1, long arg2, (TestInterface or OnlyForUseInConstructor) arg3);
+
   // Integer types
   // XXXbz add tests for throwing versions of all the integer stuff
   readonly attribute byte readonlyByte;
@@ -170,20 +172,6 @@ interface TestExampleInterface {
   [NewObject]
   sequence<TestNonWrapperCacheInterface?>? receiveNullableNonWrapperCacheInterfaceNullableSequence();
 
-  // Non-castable interface types
-  IndirectlyImplementedInterface receiveOther();
-  IndirectlyImplementedInterface? receiveNullableOther();
-  IndirectlyImplementedInterface receiveWeakOther();
-  IndirectlyImplementedInterface? receiveWeakNullableOther();
-  void passOther(IndirectlyImplementedInterface arg);
-  void passNullableOther(IndirectlyImplementedInterface? arg);
-  attribute IndirectlyImplementedInterface nonNullOther;
-  attribute IndirectlyImplementedInterface? nullableOther;
-  // Optional arguments
-  void passOptionalOther(optional IndirectlyImplementedInterface? arg);
-  void passOptionalNonNullOther(optional IndirectlyImplementedInterface arg);
-  void passOptionalOtherWithDefault(optional IndirectlyImplementedInterface? arg = null);
-
   // External interface types
   TestExternalInterface receiveExternal();
   TestExternalInterface? receiveNullableExternal();
@@ -211,10 +199,6 @@ interface TestExampleInterface {
   void passOptionalCallbackInterface(optional TestCallbackInterface? arg);
   void passOptionalNonNullCallbackInterface(optional TestCallbackInterface arg);
   void passOptionalCallbackInterfaceWithDefault(optional TestCallbackInterface? arg = null);
-
-  // Miscellaneous interface tests
-  IndirectlyImplementedInterface receiveConsequentialInterface();
-  void passConsequentialInterface(IndirectlyImplementedInterface arg);
 
   // Sequence types
   [Cached, Pure]
@@ -361,6 +345,24 @@ interface TestExampleInterface {
   void passVariadicSVS(USVString... arg);
   USVString receiveSVS();
 
+  // JSString types
+  void passJSString(JSString arg);
+  // void passNullableJSString(JSString? arg); // NOT SUPPORTED YET
+  // void passOptionalJSString(optional JSString arg); // NOT SUPPORTED YET
+  void passOptionalJSStringWithDefaultValue(optional JSString arg = "abc");
+  // void passOptionalNullableJSString(optional JSString? arg); // NOT SUPPORTED YET
+  // void passOptionalNullableJSStringWithDefaultValue(optional JSString? arg = null); // NOT SUPPORTED YET
+  // void passVariadicJSString(JSString... arg); // NOT SUPPORTED YET
+  // void passRecordOfJSString(record<DOMString, JSString> arg); // NOT SUPPORTED YET
+  // void passSequenceOfJSString(sequence<JSString> arg); // NOT SUPPORTED YET
+  // void passUnionJSString((JSString or long) arg); // NOT SUPPORTED YET
+  JSString receiveJSString();
+  // sequence<JSString> receiveJSStringSequence(); // NOT SUPPORTED YET
+  // (JSString or long) receiveJSStringUnion(); // NOT SUPPORTED YET
+  // record<DOMString, JSString> receiveJSStringRecord(); // NOT SUPPORTED YET
+  readonly attribute JSString readonlyJSStringAttr;
+  attribute JSString jsStringAttr;
+
   // Enumerated types
   void passEnum(TestEnum arg);
   void passNullableEnum(TestEnum? arg);
@@ -444,8 +446,8 @@ interface TestExampleInterface {
   void passUnion7((object or DOMString or long) arg);
   void passUnion8((object or DOMString or boolean) arg);
   void passUnion9((object or DOMString or long or boolean) arg);
-  void passUnion10(optional (EventInit or long) arg);
-  void passUnion11(optional (CustomEventInit or long) arg);
+  void passUnion10(optional (EventInit or long) arg = {});
+  void passUnion11(optional (CustomEventInit or long) arg = {});
   void passUnion12(optional (EventInit or long) arg = 5);
   void passUnion13(optional (object or long?) arg = null);
   void passUnion14(optional (object or long?) arg = 5);
@@ -461,8 +463,8 @@ interface TestExampleInterface {
   void passUnion24((sequence<ImageData?> or long) arg);
   void passUnion25((sequence<sequence<ImageData>> or long) arg);
   void passUnion26((sequence<sequence<ImageData?>> or long) arg);
-  void passUnion27(optional (sequence<DOMString> or EventInit) arg);
-  void passUnion28(optional (EventInit or sequence<DOMString>) arg);
+  void passUnion27(optional (sequence<DOMString> or EventInit) arg = {});
+  void passUnion28(optional (EventInit or sequence<DOMString>) arg = {});
   void passUnionWithCallback((EventHandler or long) arg);
   void passUnionWithByteString((ByteString or long) arg);
   void passUnionWithRecord((record<DOMString, DOMString> or DOMString) arg);
@@ -580,16 +582,16 @@ interface TestExampleInterface {
   Promise<any> receiveAddrefedPromise();
 
   // binaryNames tests
+  [BinaryName="methodRenamedTo"]
   void methodRenamedFrom();
-  [BinaryName="otherMethodRenamedTo"]
-  void otherMethodRenamedFrom();
+  [BinaryName="methodRenamedTo"]
   void methodRenamedFrom(byte argument);
+  [BinaryName="attributeGetterRenamedTo"]
   readonly attribute byte attributeGetterRenamedFrom;
+  [BinaryName="attributeRenamedTo"]
   attribute byte attributeRenamedFrom;
-  [BinaryName="otherAttributeRenamedTo"]
-  attribute byte otherAttributeRenamedFrom;
 
-  void passDictionary(optional Dict x);
+  void passDictionary(optional Dict x = {});
   void passDictionary2(Dict x);
   [Cached, Pure]
   readonly attribute Dict readonlyDictionary;
@@ -605,16 +607,16 @@ interface TestExampleInterface {
   attribute Dict writableFrozenDictionary;
   Dict receiveDictionary();
   Dict? receiveNullableDictionary();
-  void passOtherDictionary(optional GrandparentDict x);
+  void passOtherDictionary(optional GrandparentDict x = {});
   void passSequenceOfDictionaries(sequence<Dict> x);
   void passRecordOfDictionaries(record<DOMString, GrandparentDict> x);
   // No support for nullable dictionaries inside a sequence (nor should there be)
   //  void passSequenceOfNullableDictionaries(sequence<Dict?> x);
-  void passDictionaryOrLong(optional Dict x);
+  void passDictionaryOrLong(optional Dict x = {});
   void passDictionaryOrLong(long x);
 
-  void passDictContainingDict(optional DictContainingDict arg);
-  void passDictContainingSequence(optional DictContainingSequence arg);
+  void passDictContainingDict(optional DictContainingDict arg = {});
+  void passDictContainingSequence(optional DictContainingSequence arg = {});
   DictContainingSequence receiveDictContainingSequence();
   void passVariadicDictionary(Dict... arg);
 
@@ -622,8 +624,8 @@ interface TestExampleInterface {
   void dontEnforceRangeOrClamp(byte arg);
   void doEnforceRange([EnforceRange] byte arg);
   void doClamp([Clamp] byte arg);
-  [EnforceRange] attribute byte enforcedByte;
-  [Clamp] attribute byte clampedByte;
+  attribute [EnforceRange] byte enforcedByte;
+  attribute [Clamp] byte clampedByte;
 
   // Typedefs
   const myLong myLongConstant = 5;
@@ -657,7 +659,7 @@ interface TestExampleInterface {
   boolean overload1(TestInterface arg);
   TestInterface overload1(DOMString strs, TestInterface arg);
   void overload2(TestInterface arg);
-  void overload2(optional Dict arg);
+  void overload2(optional Dict arg = {});
   void overload2(boolean arg);
   void overload2(DOMString arg);
   void overload2(Date arg);
@@ -697,47 +699,47 @@ interface TestExampleInterface {
   void overload18(record<DOMString, DOMString> arg);
   void overload18(sequence<DOMString> arg);
   void overload19(sequence<long> arg);
-  void overload19(optional Dict arg);
-  void overload20(optional Dict arg);
+  void overload19(optional Dict arg = {});
+  void overload20(optional Dict arg = {});
   void overload20(sequence<long> arg);
 
   // Variadic handling
   void passVariadicThirdArg(DOMString arg1, long arg2, TestInterface... arg3);
 
   // Conditionally exposed methods/attributes
-  [Pref="abc.def"]
+  [Pref="dom.webidl.test1"]
   readonly attribute boolean prefable1;
-  [Pref="abc.def"]
+  [Pref="dom.webidl.test1"]
   readonly attribute boolean prefable2;
-  [Pref="ghi.jkl"]
+  [Pref="dom.webidl.test2"]
   readonly attribute boolean prefable3;
-  [Pref="ghi.jkl"]
+  [Pref="dom.webidl.test2"]
   readonly attribute boolean prefable4;
-  [Pref="abc.def"]
+  [Pref="dom.webidl.test1"]
   readonly attribute boolean prefable5;
-  [Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   readonly attribute boolean prefable6;
-  [Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   readonly attribute boolean prefable7;
-  [Pref="ghi.jkl", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test2", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   readonly attribute boolean prefable8;
-  [Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   readonly attribute boolean prefable9;
-  [Pref="abc.def"]
+  [Pref="dom.webidl.test1"]
   void prefable10();
-  [Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   void prefable11();
-  [Pref="abc.def", Func="TestFuncControlledMember"]
+  [Pref="dom.webidl.test1", Func="TestFuncControlledMember"]
   readonly attribute boolean prefable12;
-  [Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   void prefable13();
-  [Pref="abc.def", Func="TestFuncControlledMember"]
+  [Pref="dom.webidl.test1", Func="TestFuncControlledMember"]
   readonly attribute boolean prefable14;
   [Func="TestFuncControlledMember"]
   readonly attribute boolean prefable15;
   [Func="TestFuncControlledMember"]
   readonly attribute boolean prefable16;
-  [Pref="abc.def", Func="TestFuncControlledMember"]
+  [Pref="dom.webidl.test1", Func="TestFuncControlledMember"]
   void prefable17();
   [Func="TestFuncControlledMember"]
   void prefable18();
@@ -747,19 +749,19 @@ interface TestExampleInterface {
   // Conditionally exposed methods/attributes involving [SecureContext]
   [SecureContext]
   readonly attribute boolean conditionalOnSecureContext1;
-  [SecureContext, Pref="abc.def"]
+  [SecureContext, Pref="dom.webidl.test1"]
   readonly attribute boolean conditionalOnSecureContext2;
-  [SecureContext, Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [SecureContext, Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   readonly attribute boolean conditionalOnSecureContext3;
-  [SecureContext, Pref="abc.def", Func="TestFuncControlledMember"]
+  [SecureContext, Pref="dom.webidl.test1", Func="TestFuncControlledMember"]
   readonly attribute boolean conditionalOnSecureContext4;
   [SecureContext]
   void conditionalOnSecureContext5();
-  [SecureContext, Pref="abc.def"]
+  [SecureContext, Pref="dom.webidl.test1"]
   void conditionalOnSecureContext6();
-  [SecureContext, Pref="abc.def", Func="nsGenericHTMLElement::TouchEventsEnabled"]
+  [SecureContext, Pref="dom.webidl.test1", Func="nsGenericHTMLElement::LegacyTouchAPIEnabled"]
   void conditionalOnSecureContext7();
-  [SecureContext, Pref="abc.def", Func="TestFuncControlledMember"]
+  [SecureContext, Pref="dom.webidl.test1", Func="TestFuncControlledMember"]
   void conditionalOnSecureContext8();
 
   // Miscellania
@@ -794,7 +796,7 @@ interface TestExampleInterface {
   legacycaller short(unsigned long arg1, TestInterface arg2);
   void passArgsWithDefaults(optional long arg1,
                             optional TestInterface? arg2 = null,
-                            optional Dict arg3, optional double arg4 = 5.0,
+                            optional Dict arg3 = {}, optional double arg4 = 5.0,
                             optional float arg5);
   attribute any toJSONShouldSkipThis;
   attribute TestParentInterface toJSONShouldSkipThis2;
@@ -819,6 +821,7 @@ interface TestExampleInterface {
   // If you add things here, add them to TestCodeGen and TestJSImplGen as well
 };
 
+[Exposed=Window]
 interface TestExampleProxyInterface {
   getter long longIndexedGetter(unsigned long ix);
   setter void longIndexedSetter(unsigned long y, long z);
@@ -837,4 +840,25 @@ interface TestExampleWorkerInterface {
   [NeedsCallerType] attribute boolean needsCallerTypeAttr;
   [NeedsSubjectPrincipal=NonSystem] void needsNonSystemSubjectPrincipalMethod();
   [NeedsSubjectPrincipal=NonSystem] attribute boolean needsNonSystemSubjectPrincipalAttr;
+};
+
+[Exposed=Window]
+interface TestExampleThrowingConstructorInterface {
+  [Throws]
+  constructor();
+  [Throws]
+  constructor(DOMString str);
+  [Throws]
+  constructor(unsigned long num, boolean? boolArg);
+  [Throws]
+  constructor(TestInterface? iface);
+  [Throws]
+  constructor(unsigned long arg1, TestInterface iface);
+  [Throws]
+  constructor(Date arg1);
+  [Throws]
+  constructor(ArrayBuffer arrayBuf);
+  [Throws]
+  constructor(Uint8Array typedArr);
+  // [Throws] constructor(long arg1, long arg2, (TestInterface or OnlyForUseInConstructor) arg3);
 };

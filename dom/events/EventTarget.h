@@ -8,6 +8,7 @@
 #define mozilla_dom_EventTarget_h_
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/DebuggerNotificationBinding.h"
 #include "mozilla/dom/Nullable.h"
 #include "nsISupports.h"
 #include "nsWrapperCache.h"
@@ -34,32 +35,32 @@ class EventListener;
 class EventListenerOptionsOrBoolean;
 class EventHandlerNonNull;
 class GlobalObject;
+class WindowProxyHolder;
 
 // IID for the dom::EventTarget interface
-#define NS_EVENTTARGET_IID \
-{ 0xde651c36, 0x0053, 0x4c67, \
-  { 0xb1, 0x3d, 0x67, 0xb9, 0x40, 0xfc, 0x82, 0xe4 } }
+#define NS_EVENTTARGET_IID                           \
+  {                                                  \
+    0xde651c36, 0x0053, 0x4c67, {                    \
+      0xb1, 0x3d, 0x67, 0xb9, 0x40, 0xfc, 0x82, 0xe4 \
+    }                                                \
+  }
 
-class EventTarget : public nsISupports,
-                    public nsWrapperCache
-{
-public:
+class EventTarget : public nsISupports, public nsWrapperCache {
+ public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_EVENTTARGET_IID)
 
   // WebIDL API
   static already_AddRefed<EventTarget> Constructor(const GlobalObject& aGlobal,
                                                    ErrorResult& aRv);
-  void AddEventListener(const nsAString& aType,
-                        EventListener* aCallback,
+  void AddEventListener(const nsAString& aType, EventListener* aCallback,
                         const AddEventListenerOptionsOrBoolean& aOptions,
                         const Nullable<bool>& aWantsUntrusted,
                         ErrorResult& aRv);
-  void RemoveEventListener(const nsAString& aType,
-                           EventListener* aCallback,
+  void RemoveEventListener(const nsAString& aType, EventListener* aCallback,
                            const EventListenerOptionsOrBoolean& aOptions,
                            ErrorResult& aRv);
 
-protected:
+ protected:
   /**
    * This method allows addition of event listeners represented by
    * nsIDOMEventListener, with almost the same semantics as the
@@ -67,38 +68,32 @@ protected:
    * has a "use capture" boolean, not an EventListenerOptions.
    */
   nsresult AddEventListener(const nsAString& aType,
-                            nsIDOMEventListener* aListener,
-                            bool aUseCapture,
+                            nsIDOMEventListener* aListener, bool aUseCapture,
                             const Nullable<bool>& aWantsUntrusted);
 
-public:
+ public:
   /**
    * Helper methods to make the nsIDOMEventListener version of
    * AddEventListener simpler to call for consumers.
    */
   nsresult AddEventListener(const nsAString& aType,
-                            nsIDOMEventListener* aListener,
-                            bool aUseCapture)
-  {
+                            nsIDOMEventListener* aListener, bool aUseCapture) {
     return AddEventListener(aType, aListener, aUseCapture, Nullable<bool>());
   }
   nsresult AddEventListener(const nsAString& aType,
-                            nsIDOMEventListener* aListener,
-                            bool aUseCapture,
-                            bool aWantsUntrusted)
-  {
+                            nsIDOMEventListener* aListener, bool aUseCapture,
+                            bool aWantsUntrusted) {
     return AddEventListener(aType, aListener, aUseCapture,
                             Nullable<bool>(aWantsUntrusted));
   }
-  
+
   /**
    * This method allows the removal of event listeners represented by
    * nsIDOMEventListener from the event target, with the same semantics as the
    * standard RemoveEventListener.
    */
   void RemoveEventListener(const nsAString& aType,
-                           nsIDOMEventListener* aListener,
-                           bool aUseCapture);
+                           nsIDOMEventListener* aListener, bool aUseCapture);
   /**
    * RemoveSystemEventListener() should be used if you have used
    * AddSystemEventListener().
@@ -112,9 +107,9 @@ public:
    */
   nsresult AddSystemEventListener(const nsAString& aType,
                                   nsIDOMEventListener* aListener,
-                                  bool aUseCapture)
-  {
-    return AddSystemEventListener(aType, aListener, aUseCapture, Nullable<bool>());
+                                  bool aUseCapture) {
+    return AddSystemEventListener(aType, aListener, aUseCapture,
+                                  Nullable<bool>());
   }
 
   /**
@@ -122,9 +117,7 @@ public:
    */
   nsresult AddSystemEventListener(const nsAString& aType,
                                   nsIDOMEventListener* aListener,
-                                  bool aUseCapture,
-                                  bool aWantsUntrusted)
-  {
+                                  bool aUseCapture, bool aWantsUntrusted) {
     return AddSystemEventListener(aType, aListener, aUseCapture,
                                   Nullable<bool>(aWantsUntrusted));
   }
@@ -135,21 +128,15 @@ public:
    * Usually |this| is returned, but for example Window (inner windw) returns
    * the WindowProxy (outer window).
    */
-  virtual EventTarget* GetTargetForDOMEvent()
-  {
-    return this;
-  };
+  virtual EventTarget* GetTargetForDOMEvent() { return this; };
 
   /**
    * Returns the EventTarget object which should be used as the target
    * of the event and when constructing event target chain.
-   * Usually |this| is returned, but for example WindowProxy (outer window) returns
-   * the Window (inner window).
+   * Usually |this| is returned, but for example WindowProxy (outer window)
+   * returns the Window (inner window).
    */
-  virtual EventTarget* GetTargetForEventTargetChain()
-  {
-    return this;
-  }
+  virtual EventTarget* GetTargetForEventTargetChain() { return this; }
 
   /**
    * The most general DispatchEvent method.  This is the one the bindings call.
@@ -169,14 +156,10 @@ public:
    */
   void DispatchEvent(Event& aEvent, ErrorResult& aRv);
 
-  nsIGlobalObject* GetParentObject() const
-  {
-    return GetOwnerGlobal();
-  }
+  nsIGlobalObject* GetParentObject() const { return GetOwnerGlobal(); }
 
   // Note, this takes the type in onfoo form!
-  EventHandlerNonNull* GetEventHandler(const nsAString& aType)
-  {
+  EventHandlerNonNull* GetEventHandler(const nsAString& aType) {
     RefPtr<nsAtom> type = NS_Atomize(aType);
     return GetEventHandler(type);
   }
@@ -194,7 +177,8 @@ public:
   // Returns an outer window that corresponds to the inner window this event
   // target is associated with.  Will return null if the inner window is not the
   // current inner or if there is no window around at all.
-  virtual nsPIDOMWindowOuter* GetOwnerGlobalForBindings() = 0;
+  Nullable<WindowProxyHolder> GetOwnerGlobalForBindings();
+  virtual nsPIDOMWindowOuter* GetOwnerGlobalForBindingsInternal() = 0;
 
   // The global object this event target is associated with, if any.
   // This may be an inner window or some other global object.  This
@@ -211,6 +195,11 @@ public:
    * exist.
    */
   virtual EventListenerManager* GetExistingListenerManager() const = 0;
+
+  virtual Maybe<EventCallbackDebuggerNotificationType>
+  GetDebuggerNotificationType() const {
+    return Nothing();
+  }
 
   // Called from AsyncEventDispatcher to notify it is running.
   virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) {}
@@ -240,25 +229,20 @@ public:
    *
    * @note Only EventDispatcher should call this method.
    */
-  virtual void GetEventTargetParent(EventChainPreVisitor& aVisitor) = 0;  
+  virtual void GetEventTargetParent(EventChainPreVisitor& aVisitor) = 0;
 
   /**
    * Called before the capture phase of the event flow and after event target
    * chain creation. This is used to handle things that must be executed before
    * dispatching the event to DOM.
    */
-  virtual nsresult PreHandleEvent(EventChainVisitor& aVisitor)
-  {
-    return NS_OK;
-  }
+  virtual nsresult PreHandleEvent(EventChainVisitor& aVisitor) { return NS_OK; }
 
   /**
    * If EventChainPreVisitor.mWantsWillHandleEvent is set true,
    * called just before possible event handlers on this object will be called.
    */
-  virtual void WillHandleEvent(EventChainPostVisitor& aVisitor)
-  {
-  }
+  virtual void WillHandleEvent(EventChainPostVisitor& aVisitor) {}
 
   /**
    * Called after the bubble phase of the system event group.
@@ -268,9 +252,10 @@ public:
    * @see EventDispatcher.h for documentation about aVisitor.
    * @note Only EventDispatcher should call this method.
    */
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) = 0;
-  
-protected:
+
+ protected:
   EventHandlerNonNull* GetEventHandler(nsAtom* aType);
   void SetEventHandler(nsAtom* aType, EventHandlerNonNull* aHandler);
 
@@ -289,8 +274,12 @@ protected:
   /**
    * A method to compute the right wantsUntrusted value for AddEventListener.
    * This will call the above hook as needed.
+   *
+   * If aOptions is non-null, and it contains a value for mWantUntrusted, that
+   * value takes precedence over aWantsUntrusted.
    */
   bool ComputeWantsUntrusted(const Nullable<bool>& aWantsUntrusted,
+                             const AddEventListenerOptionsOrBoolean* aOptions,
                              ErrorResult& aRv);
 
   /**
@@ -317,7 +306,7 @@ protected:
 
 NS_DEFINE_STATIC_IID_ACCESSOR(EventTarget, NS_EVENTTARGET_IID)
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_EventTarget_h_
+#endif  // mozilla_dom_EventTarget_h_

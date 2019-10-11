@@ -6,8 +6,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1079236
 <head>
   <meta charset="utf-8">
   <title>Test for Bug 1079236</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
 
@@ -37,7 +37,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1079236
       ok(!("composedTarget" in e), "Events shouldn't have composedTarget in non-chrome context!");
       e = SpecialPowers.wrap(e);
       var composedTarget = SpecialPowers.unwrap(e.composedTarget);
-      ok(composedTarget, file, "composedTarget should be the file object.");
+      is(composedTarget, file, "composedTarget should be the file object.");
 
       SimpleTest.finish();
     }
@@ -48,13 +48,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1079236
   }
 
   SimpleTest.waitForExplicitFinish();
-  SimpleTest.waitForFocus(() => {
-    SpecialPowers.pushPrefEnv({
-      set: [
-        ["dom.webcomponents.shadowdom.enabled", true]
-      ]
-    }, runTests);
-  });
+  window.onload = () => {
+    SimpleTest.waitForFocus(runTests);
+  };
 
   </script>
 </head>

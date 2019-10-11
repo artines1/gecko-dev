@@ -12,7 +12,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1428076
 <body>
 <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1428076">Mozilla Bug 1428076</a>
 
-<script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+<script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 <script type="application/javascript" src="profiler_test_utils.js"></script>
 <script type="application/javascript">
 /** Test for Bug 1428076 **/
@@ -25,7 +25,7 @@ const settings = {
   entries: 1000000, // 9MB
   interval: 1, // ms
   features: ["js", "threads", "leaf", "stackwalk"],
-  threads: ["GeckoMain", "Compositor", "Worker"] // most common combination
+  threads: ["GeckoMain", "Compositor", "Worker"], // most common combination
 };
 
 function workload() {

@@ -15,17 +15,17 @@ namespace layers {
 class MLGDevice;
 class LayerManagerMLGPU;
 
-class TextureSourceProviderMLGPU final : public TextureSourceProvider
-{
-public:
-  TextureSourceProviderMLGPU(LayerManagerMLGPU* aLayerManager, MLGDevice* aDevice);
-  ~TextureSourceProviderMLGPU() override;
+class TextureSourceProviderMLGPU final : public TextureSourceProvider {
+ public:
+  TextureSourceProviderMLGPU(LayerManagerMLGPU* aLayerManager,
+                             MLGDevice* aDevice);
+  virtual ~TextureSourceProviderMLGPU();
 
-  already_AddRefed<DataTextureSource>
-  CreateDataTextureSource(TextureFlags aFlags) override;
+  already_AddRefed<DataTextureSource> CreateDataTextureSource(
+      TextureFlags aFlags) override;
 
-  already_AddRefed<DataTextureSource>
-  CreateDataTextureSourceAround(gfx::DataSourceSurface* aSurface) override;
+  already_AddRefed<DataTextureSource> CreateDataTextureSourceAround(
+      gfx::DataSourceSurface* aSurface) override;
 
   void UnlockAfterComposition(TextureHost* aTexture) override;
   bool NotifyNotUsedAfterComposition(TextureHost* aTextureHost) override;
@@ -36,23 +36,21 @@ public:
   bool IsValid() const override;
 
 #ifdef XP_WIN
-  virtual ID3D11Device* GetD3D11Device() const override;
+  ID3D11Device* GetD3D11Device() const override;
 #endif
 
-  void ReadUnlockTextures() {
-    TextureSourceProvider::ReadUnlockTextures();
-  }
+  void ReadUnlockTextures() { TextureSourceProvider::ReadUnlockTextures(); }
 
   // Release references to the layer manager.
   void Destroy() override;
 
-private:
+ private:
   // Using RefPtr<> here would be a circular reference.
   LayerManagerMLGPU* mLayerManager;
   RefPtr<MLGDevice> mDevice;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // mozilla_gfx_layers_mlgpu_TextureSourceProviderMLGPU_h
+#endif  // mozilla_gfx_layers_mlgpu_TextureSourceProviderMLGPU_h

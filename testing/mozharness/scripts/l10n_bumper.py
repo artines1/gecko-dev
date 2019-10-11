@@ -179,6 +179,7 @@ class L10nBumper(VCSScript):
         if bump_config.get('revision_url'):
             repl_dict = {
                 'MAJOR_VERSION': version_list[0],
+                'COMBINED_MAJOR_VERSION': str(int(version_list[0]) + int(version_list[1])),
             }
 
             url = bump_config['revision_url'] % repl_dict
@@ -277,7 +278,10 @@ class L10nBumper(VCSScript):
                 continue
 
             # Write to disk
-            content_string = json.dumps(new_contents, sort_keys=True, indent=4)
+            content_string = json.dumps(
+                new_contents, sort_keys=True, indent=4,
+                separators=(',', ': '),
+            )
             fh = codecs.open(path, encoding='utf-8', mode='w+')
             fh.write(content_string + "\n")
             fh.close()
@@ -330,6 +334,11 @@ class L10nBumper(VCSScript):
             time.sleep(60)
         else:
             self.fatal("Didn't complete successfully (hit max_retries)")
+
+        # touch status file for nagios
+        dirs = self.query_abs_dirs()
+        status_path = os.path.join(dirs['base_work_dir'], self.config['status_path'])
+        self._touch_file(status_path)
 
 
 # __main__ {{{1

@@ -1,5 +1,4 @@
-
 1 Added function:
 
-  'function KeyType CERT_GetCertKeyType(const CERTSubjectPublicKeyInfo*)'    {CERT_GetCertKeyType@@NSS_3.39}
+  'function CERTCertList* PK11_GetCertsMatchingPrivateKey(SECKEYPrivateKey*)'    {PK11_GetCertsMatchingPrivateKey@@NSS_3.47}
 

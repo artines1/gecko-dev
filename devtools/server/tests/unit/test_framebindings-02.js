@@ -9,24 +9,33 @@
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
+var gThreadFront;
+
+Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+});
 
 function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-stack");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-stack",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_pause_frame();
-                           });
+    attachTestTabAndResume(gClient, "test-stack", function(
+      response,
+      targetFront,
+      threadFront
+    ) {
+      gThreadFront = threadFront;
+      test_pause_frame();
+    });
   });
   do_test_pending();
 }
 
 function test_pause_frame() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadFront.once("paused", function(packet) {
     let parentEnv = packet.frame.environment.parent;
     const bindings = parentEnv.bindings;
     const args = bindings.arguments;
@@ -40,13 +49,13 @@ function test_pause_frame() {
     // Skip the global lexical scope.
     parentEnv = parentEnv.parent.parent;
     Assert.notEqual(parentEnv, undefined);
-    const objClient = gThreadClient.pauseGrip(parentEnv.object);
+    const objClient = gThreadFront.pauseGrip(parentEnv.object);
     objClient.getPrototypeAndProperties(function(response) {
       Assert.equal(response.ownProperties.Object.value.type, "object");
       Assert.equal(response.ownProperties.Object.value.class, "Function");
       Assert.ok(!!response.ownProperties.Object.value.actor);
 
-      gThreadClient.resume(function() {
+      gThreadFront.resume().then(function() {
         finishClient(gClient);
       });
     });
@@ -58,6 +67,7 @@ function test_pause_frame() {
       var a = 1;
       var b = true;
       var c = { a: "a" };
+      eval("");
       debugger;
     }
     stopMe(42, true, "nasu", null, undefined, { foo: "bar" });

@@ -18,7 +18,7 @@ add_task(async function setup() {
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: TEST_URL,
-    waitForStateStop: true
+    waitForStateStop: true,
   });
 
   registerCleanupFunction(async () => {
@@ -28,7 +28,6 @@ add_task(async function setup() {
     await PlacesUtils.bookmarks.eraseEverything();
   });
 });
-
 
 add_task(async function test_newFolder() {
   await clickBookmarkStar();
@@ -43,25 +42,40 @@ add_task(async function test_newFolder() {
   newFolderButton.click();
 
   let newFolderGuid;
-  let newFolderObserver = PlacesTestUtils.waitForNotification("onItemAdded",
-    (id, parentId, index, type, uri, title, dateAdded, guid) => {
-      newFolderGuid = guid;
-      return type == PlacesUtils.bookmarks.TYPE_FOLDER;
-  });
+  let newFolderObserver = PlacesTestUtils.waitForNotification(
+    "bookmark-added",
+    events => {
+      for (let { guid, itemType } of events) {
+        newFolderGuid = guid;
+        if (itemType == PlacesUtils.bookmarks.TYPE_FOLDER) {
+          return true;
+        }
+      }
+      return false;
+    },
+    "places"
+  );
 
   let menulist = document.getElementById("editBMPanel_folderMenuList");
 
   await newFolderObserver;
 
   // Wait for the folder to be created and for editing to start.
-  await BrowserTestUtils.waitForCondition(() => folderTree.hasAttribute("editing"),
-     "Should be in edit mode for the new folder");
+  await BrowserTestUtils.waitForCondition(
+    () => folderTree.hasAttribute("editing"),
+    "Should be in edit mode for the new folder"
+  );
 
-  Assert.equal(menulist.selectedItem.label, newFolderButton.label,
-    "Should have the new folder selected by default");
+  Assert.equal(
+    menulist.selectedItem.label,
+    newFolderButton.label,
+    "Should have the new folder selected by default"
+  );
 
-  let renameObserver = PlacesTestUtils.waitForNotification("onItemChanged",
-    (id, property, isAnno, aNewValue) => property == "title" && aNewValue == "f");
+  let renameObserver = PlacesTestUtils.waitForNotification(
+    "onItemChanged",
+    (id, property, isAnno, aNewValue) => property == "title" && aNewValue == "f"
+  );
 
   // Enter a new name.
   EventUtils.synthesizeKey("f", {}, window);
@@ -69,16 +83,24 @@ add_task(async function test_newFolder() {
 
   await renameObserver;
 
-  await BrowserTestUtils.waitForCondition(() => !folderTree.hasAttribute("editing"),
-     "Should have stopped editing the new folder");
+  await BrowserTestUtils.waitForCondition(
+    () => !folderTree.hasAttribute("editing"),
+    "Should have stopped editing the new folder"
+  );
 
-  Assert.equal(menulist.selectedItem.label, "f",
-    "Should have the new folder title");
+  Assert.equal(
+    menulist.selectedItem.label,
+    "f",
+    "Should have the new folder title"
+  );
 
-  let bookmark = await PlacesUtils.bookmarks.fetch({url: TEST_URL});
+  let bookmark = await PlacesUtils.bookmarks.fetch({ url: TEST_URL });
 
-  Assert.equal(bookmark.parentGuid, newFolderGuid,
-    "The bookmark should be parented by the new folder");
+  Assert.equal(
+    bookmark.parentGuid,
+    newFolderGuid,
+    "The bookmark should be parented by the new folder"
+  );
 
   await hideBookmarksPanel();
 });

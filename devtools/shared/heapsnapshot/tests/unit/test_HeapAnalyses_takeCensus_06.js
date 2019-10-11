@@ -10,9 +10,9 @@ const BREAKDOWN = {
   then: {
     by: "allocationStack",
     then: { by: "count", count: true, bytes: true },
-    noStack: { by: "count", count: true, bytes: true }
+    noStack: { by: "count", count: true, bytes: true },
   },
-  other: { by: "count", count: true, bytes: true }
+  other: { by: "count", count: true, bytes: true },
 };
 
 add_task(async function() {
@@ -57,14 +57,18 @@ add_task(async function() {
   ok(true, "Should have read the heap snapshot");
 
   const { report } = await client.takeCensus(snapshotFilePath, {
-    breakdown: BREAKDOWN
+    breakdown: BREAKDOWN,
   });
 
-  const { report: treeNode } = await client.takeCensus(snapshotFilePath, {
-    breakdown: BREAKDOWN
-  }, {
-    asTreeNode: true
-  });
+  const { report: treeNode } = await client.takeCensus(
+    snapshotFilePath,
+    {
+      breakdown: BREAKDOWN,
+    },
+    {
+      asTreeNode: true,
+    }
+  );
 
   const markers = treeNode.children.find(c => c.name === "AllocationMarker");
   ok(markers);
@@ -99,8 +103,12 @@ add_task(async function() {
   equal(numShouldHaveFiveFound, 1);
   equal(numShouldHaveOneFound, 5);
 
-  compareCensusViewData(BREAKDOWN, report, treeNode,
-    "Returning census as a tree node represents same data as the report");
+  compareCensusViewData(
+    BREAKDOWN,
+    report,
+    treeNode,
+    "Returning census as a tree node represents same data as the report"
+  );
 
   client.destroy();
 });

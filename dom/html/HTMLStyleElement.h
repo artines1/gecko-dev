@@ -12,17 +12,15 @@
 #include "nsStyleLinkElement.h"
 #include "nsStubMutationObserver.h"
 
-class nsIDocument;
-
 namespace mozilla {
 namespace dom {
 
 class HTMLStyleElement final : public nsGenericHTMLElement,
                                public nsStyleLinkElement,
-                               public nsStubMutationObserver
-{
-public:
-  explicit HTMLStyleElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+                               public nsStubMutationObserver {
+ public:
+  explicit HTMLStyleElement(
+      already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -40,10 +38,8 @@ public:
                                       nsIPrincipal* aSubjectPrincipal,
                                       mozilla::ErrorResult& aError) override;
 
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent) override;
-  virtual void UnbindFromTree(bool aDeep = true,
-                              bool aNullParent = true) override;
+  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  virtual void UnbindFromTree(bool aNullParent = true) override;
   virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
@@ -58,28 +54,21 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
-  bool Disabled();
+  bool Disabled() const;
   void SetDisabled(bool aDisabled);
-  void GetMedia(nsAString& aValue)
-  {
-    GetHTMLAttr(nsGkAtoms::media, aValue);
-  }
-  void SetMedia(const nsAString& aMedia, ErrorResult& aError)
-  {
+  void GetMedia(nsAString& aValue) { GetHTMLAttr(nsGkAtoms::media, aValue); }
+  void SetMedia(const nsAString& aMedia, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::media, aMedia, aError);
   }
-  void GetType(nsAString& aValue)
-  {
-    GetHTMLAttr(nsGkAtoms::type, aValue);
-  }
-  void SetType(const nsAString& aType, ErrorResult& aError)
-  {
+  void GetType(nsAString& aValue) { GetHTMLAttr(nsGkAtoms::type, aValue); }
+  void SetType(const nsAString& aType, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::type, aType, aError);
   }
 
-  virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapNode(JSContext* aCx,
+                             JS::Handle<JSObject*> aGivenProto) override;
 
-protected:
+ protected:
   virtual ~HTMLStyleElement();
 
   Maybe<SheetInfo> GetStyleSheetInfo() final;
@@ -92,8 +81,7 @@ protected:
   void ContentChanged(nsIContent* aContent);
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif
-

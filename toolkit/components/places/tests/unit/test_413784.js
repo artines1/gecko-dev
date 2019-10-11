@@ -53,18 +53,19 @@ AutoCompleteInput.prototype = {
     invalidate() {},
 
     // nsISupports implementation
-    QueryInterface: ChromeUtils.generateQI(["nsIAutoCompletePopup"])
+    QueryInterface: ChromeUtils.generateQI(["nsIAutoCompletePopup"]),
   },
 
   // nsISupports implementation
-  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteInput"])
+  QueryInterface: ChromeUtils.generateQI(["nsIAutoCompleteInput"]),
 };
 
 add_task(async function test_autocomplete_non_english() {
   await PlacesTestUtils.addVisits(url);
 
-  var controller = Cc["@mozilla.org/autocomplete/controller;1"].
-                   getService(Ci.nsIAutoCompleteController);
+  var controller = Cc["@mozilla.org/autocomplete/controller;1"].getService(
+    Ci.nsIAutoCompleteController
+  );
 
   // Make an AutoCompleteInput that uses our searches
   // and confirms results on search complete
@@ -81,8 +82,10 @@ add_task(async function test_autocomplete_non_english() {
 
     input.onSearchComplete = function() {
       Assert.equal(numSearchesStarted, 1);
-      Assert.equal(controller.searchStatus,
-                   Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
+      Assert.equal(
+        controller.searchStatus,
+        Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH
+      );
 
       // test that we found the entry we added
       Assert.equal(controller.matchCount, 1);

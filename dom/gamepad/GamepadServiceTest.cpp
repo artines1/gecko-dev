@@ -27,8 +27,9 @@ namespace dom {
 
 /*
  * Implementation of the test service. This is just to provide a simple binding
- * of the GamepadService to JavaScript via WebIDL so that we can write Mochitests
- * that add and remove fake gamepads, avoiding the platform-specific backends.
+ * of the GamepadService to JavaScript via WebIDL so that we can write
+ * Mochitests that add and remove fake gamepads, avoiding the platform-specific
+ * backends.
  */
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(GamepadServiceTest, DOMEventTargetHelper,
@@ -41,18 +42,15 @@ NS_IMPL_ADDREF_INHERITED(GamepadServiceTest, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(GamepadServiceTest, DOMEventTargetHelper)
 
 // static
-already_AddRefed<GamepadServiceTest>
-GamepadServiceTest::CreateTestService(nsPIDOMWindowInner* aWindow)
-{
+already_AddRefed<GamepadServiceTest> GamepadServiceTest::CreateTestService(
+    nsPIDOMWindowInner* aWindow) {
   MOZ_ASSERT(aWindow);
   RefPtr<GamepadServiceTest> service = new GamepadServiceTest(aWindow);
   service->InitPBackgroundActor();
   return service.forget();
 }
 
-void
-GamepadServiceTest::Shutdown()
-{
+void GamepadServiceTest::Shutdown() {
   MOZ_ASSERT(!mShuttingDown);
   mShuttingDown = true;
   DestroyPBackgroundActor();
@@ -60,18 +58,15 @@ GamepadServiceTest::Shutdown()
 }
 
 GamepadServiceTest::GamepadServiceTest(nsPIDOMWindowInner* aWindow)
-  : mService(GamepadManager::GetService()),
-    mWindow(aWindow),
-    mEventNumber(0),
-    mShuttingDown(false),
-    mChild(nullptr)
-{}
+    : mService(GamepadManager::GetService()),
+      mWindow(aWindow),
+      mEventNumber(0),
+      mShuttingDown(false),
+      mChild(nullptr) {}
 
 GamepadServiceTest::~GamepadServiceTest() {}
 
-void
-GamepadServiceTest::InitPBackgroundActor()
-{
+void GamepadServiceTest::InitPBackgroundActor() {
   MOZ_ASSERT(!mChild);
 
   PBackgroundChild* actor = BackgroundChild::GetOrCreateForCurrentThread();
@@ -81,36 +76,28 @@ GamepadServiceTest::InitPBackgroundActor()
 
   mChild = new GamepadTestChannelChild();
   PGamepadTestChannelChild* initedChild =
-    actor->SendPGamepadTestChannelConstructor(mChild);
+      actor->SendPGamepadTestChannelConstructor(mChild);
   if (NS_WARN_IF(!initedChild)) {
     MOZ_CRASH("Failed to create a PBackgroundChild actor!");
   }
 }
 
-void
-GamepadServiceTest::DestroyPBackgroundActor()
-{
+void GamepadServiceTest::DestroyPBackgroundActor() {
   mChild->SendShutdownChannel();
   mChild = nullptr;
 }
 
-already_AddRefed<Promise>
-GamepadServiceTest::AddGamepad(const nsAString& aID,
-                               GamepadMappingType aMapping,
-                               GamepadHand aHand,
-                               uint32_t aNumButtons,
-                               uint32_t aNumAxes,
-                               uint32_t aNumHaptics,
-                               ErrorResult& aRv)
-{
+already_AddRefed<Promise> GamepadServiceTest::AddGamepad(
+    const nsAString& aID, GamepadMappingType aMapping, GamepadHand aHand,
+    uint32_t aNumButtons, uint32_t aNumAxes, uint32_t aNumHaptics,
+    uint32_t aNumLightIndicator, uint32_t aNumTouchEvents, ErrorResult& aRv) {
   if (mShuttingDown) {
     return nullptr;
   }
 
   // Only VR controllers has displayID, we give 0 to the general gamepads.
-  GamepadAdded a(nsString(aID),
-                 aMapping, aHand, 0,
-                 aNumButtons, aNumAxes, aNumHaptics);
+  GamepadAdded a(nsString(aID), aMapping, aHand, 0, aNumButtons, aNumAxes,
+                 aNumHaptics, aNumLightIndicator, aNumTouchEvents);
   GamepadChangeEventBody body(a);
   GamepadChangeEvent e(0, GamepadServiceType::Standard, body);
 
@@ -127,9 +114,7 @@ GamepadServiceTest::AddGamepad(const nsAString& aID,
   return p.forget();
 }
 
-void
-GamepadServiceTest::RemoveGamepad(uint32_t aIndex)
-{
+void GamepadServiceTest::RemoveGamepad(uint32_t aIndex) {
   if (mShuttingDown) {
     return;
   }
@@ -142,12 +127,8 @@ GamepadServiceTest::RemoveGamepad(uint32_t aIndex)
   mChild->SendGamepadTestEvent(id, e);
 }
 
-void
-GamepadServiceTest::NewButtonEvent(uint32_t aIndex,
-                                   uint32_t aButton,
-                                   bool aTouched,
-                                   bool aPressed)
-{
+void GamepadServiceTest::NewButtonEvent(uint32_t aIndex, uint32_t aButton,
+                                        bool aTouched, bool aPressed) {
   if (mShuttingDown) {
     return;
   }
@@ -160,13 +141,9 @@ GamepadServiceTest::NewButtonEvent(uint32_t aIndex,
   mChild->SendGamepadTestEvent(id, e);
 }
 
-void
-GamepadServiceTest::NewButtonValueEvent(uint32_t aIndex,
-                                        uint32_t aButton,
-                                        bool aPressed,
-                                        bool aTouched,
-                                        double aValue)
-{
+void GamepadServiceTest::NewButtonValueEvent(uint32_t aIndex, uint32_t aButton,
+                                             bool aPressed, bool aTouched,
+                                             double aValue) {
   if (mShuttingDown) {
     return;
   }
@@ -179,11 +156,8 @@ GamepadServiceTest::NewButtonValueEvent(uint32_t aIndex,
   mChild->SendGamepadTestEvent(id, e);
 }
 
-void
-GamepadServiceTest::NewAxisMoveEvent(uint32_t aIndex,
-                                     uint32_t aAxis,
-                                     double aValue)
-{
+void GamepadServiceTest::NewAxisMoveEvent(uint32_t aIndex, uint32_t aAxis,
+                                          double aValue) {
   if (mShuttingDown) {
     return;
   }
@@ -196,15 +170,13 @@ GamepadServiceTest::NewAxisMoveEvent(uint32_t aIndex,
   mChild->SendGamepadTestEvent(id, e);
 }
 
-void
-GamepadServiceTest::NewPoseMove(uint32_t aIndex,
-                                const Nullable<Float32Array>& aOrient,
-                                const Nullable<Float32Array>& aPos,
-                                const Nullable<Float32Array>& aAngVelocity,
-                                const Nullable<Float32Array>& aAngAcceleration,
-                                const Nullable<Float32Array>& aLinVelocity,
-                                const Nullable<Float32Array>& aLinAcceleration)
-{
+void GamepadServiceTest::NewPoseMove(
+    uint32_t aIndex, const Nullable<Float32Array>& aOrient,
+    const Nullable<Float32Array>& aPos,
+    const Nullable<Float32Array>& aAngVelocity,
+    const Nullable<Float32Array>& aAngAcceleration,
+    const Nullable<Float32Array>& aLinVelocity,
+    const Nullable<Float32Array>& aLinAcceleration) {
   if (mShuttingDown) {
     return;
   }
@@ -274,11 +246,44 @@ GamepadServiceTest::NewPoseMove(uint32_t aIndex,
   mChild->SendGamepadTestEvent(id, e);
 }
 
-JSObject*
-GamepadServiceTest::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
-{
+void GamepadServiceTest::NewTouch(uint32_t aIndex, uint32_t aTouchArrayIndex,
+                                  uint32_t aTouchId, uint8_t aSurfaceId,
+                                  const Float32Array& aPos,
+                                  const Nullable<Float32Array>& aSurfDim) {
+  if (mShuttingDown) {
+    return;
+  }
+
+  GamepadTouchState touchState;
+  touchState.touchId = aTouchId;
+  touchState.surfaceId = aSurfaceId;
+  const Float32Array& value = aPos;
+  value.ComputeLengthAndData();
+  MOZ_ASSERT(value.Length() == 2);
+  touchState.position[0] = value.Data()[0];
+  touchState.position[1] = value.Data()[1];
+
+  if (!aSurfDim.IsNull()) {
+    const Float32Array& value = aSurfDim.Value();
+    value.ComputeLengthAndData();
+    MOZ_ASSERT(value.Length() == 2);
+    touchState.surfaceDimensions[0] = value.Data()[0];
+    touchState.surfaceDimensions[1] = value.Data()[1];
+    touchState.isSurfaceDimensionsValid = true;
+  }
+
+  GamepadTouchInformation a(aTouchArrayIndex, touchState);
+  GamepadChangeEventBody body(a);
+  GamepadChangeEvent e(aIndex, GamepadServiceType::Standard, body);
+
+  uint32_t id = ++mEventNumber;
+  mChild->SendGamepadTestEvent(id, e);
+}
+
+JSObject* GamepadServiceTest::WrapObject(JSContext* aCx,
+                                         JS::HandleObject aGivenProto) {
   return GamepadServiceTest_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-} // dom
-} // mozilla
+}  // namespace dom
+}  // namespace mozilla

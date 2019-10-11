@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 const Telemetry = require("devtools/client/shared/telemetry");
@@ -12,7 +13,10 @@ const EVENT_MAP_FLAGS = new Map([
 ]);
 
 const RECORDING_FEATURES = [
-  "withMarkers", "withTicks", "withMemory", "withAllocations"
+  "withMarkers",
+  "withTicks",
+  "withMemory",
+  "withAllocations",
 ];
 
 const SELECTED_VIEW_HISTOGRAM_NAME = "DEVTOOLS_PERFTOOLS_SELECTED_VIEW_MS";
@@ -35,7 +39,11 @@ function PerformanceTelemetry(emitter) {
 PerformanceTelemetry.prototype.destroy = function() {
   if (this._previousView) {
     this._telemetry.finishKeyed(
-      SELECTED_VIEW_HISTOGRAM_NAME, this._previousView, this);
+      SELECTED_VIEW_HISTOGRAM_NAME,
+      this._previousView,
+      this,
+      false
+    );
   }
 
   for (const [event] of EVENT_MAP_FLAGS) {
@@ -50,28 +58,34 @@ PerformanceTelemetry.prototype.onFlagEvent = function(eventName, ...data) {
   this._telemetry.getHistogramById(EVENT_MAP_FLAGS.get(eventName)).add(true);
 };
 
-PerformanceTelemetry.prototype.onRecordingStateChange = function(status, model) {
+PerformanceTelemetry.prototype.onRecordingStateChange = function(
+  status,
+  model
+) {
   if (status != "recording-stopped") {
     return;
   }
 
   if (model.isConsole()) {
-    this._telemetry.getHistogramById("DEVTOOLS_PERFTOOLS_CONSOLE_RECORDING_COUNT")
-                   .add(true);
+    this._telemetry
+      .getHistogramById("DEVTOOLS_PERFTOOLS_CONSOLE_RECORDING_COUNT")
+      .add(true);
   } else {
-    this._telemetry.getHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_COUNT")
-                   .add(true);
+    this._telemetry
+      .getHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_COUNT")
+      .add(true);
   }
 
-  this._telemetry.getHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_DURATION_MS")
-                 .add(model.getDuration());
+  this._telemetry
+    .getHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_DURATION_MS")
+    .add(model.getDuration());
 
   const config = model.getConfiguration();
   for (const k in config) {
     if (RECORDING_FEATURES.includes(k)) {
       this._telemetry
-          .getKeyedHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_FEATURES_USED")
-          .add(k, config[k]);
+        .getKeyedHistogramById("DEVTOOLS_PERFTOOLS_RECORDING_FEATURES_USED")
+        .add(k, config[k]);
     }
   }
 };
@@ -79,7 +93,11 @@ PerformanceTelemetry.prototype.onRecordingStateChange = function(status, model) 
 PerformanceTelemetry.prototype.onViewSelected = function(viewName) {
   if (this._previousView) {
     this._telemetry.finishKeyed(
-      SELECTED_VIEW_HISTOGRAM_NAME, this._previousView, this);
+      SELECTED_VIEW_HISTOGRAM_NAME,
+      this._previousView,
+      this,
+      false
+    );
   }
   this._previousView = viewName;
   this._telemetry.startKeyed(SELECTED_VIEW_HISTOGRAM_NAME, viewName, this);

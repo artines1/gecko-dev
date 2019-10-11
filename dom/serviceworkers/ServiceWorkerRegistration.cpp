@@ -12,6 +12,7 @@
 #include "mozilla/dom/PushManager.h"
 #include "mozilla/dom/ServiceWorker.h"
 #include "mozilla/dom/ServiceWorkerRegistrationBinding.h"
+#include "mozilla/dom/ServiceWorkerUtils.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsISupportsPrimitives.h"
@@ -23,11 +24,8 @@ namespace mozilla {
 namespace dom {
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ServiceWorkerRegistration,
-                                   DOMEventTargetHelper,
-                                   mInstallingWorker,
-                                   mWaitingWorker,
-                                   mActiveWorker,
-                                   mPushManager);
+                                   DOMEventTargetHelper, mInstallingWorker,
+                                   mWaitingWorker, mActiveWorker, mPushManager);
 
 NS_IMPL_ADDREF_INHERITED(ServiceWorkerRegistration, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(ServiceWorkerRegistration, DOMEventTargetHelper)
@@ -38,18 +36,17 @@ NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 namespace {
 const uint64_t kInvalidUpdateFoundId = 0;
-} // anonymous namespace
+}  // anonymous namespace
 
-ServiceWorkerRegistration::ServiceWorkerRegistration(nsIGlobalObject* aGlobal,
-                                                     const ServiceWorkerRegistrationDescriptor& aDescriptor,
-                                                     ServiceWorkerRegistration::Inner* aInner)
-  : DOMEventTargetHelper(aGlobal)
-  , mDescriptor(aDescriptor)
-  , mInner(aInner)
-  , mScheduledUpdateFoundId(kInvalidUpdateFoundId)
-  , mDispatchedUpdateFoundId(kInvalidUpdateFoundId)
-  , mPendingUpdatePromises(0)
-{
+ServiceWorkerRegistration::ServiceWorkerRegistration(
+    nsIGlobalObject* aGlobal,
+    const ServiceWorkerRegistrationDescriptor& aDescriptor,
+    ServiceWorkerRegistration::Inner* aInner)
+    : DOMEventTargetHelper(aGlobal),
+      mDescriptor(aDescriptor),
+      mInner(aInner),
+      mScheduledUpdateFoundId(kInvalidUpdateFoundId),
+      mDispatchedUpdateFoundId(kInvalidUpdateFoundId) {
   MOZ_DIAGNOSTIC_ASSERT(mInner);
 
   KeepAliveIfHasListenersFor(NS_LITERAL_STRING("updatefound"));
@@ -58,22 +55,20 @@ ServiceWorkerRegistration::ServiceWorkerRegistration(nsIGlobalObject* aGlobal,
   mInner->SetServiceWorkerRegistration(this);
 }
 
-ServiceWorkerRegistration::~ServiceWorkerRegistration()
-{
+ServiceWorkerRegistration::~ServiceWorkerRegistration() {
   mInner->ClearServiceWorkerRegistration(this);
 }
 
-JSObject*
-ServiceWorkerRegistration::WrapObject(JSContext* aCx,
-                                      JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* ServiceWorkerRegistration::WrapObject(
+    JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
   return ServiceWorkerRegistration_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-/* static */ already_AddRefed<ServiceWorkerRegistration>
-ServiceWorkerRegistration::CreateForMainThread(nsPIDOMWindowInner* aWindow,
-                                               const ServiceWorkerRegistrationDescriptor& aDescriptor)
-{
+/* static */
+already_AddRefed<ServiceWorkerRegistration>
+ServiceWorkerRegistration::CreateForMainThread(
+    nsPIDOMWindowInner* aWindow,
+    const ServiceWorkerRegistrationDescriptor& aDescriptor) {
   MOZ_ASSERT(aWindow);
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -86,16 +81,16 @@ ServiceWorkerRegistration::CreateForMainThread(nsPIDOMWindowInner* aWindow,
   NS_ENSURE_TRUE(inner, nullptr);
 
   RefPtr<ServiceWorkerRegistration> registration =
-    new ServiceWorkerRegistration(aWindow->AsGlobal(), aDescriptor, inner);
+      new ServiceWorkerRegistration(aWindow->AsGlobal(), aDescriptor, inner);
 
   return registration.forget();
 }
 
-/* static */ already_AddRefed<ServiceWorkerRegistration>
-ServiceWorkerRegistration::CreateForWorker(WorkerPrivate* aWorkerPrivate,
-                                           nsIGlobalObject* aGlobal,
-                                           const ServiceWorkerRegistrationDescriptor& aDescriptor)
-{
+/* static */
+already_AddRefed<ServiceWorkerRegistration>
+ServiceWorkerRegistration::CreateForWorker(
+    WorkerPrivate* aWorkerPrivate, nsIGlobalObject* aGlobal,
+    const ServiceWorkerRegistrationDescriptor& aDescriptor) {
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate);
   MOZ_DIAGNOSTIC_ASSERT(aGlobal);
   aWorkerPrivate->AssertIsOnWorkerThread();
@@ -109,20 +104,16 @@ ServiceWorkerRegistration::CreateForWorker(WorkerPrivate* aWorkerPrivate,
   NS_ENSURE_TRUE(inner, nullptr);
 
   RefPtr<ServiceWorkerRegistration> registration =
-    new ServiceWorkerRegistration(aGlobal, aDescriptor, inner);
+      new ServiceWorkerRegistration(aGlobal, aDescriptor, inner);
 
   return registration.forget();
 }
 
-void
-ServiceWorkerRegistration::DisconnectFromOwner()
-{
+void ServiceWorkerRegistration::DisconnectFromOwner() {
   DOMEventTargetHelper::DisconnectFromOwner();
 }
 
-void
-ServiceWorkerRegistration::RegistrationRemoved()
-{
+void ServiceWorkerRegistration::RegistrationCleared() {
   // Its possible that the registration will fail to install and be
   // immediately removed.  In that case we may never receive the
   // UpdateState() call if the actor was too slow to connect, etc.
@@ -139,36 +130,29 @@ ServiceWorkerRegistration::RegistrationRemoved()
   IgnoreKeepAliveIfHasListenersFor(NS_LITERAL_STRING("updatefound"));
 }
 
-already_AddRefed<ServiceWorker>
-ServiceWorkerRegistration::GetInstalling() const
-{
+already_AddRefed<ServiceWorker> ServiceWorkerRegistration::GetInstalling()
+    const {
   RefPtr<ServiceWorker> ref = mInstallingWorker;
   return ref.forget();
 }
 
-already_AddRefed<ServiceWorker>
-ServiceWorkerRegistration::GetWaiting() const
-{
+already_AddRefed<ServiceWorker> ServiceWorkerRegistration::GetWaiting() const {
   RefPtr<ServiceWorker> ref = mWaitingWorker;
   return ref.forget();
 }
 
-already_AddRefed<ServiceWorker>
-ServiceWorkerRegistration::GetActive() const
-{
+already_AddRefed<ServiceWorker> ServiceWorkerRegistration::GetActive() const {
   RefPtr<ServiceWorker> ref = mActiveWorker;
   return ref.forget();
 }
 
-void
-ServiceWorkerRegistration::UpdateState(const ServiceWorkerRegistrationDescriptor& aDescriptor)
-{
+void ServiceWorkerRegistration::UpdateState(
+    const ServiceWorkerRegistrationDescriptor& aDescriptor) {
   MOZ_DIAGNOSTIC_ASSERT(MatchesDescriptor(aDescriptor));
 
   mDescriptor = aDescriptor;
 
-  UpdateStateInternal(aDescriptor.GetInstalling(),
-                      aDescriptor.GetWaiting(),
+  UpdateStateInternal(aDescriptor.GetInstalling(), aDescriptor.GetWaiting(),
                       aDescriptor.GetActive());
 
   nsTArray<UniquePtr<VersionCallback>> callbackList;
@@ -183,29 +167,23 @@ ServiceWorkerRegistration::UpdateState(const ServiceWorkerRegistrationDescriptor
   }
 }
 
-bool
-ServiceWorkerRegistration::MatchesDescriptor(const ServiceWorkerRegistrationDescriptor& aDescriptor) const
-{
+bool ServiceWorkerRegistration::MatchesDescriptor(
+    const ServiceWorkerRegistrationDescriptor& aDescriptor) const {
   return aDescriptor.Id() == mDescriptor.Id() &&
          aDescriptor.PrincipalInfo() == mDescriptor.PrincipalInfo() &&
          aDescriptor.Scope() == mDescriptor.Scope();
 }
 
-void
-ServiceWorkerRegistration::GetScope(nsAString& aScope) const
-{
+void ServiceWorkerRegistration::GetScope(nsAString& aScope) const {
   CopyUTF8toUTF16(mDescriptor.Scope(), aScope);
 }
 
-ServiceWorkerUpdateViaCache
-ServiceWorkerRegistration::GetUpdateViaCache(ErrorResult& aRv) const
-{
+ServiceWorkerUpdateViaCache ServiceWorkerRegistration::GetUpdateViaCache(
+    ErrorResult& aRv) const {
   return mDescriptor.UpdateViaCache();
 }
 
-already_AddRefed<Promise>
-ServiceWorkerRegistration::Update(ErrorResult& aRv)
-{
+already_AddRefed<Promise> ServiceWorkerRegistration::Update(ErrorResult& aRv) {
   if (!mInner) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
@@ -222,33 +200,62 @@ ServiceWorkerRegistration::Update(ErrorResult& aRv)
     return nullptr;
   }
 
+  /**
+   * `ServiceWorker` objects are not exposed on worker threads yet, so calling
+   * `ServiceWorkerRegistration::Get{Installing,Waiting,Active}` won't work.
+   */
+  const bool hasNewestWorker = mDescriptor.GetInstalling() ||
+                               mDescriptor.GetWaiting() ||
+                               mDescriptor.GetActive();
+
+  /**
+   * If newestWorker is null, return a promise rejected with an
+   * "InvalidStateError" DOMException and abort these steps.
+   */
+  if (!hasNewestWorker) {
+    outer->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return outer.forget();
+  }
+
+  /**
+   * If the context object’s relevant settings object’s global object
+   * globalObject is a ServiceWorkerGlobalScope object, and globalObject’s
+   * associated service worker's state is "installing", return a promise
+   * rejected with an "InvalidStateError" DOMException and abort these steps.
+   */
+  if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
+
+    if (workerPrivate->IsServiceWorker() &&
+        (workerPrivate->GetServiceWorkerDescriptor().State() ==
+         ServiceWorkerState::Installing)) {
+      outer->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+      return outer.forget();
+    }
+  }
+
   RefPtr<ServiceWorkerRegistration> self = this;
 
-  mPendingUpdatePromises += 1;
-
   mInner->Update(
-    [outer, self](const ServiceWorkerRegistrationDescriptor& aDesc) {
-      auto scopeExit = MakeScopeExit([&] { self->UpdatePromiseSettled(); });
-      nsIGlobalObject* global = self->GetParentObject();
-      MOZ_DIAGNOSTIC_ASSERT(global);
-      RefPtr<ServiceWorkerRegistration> ref =
-        global->GetOrCreateServiceWorkerRegistration(aDesc);
-      if (!ref) {
-        outer->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
-        return;
-      }
-      outer->MaybeResolve(ref);
-    }, [outer, self] (ErrorResult& aRv) {
-      auto scopeExit = MakeScopeExit([&] { self->UpdatePromiseSettled(); });
-      outer->MaybeReject(aRv);
-    });
+      [outer, self](const ServiceWorkerRegistrationDescriptor& aDesc) {
+        nsIGlobalObject* global = self->GetParentObject();
+        MOZ_DIAGNOSTIC_ASSERT(global);
+        RefPtr<ServiceWorkerRegistration> ref =
+            global->GetOrCreateServiceWorkerRegistration(aDesc);
+        if (!ref) {
+          outer->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+          return;
+        }
+        outer->MaybeResolve(ref);
+      },
+      [outer, self](ErrorResult& aRv) { outer->MaybeReject(aRv); });
 
   return outer.forget();
 }
 
-already_AddRefed<Promise>
-ServiceWorkerRegistration::Unregister(ErrorResult& aRv)
-{
+already_AddRefed<Promise> ServiceWorkerRegistration::Unregister(
+    ErrorResult& aRv) {
   nsIGlobalObject* global = GetParentObject();
   if (NS_WARN_IF(!global)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -265,21 +272,18 @@ ServiceWorkerRegistration::Unregister(ErrorResult& aRv)
     return outer.forget();
   }
 
-  mInner->Unregister(
-    [outer] (bool aSuccess) {
-      outer->MaybeResolve(aSuccess);
-    }, [outer] (ErrorResult& aRv) {
-      // register() should be resilient and resolve false instead
-      // of rejecting in most cases.
-      outer->MaybeResolve(false);
-    });
+  mInner->Unregister([outer](bool aSuccess) { outer->MaybeResolve(aSuccess); },
+                     [outer](ErrorResult& aRv) {
+                       // register() should be resilient and resolve false
+                       // instead of rejecting in most cases.
+                       outer->MaybeResolve(false);
+                     });
 
   return outer.forget();
 }
 
-already_AddRefed<PushManager>
-ServiceWorkerRegistration::GetPushManager(JSContext* aCx, ErrorResult& aRv)
-{
+already_AddRefed<PushManager> ServiceWorkerRegistration::GetPushManager(
+    JSContext* aCx, ErrorResult& aRv) {
   if (!mPushManager) {
     nsCOMPtr<nsIGlobalObject> globalObject = GetParentObject();
 
@@ -289,10 +293,8 @@ ServiceWorkerRegistration::GetPushManager(JSContext* aCx, ErrorResult& aRv)
     }
 
     GlobalObject global(aCx, globalObject->GetGlobalJSObject());
-    mPushManager =
-      PushManager::Constructor(global,
-                               NS_ConvertUTF8toUTF16(mDescriptor.Scope()),
-                               aRv);
+    mPushManager = PushManager::Constructor(
+        global, NS_ConvertUTF8toUTF16(mDescriptor.Scope()), aRv);
     if (aRv.Failed()) {
       return nullptr;
     }
@@ -302,12 +304,9 @@ ServiceWorkerRegistration::GetPushManager(JSContext* aCx, ErrorResult& aRv)
   return ret.forget();
 }
 
-already_AddRefed<Promise>
-ServiceWorkerRegistration::ShowNotification(JSContext* aCx,
-                                            const nsAString& aTitle,
-                                            const NotificationOptions& aOptions,
-                                            ErrorResult& aRv)
-{
+already_AddRefed<Promise> ServiceWorkerRegistration::ShowNotification(
+    JSContext* aCx, const nsAString& aTitle,
+    const NotificationOptions& aOptions, ErrorResult& aRv) {
   nsIGlobalObject* global = GetParentObject();
   if (!global) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -324,9 +323,8 @@ ServiceWorkerRegistration::ShowNotification(JSContext* aCx,
     return nullptr;
   }
 
-  RefPtr<Promise> p =
-    Notification::ShowPersistentNotification(aCx, global, scope,
-                                             aTitle, aOptions, aRv);
+  RefPtr<Promise> p = Notification::ShowPersistentNotification(
+      aCx, global, scope, aTitle, aOptions, mDescriptor, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -334,10 +332,8 @@ ServiceWorkerRegistration::ShowNotification(JSContext* aCx,
   return p.forget();
 }
 
-already_AddRefed<Promise>
-ServiceWorkerRegistration::GetNotifications(const GetNotificationOptions& aOptions,
-                                            ErrorResult& aRv)
-{
+already_AddRefed<Promise> ServiceWorkerRegistration::GetNotifications(
+    const GetNotificationOptions& aOptions, ErrorResult& aRv) {
   nsIGlobalObject* global = GetParentObject();
   if (!global) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -361,30 +357,30 @@ ServiceWorkerRegistration::GetNotifications(const GetNotificationOptions& aOptio
 }
 
 const ServiceWorkerRegistrationDescriptor&
-ServiceWorkerRegistration::Descriptor() const
-{
+ServiceWorkerRegistration::Descriptor() const {
   return mDescriptor;
 }
 
-void
-ServiceWorkerRegistration::WhenVersionReached(uint64_t aVersion,
-                                              ServiceWorkerBoolCallback&& aCallback)
-{
+void ServiceWorkerRegistration::WhenVersionReached(
+    uint64_t aVersion, ServiceWorkerBoolCallback&& aCallback) {
   if (aVersion <= mDescriptor.Version()) {
     aCallback(aVersion == mDescriptor.Version());
     return;
   }
 
   mVersionCallbackList.AppendElement(
-    MakeUnique<VersionCallback>(aVersion, std::move(aCallback)));
+      MakeUnique<VersionCallback>(aVersion, std::move(aCallback)));
 }
 
-void
-ServiceWorkerRegistration::MaybeScheduleUpdateFound(const Maybe<ServiceWorkerDescriptor>& aInstallingDescriptor)
-{
+void ServiceWorkerRegistration::MaybeScheduleUpdateFound(
+    const Maybe<ServiceWorkerDescriptor>& aInstallingDescriptor) {
+  // This function sets mScheduledUpdateFoundId to note when we were told about
+  // a new installing worker. We rely on a call to
+  // MaybeDispatchUpdateFoundRunnable (called indirectly from UpdateJobCallback)
+  // to actually fire the event.
   uint64_t newId = aInstallingDescriptor.isSome()
-                 ? aInstallingDescriptor.ref().Id()
-                 : kInvalidUpdateFoundId;
+                       ? aInstallingDescriptor.ref().Id()
+                       : kInvalidUpdateFoundId;
 
   if (mScheduledUpdateFoundId != kInvalidUpdateFoundId) {
     if (mScheduledUpdateFoundId == newId) {
@@ -394,16 +390,18 @@ ServiceWorkerRegistration::MaybeScheduleUpdateFound(const Maybe<ServiceWorkerDes
     MOZ_DIAGNOSTIC_ASSERT(mScheduledUpdateFoundId == kInvalidUpdateFoundId);
   }
 
-  bool updateFound = newId != kInvalidUpdateFoundId &&
-                     mDispatchedUpdateFoundId != newId;
+  bool updateFound =
+      newId != kInvalidUpdateFoundId && mDispatchedUpdateFoundId != newId;
 
   if (!updateFound) {
     return;
   }
 
   mScheduledUpdateFoundId = newId;
+}
 
-  if (mPendingUpdatePromises > 0) {
+void ServiceWorkerRegistration::MaybeDispatchUpdateFoundRunnable() {
+  if (mScheduledUpdateFoundId == kInvalidUpdateFoundId) {
     return;
   }
 
@@ -411,17 +409,14 @@ ServiceWorkerRegistration::MaybeScheduleUpdateFound(const Maybe<ServiceWorkerDes
   NS_ENSURE_TRUE_VOID(global);
 
   nsCOMPtr<nsIRunnable> r = NewCancelableRunnableMethod(
-    "ServiceWorkerRegistration::MaybeDispatchUpdateFound",
-    this,
-    &ServiceWorkerRegistration::MaybeDispatchUpdateFound);
+      "ServiceWorkerRegistration::MaybeDispatchUpdateFound", this,
+      &ServiceWorkerRegistration::MaybeDispatchUpdateFound);
 
-  Unused << global->EventTargetFor(TaskCategory::Other)->Dispatch(
-    r.forget(), NS_DISPATCH_NORMAL);
+  Unused << global->EventTargetFor(TaskCategory::Other)
+                ->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
 }
 
-void
-ServiceWorkerRegistration::MaybeDispatchUpdateFound()
-{
+void ServiceWorkerRegistration::MaybeDispatchUpdateFound() {
   uint64_t scheduledId = mScheduledUpdateFoundId;
   mScheduledUpdateFoundId = kInvalidUpdateFoundId;
 
@@ -434,33 +429,10 @@ ServiceWorkerRegistration::MaybeDispatchUpdateFound()
   DispatchTrustedEvent(NS_LITERAL_STRING("updatefound"));
 }
 
-void
-ServiceWorkerRegistration::UpdatePromiseSettled()
-{
-  MOZ_DIAGNOSTIC_ASSERT(mPendingUpdatePromises > 0);
-  mPendingUpdatePromises -= 1;
-  if (mPendingUpdatePromises > 0 ||
-      mScheduledUpdateFoundId == kInvalidUpdateFoundId) {
-    return;
-  }
-
-  nsIGlobalObject* global = GetParentObject();
-  NS_ENSURE_TRUE_VOID(global);
-
-  nsCOMPtr<nsIRunnable> r = NewCancelableRunnableMethod(
-    "ServiceWorkerRegistration::MaybeDispatchUpdateFound",
-    this,
-    &ServiceWorkerRegistration::MaybeDispatchUpdateFound);
-
-  Unused << global->EventTargetFor(TaskCategory::Other)->Dispatch(
-    r.forget(), NS_DISPATCH_NORMAL);
-}
-
-void
-ServiceWorkerRegistration::UpdateStateInternal(const Maybe<ServiceWorkerDescriptor>& aInstalling,
-                                               const Maybe<ServiceWorkerDescriptor>& aWaiting,
-                                               const Maybe<ServiceWorkerDescriptor>& aActive)
-{
+void ServiceWorkerRegistration::UpdateStateInternal(
+    const Maybe<ServiceWorkerDescriptor>& aInstalling,
+    const Maybe<ServiceWorkerDescriptor>& aWaiting,
+    const Maybe<ServiceWorkerDescriptor>& aActive) {
   // Do this immediately as it may flush an already pending updatefound
   // event.  In that case we want to fire the pending event before
   // modifying any of the registration properties.
@@ -472,9 +444,9 @@ ServiceWorkerRegistration::UpdateStateInternal(const Maybe<ServiceWorkerDescript
   // given descriptor.  Any that are not restored will need
   // to be moved to the redundant state.
   AutoTArray<RefPtr<ServiceWorker>, 3> oldWorkerList({
-    mInstallingWorker.forget(),
-    mWaitingWorker.forget(),
-    mActiveWorker.forget(),
+      mInstallingWorker.forget(),
+      mWaitingWorker.forget(),
+      mActiveWorker.forget(),
   });
 
   // Its important that all state changes are actually applied before
@@ -486,10 +458,8 @@ ServiceWorkerRegistration::UpdateStateInternal(const Maybe<ServiceWorkerDescript
     // Check to see if any of the "old" workers was completely discarded.
     // Set these workers to the redundant state.
     for (auto& oldWorker : oldWorkerList) {
-      if (!oldWorker ||
-          oldWorker == mInstallingWorker ||
-          oldWorker == mWaitingWorker ||
-          oldWorker == mActiveWorker) {
+      if (!oldWorker || oldWorker == mInstallingWorker ||
+          oldWorker == mWaitingWorker || oldWorker == mActiveWorker) {
         continue;
       }
 
@@ -545,7 +515,8 @@ ServiceWorkerRegistration::UpdateStateInternal(const Maybe<ServiceWorkerDescript
   }
 
   if (aInstalling.isSome()) {
-    if ((mInstallingWorker = global->GetOrCreateServiceWorker(aInstalling.ref()))) {
+    if ((mInstallingWorker =
+             global->GetOrCreateServiceWorker(aInstalling.ref()))) {
       mInstallingWorker->SetState(aInstalling.ref().State());
     }
   } else {
@@ -553,5 +524,5 @@ ServiceWorkerRegistration::UpdateStateInternal(const Maybe<ServiceWorkerDescript
   }
 }
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla

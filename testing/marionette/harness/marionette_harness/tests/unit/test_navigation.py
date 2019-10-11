@@ -16,7 +16,6 @@ from marionette_harness import (
     run_if_e10s,
     run_if_manage_instance,
     skip,
-    skip_if_mobile,
     WindowManagerMixin,
 )
 
@@ -55,13 +54,8 @@ class BaseNavigationTestCase(WindowManagerMixin, MarionetteTestCase):
         else:
             self.mod_key = Keys.CONTROL
 
-        def open_with_link():
-            link = self.marionette.find_element(By.ID, "new-blank-tab")
-            link.click()
-
         # Always use a blank new tab for an empty history
-        self.marionette.navigate(self.marionette.absolute_url("windowHandles.html"))
-        self.new_tab = self.open_tab(open_with_link)
+        self.new_tab = self.open_tab()
         self.marionette.switch_to_window(self.new_tab)
         Wait(self.marionette, timeout=self.marionette.timeout.page_load).until(
             lambda _: self.history_length == 1,
@@ -122,17 +116,17 @@ class BaseNavigationTestCase(WindowManagerMixin, MarionetteTestCase):
 class TestNavigate(BaseNavigationTestCase):
 
     def test_set_location_through_execute_script(self):
-        test_element_locator = (By.ID, "testh1")
+        # To avoid unexpected remoteness changes and a hang in any non-navigation
+        # command (bug 1519354) when navigating via the location bar, already
+        # pre-load a page which causes a remoteness change.
+        self.marionette.navigate(self.test_page_push_state)
 
         self.marionette.execute_script(
             "window.location.href = arguments[0];",
             script_args=(self.test_page_remote,), sandbox=None)
 
-        # We cannot use get_url() to wait until the target page has been loaded,
-        # because it will return the URL of the top browsing context and doesn't
-        # wait for the page load to be complete.
         Wait(self.marionette, timeout=self.marionette.timeout.page_load).until(
-            expected.element_present(*test_element_locator),
+            expected.element_present(*(By.ID, "testh1")),
             message="Target element 'testh1' has not been found")
 
         self.assertEqual(self.test_page_remote, self.marionette.get_url())
@@ -264,14 +258,12 @@ class TestNavigate(BaseNavigationTestCase):
         self.marionette.go_back()
         self.assertEqual(self.marionette.get_url(), self.test_page_push_state)
 
-    @skip_if_mobile("Test file is only located on host machine")
     def test_navigate_file_url(self):
         self.marionette.navigate(self.test_page_file_url)
         self.marionette.find_element(By.ID, "file-url")
         self.marionette.navigate(self.test_page_remote)
 
     @run_if_e10s("Requires e10s mode enabled")
-    @skip_if_mobile("Test file is only located on host machine")
     def test_navigate_file_url_remoteness_change(self):
         self.marionette.navigate("about:robots")
         self.assertFalse(self.is_remote_tab)
@@ -283,24 +275,19 @@ class TestNavigate(BaseNavigationTestCase):
         self.marionette.navigate("about:robots")
         self.assertFalse(self.is_remote_tab)
 
-    @skip_if_mobile("Bug 1334095 - Timeout: No new tab has been opened")
     def test_about_blank_for_new_docshell(self):
         self.assertEqual(self.marionette.get_url(), "about:blank")
 
         self.marionette.navigate("about:blank")
 
-    @skip("Bug 1332064 - NoSuchElementException: Unable to locate element: :focus")
     @run_if_manage_instance("Only runnable if Marionette manages the instance")
-    @skip_if_mobile("Bug 1322993 - Missing temporary folder")
     def test_focus_after_navigation(self):
-        self.marionette.quit()
-        self.marionette.start_session()
+        self.marionette.restart()
 
         self.marionette.navigate(inline("<input autofocus>"))
         focus_el = self.marionette.find_element(By.CSS_SELECTOR, ":focus")
         self.assertEqual(self.marionette.get_active_element(), focus_el)
 
-    @skip_if_mobile("Needs application independent method to open a new tab")
     def test_no_hang_when_navigating_after_closing_original_tab(self):
         # Close the start tab
         self.marionette.switch_to_window(self.start_tab)
@@ -309,14 +296,12 @@ class TestNavigate(BaseNavigationTestCase):
         self.marionette.switch_to_window(self.new_tab)
         self.marionette.navigate(self.test_page_remote)
 
-    @skip("Bug 1369923 - Disabling as keystrokes don't trigger page loads")
-    @skip_if_mobile("Interacting with chrome elements not available for Fennec")
     def test_type_to_non_remote_tab(self):
         self.marionette.navigate(self.test_page_not_remote)
         self.assertFalse(self.is_remote_tab)
 
         with self.marionette.using_context("chrome"):
-            urlbar = self.marionette.find_element(By.ID, "urlbar")
+            urlbar = self.marionette.find_element(By.ID, "urlbar-input")
             urlbar.send_keys(self.mod_key + "a")
             urlbar.send_keys(self.mod_key + "x")
             urlbar.send_keys("about:support" + Keys.ENTER)
@@ -326,13 +311,12 @@ class TestNavigate(BaseNavigationTestCase):
             message="'about:support' hasn't been loaded")
         self.assertFalse(self.is_remote_tab)
 
-    @skip_if_mobile("Interacting with chrome elements not available for Fennec")
     @run_if_e10s("Requires e10s mode enabled")
     def test_type_to_remote_tab(self):
         self.assertTrue(self.is_remote_tab)
 
         with self.marionette.using_context("chrome"):
-            urlbar = self.marionette.find_element(By.ID, "urlbar")
+            urlbar = self.marionette.find_element(By.ID, "urlbar-input")
             urlbar.send_keys(self.mod_key + "a")
             urlbar.send_keys(self.mod_key + "x")
             urlbar.send_keys(self.test_page_remote + Keys.ENTER)
@@ -341,22 +325,6 @@ class TestNavigate(BaseNavigationTestCase):
             lambda mn: mn.get_url() == self.test_page_remote,
             message="'{}' hasn't been loaded".format(self.test_page_remote))
         self.assertTrue(self.is_remote_tab)
-
-    @skip_if_mobile("On Android no shortcuts are available")
-    def test_navigate_shortcut_key(self):
-
-        def open_with_shortcut():
-            self.marionette.navigate(self.test_page_remote)
-            with self.marionette.using_context("chrome"):
-                main_win = self.marionette.find_element(By.ID, "main-window")
-                main_win.send_keys(self.mod_key, Keys.SHIFT, "a")
-
-        new_tab = self.open_tab(trigger=open_with_shortcut)
-        self.marionette.switch_to_window(new_tab)
-
-        Wait(self.marionette, timeout=self.marionette.timeout.page_load).until(
-            lambda mn: mn.get_url() == "about:addons",
-            message="'about:addons' hasn't been loaded")
 
 
 class TestBackForwardNavigation(BaseNavigationTestCase):
@@ -442,6 +410,7 @@ class TestBackForwardNavigation(BaseNavigationTestCase):
 
         self.run_bfcache_test(test_pages)
 
+    @skip("Bug 1484927: Maybe causes crash in [@ mozilla::ShutdownXPCOM(nsIServiceManager*)]")
     def test_data_urls(self):
         test_pages = [
             {"url": inline("<p>foobar</p>")},
@@ -458,7 +427,6 @@ class TestBackForwardNavigation(BaseNavigationTestCase):
         ]
         self.run_bfcache_test(test_pages)
 
-    @skip_if_mobile("Test file is only located on host machine")
     def test_file_url(self):
         test_pages = [
             {"url": self.test_page_remote},
@@ -548,7 +516,6 @@ class TestBackForwardNavigation(BaseNavigationTestCase):
         ]
         self.run_bfcache_test(test_pages)
 
-    @skip_if_mobile("Bug 1333209 - Process killed because of connection loss")
     def test_non_remote_about_pages(self):
         test_pages = [
             {"url": "about:preferences", "is_remote": False},
@@ -647,7 +614,6 @@ class TestRefresh(BaseNavigationTestCase):
         self.marionette.refresh()
         self.marionette.find_element(By.NAME, "third")
 
-    @skip_if_mobile("Test file is only located on host machine")
     def test_file_url(self):
         self.marionette.navigate(self.test_page_file_url)
         self.assertEqual(self.test_page_file_url, self.marionette.get_url())
@@ -803,7 +769,6 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
         # current load state is unknown. So only test that the command executes successfully.
         self.marionette.navigate(self.test_page_slow_resource)
 
-    @skip_if_mobile("Disabling due to message passing slowness on Android.")
     def test_eager(self):
         self.marionette.delete_session()
         self.marionette.start_session({"pageLoadStrategy": "eager"})
@@ -822,10 +787,9 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
         self.assertEqual("complete", self.ready_state)
         self.marionette.find_element(By.ID, "slow")
 
-    @skip("Bug 1422741 - Causes following tests to fail in loading remote browser")
     @run_if_e10s("Requires e10s mode enabled")
     def test_strategy_after_remoteness_change(self):
-        """Bug 1378191 - Reset of capabilities after listener reload"""
+        """Bug 1378191 - Reset of capabilities after listener reload."""
         self.marionette.delete_session()
         self.marionette.start_session({"pageLoadStrategy": "eager"})
 

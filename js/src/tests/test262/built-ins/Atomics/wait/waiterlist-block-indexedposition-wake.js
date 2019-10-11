@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')) -- Atomics,SharedArrayBuffer is not enabled unconditionally
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Rick Waldron. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -52,27 +52,27 @@ const i32a = new Int32Array(
   new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 5)
 );
 
-$262.agent.broadcast(i32a.buffer);
+$262.agent.safeBroadcast(i32a);
 
 // Wait until all agents started.
 $262.agent.waitUntil(i32a, RUNNING, NUMAGENT);
 
-// Wake index 1, wakes nothing
-assert.sameValue(Atomics.wake(i32a, 1), 0, 'Atomics.wake(i32a, 1) returns 0');
+// Notify index 1, notifies nothing
+assert.sameValue(Atomics.notify(i32a, 1), 0, 'Atomics.notify(i32a, 1) returns 0');
 
-// Wake index 3, wakes nothing
-assert.sameValue(Atomics.wake(i32a, 3), 0, 'Atomics.wake(i32a, 3) returns 0');
+// Notify index 3, notifies nothing
+assert.sameValue(Atomics.notify(i32a, 3), 0, 'Atomics.notify(i32a, 3) returns 0');
 
-// Wake index 2, wakes 1
+// Notify index 2, notifies 1
 var woken = 0;
-while ((woken = Atomics.wake(i32a, 2)) === 0) ;
-assert.sameValue(woken, 1, 'Atomics.wake(i32a, 2) returns 1');
+while ((woken = Atomics.notify(i32a, 2)) === 0) ;
+assert.sameValue(woken, 1, 'Atomics.notify(i32a, 2) returns 1');
 assert.sameValue($262.agent.getReport(), 'ok', '$262.agent.getReport() returns "ok"');
 
-// Wake index 0, wakes 1
+// Notify index 0, notifies 1
 var woken = 0;
-while ((woken = Atomics.wake(i32a, 0)) === 0) ;
-assert.sameValue(woken, 1, 'Atomics.wake(i32a, 0) returns 1');
+while ((woken = Atomics.notify(i32a, 0)) === 0) ;
+assert.sameValue(woken, 1, 'Atomics.notify(i32a, 0) returns 1');
 assert.sameValue($262.agent.getReport(), 'ok', '$262.agent.getReport() returns "ok"');
 
 reportCompare(0, 0);

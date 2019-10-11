@@ -7,14 +7,12 @@ config = {
         'build',
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
-    # decides whether we want to use moz_sign_cmd in env
     'vcs_share_base': '/builds/hg-shared',
     #########################################################################
 
 
     #########################################################################
     ###### 64 bit specific ######
-    'base_name': 'Linux_x86-64_%(branch)s_Static_Analysis',
     'platform': 'linux64',
     'stage_platform': 'linux64-st-an-opt',
     'env': {
@@ -35,6 +33,4 @@ config = {
     # This doesn't actually inherit from anything.
     'mozconfig_platform': 'linux64',
     'mozconfig_variant': 'debug-static-analysis-clang',
-    #######################
-    'artifact_flag_build_variant_in_try': None,
 }

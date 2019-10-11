@@ -8,21 +8,21 @@
 
 const BREAKDOWN = {
   by: "internalType",
-  then: { by: "count", count: true, bytes: true }
+  then: { by: "count", count: true, bytes: true },
 };
 
 const REPORT = {
-  "JSObject": {
-    "bytes": 100,
-    "count": 10,
+  JSObject: {
+    bytes: 100,
+    count: 10,
   },
   "js::Shape": {
-    "bytes": 500,
-    "count": 50,
+    bytes: 500,
+    count: 50,
   },
-  "JSString": {
-    "bytes": 10,
-    "count": 1,
+  JSString: {
+    bytes: 10,
+    count: 1,
   },
 };
 

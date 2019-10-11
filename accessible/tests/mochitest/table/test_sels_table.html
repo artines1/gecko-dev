@@ -6,8 +6,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -29,7 +28,7 @@
         [false, false,       false,       kColSpanned, false, false,       false, false],
         [false, false,       false,       false,       false, false,       false, kRowSpanned],
         [false, false,       kColSpanned, false,       false, false,       false, kRowSpanned],
-        [false, kRowSpanned, kSpanned,    false,       false, kRowSpanned, false, kRowSpanned]
+        [false, kRowSpanned, kSpanned,    false,       false, kRowSpanned, false, kRowSpanned],
       ];
 
       testTableSelection("table", cellsArray);
@@ -64,7 +63,7 @@
         [false,       false, false,       -1,          -1],
         [false,       false, kColSpanned, kColSpanned, -1],
         [kRowSpanned, false, false,       -1,          -1],
-        [kRowSpanned, false, kRowSpanned, false,       false]
+        [kRowSpanned, false, kRowSpanned, false,       false],
       ];
 
       testTableSelection("tableinsane", cellsArray);

@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import print_function
+
 import os
 import posixpath
 import psutil
@@ -13,8 +15,7 @@ import traceback
 import urllib2
 from contextlib import closing
 
-from mozdevice import ADBAndroid, ADBTimeoutError
-import mozinfo
+from mozdevice import ADBDevice, ADBTimeoutError
 from automation import Automation
 from remoteautomation import RemoteAutomation, fennecLogcatFilters
 
@@ -34,7 +35,7 @@ class RemoteReftestResolver(ReftestResolver):
         elif os.path.exists(os.path.abspath(path)):
             rv = os.path.abspath(path)
         else:
-            print >> sys.stderr, "Could not find manifest %s" % script_abs_path
+            print("Could not find manifest %s" % script_abs_path, file=sys.stderr)
             sys.exit(1)
         return os.path.normpath(rv)
 
@@ -99,7 +100,7 @@ class ReftestServer:
         self._process = self.automation.Process([xpcshell] + args, env=env)
         pid = self._process.pid
         if pid < 0:
-            print "TEST-UNEXPECTED-FAIL | remotereftests.py | Error starting server."
+            print("TEST-UNEXPECTED-FAIL | remotereftests.py | Error starting server.")
             return 2
         self.automation.log.info("INFO | remotereftests.py | Server pid: %d", pid)
 
@@ -114,8 +115,8 @@ class ReftestServer:
             time.sleep(1)
             i += 1
         else:
-            print ("TEST-UNEXPECTED-FAIL | remotereftests.py | "
-                   "Timed out while waiting for server startup.")
+            print("TEST-UNEXPECTED-FAIL | remotereftests.py | "
+                  "Timed out while waiting for server startup.")
             self.stop()
             return 1
 
@@ -148,12 +149,11 @@ class RemoteReftest(RefTest):
         verbose = False
         if options.log_tbpl_level == 'debug' or options.log_mach_level == 'debug':
             verbose = True
-            print "set verbose!"
-        self.device = ADBAndroid(adb=options.adb_path or 'adb',
-                                 device=options.deviceSerial,
-                                 test_root=options.remoteTestRoot,
-                                 verbose=verbose)
-
+            print("set verbose!")
+        self.device = ADBDevice(adb=options.adb_path or 'adb',
+                                device=options.deviceSerial,
+                                test_root=options.remoteTestRoot,
+                                verbose=verbose)
         if options.remoteTestRoot is None:
             options.remoteTestRoot = posixpath.join(self.device.test_root, "reftest")
         options.remoteProfile = posixpath.join(options.remoteTestRoot, "profile")
@@ -177,9 +177,12 @@ class RemoteReftest(RefTest):
         # RemoteAutomation.py's 'messageLogger' is also used by mochitest. Mimic a mochitest
         # MessageLogger object to re-use this code path.
         self.outputHandler.write = self.outputHandler.__call__
-        self.automation = RemoteAutomation(self.device, options.app, self.remoteProfile,
-                                           options.remoteLogFile, processArgs=None)
-        self.automation._processArgs['messageLogger'] = self.outputHandler
+        args = {'messageLogger': self.outputHandler}
+        self.automation = RemoteAutomation(self.device,
+                                           appName=options.app,
+                                           remoteProfile=self.remoteProfile,
+                                           remoteLog=options.remoteLogFile,
+                                           processArgs=args)
 
         self.environment = self.automation.environment
         if self.automation.IS_DEBUG_BUILD:
@@ -194,8 +197,6 @@ class RemoteReftest(RefTest):
         if not self.device.is_app_installed(expected):
             raise Exception("%s is not installed on this device" % expected)
 
-        self.automation.deleteANRs()
-        self.automation.deleteTombstones()
         self.device.clear_logcat()
 
         self.device.rm(self.remoteCache, force=True, recursive=True)
@@ -236,8 +237,8 @@ class RemoteReftest(RefTest):
         paths = [options.xrePath, localAutomation.DIST_BIN]
         options.xrePath = self.findPath(paths)
         if options.xrePath is None:
-            print ("ERROR: unable to find xulrunner path for %s, "
-                   "please specify with --xre-path" % (os.name))
+            print("ERROR: unable to find xulrunner path for %s, "
+                  "please specify with --xre-path" % (os.name))
             return 1
         paths.append("bin")
         paths.append(os.path.join("..", "bin"))
@@ -250,8 +251,8 @@ class RemoteReftest(RefTest):
             paths.insert(0, options.utilityPath)
         options.utilityPath = self.findPath(paths, xpcshell)
         if options.utilityPath is None:
-            print ("ERROR: unable to find utility path for %s, "
-                   "please specify with --utility-path" % (os.name))
+            print("ERROR: unable to find utility path for %s, "
+                  "please specify with --utility-path" % (os.name))
             return 1
 
         options.serverProfilePath = tempfile.mkdtemp()
@@ -299,7 +300,6 @@ class RemoteReftest(RefTest):
         profileDir = profile.profile
         prefs = {}
         prefs["app.update.url.android"] = ""
-        prefs["browser.firstrun.show.localepicker"] = False
         prefs["reftest.remote"] = True
         prefs["datareporting.policy.dataSubmissionPolicyBypassAcceptance"] = True
         # move necko cache to a location that can be cleaned up
@@ -317,42 +317,33 @@ class RemoteReftest(RefTest):
             self.device.push(profileDir, options.remoteProfile)
             self.device.chmod(options.remoteProfile, recursive=True, root=True)
         except Exception:
-            print "Automation Error: Failed to copy profiledir to device"
+            print("Automation Error: Failed to copy profiledir to device")
             raise
 
         return profile
-
-    def copyExtraFilesToProfile(self, options, profile):
-        profileDir = profile.profile
-        RefTest.copyExtraFilesToProfile(self, options, profile)
-        if len(os.listdir(profileDir)) > 0:
-            try:
-                self.device.push(profileDir, options.remoteProfile)
-                self.device.chmod(options.remoteProfile, recursive=True, root=True)
-            except Exception:
-                print "Automation Error: Failed to copy extra files to device"
-                raise
 
     def printDeviceInfo(self, printLogcat=False):
         try:
             if printLogcat:
                 logcat = self.device.get_logcat(filter_out_regexps=fennecLogcatFilters)
                 for l in logcat:
-                    print "%s\n" % l.decode('utf-8', 'replace')
-            print "Device info:"
+                    ul = l.decode('utf-8', errors='replace')
+                    sl = ul.encode('iso8859-1', errors='replace')
+                    print("%s\n" % sl)
+            print("Device info:")
             devinfo = self.device.get_info()
             for category in devinfo:
                 if type(devinfo[category]) is list:
-                    print "  %s:" % category
+                    print("  %s:" % category)
                     for item in devinfo[category]:
-                        print "     %s" % item
+                        print("     %s" % item)
                 else:
-                    print "  %s: %s" % (category, devinfo[category])
-            print "Test root: %s" % self.device.test_root
+                    print("  %s: %s" % (category, devinfo[category]))
+            print("Test root: %s" % self.device.test_root)
         except ADBTimeoutError:
             raise
         except Exception as e:
-            print "WARNING: Error getting device information: %s" % str(e)
+            print("WARNING: Error getting device information: %s" % str(e))
 
     def environment(self, **kwargs):
         return self.automation.environment(**kwargs)
@@ -387,7 +378,8 @@ class RemoteReftest(RefTest):
                                                            xrePath=options.xrePath,
                                                            debuggerInfo=debuggerInfo,
                                                            symbolsPath=symbolsPath,
-                                                           timeout=timeout)
+                                                           timeout=timeout,
+                                                           e10s=options.e10s)
 
         self.cleanup(profile.profile)
         return status
@@ -403,10 +395,6 @@ def run_test_harness(parser, options):
     reftest = RemoteReftest(options, SCRIPT_DIRECTORY)
     parser.validate_remote(options, reftest.automation)
     parser.validate(options, reftest)
-
-    if mozinfo.info['debug']:
-        print "changing timeout for remote debug reftests from %s to 600 seconds" % options.timeout
-        options.timeout = 600
 
     # Hack in a symbolic link for jsreftest
     os.system("ln -s ../jsreftest " + str(os.path.join(SCRIPT_DIRECTORY, "jsreftest")))
@@ -434,14 +422,14 @@ def run_test_harness(parser, options):
         else:
             retVal = reftest.runTests(options.tests, options)
     except Exception:
-        print "Automation Error: Exception caught while running tests"
+        print("Automation Error: Exception caught while running tests")
         traceback.print_exc()
         retVal = 1
 
     reftest.stopWebServer(options)
 
     if options.printDeviceInfo and not options.verify:
-        reftest.printDeviceInfo(printLogcat=True)
+        reftest.printDeviceInfo(printLogcat=(retVal != 0))
 
     return retVal
 

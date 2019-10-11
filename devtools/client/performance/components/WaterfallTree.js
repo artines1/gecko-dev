@@ -3,9 +3,14 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const Tree = createFactory(require("devtools/client/shared/components/VirtualizedTree"));
+const Tree = createFactory(
+  require("devtools/client/shared/components/VirtualizedTree")
+);
 const WaterfallTreeRow = createFactory(require("./WaterfallTreeRow"));
 
 // Keep in sync with var(--waterfall-tree-row-height) in performance.css
@@ -57,7 +62,7 @@ class WaterfallTree extends Component {
 
     this.state = {
       focused: null,
-      expanded: new Set()
+      expanded: new Set(),
     };
 
     this._getRoots = this._getRoots.bind(this);
@@ -157,7 +162,7 @@ class WaterfallTree extends Component {
       focused,
       startTime,
       dataScale,
-      sidebarWidth
+      sidebarWidth,
     });
   }
 
@@ -174,7 +179,7 @@ class WaterfallTree extends Component {
       onFocus: this._onFocus,
       renderItem: this._renderItem,
       focused: this.state.focused,
-      itemHeight: WATERFALL_TREE_ROW_HEIGHT
+      itemHeight: WATERFALL_TREE_ROW_HEIGHT,
     });
   }
 }

@@ -10,20 +10,26 @@ with Files("**"):
 if CONFIG['MOZ_BUILD_APP'] == 'browser':
     DEFINES['MOZ_BREAK_XUL_OVERLAYS'] = True
 
-MOCHITEST_MANIFESTS += ['test/mochitest.ini']
-
 MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
+MOCHITEST_MANIFESTS += ['test/mochitest.ini']
 
 if CONFIG['MOZ_XUL']:
     EXPORTS += [
         'nsXULCommandDispatcher.h',
         'nsXULElement.h',
+        'nsXULPrototypeDocument.h',
+        'nsXULSortService.h',
     ]
 
     EXPORTS.mozilla.dom += [
+        'XULBroadcastManager.h',
         'XULFrameElement.h',
+        'XULMenuElement.h',
+        'XULPersist.h',
         'XULPopupElement.h',
-        'XULScrollElement.h',
+        'XULTextElement.h',
+        'XULTooltipElement.h',
+        'XULTreeElement.h',
     ]
 
     UNIFIED_SOURCES += [
@@ -35,16 +41,19 @@ if CONFIG['MOZ_XUL']:
         'nsXULPrototypeCache.cpp',
         'nsXULPrototypeDocument.cpp',
         'nsXULSortService.cpp',
-        'XULDocument.cpp',
+        'XULBroadcastManager.cpp',
         'XULFrameElement.cpp',
+        'XULMenuElement.cpp',
+        'XULPersist.cpp',
         'XULPopupElement.cpp',
-        'XULScrollElement.cpp',
+        'XULTextElement.cpp',
+        'XULTooltipElement.cpp',
+        'XULTreeElement.cpp',
     ]
 
 XPIDL_SOURCES += [
     'nsIController.idl',
     'nsIControllers.idl',
-    'nsIXULSortService.idl',
 ]
 
 XPIDL_MODULE = 'xul'
@@ -57,13 +66,18 @@ LOCAL_INCLUDES += [
     '/docshell/base',
     '/dom/base',
     '/dom/html',
-    '/dom/xbl',
     '/dom/xml',
     '/layout/base',
     '/layout/generic',
     '/layout/style',
     '/layout/xul',
+    '/layout/xul/tree',
 ]
+
+if CONFIG['MOZ_XBL']:
+    LOCAL_INCLUDES += ['/dom/xbl']
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 

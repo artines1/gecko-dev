@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -33,7 +32,8 @@ const TEST_CASES = [
 
 add_task(async function() {
   const { linkedBrowser: browser } = await addTab(
-    `data:text/html;charset=utf-8,<div style="margin:0;color:red;">Inspect me!</div>`);
+    `data:text/html;charset=utf-8,<div style="margin:0;color:red;">Inspect me!</div>`
+  );
 
   const { inspector, view } = await openRuleView();
   await selectNode("div", inspector);
@@ -49,24 +49,34 @@ add_task(async function() {
     await Promise.all([onStyleMutation, onRuleRefreshed]);
 
     info("Getting and parsing the content of the node's style attribute");
-    const markupContainer = inspector.markup.getContainer(inspector.selection.nodeFront);
-    const styleAttrValue = markupContainer.elt.querySelector(".attr-value").textContent;
-    const parsedStyleAttr =
-      styleAttrValue.split(";").filter(v => v.trim())
-                    .map(decl => {
-                      const nameValue = decl.split(":").map(v => v.trim());
-                      return { name: nameValue[0], value: nameValue[1] };
-                    });
+    const markupContainer = inspector.markup.getContainer(
+      inspector.selection.nodeFront
+    );
+    const styleAttrValue = markupContainer.elt.querySelector(".attr-value")
+      .textContent;
+    const parsedStyleAttr = styleAttrValue
+      .split(";")
+      .filter(v => v.trim())
+      .map(decl => {
+        const nameValue = decl.split(":").map(v => v.trim());
+        return { name: nameValue[0], value: nameValue[1] };
+      });
 
     info("Checking the content of the rule-view");
     const ruleEditor = getRuleViewRuleEditor(view, 0);
     const propertiesEls = ruleEditor.propertyList.children;
 
     parsedStyleAttr.forEach((expected, i) => {
-      is(propertiesEls[i].querySelector(".ruleview-propertyname").textContent,
-         expected.name, `Correct name found for property ${i}`);
-      is(propertiesEls[i].querySelector(".ruleview-propertyvalue").textContent,
-         expected.value, `Correct value found for property ${i}`);
+      is(
+        propertiesEls[i].querySelector(".ruleview-propertyname").textContent,
+        expected.name,
+        `Correct name found for property ${i}`
+      );
+      is(
+        propertiesEls[i].querySelector(".ruleview-propertyvalue").textContent,
+        expected.value,
+        `Correct value found for property ${i}`
+      );
     });
   }
 });

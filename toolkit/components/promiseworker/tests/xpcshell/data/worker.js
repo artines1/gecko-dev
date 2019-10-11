@@ -13,7 +13,7 @@ var PromiseWorker = require("resource://gre/modules/workers/PromiseWorker.js");
 var worker = new PromiseWorker.AbstractWorker();
 worker.dispatch = function(method, args = []) {
   return Agent[method](...args);
-},
+};
 worker.postMessage = function(...args) {
   self.postMessage(...args);
 };
@@ -31,6 +31,6 @@ var Agent = {
   },
 
   throwError(msg, ...args) {
-     throw new Error(msg);
+    throw new Error(msg);
   },
 };

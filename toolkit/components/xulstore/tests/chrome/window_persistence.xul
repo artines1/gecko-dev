@@ -13,7 +13,8 @@
 <script>
 <![CDATA[
 
-let XULStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const XULStore = Services.xulStore;
 let URI = "chrome://mochitests/content/chrome/toolkit/components/xulstore/tests/chrome/window_persistence.xul";
 
 function opened()
@@ -38,7 +39,7 @@ function runTest()
     is(XULStore.hasValue(URI, "button2", "foo"), false, "attribute removed");
 
     window.close();
-    window.opener.windowOpened();
+    window.arguments[1].windowOpened();
   }
   else {
     is(button1.getAttribute("value"), "Pressed",
@@ -53,11 +54,11 @@ function runTest()
        "Attribute cleared");
 
     window.close();
-    window.opener.testDone();
+    window.arguments[1].testDone();
   }
 }
 
-function is(l, r, n) { window.opener.wrappedJSObject.SimpleTest.is(l,r,n); }
+function is(l, r, n) { window.arguments[1].SimpleTest.is(l,r,n); }
 
 ]]></script>
 

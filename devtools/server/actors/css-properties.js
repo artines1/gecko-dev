@@ -4,14 +4,18 @@
 
 "use strict";
 
-loader.lazyRequireGetter(this, "CSS_TYPES",
-  "devtools/shared/css/properties-db", true);
-
 const protocol = require("devtools/shared/protocol");
 const { ActorClassWithSpec, Actor } = protocol;
 const { cssPropertiesSpec } = require("devtools/shared/specs/css-properties");
 const { cssColors } = require("devtools/shared/css/color-db");
 const InspectorUtils = require("InspectorUtils");
+
+loader.lazyRequireGetter(
+  this,
+  "CSS_TYPES",
+  "devtools/shared/css/constants",
+  true
+);
 
 exports.CssPropertiesActor = ActorClassWithSpec(cssPropertiesSpec, {
   typeName: "cssProperties",
@@ -29,11 +33,13 @@ exports.CssPropertiesActor = ActorClassWithSpec(cssPropertiesSpec, {
     const pseudoElements = InspectorUtils.getCSSPseudoElementNames();
     const supportedFeature = {
       // checking for css-color-4 color function support.
-      "css-color-4-color-function": InspectorUtils.isValidCSSColor("rgb(1 1 1 / 100%)"),
+      "css-color-4-color-function": InspectorUtils.isValidCSSColor(
+        "rgb(1 1 1 / 100%)"
+      ),
     };
 
     return { properties, pseudoElements, supportedFeature };
-  }
+  },
 });
 
 /**
@@ -44,15 +50,17 @@ exports.CssPropertiesActor = ActorClassWithSpec(cssPropertiesSpec, {
  */
 function generateCssProperties() {
   const properties = {};
-  const propertyNames = InspectorUtils.getCSSPropertyNames({ includeAliases: true });
+  const propertyNames = InspectorUtils.getCSSPropertyNames({
+    includeAliases: true,
+  });
   const colors = Object.keys(cssColors);
 
   propertyNames.forEach(name => {
     // Get the list of CSS types this property supports.
     const supports = [];
     for (const type in CSS_TYPES) {
-      if (safeCssPropertySupportsType(name, InspectorUtils["TYPE_" + type])) {
-        supports.push(CSS_TYPES[type]);
+      if (safeCssPropertySupportsType(name, type)) {
+        supports.push(type);
       }
     }
 

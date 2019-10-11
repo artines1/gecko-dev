@@ -86,8 +86,6 @@ The length of the current session so far in seconds.
 This uses a monotonic clock, so this may mismatch with other measurements that
 are not monotonic like calculations based on ``Date.now()``.
 
-If the monotonic clock failed, this will be ``-1``.
-
 Note that this currently does not behave consistently over our supported platforms:
 
 * On Windows this uses ``GetTickCount64()``, which does increase over sleep periods
@@ -100,8 +98,6 @@ subsessionLength
 ~~~~~~~~~~~~~~~~
 The length of this subsession in seconds.
 This uses a monotonic clock, so this may mismatch with other measurements that are not monotonic (e.g. based on ``Date.now()``).
-
-If ``sessionLength`` is ``-1``, the monotonic clock is not working.
 
 Also see the remarks for ``sessionLength`` on platform consistency.
 
@@ -148,10 +144,6 @@ This section contains a list of simple measurements, or counters. In addition to
 totalTime
 ~~~~~~~~~
 A non-monotonic integer representing the number of seconds the session has been alive.
-
-uptime
-~~~~~~
-A non-monotonic integer representing the number of minutes the session has been alive.
 
 addonManager
 ~~~~~~~~~~~~
@@ -303,7 +295,7 @@ in Firefox Nightly or in builds using ``--enable-profiling`` switch.
 Limits for captured stacks are the same as for chromeHangs (see below). Furthermore:
 
 * the key length is limited to 50 characters,
-* keys are restricted to alpha-numeric characters and `-`.
+* keys are restricted to alphanumeric characters and `-`.
 
 The module names can contain unicode characters.
 
@@ -678,7 +670,7 @@ Structure:
     ],
 
 Version History
-===============
+---------------
 
 - Firefox 61:
 

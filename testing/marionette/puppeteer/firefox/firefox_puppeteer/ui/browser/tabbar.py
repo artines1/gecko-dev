@@ -36,7 +36,7 @@ class TabBar(UIBaseLib):
 
         :returns: Reference to the new tab button.
         """
-        return self.toolbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'tabs-newtab-button'})
+        return self.toolbar.find_element(By.ID, 'tabs-newtab-button')
 
     @property
     def tabs(self):
@@ -84,6 +84,9 @@ class TabBar(UIBaseLib):
 
         :param exceptions: Optional, list of :class:`Tab` instances not to close.
         """
+        if exceptions is None:
+            exceptions = []
+
         # Get handles from tab exceptions, and find those which can be closed
         for tab in self.tabs:
             if tab not in exceptions:
@@ -203,11 +206,11 @@ class TabBar(UIBaseLib):
         # element corresponding to the active window according to
         # marionette or a similar ability should be added to marionette.
         handle = marionette.execute_script("""
-          let win = arguments[0].linkedBrowser;
-          if (!win) {
+          let browser = arguments[0].linkedBrowser;
+          if (!browser || browser.outerWindowID == null) {
             return null;
           }
-          return win.outerWindowID.toString();
+          return browser.outerWindowID.toString();
         """, script_args=[tab_element])
 
         return handle
@@ -230,7 +233,7 @@ class Tab(UIBaseLib):
 
         :returns: Reference to the tab close button.
         """
-        return self.tab_element.find_element(By.ANON_ATTRIBUTE, {'anonid': 'close-button'})
+        return self.tab_element.find_element(By.CSS_SELECTOR, '.tab-close-button')
 
     @property
     def tab_element(self):

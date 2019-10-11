@@ -8,7 +8,7 @@ with Files('*Selection*'):
     BUG_COMPONENT = ('Core', 'Selection')
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
 TEST_DIRS += ['test']
 
@@ -18,11 +18,11 @@ XPIDL_SOURCES += [
     'nsIDocumentEncoder.idl',
     'nsIDOMRequestService.idl',
     'nsIDroppedLinkHandler.idl',
-    'nsIFrameLoaderOwner.idl',
     'nsIImageLoadingContent.idl',
     'nsIMessageManager.idl',
     'nsIObjectLoadingContent.idl',
     'nsIRemoteWindowContext.idl',
+    'nsIScriptableContentIterator.idl',
     'nsIScriptChannel.idl',
     'nsISelectionController.idl',
     'nsISelectionDisplay.idl',
@@ -66,6 +66,7 @@ EXPORTS += [
     'nsDOMTokenList.h',
     'nsFocusManager.h',
     'nsFrameLoader.h',  # Because binding headers include it.
+    'nsFrameLoaderOwner.h',
     'nsFrameMessageManager.h',
     'nsGlobalWindow.h',  # Because binding headers include it.
     'nsGlobalWindowInner.h',  # Because binding headers include it.
@@ -73,11 +74,7 @@ EXPORTS += [
     'nsIAnimationObserver.h',
     'nsIContent.h',
     'nsIContentInlines.h',
-    'nsIContentIterator.h',
     'nsIContentSerializer.h',
-    'nsIdentifierMapEntry.h',
-    'nsIDocument.h',
-    'nsIDocumentInlines.h',
     'nsIDocumentObserver.h',
     'nsIGlobalObject.h',
     'nsImageLoadingContent.h',
@@ -87,9 +84,7 @@ EXPORTS += [
     'nsIScriptContext.h',
     'nsIScriptGlobalObject.h',
     'nsIScriptObjectPrincipal.h',
-    'nsIScriptTimeoutHandler.h',
     'nsIStyleSheetLinkingElement.h',
-    'nsITimeoutHandler.h',
     'nsJSEnvironment.h',
     'nsJSUtils.h',
     'nsLineBreaker.h',
@@ -117,7 +112,6 @@ EXPORTS += [
     'nsWindowSizes.h',
     'nsWrapperCache.h',
     'nsWrapperCacheInlines.h',
-    'nsXMLNameSpaceMap.h',
     'XPathGenerator.h',
 ]
 
@@ -128,19 +122,28 @@ if CONFIG['MOZ_WEBRTC']:
     ]
 
 EXPORTS.mozilla += [
+    'ContentIterator.h',
     'CORSMode.h',
-    'FeedWriterEnabled.h',
     'FlushType.h',
+    'FullscreenChange.h',
+    'IdentifierMapEntry.h',
     'RangeBoundary.h',
+    'RangeUtils.h',
+    'ScriptableContentIterator.h',
+    'SelectionChangeEventDispatcher.h',
     'TextInputProcessor.h',
     'UseCounter.h',
 ]
 
 EXPORTS.mozilla.dom += [
     '!UseCounterList.h',
+    'AbstractRange.h',
     'AnonymousContent.h',
     'Attr.h',
     'BarProps.h',
+    'BindContext.h',
+    'BodyConsumer.h',
+    'BodyStream.h',
     'BodyUtil.h',
     'BorrowedAttrInfo.h',
     'CharacterData.h',
@@ -151,15 +154,18 @@ EXPORTS.mozilla.dom += [
     'ChromeNodeList.h',
     'ChromeUtils.h',
     'Comment.h',
+    'ContentBlockingLog.h',
     'ContentFrameMessageManager.h',
+    'ContentProcessMessageManager.h',
     'CustomElementRegistry.h',
     'DirectionalityUtils.h',
     'DispatcherTrait.h',
     'DocGroup.h',
+    'Document.h',
     'DocumentFragment.h',
+    'DocumentInlines.h',
     'DocumentOrShadowRoot.h',
     'DocumentType.h',
-    'DOMError.h',
     'DOMException.h',
     'DOMImplementation.h',
     'DOMIntersectionObserver.h',
@@ -167,8 +173,6 @@ EXPORTS.mozilla.dom += [
     'DOMMozPromiseRequestHolder.h',
     'DOMParser.h',
     'DOMPoint.h',
-    'DOMPrefs.h',
-    'DOMPrefsInternal.h',
     'DOMQuad.h',
     'DOMRect.h',
     'DOMRequest.h',
@@ -189,10 +193,13 @@ EXPORTS.mozilla.dom += [
     'IntlUtils.h',
     'Link.h',
     'Location.h',
+    'LocationBase.h',
+    'MaybeCrossOriginObject.h',
     'MessageBroadcaster.h',
     'MessageListenerManager.h',
     'MessageManagerGlobal.h',
     'MessageSender.h',
+    'MimeType.h',
     'MozQueryInterface.h',
     'NameSpaceConstants.h',
     'Navigator.h',
@@ -200,22 +207,31 @@ EXPORTS.mozilla.dom += [
     'NodeInfoInlines.h',
     'NodeIterator.h',
     'ParentProcessMessageManager.h',
+    'PlacesBookmark.h',
+    'PlacesBookmarkAddition.h',
     'PlacesEvent.h',
     'PlacesObservers.h',
     'PlacesVisit.h',
     'PlacesWeakCallbackWrapper.h',
+    'PopupBlocker.h',
     'Pose.h',
-    'ProcessGlobal.h',
+    'PostMessageEvent.h',
     'ProcessMessageManager.h',
+    'ResizeObserver.h',
+    'ResizeObserverController.h',
     'ResponsiveImageSelector.h',
     'SameProcessMessageQueue.h',
     'ScreenLuminance.h',
     'ScreenOrientation.h',
     'Selection.h',
+    'SerializedStackHolder.h',
+    'ShadowIncludingTreeIterator.h',
     'ShadowRoot.h',
+    'StaticRange.h',
     'StructuredCloneBlob.h',
     'StructuredCloneHolder.h',
     'StructuredCloneTags.h',
+    'StructuredCloneTester.h',
     'StyleSheetList.h',
     'SubtleCrypto.h',
     'SyncMessageSender.h',
@@ -225,9 +241,15 @@ EXPORTS.mozilla.dom += [
     'TimeoutHandler.h',
     'TimeoutManager.h',
     'TreeIterator.h',
+    'TreeOrderedArray.h',
+    'TreeOrderedArrayInlines.h',
     'TreeWalker.h',
-    'WebKitCSSMatrix.h',
+    'UIDirectionManager.h',
+    'UserActivation.h',
+    'ViewportMetaData.h',
+    'VisualViewport.h',
     'WindowOrientationObserver.h',
+    'WindowProxyHolder.h',
 ]
 
 if CONFIG['FUZZING']:
@@ -236,10 +258,13 @@ if CONFIG['FUZZING']:
     ]
 
 UNIFIED_SOURCES += [
+    'AbstractRange.cpp',
     'AnonymousContent.cpp',
     'Attr.cpp',
     'AttrArray.cpp',
     'BarProps.cpp',
+    'BodyConsumer.cpp',
+    'BodyStream.cpp',
     'BodyUtil.cpp',
     'BorrowedAttrInfo.cpp',
     'CharacterData.cpp',
@@ -249,21 +274,24 @@ UNIFIED_SOURCES += [
     'ChromeNodeList.cpp',
     'ChromeUtils.cpp',
     'Comment.cpp',
+    'ContentBlockingLog.cpp',
+    'ContentFrameMessageManager.cpp',
+    'ContentIterator.cpp',
+    'ContentProcessMessageManager.cpp',
     'Crypto.cpp',
     'CustomElementRegistry.cpp',
     'DirectionalityUtils.cpp',
     'DispatcherTrait.cpp',
     'DocGroup.cpp',
+    'Document.cpp',
     'DocumentFragment.cpp',
     'DocumentOrShadowRoot.cpp',
     'DocumentType.cpp',
-    'DOMError.cpp',
     'DOMException.cpp',
     'DOMImplementation.cpp',
     'DOMMatrix.cpp',
     'DOMParser.cpp',
     'DOMPoint.cpp',
-    'DOMPrefs.cpp',
     'DOMQuad.cpp',
     'DOMRect.cpp',
     'DOMRequest.cpp',
@@ -278,13 +306,17 @@ UNIFIED_SOURCES += [
     'IDTracker.cpp',
     'ImageEncoder.cpp',
     'ImageTracker.cpp',
+    'InProcessBrowserChildMessageManager.cpp',
     'IntlUtils.cpp',
     'Link.cpp',
     'Location.cpp',
+    'LocationBase.cpp',
+    'MaybeCrossOriginObject.cpp',
     'MessageBroadcaster.cpp',
     'MessageListenerManager.cpp',
     'MessageManagerGlobal.cpp',
     'MessageSender.cpp',
+    'MimeType.cpp',
     'MozQueryInterface.cpp',
     'Navigator.cpp',
     'NodeInfo.cpp',
@@ -294,7 +326,6 @@ UNIFIED_SOURCES += [
     'nsAttrValueOrString.cpp',
     'nsCCUncollectableMarker.cpp',
     'nsContentAreaDragDrop.cpp',
-    'nsContentIterator.cpp',
     'nsContentList.cpp',
     'nsContentPermissionHelper.cpp',
     'nsContentPolicy.cpp',
@@ -302,7 +333,6 @@ UNIFIED_SOURCES += [
     'nsContentTypeParser.cpp',
     'nsCopySupport.cpp',
     'nsDataDocumentContentPolicy.cpp',
-    'nsDocument.cpp',
     'nsDocumentEncoder.cpp',
     'nsDOMAttributeMap.cpp',
     'nsDOMCaretPosition.cpp',
@@ -310,17 +340,15 @@ UNIFIED_SOURCES += [
     'nsDOMNavigationTiming.cpp',
     'nsDOMSerializer.cpp',
     'nsDOMTokenList.cpp',
-    'nsDOMWindowList.cpp',
     'nsFocusManager.cpp',
     'nsFrameLoader.cpp',
+    'nsFrameLoaderOwner.cpp',
     'nsGlobalWindowCommands.cpp',
     'nsHistory.cpp',
     'nsHTMLContentSerializer.cpp',
     'nsIGlobalObject.cpp',
     'nsINode.cpp',
-    'nsInProcessTabChildGlobal.cpp',
     'nsJSEnvironment.cpp',
-    'nsJSTimeoutHandler.cpp',
     'nsJSUtils.cpp',
     'nsLineBreaker.cpp',
     'nsMappedAttributeElement.cpp',
@@ -353,21 +381,29 @@ UNIFIED_SOURCES += [
     'nsWrapperCache.cpp',
     'nsXHTMLContentSerializer.cpp',
     'nsXMLContentSerializer.cpp',
-    'nsXMLNameSpaceMap.cpp',
     'ParentProcessMessageManager.cpp',
+    'PopupBlocker.cpp',
     'Pose.cpp',
     'PostMessageEvent.cpp',
-    'ProcessGlobal.cpp',
     'ProcessMessageManager.cpp',
+    'RangeUtils.cpp',
+    'RemoteOuterWindowProxy.cpp',
+    'ResizeObserver.cpp',
+    'ResizeObserverController.cpp',
     'ResponsiveImageSelector.cpp',
     'SameProcessMessageQueue.cpp',
     'ScreenLuminance.cpp',
     'ScreenOrientation.cpp',
+    'ScriptableContentIterator.cpp',
     'Selection.cpp',
-    'SelectionChangeListener.cpp',
+    'SelectionChangeEventDispatcher.cpp',
+    'SerializedStackHolder.cpp',
     'ShadowRoot.cpp',
+    'StaticRange.cpp',
+    'StorageAccessPermissionRequest.cpp',
     'StructuredCloneBlob.cpp',
     'StructuredCloneHolder.cpp',
+    'StructuredCloneTester.cpp',
     'StyleSheetList.cpp',
     'SubtleCrypto.cpp',
     'TabGroup.cpp',
@@ -380,7 +416,10 @@ UNIFIED_SOURCES += [
     'TimeoutHandler.cpp',
     'TimeoutManager.cpp',
     'TreeWalker.cpp',
-    'WebKitCSSMatrix.cpp',
+    'UIDirectionManager.cpp',
+    'UserActivation.cpp',
+    'ViewportMetaData.cpp',
+    'VisualViewport.cpp',
     'WindowDestroyedEvent.cpp',
     'WindowNamedPropertiesHandler.cpp',
     'WindowOrientationObserver.cpp',
@@ -414,7 +453,7 @@ SOURCES += [
     'nsDOMWindowUtils.cpp',
     # Conflicts with windows.h's definition of SendMessage.
     'nsFrameMessageManager.cpp',
-    # These files have a #error "Never include windows.h in this file!"
+    # These files have a #error "Never include unwrapped windows.h in this file!"
     'nsGlobalWindowInner.cpp',
     'nsGlobalWindowOuter.cpp',
     # Conflicts with windows.h's definition of LoadImage.
@@ -431,18 +470,22 @@ if CONFIG['INTEL_ARCHITECTURE']:
     SOURCES += ['nsTextFragmentSSE2.cpp']
     SOURCES['nsTextFragmentSSE2.cpp'].flags += CONFIG['SSE2_FLAGS']
 
-EXTRA_COMPONENTS += [
-    'contentAreaDropListener.js',
-    'contentAreaDropListener.manifest',
-    'ProcessSelector.js',
-    'ProcessSelector.manifest',
-    'SlowScriptDebug.js',
-    'SlowScriptDebug.manifest',
-]
+# Are we targeting PowerPC? If so, we can enable a SIMD version for
+# nsTextFragment.cpp as well.
+if CONFIG['CPU_ARCH'].startswith('ppc'):
+    SOURCES += ['nsTextFragmentVMX.cpp']
+    SOURCES['nsTextFragmentVMX.cpp'].flags += CONFIG['PPC_VMX_FLAGS']
 
 EXTRA_JS_MODULES += [
+    'ContentAreaDropListener.jsm',
     'DOMRequestHelper.jsm',
     'IndexedDBHelper.jsm',
+    'ProcessSelector.jsm',
+    'SlowScriptDebug.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 LOCAL_INCLUDES += [
@@ -460,10 +503,10 @@ LOCAL_INCLUDES += [
     '/dom/storage',
     '/dom/svg',
     '/dom/u2f',
-    '/dom/xbl',
     '/dom/xml',
     '/dom/xslt/xpath',
     '/dom/xul',
+    '/extensions/permissions',
     '/gfx/2d',
     '/image',
     '/js/xpconnect/loader',
@@ -476,10 +519,14 @@ LOCAL_INCLUDES += [
     '/layout/svg',
     '/layout/xul',
     '/netwerk/base',
+    '/netwerk/url-classifier',
     '/security/manager/ssl',
     '/widget',
     '/xpcom/ds',
 ]
+
+if CONFIG['MOZ_XBL']:
+    LOCAL_INCLUDES += ['/dom/xbl']
 
 if CONFIG['MOZ_WEBRTC']:
     LOCAL_INCLUDES += [
@@ -496,21 +543,8 @@ if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
 if CONFIG['MOZ_X11']:
     CXXFLAGS += CONFIG['TK_CFLAGS']
 
-GENERATED_FILES += [
-    'PropertyUseCounterMap.inc',
-    'UseCounterList.h',
-]
-
-countermap = GENERATED_FILES['PropertyUseCounterMap.inc']
-countermap.script = 'gen-usecounters.py:property_map'
-countermap.inputs = ['UseCounters.conf']
-
-counterlist = GENERATED_FILES['UseCounterList.h']
-counterlist.script = 'gen-usecounters.py:use_counter_list'
-counterlist.inputs = ['UseCounters.conf']
+GeneratedFile('UseCounterList.h', script='gen-usecounters.py',
+              entry_point='use_counter_list', inputs=['UseCounters.conf'])
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

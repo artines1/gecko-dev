@@ -1,26 +1,28 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
-  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
 
 // Test frame selection switching at toolbox level
 // when using the inspector
 
-const FrameURL = "data:text/html;charset=UTF-8," +
-                 encodeURI("<div id=\"frame\">frame</div>");
-const URL = "data:text/html;charset=UTF-8," +
-            encodeURI('<iframe src="' + FrameURL +
-                      '"></iframe><div id="top">top</div>');
+const FrameURL =
+  "data:text/html;charset=UTF-8," + encodeURI('<div id="frame">frame</div>');
+const URL =
+  "data:text/html;charset=UTF-8," +
+  encodeURI('<iframe src="' + FrameURL + '"></iframe><div id="top">top</div>');
 
 add_task(async function() {
   Services.prefs.setBoolPref("devtools.command-button-frames.enabled", true);
 
-  const {inspector, toolbox, testActor} = await openInspectorForURL(URL);
+  const { inspector, toolbox, testActor } = await openInspectorForURL(URL);
 
   // Verify we are on the top level document
-  ok((await testActor.hasNode("#top")),
-     "We have the test node on the top level document");
+  ok(
+    await testActor.hasNode("#top"),
+    "We have the test node on the top level document"
+  );
 
   assertMarkupViewIsLoaded(inspector);
 
@@ -29,19 +31,32 @@ add_task(async function() {
   ok(!btn.firstChild, "The frame list button doesn't have any children");
 
   // Open frame menu and wait till it's available on the screen.
-  const menu = await toolbox.showFramesMenu({target: btn});
-  await once(menu, "open");
+  const panel = toolbox.doc.getElementById("command-button-frames-panel");
+  btn.click();
+  ok(panel, "popup panel has created.");
+  await waitUntil(() => panel.classList.contains("tooltip-visible"));
 
   // Verify that the menu is popuplated.
-  const frames = menu.items.slice();
+  const menuList = toolbox.doc.getElementById("toolbox-frame-menu");
+  const frames = Array.prototype.slice.call(
+    menuList.querySelectorAll(".command")
+  );
   is(frames.length, 2, "We have both frames in the menu");
 
   frames.sort(function(a, b) {
-    return a.label.localeCompare(b.label);
+    return a.children[0].innerHTML.localeCompare(b.children[0].innerHTML);
   });
 
-  is(frames[0].label, FrameURL, "Got top level document in the list");
-  is(frames[1].label, URL, "Got iframe document in the list");
+  is(
+    frames[0].querySelector(".label").textContent,
+    FrameURL,
+    "Got top level document in the list"
+  );
+  is(
+    frames[1].querySelector(".label").textContent,
+    URL,
+    "Got iframe document in the list"
+  );
 
   // Listen to will-navigate to check if the view is empty
   const willNavigate = toolbox.target.once("will-navigate").then(() => {
@@ -62,10 +77,14 @@ add_task(async function() {
   info("Navigation to the iframe is done, the inspector should be back up");
 
   // Verify we are on page one
-  ok(!(await testActor.hasNode("iframe")),
-    "We not longer have access to the top frame elements");
-  ok((await testActor.hasNode("#frame")),
-    "But now have direct access to the iframe elements");
+  ok(
+    !(await testActor.hasNode("iframe")),
+    "We not longer have access to the top frame elements"
+  );
+  ok(
+    await testActor.hasNode("#frame"),
+    "But now have direct access to the iframe elements"
+  );
 
   // On page 2 load, verify we have the right content
   assertMarkupViewIsLoaded(inspector);
@@ -81,6 +100,10 @@ function assertMarkupViewIsLoaded(inspector) {
 }
 
 function assertMarkupViewIsEmpty(inspector) {
-  const markupViewBox = inspector.panelDoc.getElementById("markup-box");
-  is(markupViewBox.childNodes.length, 0, "The markup-view is unloaded");
+  const markupFrame = inspector._markupFrame;
+  is(
+    markupFrame.contentDocument.getElementById("root").childNodes.length,
+    0,
+    "The markup-view is unloaded"
+  );
 }

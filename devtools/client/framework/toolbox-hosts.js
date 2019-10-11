@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,10 +7,16 @@
 const EventEmitter = require("devtools/shared/event-emitter");
 const promise = require("promise");
 const Services = require("Services");
-const {DOMHelpers} = require("resource://devtools/client/shared/DOMHelpers.jsm");
+const {
+  DOMHelpers,
+} = require("resource://devtools/client/shared/DOMHelpers.jsm");
 
-loader.lazyRequireGetter(this, "AppConstants", "resource://gre/modules/AppConstants.jsm", true);
-loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
+loader.lazyRequireGetter(
+  this,
+  "gDevToolsBrowser",
+  "devtools/client/framework/devtools-browser",
+  true
+);
 
 /* A host should always allow this much space for the page to be displayed.
  * There is also a min-height on the browser, but we still don't want to set
@@ -51,25 +55,26 @@ BottomHost.prototype = {
 
     const gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
     const ownerDocument = gBrowser.ownerDocument;
-    this._nbox = gBrowser.getNotificationBox(this.hostTab.linkedBrowser);
+    this._browserContainer = gBrowser.getBrowserContainer(
+      this.hostTab.linkedBrowser
+    );
 
-    this._splitter = ownerDocument.createElement("splitter");
+    this._splitter = ownerDocument.createXULElement("splitter");
     this._splitter.setAttribute("class", "devtools-horizontal-splitter");
     // Avoid resizing notification containers
     this._splitter.setAttribute("resizebefore", "flex");
 
-    this.frame = ownerDocument.createElement("iframe");
-    this.frame.flex = 1; // Required to be able to shrink when the window shrinks
-    this.frame.className = "devtools-toolbox-bottom-iframe";
+    this.frame = createDevToolsFrame(
+      ownerDocument,
+      "devtools-toolbox-bottom-iframe"
+    );
     this.frame.height = Math.min(
       Services.prefs.getIntPref(this.heightPref),
-      this._nbox.clientHeight - MIN_PAGE_SIZE
+      this._browserContainer.clientHeight - MIN_PAGE_SIZE
     );
 
-    this._nbox.appendChild(this._splitter);
-    this._nbox.appendChild(this.frame);
-
-    this.frame.tooltip = "aHTMLTooltip";
+    this._browserContainer.appendChild(this._splitter);
+    this._browserContainer.appendChild(this.frame);
 
     // we have to load something so we can switch documents if we have to
     this.frame.setAttribute("src", "about:blank");
@@ -108,15 +113,15 @@ BottomHost.prototype = {
       this._destroyed = true;
 
       Services.prefs.setIntPref(this.heightPref, this.frame.height);
-      this._nbox.removeChild(this._splitter);
-      this._nbox.removeChild(this.frame);
+      this._browserContainer.removeChild(this._splitter);
+      this._browserContainer.removeChild(this.frame);
       this.frame = null;
-      this._nbox = null;
+      this._browserContainer = null;
       this._splitter = null;
     }
 
     return promise.resolve(null);
-  }
+  },
 };
 
 /**
@@ -138,30 +143,36 @@ class SidebarHost {
     await gDevToolsBrowser.loadBrowserStyleSheet(this.hostTab.ownerGlobal);
     const gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
     const ownerDocument = gBrowser.ownerDocument;
-    this._browser = gBrowser.getBrowserContainer(this.hostTab.linkedBrowser);
-    this._sidebar = gBrowser.getSidebarContainer(this.hostTab.linkedBrowser);
+    this._browserContainer = gBrowser.getBrowserContainer(
+      this.hostTab.linkedBrowser
+    );
+    this._browserPanel = gBrowser.getPanel(this.hostTab.linkedBrowser);
 
-    this._splitter = ownerDocument.createElement("splitter");
+    this._splitter = ownerDocument.createXULElement("splitter");
     this._splitter.setAttribute("class", "devtools-side-splitter");
 
-    this.frame = ownerDocument.createElement("iframe");
-    this.frame.flex = 1; // Required to be able to shrink when the window shrinks
-    this.frame.className = "devtools-toolbox-side-iframe";
-
+    this.frame = createDevToolsFrame(
+      ownerDocument,
+      "devtools-toolbox-side-iframe"
+    );
     this.frame.width = Math.min(
       Services.prefs.getIntPref(this.widthPref),
-      this._sidebar.clientWidth - MIN_PAGE_SIZE
+      this._browserPanel.clientWidth - MIN_PAGE_SIZE
     );
 
-    if (this.type == "right") {
-      this._sidebar.appendChild(this._splitter);
-      this._sidebar.appendChild(this.frame);
+    // We should consider the direction when changing the dock position.
+    const topWindow = this.hostTab.ownerDocument.defaultView.top;
+    const topDoc = topWindow.document.documentElement;
+    const isLTR = topWindow.getComputedStyle(topDoc).direction === "ltr";
+
+    if ((isLTR && this.type == "right") || (!isLTR && this.type == "left")) {
+      this._browserPanel.appendChild(this._splitter);
+      this._browserPanel.appendChild(this.frame);
     } else {
-      this._sidebar.insertBefore(this.frame, this._browser);
-      this._sidebar.insertBefore(this._splitter, this._browser);
+      this._browserPanel.insertBefore(this.frame, this._browserContainer);
+      this._browserPanel.insertBefore(this._splitter, this._browserContainer);
     }
 
-    this.frame.tooltip = "aHTMLTooltip";
     this.frame.setAttribute("src", "about:blank");
 
     const frame = await new Promise(resolve => {
@@ -198,8 +209,8 @@ class SidebarHost {
       this._destroyed = true;
 
       Services.prefs.setIntPref(this.widthPref, this.frame.width);
-      this._sidebar.removeChild(this._splitter);
-      this._sidebar.removeChild(this.frame);
+      this._browserPanel.removeChild(this._splitter);
+      this._browserPanel.removeChild(this.frame);
     }
 
     return promise.resolve(null);
@@ -244,23 +255,32 @@ WindowHost.prototype = {
   create: function() {
     return new Promise(resolve => {
       const flags = "chrome,centerscreen,resizable,dialog=no";
-      const win = Services.ww.openWindow(null, this.WINDOW_URL, "_blank",
-                                      flags, null);
+      const win = Services.ww.openWindow(
+        null,
+        this.WINDOW_URL,
+        "_blank",
+        flags,
+        null
+      );
 
       const frameLoad = () => {
         win.removeEventListener("load", frameLoad, true);
         win.focus();
 
-        let key;
-        if (AppConstants.platform === "macosx") {
-          key = win.document.getElementById("toolbox-key-toggle-osx");
-        } else {
-          key = win.document.getElementById("toolbox-key-toggle");
-        }
-        key.removeAttribute("disabled");
+        this.frame = createDevToolsFrame(
+          win.document,
+          "devtools-toolbox-window-iframe"
+        );
+        win.document
+          .getElementById("devtools-toolbox-window")
+          .appendChild(this.frame);
 
-        this.frame = win.document.getElementById("toolbox-iframe");
-        this.emit("ready", this.frame);
+        // The forceOwnRefreshDriver attribute is set to avoid Windows only issues with
+        // CSS transitions when switching from docked to window hosts.
+        // Added in Bug 832920, should be reviewed in Bug 1542468.
+        this.frame.setAttribute("forceOwnRefreshDriver", "");
+
+        this.frame.setAttribute("src", "about:blank");
         resolve(this.frame);
       };
 
@@ -309,7 +329,7 @@ WindowHost.prototype = {
     }
 
     return promise.resolve(null);
-  }
+  },
 };
 
 /**
@@ -369,7 +389,36 @@ CustomHost.prototype = {
       this._sendMessageToTopWindow("close");
     }
     return promise.resolve(null);
-  }
+  },
+};
+
+/**
+ * Host object for the toolbox as a page.
+ * This is typically used by `about:debugging`, when opening toolbox in a new tab,
+ * via `about:devtools-toolbox` URLs.
+ * The `iframe` ends up being the tab's browser element.
+ */
+function PageHost(hostTab, options) {
+  this.frame = options.customIframe;
+}
+
+PageHost.prototype = {
+  type: "page",
+
+  create: function() {
+    return promise.resolve(this.frame);
+  },
+
+  // Do nothing.
+  raise: function() {},
+
+  // Do nothing.
+  setTitle: function(title) {},
+
+  // Do nothing.
+  destroy: function() {
+    return promise.resolve(null);
+  },
 };
 
 /**
@@ -381,11 +430,29 @@ function focusTab(tab) {
   browserWindow.gBrowser.selectedTab = tab;
 }
 
-exports.Hosts = {
-  "bottom": BottomHost,
-  "left": LeftHost,
-  "right": RightHost,
-  "window": WindowHost,
-  "custom": CustomHost
-};
+/**
+ * Create an iframe that can be used to load DevTools via about:devtools-toolbox.
+ */
+function createDevToolsFrame(doc, className) {
+  let frame;
+  if (Services.prefs.getBoolPref("devtools.toolbox.content-frame", false)) {
+    frame = doc.createXULElement("browser");
+    frame.setAttribute("type", "content");
+  } else {
+    frame = doc.createXULElement("iframe");
+  }
 
+  frame.flex = 1; // Required to be able to shrink when the window shrinks
+  frame.className = className;
+  frame.tooltip = "aHTMLTooltip";
+  return frame;
+}
+
+exports.Hosts = {
+  bottom: BottomHost,
+  left: LeftHost,
+  right: RightHost,
+  window: WindowHost,
+  custom: CustomHost,
+  page: PageHost,
+};

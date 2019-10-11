@@ -1,6 +1,5 @@
 # This directory contains tests for "display: -webkit-box" and associated
-# CSS properties. These tests require webkit prefix support to be enabled.
-default-preferences pref(layout.css.prefixes.webkit,true)
+# CSS properties.
 
 # Tests for abspos children inside of a -webkit-box:
 == webkit-box-abspos-children-1.html webkit-box-abspos-children-1-ref.html
@@ -10,8 +9,8 @@ default-preferences pref(layout.css.prefixes.webkit,true)
 # WebKit/Blink on them.  (The reference case represents the WebKit/Blink
 # rendering.) We could probably make them pass by implementing some quirks, if
 # it turns out that the web depends on WebKit/Blink's behavior in these cases.
-== webkit-box-anon-flex-items-1a.html webkit-box-anon-flex-items-1-ref.html
-== webkit-box-anon-flex-items-1b.html webkit-box-anon-flex-items-1-ref.html
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == webkit-box-anon-flex-items-1a.html webkit-box-anon-flex-items-1-ref.html # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == webkit-box-anon-flex-items-1b.html webkit-box-anon-flex-items-1-ref.html # Bug 1392106
 fails == webkit-box-anon-flex-items-2.html webkit-box-anon-flex-items-2-ref.html
 fails == webkit-box-anon-flex-items-3.html webkit-box-anon-flex-items-3-ref.html
 

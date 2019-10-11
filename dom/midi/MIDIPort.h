@@ -13,7 +13,6 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/MIDIAccess.h"
-#include "mozilla/dom/MIDIPortBinding.h"
 #include "mozilla/dom/MIDIPortInterface.h"
 
 struct JSContext;
@@ -34,24 +33,18 @@ class MIDIMessage;
  *
  */
 class MIDIPort : public DOMEventTargetHelper,
-                 public MIDIAccessDestructionObserver
-{
-public:
+                 public MIDIAccessDestructionObserver {
+ public:
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(MIDIPort, DOMEventTargetHelper)
-protected:
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(MIDIPort,
+                                                         DOMEventTargetHelper)
+ protected:
   MIDIPort(nsPIDOMWindowInner* aWindow, MIDIAccess* aMIDIAccessParent);
   bool Initialize(const MIDIPortInfo& aPortInfo, bool aSysexEnabled);
   virtual ~MIDIPort();
-public:
-  nsPIDOMWindowInner*
-  GetParentObject() const
-  {
-    return GetOwner();
-  }
 
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto) override;
+ public:
+  nsPIDOMWindowInner* GetParentObject() const { return GetOwner(); }
 
   // Getters
   void GetId(nsString& aRetVal) const;
@@ -79,10 +72,11 @@ public:
   void UnsetIPCPort();
 
   IMPL_EVENT_HANDLER(statechange)
-protected:
+ protected:
   // IPC Actor corresponding to this class
   RefPtr<MIDIPortChild> mPort;
-private:
+
+ private:
   // MIDIAccess object that created this MIDIPort object, which we need for
   // firing port connection events. There is a chance this MIDIPort object can
   // outlive its parent MIDIAccess object, so this is a weak reference that must
@@ -93,12 +87,12 @@ private:
   // Promise object generated on Open() call, that needs to be resolved once the
   // platform specific Open() function has completed.
   RefPtr<Promise> mOpeningPromise;
-  // Promise object generated on Close() call, that needs to be resolved once the
-  // platform specific Close() function has completed.
+  // Promise object generated on Close() call, that needs to be resolved once
+  // the platform specific Close() function has completed.
   RefPtr<Promise> mClosingPromise;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_MIDIPort_h
+#endif  // mozilla_dom_MIDIPort_h

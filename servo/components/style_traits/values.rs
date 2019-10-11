@@ -1,12 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Helper types and traits for the handling of CSS values.
 
 use app_units::Au;
-use cssparser::{ParseError, Parser, Token, UnicodeRange, serialize_string};
 use cssparser::ToCss as CssparserToCss;
+use cssparser::{serialize_string, ParseError, Parser, Token, UnicodeRange};
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 
@@ -37,6 +37,10 @@ use std::fmt::{self, Write};
 /// * if `#[css(skip_if = "function")]` is found on a field, the `ToCss` call
 ///   for that field is skipped if `function` returns true. This function is
 ///   provided the field as an argument;
+/// * if `#[css(contextual_skip_if = "function")]` is found on a field, the
+///   `ToCss` call for that field is skipped if `function` returns true. This
+///   function is given all the fields in the current struct or variant as an
+///   argument;
 /// * `#[css(represents_keyword)]` can be used on bool fields in order to
 ///   serialize the field name if the field is true, or nothing otherwise.  It
 ///   also collects those keywords for `SpecifiedValueInfo`.
@@ -44,7 +48,9 @@ use std::fmt::{self, Write};
 ///   implement `Debug` by a single call to `ToCss::to_css`.
 pub trait ToCss {
     /// Serialize `self` in CSS syntax, writing to `dest`.
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write;
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write;
 
     /// Serialize `self` in CSS syntax and return a string.
     ///
@@ -57,22 +63,44 @@ pub trait ToCss {
     }
 }
 
-impl<'a, T> ToCss for &'a T where T: ToCss + ?Sized {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+impl<'a, T> ToCss for &'a T
+where
+    T: ToCss + ?Sized,
+{
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         (*self).to_css(dest)
+    }
+}
+
+impl ToCss for crate::owned_str::OwnedStr {
+    #[inline]
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        serialize_string(self, dest)
     }
 }
 
 impl ToCss for str {
     #[inline]
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         serialize_string(self, dest)
     }
 }
 
 impl ToCss for String {
     #[inline]
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         serialize_string(self, dest)
     }
 }
@@ -82,7 +110,10 @@ where
     T: ToCss,
 {
     #[inline]
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         self.as_ref().map_or(Ok(()), |value| value.to_css(dest))
     }
 }
@@ -103,7 +134,10 @@ where
     /// Creates a new `CssWriter`.
     #[inline]
     pub fn new(inner: &'w mut W) -> Self {
-        Self { inner, prefix: Some("") }
+        Self {
+            inner,
+            prefix: Some(""),
+        }
     }
 }
 
@@ -138,24 +172,6 @@ where
     }
 }
 
-#[macro_export]
-macro_rules! serialize_function {
-    ($dest: expr, $name: ident($( $arg: expr, )+)) => {
-        serialize_function!($dest, $name($($arg),+))
-    };
-    ($dest: expr, $name: ident($first_arg: expr $( , $arg: expr )*)) => {
-        {
-            $dest.write_str(concat!(stringify!($name), "("))?;
-            $first_arg.to_css($dest)?;
-            $(
-                $dest.write_str(", ")?;
-                $arg.to_css($dest)?;
-            )*
-            $dest.write_char(')')
-        }
-    }
-}
-
 /// Convenience wrapper to serialise CSS values separated by a given string.
 pub struct SequenceWriter<'a, 'b: 'a, W: 'b> {
     inner: &'a mut CssWriter<'b, W>,
@@ -179,7 +195,7 @@ where
     #[inline]
     fn write_item<F>(&mut self, f: F) -> fmt::Result
     where
-        F: FnOnce(&mut CssWriter<'b, W>) -> fmt::Result
+        F: FnOnce(&mut CssWriter<'b, W>) -> fmt::Result,
     {
         let old_prefix = self.inner.prefix;
         if old_prefix.is_none() {
@@ -192,7 +208,7 @@ where
         match (old_prefix, self.inner.prefix) {
             (_, None) => {
                 // This call produced output and cleaned up after itself.
-            }
+            },
             (None, Some(p)) => {
                 // Some previous call to `item` produced output,
                 // but this one did not, prefix should be the same as
@@ -201,12 +217,12 @@ where
                 // We clean up here even though it's not necessary just
                 // to be able to do all these assertion checks.
                 self.inner.prefix = None;
-            }
+            },
             (Some(old), Some(new)) => {
                 // No previous call to `item` produced output, and this one
                 // either.
                 debug_assert_eq!(old, new);
-            }
+            },
         }
         Ok(())
     }
@@ -282,7 +298,7 @@ impl Separator for Comma {
         parse_one: F,
     ) -> Result<Vec<T>, ParseError<'i, E>>
     where
-        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>
+        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
     {
         input.parse_comma_separated(parse_one)
     }
@@ -298,16 +314,16 @@ impl Separator for Space {
         mut parse_one: F,
     ) -> Result<Vec<T>, ParseError<'i, E>>
     where
-        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>
+        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
     {
-        input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+        input.skip_whitespace(); // Unnecessary for correctness, but may help try() rewind less.
         let mut results = vec![parse_one(input)?];
         loop {
-            input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+            input.skip_whitespace(); // Unnecessary for correctness, but may help try() rewind less.
             if let Ok(item) = input.try(&mut parse_one) {
                 results.push(item);
             } else {
-                return Ok(results)
+                return Ok(results);
             }
         }
     }
@@ -323,15 +339,15 @@ impl Separator for CommaWithSpace {
         mut parse_one: F,
     ) -> Result<Vec<T>, ParseError<'i, E>>
     where
-        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>
+        F: for<'tt> FnMut(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
     {
-        input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+        input.skip_whitespace(); // Unnecessary for correctness, but may help try() rewind less.
         let mut results = vec![parse_one(input)?];
         loop {
-            input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+            input.skip_whitespace(); // Unnecessary for correctness, but may help try() rewind less.
             let comma_location = input.current_source_location();
             let comma = input.try(|i| i.expect_comma()).is_ok();
-            input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+            input.skip_whitespace(); // Unnecessary for correctness, but may help try() rewind less.
             if let Ok(item) = input.try(&mut parse_one) {
                 results.push(item);
             } else if comma {
@@ -355,8 +371,14 @@ impl OneOrMoreSeparated for UnicodeRange {
     type S = Comma;
 }
 
-impl<T> ToCss for Vec<T> where T: ToCss + OneOrMoreSeparated {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+impl<T> ToCss for Vec<T>
+where
+    T: ToCss + OneOrMoreSeparated,
+{
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         let mut iter = self.iter();
         iter.next().unwrap().to_css(dest)?;
         for item in iter {
@@ -367,24 +389,35 @@ impl<T> ToCss for Vec<T> where T: ToCss + OneOrMoreSeparated {
     }
 }
 
-impl<T> ToCss for Box<T> where T: ?Sized + ToCss {
+impl<T> ToCss for Box<T>
+where
+    T: ?Sized + ToCss,
+{
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-        where W: Write,
+    where
+        W: Write,
     {
         (**self).to_css(dest)
     }
 }
 
-impl<T> ToCss for Arc<T> where T: ?Sized + ToCss {
+impl<T> ToCss for Arc<T>
+where
+    T: ?Sized + ToCss,
+{
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-        where W: Write,
+    where
+        W: Write,
     {
         (**self).to_css(dest)
     }
 }
 
 impl ToCss for Au {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         self.to_f64_px().to_css(dest)?;
         dest.write_str("px")
     }
@@ -393,7 +426,10 @@ impl ToCss for Au {
 macro_rules! impl_to_css_for_predefined_type {
     ($name: ty) => {
         impl<'a> ToCss for $name {
-            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+            fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+            where
+                W: Write,
+            {
                 ::cssparser::ToCss::to_css(self, dest)
             }
         }
@@ -410,12 +446,12 @@ impl_to_css_for_predefined_type!(::cssparser::RGBA);
 impl_to_css_for_predefined_type!(::cssparser::Color);
 impl_to_css_for_predefined_type!(::cssparser::UnicodeRange);
 
-#[macro_export]
+/// Define an enum type with unit variants that each correspond to a CSS keyword.
 macro_rules! define_css_keyword_enum {
     (pub enum $name:ident { $($variant:ident = $css:expr,)+ }) => {
         #[allow(missing_docs)]
         #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-        #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToShmem)]
         pub enum $name {
             $($variant),+
         }
@@ -467,11 +503,11 @@ macro_rules! define_css_keyword_enum {
 
 /// Helper types for the handling of specified values.
 pub mod specified {
-    use ParsingMode;
+    use crate::ParsingMode;
 
     /// Whether to allow negative lengths or not.
     #[repr(u8)]
-    #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, PartialOrd)]
+    #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, PartialOrd, ToShmem)]
     pub enum AllowedNumericType {
         /// Allow all kind of numeric values.
         All,

@@ -11,7 +11,6 @@ UNIFIED_SOURCES += [
     'src/base/at_exit.cc',
     'src/base/command_line.cc',
     'src/base/file_path.cc',
-    'src/base/file_util.cc',
     'src/base/histogram.cc',
     'src/base/logging.cc',
     'src/base/message_loop.cc',
@@ -35,13 +34,11 @@ UNIFIED_SOURCES += [
 if os_win:
     SOURCES += [
         'src/base/condition_variable_win.cc',
-        'src/base/file_util_win.cc',
         'src/base/lock_impl_win.cc',
         'src/base/message_pump_win.cc',
         'src/base/object_watcher.cc',
         'src/base/platform_thread_win.cc',
         'src/base/process_util_win.cc',
-        'src/base/rand_util_win.cc',
         'src/base/shared_memory_win.cc',
         'src/base/sys_string_conversions_win.cc',
         'src/base/thread_local_win.cc',
@@ -58,12 +55,10 @@ elif not CONFIG['MOZ_SYSTEM_LIBEVENT']:
 if os_posix:
     UNIFIED_SOURCES += [
         'src/base/condition_variable_posix.cc',
-        'src/base/file_util_posix.cc',
         'src/base/lock_impl_posix.cc',
         'src/base/message_pump_libevent.cc',
         'src/base/platform_thread_posix.cc',
         'src/base/process_util_posix.cc',
-        'src/base/rand_util_posix.cc',
         'src/base/shared_memory_posix.cc',
         'src/base/string16.cc',
         'src/base/thread_local_posix.cc',
@@ -76,7 +71,6 @@ if os_posix:
 if os_macosx:
     UNIFIED_SOURCES += [
         'src/base/chrome_application_mac.mm',
-        'src/base/file_util_mac.mm',
         'src/base/mac_util.mm',
         'src/base/message_pump_mac.mm',
         'src/base/process_util_mac.mm',
@@ -94,21 +88,12 @@ if os_macosx:
 
 if os_bsd:
     SOURCES += [
-        'src/base/atomicops_internals_x86_gcc.cc',
+        'src/base/process_util_linux.cc',
         'src/base/time_posix.cc',
     ]
-    if CONFIG['OS_ARCH'] == 'GNU_kFreeBSD':
-        SOURCES += [
-            'src/base/process_util_linux.cc'
-        ]
-    else:
-        SOURCES += [
-            'src/base/process_util_bsd.cc'
-        ]
 
 if os_linux:
     SOURCES += [
-        'src/base/atomicops_internals_x86_gcc.cc',
         'src/base/process_util_linux.cc',
         'src/base/time_posix.cc',
     ]
@@ -120,21 +105,15 @@ if os_linux:
         DEFINES['_POSIX_MONOTONIC_CLOCK'] = 0
 
 if os_bsd or os_linux:
-    if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
+    if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
         SOURCES += [
             'src/base/message_pump_glib.cc',
         ]
 
 if os_solaris:
     SOURCES += [
-        'src/base/atomicops_internals_x86_gcc.cc',
         'src/base/process_util_linux.cc',
         'src/base/time_posix.cc',
-    ]
-
-if not CONFIG['INTEL_ARCHITECTURE'] and CONFIG['CPU_ARCH'] not in ('arm', 'aarch64', 'mips32', 'mips64', 'ppc', 'ppc64'):
-    SOURCES += [
-        'src/base/atomicops_internals_mutex.cc',
     ]
 
 CXXFLAGS += CONFIG['TK_CFLAGS']
@@ -143,15 +122,5 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-DIRS += [
-    'atomics',
-]
-
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
-
-# Add libFuzzer configuration directives
-include('/tools/fuzzing/libfuzzer-config.mozbuild')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

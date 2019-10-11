@@ -18,39 +18,32 @@ namespace dom {
 class AudioContext;
 struct OscillatorOptions;
 
-class OscillatorNode final : public AudioScheduledSourceNode
-                           , public MainThreadMediaStreamListener
-{
-public:
-  static already_AddRefed<OscillatorNode>
-  Create(AudioContext& aAudioContext, const OscillatorOptions& aOptions,
-         ErrorResult& aRv);
+class OscillatorNode final : public AudioScheduledSourceNode,
+                             public MainThreadMediaTrackListener {
+ public:
+  static already_AddRefed<OscillatorNode> Create(
+      AudioContext& aAudioContext, const OscillatorOptions& aOptions,
+      ErrorResult& aRv);
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(OscillatorNode, AudioScheduledSourceNode)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(OscillatorNode,
+                                           AudioScheduledSourceNode)
 
-  static already_AddRefed<OscillatorNode>
-  Constructor(const GlobalObject& aGlobal, AudioContext& aAudioContext,
-              const OscillatorOptions& aOptions, ErrorResult& aRv)
-  {
+  static already_AddRefed<OscillatorNode> Constructor(
+      const GlobalObject& aGlobal, AudioContext& aAudioContext,
+      const OscillatorOptions& aOptions, ErrorResult& aRv) {
     return Create(aAudioContext, aOptions, aRv);
   }
 
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
 
-  void DestroyMediaStream() override;
+  void DestroyMediaTrack() override;
 
-  uint16_t NumberOfInputs() const final
-  {
-    return 0;
-  }
+  uint16_t NumberOfInputs() const final { return 0; }
 
-  OscillatorType Type() const
-  {
-    return mType;
-  }
-  void SetType(OscillatorType aType, ErrorResult& aRv)
-  {
+  OscillatorType Type() const { return mType; }
+  void SetType(OscillatorType aType, ErrorResult& aRv) {
     if (aType == OscillatorType::Custom) {
       // ::Custom can only be set by setPeriodicWave().
       // https://github.com/WebAudio/web-audio-api/issues/105 for exception.
@@ -58,45 +51,35 @@ public:
       return;
     }
     mType = aType;
-    SendTypeToStream();
+    SendTypeToTrack();
   }
 
-  AudioParam* Frequency() const
-  {
-    return mFrequency;
-  }
-  AudioParam* Detune() const
-  {
-    return mDetune;
-  }
+  AudioParam* Frequency() const { return mFrequency; }
+  AudioParam* Detune() const { return mDetune; }
 
   void Start(double aWhen, ErrorResult& aRv) override;
   void Stop(double aWhen, ErrorResult& aRv) override;
 
-  void SetPeriodicWave(PeriodicWave& aPeriodicWave)
-  {
+  void SetPeriodicWave(PeriodicWave& aPeriodicWave) {
     mPeriodicWave = &aPeriodicWave;
-    // SendTypeToStream will call SendPeriodicWaveToStream for us.
+    // SendTypeToTrack will call SendPeriodicWaveToTrack for us.
     mType = OscillatorType::Custom;
-    SendTypeToStream();
+    SendTypeToTrack();
   }
 
-  void NotifyMainThreadStreamFinished() override;
+  void NotifyMainThreadTrackEnded() override;
 
-  const char* NodeType() const override
-  {
-    return "OscillatorNode";
-  }
+  const char* NodeType() const override { return "OscillatorNode"; }
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override;
 
-private:
+ private:
   explicit OscillatorNode(AudioContext* aContext);
   ~OscillatorNode() = default;
 
-  void SendTypeToStream();
-  void SendPeriodicWaveToStream();
+  void SendTypeToTrack();
+  void SendPeriodicWaveToTrack();
 
   OscillatorType mType;
   RefPtr<PeriodicWave> mPeriodicWave;
@@ -105,7 +88,7 @@ private:
   bool mStartCalled;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

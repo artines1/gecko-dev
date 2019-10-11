@@ -4,19 +4,29 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-XPIDL_SOURCES += [
-    'nsISessionStoreUtils.idl',
-]
-
-XPIDL_MODULE = 'toolkit_sessionstore'
-
-EXPORTS += [
-    'nsSessionStoreUtils.h',
+EXPORTS.mozilla.dom += [
+    'SessionStoreData.h',
+    'SessionStoreListener.h',
+    'SessionStoreMessageUtils.h',
+    'SessionStoreUtils.h',
 ]
 
 UNIFIED_SOURCES += [
-    'nsSessionStoreUtils.cpp',
+    'SessionStoreListener.cpp',
+    'SessionStoreUtils.cpp',
 ]
+
+EXTRA_JS_MODULES += [
+    'SessionStoreFunctions.jsm',
+]
+
+XPIDL_MODULE = 'sessionStore_funcs'
+
+XPIDL_SOURCES += [
+    'SessionStoreFunctions.idl',
+]
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 

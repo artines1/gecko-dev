@@ -15,14 +15,14 @@
 
 namespace mozilla {
 
-class MOZ_RAII AutoProfilerStyleMarker
-{
-public:
-  explicit AutoProfilerStyleMarker(UniqueProfilerBacktrace aCause)
-    : mActive(profiler_is_active())
-    , mStartTime(TimeStamp::Now())
-    , mCause(std::move(aCause))
-  {
+class MOZ_RAII AutoProfilerStyleMarker {
+ public:
+  explicit AutoProfilerStyleMarker(UniqueProfilerBacktrace aCause,
+                                   const Maybe<uint64_t>& aInnerWindowID)
+      : mActive(profiler_can_accept_markers()),
+        mStartTime(TimeStamp::Now()),
+        mCause(std::move(aCause)),
+        mInnerWindowID(aInnerWindowID) {
     if (!mActive) {
       return;
     }
@@ -32,23 +32,24 @@ public:
     ServoTraversalStatistics::sActive = true;
   }
 
-  ~AutoProfilerStyleMarker()
-  {
+  ~AutoProfilerStyleMarker() {
     if (!mActive) {
       return;
     }
     ServoTraversalStatistics::sActive = false;
-    profiler_add_marker("Styles", MakeUnique<StyleMarkerPayload>(
-      mStartTime, TimeStamp::Now(), std::move(mCause),
-      ServoTraversalStatistics::sSingleton));
+    PROFILER_ADD_MARKER_WITH_PAYLOAD(
+        "Styles", LAYOUT, StyleMarkerPayload,
+        (mStartTime, TimeStamp::Now(), std::move(mCause),
+         ServoTraversalStatistics::sSingleton, mInnerWindowID));
   }
 
-private:
+ private:
   bool mActive;
   TimeStamp mStartTime;
   UniqueProfilerBacktrace mCause;
+  Maybe<uint64_t> mInnerWindowID;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_AutoProfilerStyleMarker_h
+#endif  // mozilla_AutoProfilerStyleMarker_h

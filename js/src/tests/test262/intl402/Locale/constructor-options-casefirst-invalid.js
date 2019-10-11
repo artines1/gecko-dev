@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -31,10 +30,10 @@ const invalidCaseFirstOptions = [
   "true",
   { valueOf() { return false; } },
 ];
-for (const invalidCaseFirstOption of invalidCaseFirstOptions) {
+for (const caseFirst of invalidCaseFirstOptions) {
   assert.throws(RangeError, function() {
-    new Intl.Locale("en", {caseFirst: invalidCaseFirstOption});
-  }, `${invalidCaseFirstOption} is an invalid caseFirst option value`);
+    new Intl.Locale("en", {caseFirst});
+  }, `new Intl.Locale("en", {caseFirst: "${caseFirst}"}) throws RangeError`);
 }
 
 reportCompare(0, 0);

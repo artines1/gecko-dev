@@ -13,7 +13,7 @@ function markArrayElementsAsUsed(context, node, expression) {
   if (expression.type != "ArrayExpression") {
     context.report({
       node,
-      message: "Unexpected assignment of non-Array to EXPORTED_SYMBOLS"
+      message: "Unexpected assignment of non-Array to EXPORTED_SYMBOLS",
     });
     return;
   }
@@ -43,11 +43,13 @@ module.exports = function(context) {
 
   return {
     AssignmentExpression(node, parents) {
-      if (node.operator === "=" &&
-          node.left.type === "MemberExpression" &&
-          node.left.object.type === "ThisExpression" &&
-          node.left.property.name === "EXPORTED_SYMBOLS" &&
-          isGlobalScope()) {
+      if (
+        node.operator === "=" &&
+        node.left.type === "MemberExpression" &&
+        node.left.object.type === "ThisExpression" &&
+        node.left.property.name === "EXPORTED_SYMBOLS" &&
+        isGlobalScope()
+      ) {
         markArrayElementsAsUsed(context, node, node.right);
       }
     },
@@ -58,21 +60,24 @@ module.exports = function(context) {
       }
 
       for (let item of node.declarations) {
-        if (item.id &&
-            item.id.type == "Identifier" &&
-            item.id.name === "EXPORTED_SYMBOLS") {
+        if (
+          item.id &&
+          item.id.type == "Identifier" &&
+          item.id.name === "EXPORTED_SYMBOLS"
+        ) {
           if (node.kind === "let") {
             // The use of 'let' isn't allowed as the lexical scope may die after
             // the script executes.
             context.report({
               node,
-              message: "EXPORTED_SYMBOLS cannot be declared via `let`. Use `var` or `this.EXPORTED_SYMBOLS =`"
+              message:
+                "EXPORTED_SYMBOLS cannot be declared via `let`. Use `var` or `this.EXPORTED_SYMBOLS =`",
             });
           }
 
           markArrayElementsAsUsed(context, node, item.init);
         }
       }
-    }
+    },
   };
 };

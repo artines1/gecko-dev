@@ -5,23 +5,21 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
 EXPORTS.mozilla.dom += [
-    'AudioWorkletGlobalScope.h',
-    'PaintWorkletGlobalScope.h',
     'Worklet.h',
     'WorkletGlobalScope.h',
-    'WorkletPrincipal.h',
+    'WorkletImpl.h',
+    'WorkletPrincipals.h',
     'WorkletThread.h',
 ]
 
 UNIFIED_SOURCES += [
-    'AudioWorkletGlobalScope.cpp',
-    'PaintWorkletGlobalScope.cpp',
     'Worklet.cpp',
     'WorkletGlobalScope.cpp',
-    'WorkletPrincipal.cpp',
+    'WorkletImpl.cpp',
+    'WorkletPrincipals.cpp',
     'WorkletThread.cpp',
 ]
 

@@ -13,41 +13,38 @@
 namespace mozilla {
 
 /**
- * This is the enum used by nsIDocument::FlushPendingNotifications to
+ * This is the enum used by Document::FlushPendingNotifications to
  * decide what to flush.
  *
  * Please note that if you change these values, you should sync it with the
  * flushTypeNames array inside PresShell::FlushPendingNotifications.
  */
 enum class FlushType : uint8_t {
-  None             = 0, /* Actually don't flush anything */
-  Event            = 1, /* Flush pending events before notify other observers */
-  Content          = 2, /* flush the content model construction */
-  ContentAndNotify = 3, /* As above, plus flush the frame model
-                           construction and other nsIMutationObserver
-                           notifications. */
-  Style            = 4, /* As above, plus flush style reresolution */
-  Frames           = Style,
-  EnsurePresShellInitAndFrames = 5, /* As above, plus ensure the pres shell is alive */
-  InterruptibleLayout = 6, /* As above, plus flush reflow,
-                              but allow it to be interrupted (so
-                              an incomplete layout may result) */
-  Layout           = 7, /* As above, but layout must run to
-                           completion */
-  Display          = 8, /* As above, plus flush painting */
+  None,             /* Actually don't flush anything */
+  Event,            /* Flush pending events before notify other observers */
+  Content,          /* flush the content model construction */
+  ContentAndNotify, /* As above, plus flush the frame model
+                       construction and other nsIMutationObserver
+                       notifications. */
+  Style,            /* As above, plus flush style reresolution */
+  Frames,           /* As above, plus flush frame construction */
+  EnsurePresShellInitAndFrames, /* As above, plus ensure the pres shell is alive
+                                 */
+  InterruptibleLayout, /* As above, plus flush reflow, but allow it to be
+                          interrupted (so an incomplete layout may result) */
+  Layout,              /* As above, but layout must run to completion */
+  Display,             /* As above, plus flush painting */
   Count
 };
 
 struct ChangesToFlush {
   ChangesToFlush(FlushType aFlushType, bool aFlushAnimations)
-    : mFlushType(aFlushType)
-    , mFlushAnimations(aFlushAnimations)
-  {}
+      : mFlushType(aFlushType), mFlushAnimations(aFlushAnimations) {}
 
   FlushType mFlushType;
   bool mFlushAnimations;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_FlushType_h
+#endif  // mozilla_FlushType_h

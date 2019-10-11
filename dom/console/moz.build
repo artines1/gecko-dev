@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
 XPIDL_SOURCES += [
     'nsIConsoleAPIStorage.idl',
@@ -34,9 +34,12 @@ UNIFIED_SOURCES += [
     'ConsoleUtils.cpp',
 ]
 
-EXTRA_COMPONENTS += [
-    'ConsoleAPI.manifest',
-    'ConsoleAPIStorage.js',
+EXTRA_JS_MODULES += [
+    'ConsoleAPIStorage.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 LOCAL_INCLUDES += [
@@ -48,5 +51,7 @@ LOCAL_INCLUDES += [
 MOCHITEST_MANIFESTS += [ 'tests/mochitest.ini' ]
 MOCHITEST_CHROME_MANIFESTS += [ 'tests/chrome.ini' ]
 XPCSHELL_TESTS_MANIFESTS += ['tests/xpcshell/xpcshell.ini']
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'

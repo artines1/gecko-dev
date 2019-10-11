@@ -1,19 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
-<%helpers:shorthand name="mask" products="gecko" extra_prefixes="webkit"
+<%helpers:shorthand name="mask" engines="gecko" extra_prefixes="webkit"
                     flags="SHORTHAND_IN_GETCS"
                     sub_properties="mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x
                                     mask-position-y mask-size mask-image"
                     spec="https://drafts.fxtf.org/css-masking/#propdef-mask">
-    use properties::longhands::{mask_mode, mask_repeat, mask_clip, mask_origin, mask_composite, mask_position_x,
+    use crate::properties::longhands::{mask_mode, mask_repeat, mask_clip, mask_origin, mask_composite, mask_position_x,
                                 mask_position_y};
-    use properties::longhands::{mask_size, mask_image};
-    use values::specified::{Position, PositionComponent};
-    use parser::Parse;
+    use crate::properties::longhands::{mask_size, mask_image};
+    use crate::values::specified::{Position, PositionComponent};
+    use crate::parser::Parse;
 
     // FIXME(emilio): These two mask types should be the same!
     impl From<mask_origin::single_value::SpecifiedValue> for mask_clip::single_value::SpecifiedValue {
@@ -25,7 +25,7 @@
                     mask_clip::single_value::SpecifiedValue::PaddingBox ,
                 mask_origin::single_value::SpecifiedValue::BorderBox =>
                     mask_clip::single_value::SpecifiedValue::BorderBox,
-                % if product == "gecko":
+                % if engine == "gecko":
                 mask_origin::single_value::SpecifiedValue::FillBox =>
                     mask_clip::single_value::SpecifiedValue::FillBox ,
                 mask_origin::single_value::SpecifiedValue::StrokeBox =>
@@ -42,11 +42,11 @@
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
         % for name in "image mode position_x position_y size repeat origin clip composite".split():
-            // Vec grows from 0 to 4 by default on first push().  So allocate
-            // with capacity 1, so in the common case of only one item we don't
-            // way overallocate.  Note that we always push at least one item if
-            // parsing succeeds.
-            let mut mask_${name} = mask_${name}::SpecifiedValue(Vec::with_capacity(1));
+        // Vec grows from 0 to 4 by default on first push().  So allocate with
+        // capacity 1, so in the common case of only one item we don't way
+        // overallocate, then shrink.  Note that we always push at least one
+        // item if parsing succeeds.
+        let mut mask_${name} = Vec::with_capacity(1);
         % endfor
 
         input.parse_comma_separated(|input| {
@@ -96,17 +96,17 @@
             % endfor
             if any {
                 if let Some(position) = position {
-                    mask_position_x.0.push(position.horizontal);
-                    mask_position_y.0.push(position.vertical);
+                    mask_position_x.push(position.horizontal);
+                    mask_position_y.push(position.vertical);
                 } else {
-                    mask_position_x.0.push(PositionComponent::zero());
-                    mask_position_y.0.push(PositionComponent::zero());
+                    mask_position_x.push(PositionComponent::zero());
+                    mask_position_y.push(PositionComponent::zero());
                 }
                 % for name in "image mode size repeat origin clip composite".split():
                     if let Some(m_${name}) = ${name} {
-                        mask_${name}.0.push(m_${name});
+                        mask_${name}.push(m_${name});
                     } else {
-                        mask_${name}.0.push(mask_${name}::single_value
+                        mask_${name}.push(mask_${name}::single_value
                                                         ::get_initial_specified_value());
                     }
                 % endfor
@@ -118,15 +118,15 @@
 
         Ok(expanded! {
             % for name in "image mode position_x position_y size repeat origin clip composite".split():
-                mask_${name}: mask_${name},
+                mask_${name}: mask_${name}::SpecifiedValue(mask_${name}.into()),
             % endfor
          })
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            use properties::longhands::mask_origin::single_value::computed_value::T as Origin;
-            use properties::longhands::mask_clip::single_value::computed_value::T as Clip;
+            use crate::properties::longhands::mask_origin::single_value::computed_value::T as Origin;
+            use crate::properties::longhands::mask_clip::single_value::computed_value::T as Clip;
 
             let len = self.mask_image.0.len();
             if len == 0 {
@@ -148,21 +148,32 @@
                 % endfor
 
                 image.to_css(dest)?;
-                dest.write_str(" ")?;
-                mode.to_css(dest)?;
-                dest.write_str(" ")?;
 
-                Position {
-                    horizontal: position_x.clone(),
-                    vertical: position_y.clone()
-                }.to_css(dest)?;
-
-                if *size != mask_size::single_value::get_initial_specified_value() {
-                    dest.write_str(" / ")?;
-                    size.to_css(dest)?;
+                if *mode != mask_mode::single_value::get_initial_specified_value() {
+                    dest.write_str(" ")?;
+                    mode.to_css(dest)?;
                 }
-                dest.write_str(" ")?;
-                repeat.to_css(dest)?;
+
+                if *position_x != PositionComponent::zero() ||
+                    *position_y != PositionComponent::zero() ||
+                    *size != mask_size::single_value::get_initial_specified_value()
+                {
+                    dest.write_str(" ")?;
+                    Position {
+                        horizontal: position_x.clone(),
+                        vertical: position_y.clone()
+                    }.to_css(dest)?;
+
+                    if *size != mask_size::single_value::get_initial_specified_value() {
+                        dest.write_str(" / ")?;
+                        size.to_css(dest)?;
+                    }
+                }
+
+                if *repeat != mask_repeat::single_value::get_initial_specified_value() {
+                    dest.write_str(" ")?;
+                    repeat.to_css(dest)?;
+                }
 
                 if *origin != Origin::BorderBox || *clip != Clip::BorderBox {
                     dest.write_str(" ")?;
@@ -173,8 +184,10 @@
                     }
                 }
 
-                dest.write_str(" ")?;
-                composite.to_css(dest)?;
+                if *composite != mask_composite::single_value::get_initial_specified_value() {
+                    dest.write_str(" ")?;
+                    composite.to_css(dest)?;
+                }
             }
 
             Ok(())
@@ -182,13 +195,13 @@
     }
 </%helpers:shorthand>
 
-<%helpers:shorthand name="mask-position" products="gecko" extra_prefixes="webkit"
+<%helpers:shorthand name="mask-position" engines="gecko" extra_prefixes="webkit"
                     flags="SHORTHAND_IN_GETCS"
                     sub_properties="mask-position-x mask-position-y"
                     spec="https://drafts.csswg.org/css-masks-4/#the-mask-position">
-    use properties::longhands::{mask_position_x,mask_position_y};
-    use values::specified::position::Position;
-    use parser::Parse;
+    use crate::properties::longhands::{mask_position_x,mask_position_y};
+    use crate::values::specified::position::Position;
+    use crate::parser::Parse;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
@@ -196,16 +209,16 @@
     ) -> Result<Longhands, ParseError<'i>> {
         // Vec grows from 0 to 4 by default on first push().  So allocate with
         // capacity 1, so in the common case of only one item we don't way
-        // overallocate.  Note that we always push at least one item if parsing
-        // succeeds.
-        let mut position_x = mask_position_x::SpecifiedValue(Vec::with_capacity(1));
-        let mut position_y = mask_position_y::SpecifiedValue(Vec::with_capacity(1));
+        // overallocate, then shrink.  Note that we always push at least one
+        // item if parsing succeeds.
+        let mut position_x = Vec::with_capacity(1);
+        let mut position_y = Vec::with_capacity(1);
         let mut any = false;
 
         input.parse_comma_separated(|input| {
             let value = Position::parse(context, input)?;
-            position_x.0.push(value.horizontal);
-            position_y.0.push(value.vertical);
+            position_x.push(value.horizontal);
+            position_y.push(value.vertical);
             any = true;
             Ok(())
         })?;
@@ -214,9 +227,10 @@
             return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
+
         Ok(expanded! {
-            mask_position_x: position_x,
-            mask_position_y: position_y,
+            mask_position_x: mask_position_x::SpecifiedValue(position_x.into()),
+            mask_position_y: mask_position_y::SpecifiedValue(position_y.into()),
         })
     }
 

@@ -10,7 +10,6 @@
 #include "mozilla/css/SheetParsingMode.h"
 #include "mozilla/dom/CSSStyleSheetBinding.h"
 #include "mozilla/dom/SRIMetadata.h"
-#include "mozilla/net/ReferrerPolicy.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
@@ -23,9 +22,11 @@
 #include "nsCompatibility.h"
 #include "nsStringFwd.h"
 
-class nsIDocument;
 class nsINode;
 class nsIPrincipal;
+struct nsLayoutStylesheetCacheShm;
+struct RawServoSharedMemoryBuilder;
+class nsIReferrerInfo;
 
 namespace mozilla {
 
@@ -34,7 +35,8 @@ class ServoStyleSet;
 
 typedef MozPromise</* Dummy */ bool,
                    /* Dummy */ bool,
-                   /* IsExclusive = */ true> StyleSheetParsePromise;
+                   /* IsExclusive = */ true>
+    StyleSheetParsePromise;
 
 namespace css {
 class GroupRule;
@@ -42,7 +44,7 @@ class Loader;
 class LoaderReusableStyleSheets;
 class Rule;
 class SheetLoadData;
-}
+}  // namespace css
 
 namespace dom {
 class CSSImportRule;
@@ -51,23 +53,42 @@ class DocumentOrShadowRoot;
 class MediaList;
 class ShadowRoot;
 class SRIMetadata;
-} // namespace dom
+}  // namespace dom
 
-class StyleSheet final : public nsICSSLoaderObserver
-                       , public nsWrapperCache
-{
-  StyleSheet(const StyleSheet& aCopy,
-             StyleSheet* aParentToUse,
+enum class StyleSheetState : uint8_t {
+  // Whether the sheet is disabled. Sheets can be made disabled via CSSOM, or
+  // via alternate links and such.
+  Disabled = 1 << 0,
+  // Whether the sheet is complete. The sheet is complete if it's finished
+  // loading. See StyleSheet::SetComplete.
+  Complete = 1 << 1,
+  // Whether we've forced a unique inner. StyleSheet objects share an 'inner'
+  // StyleSheetInfo object if they share URL, CORS mode, etc.
+  //
+  // See the Loader's `mCompleteSheets` and `mLoadingSheets`.
+  ForcedUniqueInner = 1 << 2,
+  // Whether this stylesheet has suffered any modification to the rules via
+  // CSSOM.
+  //
+  // FIXME(emilio): I think as of right now we also set this flag for normal
+  // @import rules, which looks very fishy.
+  ModifiedRules = 1 << 3,
+};
+
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(StyleSheetState)
+
+class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
+  StyleSheet(const StyleSheet& aCopy, StyleSheet* aParentToUse,
              dom::CSSImportRule* aOwnerRuleToUse,
              dom::DocumentOrShadowRoot* aDocOrShadowRootToUse,
              nsINode* aOwningNodeToUse);
 
   virtual ~StyleSheet();
 
-public:
-  StyleSheet(css::SheetParsingMode aParsingMode,
-             CORSMode aCORSMode,
-             net::ReferrerPolicy aReferrerPolicy,
+  using State = StyleSheetState;
+
+ public:
+  StyleSheet(css::SheetParsingMode aParsingMode, CORSMode aCORSMode,
              const dom::SRIMetadata& aIntegrity);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -78,30 +99,29 @@ public:
 
   bool HasRules() const;
 
-  // Parses a stylesheet. The aLoadData argument corresponds to the
-  // SheetLoadData for this stylesheet. It may be null in some cases.
-  RefPtr<StyleSheetParsePromise>
-  ParseSheet(css::Loader* aLoader,
-             const nsACString& aBytes,
-             css::SheetLoadData* aLoadData);
+  // Parses a stylesheet. The load data argument corresponds to the
+  // SheetLoadData for this stylesheet.
+  RefPtr<StyleSheetParsePromise> ParseSheet(css::Loader&,
+                                            const nsACString& aBytes,
+                                            css::SheetLoadData&);
 
   // Common code that needs to be called after servo finishes parsing. This is
   // shared between the parallel and sequential paths.
-  void FinishAsyncParse(already_AddRefed<RawServoStyleSheetContents> aSheetContents);
+  void FinishAsyncParse(
+      already_AddRefed<RawServoStyleSheetContents> aSheetContents);
 
   // Similar to the above, but guarantees that parsing will be performed
   // synchronously.
-  void
-  ParseSheetSync(css::Loader* aLoader,
-                 const nsACString& aBytes,
-                 css::SheetLoadData* aLoadData,
-                 uint32_t aLineNumber,
-                 css::LoaderReusableStyleSheets* aReusableSheets = nullptr);
+  //
+  // The load data may be null sometimes.
+  void ParseSheetSync(
+      css::Loader* aLoader, const nsACString& aBytes,
+      css::SheetLoadData* aLoadData, uint32_t aLineNumber,
+      css::LoaderReusableStyleSheets* aReusableSheets = nullptr);
 
   nsresult ReparseSheet(const nsAString& aInput);
 
-  const RawServoStyleSheetContents* RawContents() const
-  {
+  const RawServoStyleSheetContents* RawContents() const {
     return Inner().mContents;
   }
 
@@ -113,15 +133,15 @@ public:
   URLExtraData* URLData() const { return Inner().mURLData; }
 
   // nsICSSLoaderObserver interface
-  NS_IMETHOD StyleSheetLoaded(StyleSheet* aSheet, bool aWasAlternate,
+  NS_IMETHOD StyleSheetLoaded(StyleSheet* aSheet, bool aWasDeferred,
                               nsresult aStatus) final;
 
   // Internal GetCssRules methods which do not have security check and
   // completeness check.
   ServoCSSRuleList* GetCssRulesInternal();
 
-  // Returns the stylesheet's Servo origin as an OriginFlags value.
-  OriginFlags GetOrigin();
+  // Returns the stylesheet's Servo origin as a StyleOrigin value.
+  mozilla::StyleOrigin GetOrigin() const;
 
   /**
    * The different changes that a stylesheet may go through.
@@ -138,10 +158,7 @@ public:
     RuleChanged,
   };
 
-  void SetOwningNode(nsINode* aOwningNode)
-  {
-    mOwningNode = aOwningNode;
-  }
+  void SetOwningNode(nsINode* aOwningNode) { mOwningNode = aOwningNode; }
 
   css::SheetParsingMode ParsingMode() const { return mParsingMode; }
   mozilla::dom::CSSStyleSheetParsingMode ParsingModeDOM();
@@ -149,43 +166,23 @@ public:
   /**
    * Whether the sheet is complete.
    */
-  bool IsComplete() const;
+  bool IsComplete() const { return bool(mState & State::Complete); }
+
   void SetComplete();
 
-  /**
-   * Set the stylesheet to be enabled.  This may or may not make it
-   * applicable.  Note that this WILL inform the sheet's document of
-   * its new applicable state if the state changes but WILL NOT call
-   * BeginUpdate() or EndUpdate() on the document -- calling those is
-   * the caller's responsibility.  This allows use of SetEnabled when
-   * batched updates are desired.  If you want updates handled for
-   * you, see SetDisabled().
-   */
-  void SetEnabled(bool aEnabled);
+  void SetEnabled(bool aEnabled) { SetDisabled(!aEnabled); }
 
   // Whether the sheet is for an inline <style> element.
-  bool IsInline() const
-  {
-    return !GetOriginalURI();
-  }
+  bool IsInline() const { return !GetOriginalURI(); }
 
-  nsIURI* GetSheetURI() const
-  {
-    return Inner().mSheetURI;
-  }
+  nsIURI* GetSheetURI() const { return Inner().mSheetURI; }
 
   /**
    * Get the URI this sheet was originally loaded from, if any. Can return null.
    */
-  nsIURI* GetOriginalURI() const
-  {
-    return Inner().mOriginalSheetURI;
-  }
+  nsIURI* GetOriginalURI() const { return Inner().mOriginalSheetURI; }
 
-  nsIURI* GetBaseURI() const
-  {
-    return Inner().mBaseURI;
-  }
+  nsIURI* GetBaseURI() const { return Inner().mBaseURI; }
 
   /**
    * SetURIs must be called on all sheets before parsing into them.
@@ -194,8 +191,7 @@ public:
    *
    * FIXME(emilio): Can we pass this down when constructing the sheet instead?
    */
-  inline void SetURIs(nsIURI* aSheetURI,
-                      nsIURI* aOriginalSheetURI,
+  inline void SetURIs(nsIURI* aSheetURI, nsIURI* aOriginalSheetURI,
                       nsIURI* aBaseURI);
 
   /**
@@ -204,40 +200,24 @@ public:
    * applicable for a variety of reasons including being disabled and
    * being incomplete.
    */
-  bool IsApplicable() const
-  {
-    return !mDisabled && Inner().mComplete;
+  bool IsApplicable() const { return !Disabled() && IsComplete(); }
+
+  already_AddRefed<StyleSheet> Clone(
+      StyleSheet* aCloneParent, dom::CSSImportRule* aCloneOwnerRule,
+      dom::DocumentOrShadowRoot* aCloneDocumentOrShadowRoot,
+      nsINode* aCloneOwningNode) const;
+
+  bool HasForcedUniqueInner() const {
+    return bool(mState & State::ForcedUniqueInner);
   }
 
-  already_AddRefed<StyleSheet> Clone(StyleSheet* aCloneParent,
-                                     dom::CSSImportRule* aCloneOwnerRule,
-                                     dom::DocumentOrShadowRoot* aCloneDocumentOrShadowRoot,
-                                     nsINode* aCloneOwningNode) const;
+  bool HasModifiedRules() const { return bool(mState & State::ModifiedRules); }
 
-  bool HasForcedUniqueInner() const
-  {
-    return mDirtyFlags & FORCED_UNIQUE_INNER;
-  }
+  void ClearModifiedRules() { mState &= ~State::ModifiedRules; }
 
-  bool HasModifiedRules() const
-  {
-    return mDirtyFlags & MODIFIED_RULES;
-  }
+  bool HasUniqueInner() const { return Inner().mSheets.Length() == 1; }
 
-  void ClearModifiedRules()
-  {
-    mDirtyFlags &= ~MODIFIED_RULES;
-  }
-
-  bool HasUniqueInner() const
-  {
-    return Inner().mSheets.Length() == 1;
-  }
-
-  void AssertHasUniqueInner() const
-  {
-    MOZ_ASSERT(HasUniqueInner());
-  }
+  void AssertHasUniqueInner() const { MOZ_ASSERT(HasUniqueInner()); }
 
   void EnsureUniqueInner();
 
@@ -253,8 +233,7 @@ public:
     // different lifetime than mDocument.
     NotOwnedByDocumentOrShadowRoot
   };
-  dom::DocumentOrShadowRoot* GetAssociatedDocumentOrShadowRoot() const
-  {
+  dom::DocumentOrShadowRoot* GetAssociatedDocumentOrShadowRoot() const {
     return mDocumentOrShadowRoot;
   }
 
@@ -264,29 +243,22 @@ public:
   bool IsKeptAliveByDocument() const;
 
   // Returns the document whose styles this sheet is affecting.
-  nsIDocument* GetComposedDoc() const;
+  dom::Document* GetComposedDoc() const;
 
   // Returns the document we're associated to, via mDocumentOrShadowRoot.
   //
   // Non-null iff GetAssociatedDocumentOrShadowRoot is non-null.
-  nsIDocument* GetAssociatedDocument() const;
+  dom::Document* GetAssociatedDocument() const;
 
   void SetAssociatedDocumentOrShadowRoot(dom::DocumentOrShadowRoot*,
                                          AssociationMode);
-  void ClearAssociatedDocumentOrShadowRoot()
-  {
+  void ClearAssociatedDocumentOrShadowRoot() {
     SetAssociatedDocumentOrShadowRoot(nullptr, NotOwnedByDocumentOrShadowRoot);
   }
 
-  nsINode* GetOwnerNode() const
-  {
-    return mOwningNode;
-  }
+  nsINode* GetOwnerNode() const { return mOwningNode; }
 
-  StyleSheet* GetParentSheet() const
-  {
-    return mParent;
-  }
+  StyleSheet* GetParentSheet() const { return mParent; }
 
   void SetOwnerRule(dom::CSSImportRule* aOwnerRule) {
     mOwnerRule = aOwnerRule; /* Not ref counted */
@@ -306,10 +278,7 @@ public:
   }
 
   // Principal() never returns a null pointer.
-  nsIPrincipal* Principal() const
-  {
-    return Inner().mPrincipal;
-  }
+  nsIPrincipal* Principal() const { return Inner().mPrincipal; }
 
   /**
    * SetPrincipal should be called on all sheets before parsing into them.
@@ -319,8 +288,7 @@ public:
    *
    * FIXME(emilio): Can we get this at construction time instead?
    */
-  void SetPrincipal(nsIPrincipal* aPrincipal)
-  {
+  void SetPrincipal(nsIPrincipal* aPrincipal) {
     StyleSheetInfo& info = Inner();
     MOZ_ASSERT(!info.mPrincipalSet, "Should only set principal once");
     if (aPrincipal) {
@@ -335,19 +303,18 @@ public:
   void SetMedia(dom::MediaList* aMedia);
 
   // Get this style sheet's CORS mode
-  CORSMode GetCORSMode() const
-  {
-    return Inner().mCORSMode;
+  CORSMode GetCORSMode() const { return Inner().mCORSMode; }
+
+  // Get this style sheet's ReferrerInfo
+  nsIReferrerInfo* GetReferrerInfo() const { return Inner().mReferrerInfo; }
+
+  // Set this style sheet's ReferrerInfo
+  void SetReferrerInfo(nsIReferrerInfo* aReferrerInfo) {
+    Inner().mReferrerInfo = aReferrerInfo;
   }
 
-  // Get this style sheet's Referrer Policy
-  net::ReferrerPolicy GetReferrerPolicy() const
-  {
-    return Inner().mReferrerPolicy;
-  }
   // Get this style sheet's integrity metadata
-  void GetIntegrity(dom::SRIMetadata& aResult) const
-  {
+  void GetIntegrity(dom::SRIMetadata& aResult) const {
     aResult = Inner().mIntegrity;
   }
 
@@ -360,13 +327,10 @@ public:
   void GetType(nsAString& aType);
   void GetHref(nsAString& aHref, ErrorResult& aRv);
   // GetOwnerNode is defined above.
-  StyleSheet* GetParentStyleSheet() const
-  {
-    return GetParentSheet();
-  }
+  StyleSheet* GetParentStyleSheet() const { return GetParentSheet(); }
   void GetTitle(nsAString& aTitle);
   dom::MediaList* Media();
-  bool Disabled() const { return mDisabled; }
+  bool Disabled() const { return bool(mState & State::Disabled); }
   void SetDisabled(bool aDisabled);
   void GetSourceMapURL(nsAString& aTitle);
   void SetSourceMapURL(const nsAString& aSourceMapURL);
@@ -381,11 +345,12 @@ public:
   css::Rule* GetDOMOwnerRule() const;
   dom::CSSRuleList* GetCssRules(nsIPrincipal& aSubjectPrincipal, ErrorResult&);
   uint32_t InsertRule(const nsAString& aRule, uint32_t aIndex,
-                      nsIPrincipal& aSubjectPrincipal,
-                      ErrorResult& aRv);
-  void DeleteRule(uint32_t aIndex,
-                  nsIPrincipal& aSubjectPrincipal,
+                      nsIPrincipal& aSubjectPrincipal, ErrorResult& aRv);
+  void DeleteRule(uint32_t aIndex, nsIPrincipal& aSubjectPrincipal,
                   ErrorResult& aRv);
+  int32_t AddRule(const nsAString& aSelector, const nsAString& aBlock,
+                  const dom::Optional<uint32_t>& aIndex,
+                  nsIPrincipal& aSubjectPrincipal, ErrorResult& aRv);
 
   // WebIDL miscellaneous bits
   inline dom::ParentObject GetParentObject() const;
@@ -404,30 +369,44 @@ public:
   void DropStyleSet(ServoStyleSet* aStyleSet);
 
   nsresult DeleteRuleFromGroup(css::GroupRule* aGroup, uint32_t aIndex);
-  nsresult InsertRuleIntoGroup(const nsAString& aRule,
-                               css::GroupRule* aGroup, uint32_t aIndex);
+  nsresult InsertRuleIntoGroup(const nsAString& aRule, css::GroupRule* aGroup,
+                               uint32_t aIndex);
 
   // Find the ID of the owner inner window.
   uint64_t FindOwningWindowInnerID() const;
 
-  template<typename Func>
+  template <typename Func>
   void EnumerateChildSheets(Func aCallback) {
     for (StyleSheet* child = GetFirstChild(); child; child = child->mNext) {
       aCallback(child);
     }
   }
 
-private:
+  // Copy the contents of this style sheet into the shared memory buffer managed
+  // by aBuilder.  Returns the pointer into the buffer that the sheet contents
+  // were stored at.  (The returned pointer is to an Arc<Locked<Rules>> value.)
+  const ServoCssRules* ToShared(RawServoSharedMemoryBuilder* aBuilder);
+
+  // Sets the contents of this style sheet to the specified aSharedRules
+  // pointer, which must be a pointer somewhere in the aSharedMemory buffer
+  // as previously returned by a ToShared() call.
+  void SetSharedContents(nsLayoutStylesheetCacheShm* aSharedMemory,
+                         const ServoCssRules* aSharedRules);
+
+  // Whether this style sheet should not allow any modifications.
+  //
+  // This is true for any User Agent sheets once they are complete.
+  bool IsReadOnly() const;
+
+ private:
   dom::ShadowRoot* GetContainingShadow() const;
 
-  StyleSheetInfo& Inner()
-  {
+  StyleSheetInfo& Inner() {
     MOZ_ASSERT(mInner);
     return *mInner;
   }
 
-  const StyleSheetInfo& Inner() const
-  {
+  const StyleSheetInfo& Inner() const {
     MOZ_ASSERT(mInner);
     return *mInner;
   }
@@ -438,15 +417,15 @@ private:
   // returns false.
   bool AreRulesAvailable(nsIPrincipal& aSubjectPrincipal, ErrorResult& aRv);
 
-protected:
+  void SetURLExtraData();
+
+ protected:
   // Internal methods which do not have security check and completeness check.
-  uint32_t InsertRuleInternal(const nsAString& aRule,
-                              uint32_t aIndex,
+  uint32_t InsertRuleInternal(const nsAString& aRule, uint32_t aIndex,
                               ErrorResult&);
   void DeleteRuleInternal(uint32_t aIndex, ErrorResult&);
   nsresult InsertRuleIntoGroupInternal(const nsAString& aRule,
-                                       css::GroupRule* aGroup,
-                                       uint32_t aIndex);
+                                       css::GroupRule* aGroup, uint32_t aIndex);
 
   // Common tail routine for the synchronous and asynchronous parsing paths.
   void FinishParse();
@@ -462,6 +441,9 @@ protected:
 
   // Called when a rule is added to the sheet from CSSOM.
   void RuleRemoved(css::Rule&);
+
+  // Called when a stylesheet is cloned.
+  void StyleSheetCloned(StyleSheet&);
 
   void ApplicableStateChanged(bool aApplicable);
 
@@ -492,17 +474,19 @@ protected:
   // Unlink our inner, if needed, for cycle collection.
   void UnlinkInner();
   // Traverse our inner, if needed, for cycle collection
-  void TraverseInner(nsCycleCollectionTraversalCallback &);
+  void TraverseInner(nsCycleCollectionTraversalCallback&);
 
   // Return whether the given @import rule has pending child sheet.
   static bool RuleHasPendingChildSheet(css::Rule* aRule);
 
-  StyleSheet* mParent;    // weak ref
+  StyleSheet* mParent;  // weak ref
 
   nsString mTitle;
-  dom::DocumentOrShadowRoot* mDocumentOrShadowRoot; // weak ref; parents maintain this for their children
-  nsINode* mOwningNode; // weak ref
-  dom::CSSImportRule* mOwnerRule; // weak ref
+
+  // weak ref; parents maintain this for their children
+  dom::DocumentOrShadowRoot* mDocumentOrShadowRoot;
+  nsINode* mOwningNode;            // weak ref
+  dom::CSSImportRule* mOwnerRule;  // weak ref
 
   RefPtr<dom::MediaList> mMedia;
 
@@ -511,15 +495,12 @@ protected:
   // mParsingMode controls access to nonstandard style constructs that
   // are not safe for use on the public Web but necessary in UA sheets
   // and/or useful in user sheets.
+  //
+  // FIXME(emilio): Given we store the parsed contents in the Inner, this should
+  // probably also move there.
   css::SheetParsingMode mParsingMode;
 
-  bool mDisabled;
-
-  enum dirtyFlagAttributes {
-    FORCED_UNIQUE_INNER = 0x1,
-    MODIFIED_RULES = 0x2,
-  };
-  uint8_t mDirtyFlags; // has been modified
+  State mState;
 
   // mAssociationMode determines whether mDocumentOrShadowRoot directly owns us
   // (in the sense that if it's known-live then we're known-live).
@@ -530,7 +511,7 @@ protected:
   // Core information we get from parsed sheets, which are shared amongst
   // StyleSheet clones.
   //
-  // FIXME(emilio): Should be NonNull.
+  // Always nonnull until LastRelease().
   StyleSheetInfo* mInner;
 
   nsTArray<ServoStyleSet*> mStyleSets;
@@ -544,6 +525,6 @@ protected:
   friend struct mozilla::StyleSheetInfo;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_StyleSheet_h
+#endif  // mozilla_StyleSheet_h

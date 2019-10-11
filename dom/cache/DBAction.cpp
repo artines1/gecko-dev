@@ -26,49 +26,47 @@ namespace dom {
 namespace cache {
 
 using mozilla::dom::quota::AssertIsOnIOThread;
+using mozilla::dom::quota::Client;
 using mozilla::dom::quota::PERSISTENCE_TYPE_DEFAULT;
 using mozilla::dom::quota::PersistenceType;
 
 namespace {
 
-nsresult
-WipeDatabase(const QuotaInfo& aQuotaInfo, nsIFile* aDBFile,
-             nsIFile* aDBDir)
-{
+nsresult WipeDatabase(const QuotaInfo& aQuotaInfo, nsIFile* aDBFile,
+                      nsIFile* aDBDir) {
   MOZ_DIAGNOSTIC_ASSERT(aDBFile);
   MOZ_DIAGNOSTIC_ASSERT(aDBDir);
 
   nsresult rv = RemoveNsIFile(aQuotaInfo, aDBFile);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   // Note, the -wal journal file will be automatically deleted by sqlite when
   // the new database is created.  No need to explicitly delete it here.
 
   // Delete the morgue as well.
   rv = BodyDeleteDir(aQuotaInfo, aDBDir);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   rv = WipePaddingFile(aQuotaInfo, aDBDir);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   return rv;
 }
 
-}
+}  // namespace
 
-DBAction::DBAction(Mode aMode)
-  : mMode(aMode)
-{
-}
+DBAction::DBAction(Mode aMode) : mMode(aMode) {}
 
-DBAction::~DBAction()
-{
-}
+DBAction::~DBAction() {}
 
-void
-DBAction::RunOnTarget(Resolver* aResolver, const QuotaInfo& aQuotaInfo,
-                      Data* aOptionalData)
-{
+void DBAction::RunOnTarget(Resolver* aResolver, const QuotaInfo& aQuotaInfo,
+                           Data* aOptionalData) {
   MOZ_ASSERT(!NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aResolver);
   MOZ_DIAGNOSTIC_ASSERT(aQuotaInfo.mDir);
@@ -122,22 +120,26 @@ DBAction::RunOnTarget(Resolver* aResolver, const QuotaInfo& aQuotaInfo,
   RunWithDBOnTarget(aResolver, aQuotaInfo, dbDir, conn);
 }
 
-nsresult
-DBAction::OpenConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
-                         mozIStorageConnection** aConnOut)
-{
+nsresult DBAction::OpenConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
+                                  mozIStorageConnection** aConnOut) {
   MOZ_ASSERT(!NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aDBDir);
   MOZ_DIAGNOSTIC_ASSERT(aConnOut);
 
   bool exists;
   nsresult rv = aDBDir->Exists(&exists);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   if (!exists) {
-    if (NS_WARN_IF(mMode != Create)) {  return NS_ERROR_FILE_NOT_FOUND; }
+    if (NS_WARN_IF(mMode != Create)) {
+      return NS_ERROR_FILE_NOT_FOUND;
+    }
     rv = aDBDir->Create(nsIFile::DIRECTORY_TYPE, 0755);
-    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
 
   rv = OpenDBConnection(aQuotaInfo, aDBDir, aConnOut);
@@ -145,20 +147,14 @@ DBAction::OpenConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
   return rv;
 }
 
-SyncDBAction::SyncDBAction(Mode aMode)
-  : DBAction(aMode)
-{
-}
+SyncDBAction::SyncDBAction(Mode aMode) : DBAction(aMode) {}
 
-SyncDBAction::~SyncDBAction()
-{
-}
+SyncDBAction::~SyncDBAction() {}
 
-void
-SyncDBAction::RunWithDBOnTarget(Resolver* aResolver,
-                                const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
-                                mozIStorageConnection* aConn)
-{
+void SyncDBAction::RunWithDBOnTarget(Resolver* aResolver,
+                                     const QuotaInfo& aQuotaInfo,
+                                     nsIFile* aDBDir,
+                                     mozIStorageConnection* aConn) {
   MOZ_ASSERT(!NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aResolver);
   MOZ_DIAGNOSTIC_ASSERT(aDBDir);
@@ -169,10 +165,8 @@ SyncDBAction::RunWithDBOnTarget(Resolver* aResolver,
 }
 
 // static
-nsresult
-OpenDBConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
-                 mozIStorageConnection** aConnOut)
-{
+nsresult OpenDBConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
+                          mozIStorageConnection** aConnOut) {
   MOZ_ASSERT(!NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aDBDir);
   MOZ_DIAGNOSTIC_ASSERT(aConnOut);
@@ -181,14 +175,20 @@ OpenDBConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
 
   nsCOMPtr<nsIFile> dbFile;
   nsresult rv = aDBDir->Clone(getter_AddRefs(dbFile));
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   rv = dbFile->Append(NS_LITERAL_STRING("caches.sqlite"));
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   bool exists = false;
   rv = dbFile->Exists(&exists);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   // Use our default file:// protocol handler directly to construct the database
   // URL.  This avoids any problems if a plugin registers a custom file://
@@ -196,29 +196,40 @@ OpenDBConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
   // bad time running off the main thread here.
   RefPtr<nsFileProtocolHandler> handler = new nsFileProtocolHandler();
   rv = handler->Init();
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   nsCOMPtr<nsIURIMutator> mutator;
   rv = handler->NewFileURIMutator(dbFile, getter_AddRefs(mutator));
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   nsCOMPtr<nsIFileURL> dbFileUrl;
 
   nsAutoCString type;
   PersistenceTypeToText(PERSISTENCE_TYPE_DEFAULT, type);
 
+  nsAutoCString clientType;
+  Client::TypeToText(Client::DOMCACHE, clientType);
+
   rv = NS_MutateURI(mutator)
-         .SetQuery(
-    NS_LITERAL_CSTRING("persistenceType=") + type +
-    NS_LITERAL_CSTRING("&group=") + aQuotaInfo.mGroup +
-    NS_LITERAL_CSTRING("&origin=") + aQuotaInfo.mOrigin +
-    NS_LITERAL_CSTRING("&cache=private"))
-         .Finalize(dbFileUrl);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+           .SetQuery(NS_LITERAL_CSTRING("persistenceType=") + type +
+                     NS_LITERAL_CSTRING("&group=") + aQuotaInfo.mGroup +
+                     NS_LITERAL_CSTRING("&origin=") + aQuotaInfo.mOrigin +
+                     NS_LITERAL_CSTRING("&clientType=") + clientType +
+                     NS_LITERAL_CSTRING("&cache=private"))
+           .Finalize(dbFileUrl);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   nsCOMPtr<mozIStorageService> ss =
-    do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
-  if (NS_WARN_IF(!ss)) { return NS_ERROR_UNEXPECTED; }
+      do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
+  if (NS_WARN_IF(!ss)) {
+    return NS_ERROR_UNEXPECTED;
+  }
 
   rv = ss->OpenDatabaseWithFileURL(dbFileUrl, getter_AddRefs(conn));
   if (rv == NS_ERROR_FILE_CORRUPTED) {
@@ -229,33 +240,45 @@ OpenDBConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
     // There is nothing else we can do to recover.  Also, this data can
     // be deleted by QuotaManager at any time anyways.
     rv = WipeDatabase(aQuotaInfo, dbFile, aDBDir);
-    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
 
     rv = ss->OpenDatabaseWithFileURL(dbFileUrl, getter_AddRefs(conn));
   }
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   // Check the schema to make sure it is not too old.
   int32_t schemaVersion = 0;
   rv = conn->GetSchemaVersion(&schemaVersion);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
   if (schemaVersion > 0 && schemaVersion < db::kFirstShippedSchemaVersion) {
     conn = nullptr;
     rv = WipeDatabase(aQuotaInfo, dbFile, aDBDir);
-    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
 
     rv = ss->OpenDatabaseWithFileURL(dbFileUrl, getter_AddRefs(conn));
-    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
 
   rv = db::InitializeConnection(conn);
-  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   conn.forget(aConnOut);
 
   return rv;
 }
 
-} // namespace cache
-} // namespace dom
-} // namespace mozilla
+}  // namespace cache
+}  // namespace dom
+}  // namespace mozilla

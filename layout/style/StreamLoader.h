@@ -16,31 +16,26 @@ class nsIInputStream;
 namespace mozilla {
 namespace css {
 
-class StreamLoader : public nsIStreamListener
-{
-public:
+class StreamLoader : public nsIStreamListener {
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIREQUESTOBSERVER
   NS_DECL_NSISTREAMLISTENER
 
-  explicit StreamLoader(mozilla::css::SheetLoadData* aSheetLoadData);
+  explicit StreamLoader(SheetLoadData&);
 
-private:
+ private:
   virtual ~StreamLoader();
 
   /**
    * callback method used for ReadSegments
    */
-  static nsresult WriteSegmentFun(nsIInputStream*,
-                                  void*,
-                                  const char*,
-                                  uint32_t,
-                                  uint32_t,
-                                  uint32_t*);
+  static nsresult WriteSegmentFun(nsIInputStream*, void*, const char*, uint32_t,
+                                  uint32_t, uint32_t*);
 
   void HandleBOM();
 
-  RefPtr<mozilla::css::SheetLoadData> mSheetLoadData;
+  RefPtr<SheetLoadData> mSheetLoadData;
   nsresult mStatus;
   Maybe<const Encoding*> mEncodingFromBOM;
 
@@ -51,7 +46,7 @@ private:
   nsAutoCStringN<3> mBOMBytes;
 };
 
-} // namespace css
-} // namespace mozilla
+}  // namespace css
+}  // namespace mozilla
 
-#endif // mozilla_css_StreamLoader_h
+#endif  // mozilla_css_StreamLoader_h

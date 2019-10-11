@@ -6,34 +6,55 @@
 
 EXPORTS.mozilla.net += [
     'ChannelEventQueue.h',
+    'DocumentChannelChild.h',
+    'DocumentChannelParent.h',
     'NeckoChild.h',
     'NeckoCommon.h',
     'NeckoMessageUtils.h',
     'NeckoParent.h',
     'NeckoTargetHolder.h',
+    'SocketProcessBridgeChild.h',
+    'SocketProcessBridgeParent.h',
+    'SocketProcessChild.h',
+    'SocketProcessHost.h',
+    'SocketProcessImpl.h',
+    'SocketProcessParent.h',
 ]
 
 UNIFIED_SOURCES += [
     'ChannelEventQueue.cpp',
+    'DocumentChannelChild.cpp',
+    'DocumentChannelParent.cpp',
     'NeckoChild.cpp',
     'NeckoCommon.cpp',
     'NeckoParent.cpp',
     'NeckoTargetHolder.cpp',
+    'SocketProcessBridgeChild.cpp',
+    'SocketProcessBridgeParent.cpp',
+    'SocketProcessChild.cpp',
+    'SocketProcessHost.cpp',
+    'SocketProcessImpl.cpp',
+    'SocketProcessParent.cpp',
 ]
 
 IPDL_SOURCES = [
     'NeckoChannelParams.ipdlh',
     'PChannelDiverter.ipdl',
     'PDataChannel.ipdl',
+    'PDocumentChannel.ipdl',
     'PFileChannel.ipdl',
     'PNecko.ipdl',
     'PSimpleChannel.ipdl',
+    'PSocketProcess.ipdl',
+    'PSocketProcessBridge.ipdl'
 ]
 
 # needed so --disable-webrtc builds work (yes, a bit messy)
 if not CONFIG['MOZ_WEBRTC']:
   IPDL_SOURCES += [
       '../../media/mtransport/ipc/PStunAddrsRequest.ipdl',
+      '../../media/mtransport/ipc/PWebrtcTCPSocket.ipdl',
+      '../../media/mtransport/ipc/WebrtcProxyConfig.ipdlh',
   ]
   EXPORTS.mozilla.net += [
       '../../media/mtransport/ipc/NrIceStunAddrMessageUtils.h',
@@ -47,9 +68,12 @@ FINAL_LIBRARY = 'xul'
 LOCAL_INCLUDES += [
     '/caps',
     '/dom/base',
+    '/media/mtransport',
+    '/media/webrtc',
     '/modules/libjar',
     '/netwerk/base',
     '/netwerk/protocol/http',
+    '/xpcom/threads'
 ]
 
 # Add libFuzzer configuration directives

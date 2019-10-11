@@ -9,7 +9,9 @@
 #include "ClientInfo.h"
 #include "ClientState.h"
 #include "mozilla/SystemGroup.h"
+#include "mozilla/ResultExtensions.h"
 #include "nsContentUtils.h"
+#include "nsFocusManager.h"
 #include "nsIBrowserDOMWindow.h"
 #include "nsIDocShell.h"
 #include "nsIDOMChromeWindow.h"
@@ -17,12 +19,15 @@
 #include "nsIWebProgress.h"
 #include "nsIWebProgressListener.h"
 #include "nsIWindowWatcher.h"
+#include "nsIXPConnect.h"
 #include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowWatcher.h"
 
+#include "mozilla/dom/nsCSPContext.h"
+
 #ifdef MOZ_WIDGET_ANDROID
-#include "FennecJNIWrappers.h"
+#  include "GeneratedJNIWrappers.h"
 #endif
 
 namespace mozilla {
@@ -30,31 +35,24 @@ namespace dom {
 
 namespace {
 
-class WebProgressListener final : public nsIWebProgressListener
-                                , public nsSupportsWeakReference
-{
-public:
+class WebProgressListener final : public nsIWebProgressListener,
+                                  public nsSupportsWeakReference {
+ public:
   NS_DECL_ISUPPORTS
 
-  WebProgressListener(nsPIDOMWindowOuter* aWindow,
-                      nsIURI* aBaseURI,
+  WebProgressListener(nsPIDOMWindowOuter* aWindow, nsIURI* aBaseURI,
                       already_AddRefed<ClientOpPromise::Private> aPromise)
-  : mPromise(aPromise)
-  , mWindow(aWindow)
-  , mBaseURI(aBaseURI)
-  {
+      : mPromise(aPromise), mWindow(aWindow), mBaseURI(aBaseURI) {
     MOZ_ASSERT(aWindow);
     MOZ_ASSERT(aBaseURI);
     MOZ_ASSERT(NS_IsMainThread());
   }
 
   NS_IMETHOD
-  OnStateChange(nsIWebProgress* aWebProgress,
-                nsIRequest* aRequest,
-                uint32_t aStateFlags, nsresult aStatus) override
-  {
+  OnStateChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                uint32_t aStateFlags, nsresult aStatus) override {
     if (!(aStateFlags & STATE_IS_DOCUMENT) ||
-         !(aStateFlags & (STATE_STOP | STATE_TRANSFERRING))) {
+        !(aStateFlags & (STATE_STOP | STATE_TRANSFERRING))) {
       return NS_OK;
     }
 
@@ -62,7 +60,7 @@ public:
     // from ServiceWorkerPrivate.
     aWebProgress->RemoveProgressListener(this);
 
-    nsCOMPtr<nsIDocument> doc = mWindow->GetExtantDoc();
+    nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
     if (NS_WARN_IF(!doc)) {
       mPromise->Reject(NS_ERROR_FAILURE, __func__);
       mPromise = nullptr;
@@ -71,9 +69,11 @@ public:
 
     // Check same origin.
     nsCOMPtr<nsIScriptSecurityManager> securityManager =
-      nsContentUtils::GetSecurityManager();
-    nsresult rv = securityManager->CheckSameOriginURI(doc->GetOriginalURI(),
-                                                      mBaseURI, false);
+        nsContentUtils::GetSecurityManager();
+    bool isPrivateWin =
+        doc->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId > 0;
+    nsresult rv = securityManager->CheckSameOriginURI(
+        doc->GetOriginalURI(), mBaseURI, false, isPrivateWin);
     if (NS_FAILED(rv)) {
       mPromise->Resolve(NS_OK, __func__);
       mPromise = nullptr;
@@ -89,56 +89,52 @@ public:
       return NS_OK;
     }
 
-    mPromise->Resolve(ClientInfoAndState(info.ref().ToIPC(), state.ref().ToIPC()),
-                      __func__);
+    mPromise->Resolve(
+        ClientInfoAndState(info.ref().ToIPC(), state.ref().ToIPC()), __func__);
     mPromise = nullptr;
 
     return NS_OK;
   }
 
   NS_IMETHOD
-  OnProgressChange(nsIWebProgress* aWebProgress,
-                   nsIRequest* aRequest,
-                   int32_t aCurSelfProgress,
-                   int32_t aMaxSelfProgress,
+  OnProgressChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                   int32_t aCurSelfProgress, int32_t aMaxSelfProgress,
                    int32_t aCurTotalProgress,
-                   int32_t aMaxTotalProgress) override
-  {
+                   int32_t aMaxTotalProgress) override {
     MOZ_ASSERT(false, "Unexpected notification.");
     return NS_OK;
   }
 
   NS_IMETHOD
-  OnLocationChange(nsIWebProgress* aWebProgress,
-                   nsIRequest* aRequest,
-                   nsIURI* aLocation,
-                   uint32_t aFlags) override
-  {
+  OnLocationChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                   nsIURI* aLocation, uint32_t aFlags) override {
     MOZ_ASSERT(false, "Unexpected notification.");
     return NS_OK;
   }
 
   NS_IMETHOD
-  OnStatusChange(nsIWebProgress* aWebProgress,
-                 nsIRequest* aRequest,
-                 nsresult aStatus, const char16_t* aMessage) override
-  {
+  OnStatusChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                 nsresult aStatus, const char16_t* aMessage) override {
     MOZ_ASSERT(false, "Unexpected notification.");
     return NS_OK;
   }
 
   NS_IMETHOD
-  OnSecurityChange(nsIWebProgress* aWebProgress,
-                   nsIRequest* aRequest,
-                   uint32_t aState) override
-  {
+  OnSecurityChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                   uint32_t aState) override {
     MOZ_ASSERT(false, "Unexpected notification.");
     return NS_OK;
   }
 
-private:
-  ~WebProgressListener()
-  {
+  NS_IMETHOD
+  OnContentBlockingEvent(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
+                         uint32_t aEvent) override {
+    MOZ_ASSERT(false, "Unexpected notification.");
+    return NS_OK;
+  }
+
+ private:
+  ~WebProgressListener() {
     if (mPromise) {
       mPromise->Reject(NS_ERROR_ABORT, __func__);
       mPromise = nullptr;
@@ -152,13 +148,10 @@ private:
 };
 
 NS_IMPL_ISUPPORTS(WebProgressListener, nsIWebProgressListener,
-                                       nsISupportsWeakReference);
+                  nsISupportsWeakReference);
 
-nsresult
-OpenWindow(const ClientOpenWindowArgs& aArgs,
-           nsPIDOMWindowOuter** aWindow)
-{
-  MOZ_DIAGNOSTIC_ASSERT(aWindow);
+nsresult OpenWindow(const ClientOpenWindowArgs& aArgs, BrowsingContext** aBC) {
+  MOZ_DIAGNOSTIC_ASSERT(aBC);
 
   // [[1. Let url be the result of parsing url with entry settings object's API
   //   base URL.]]
@@ -167,21 +160,27 @@ OpenWindow(const ClientOpenWindowArgs& aArgs,
   nsCOMPtr<nsIURI> baseURI;
   nsresult rv = NS_NewURI(getter_AddRefs(baseURI), aArgs.baseURL());
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return NS_ERROR_TYPE_ERR;
+    // TODO: Improve this error in bug 1412856.
+    return NS_ERROR_DOM_TYPE_ERR;
   }
 
   rv = NS_NewURI(getter_AddRefs(uri), aArgs.url(), nullptr, baseURI);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return NS_ERROR_TYPE_ERR;
+    // TODO: Improve this error in bug 1412856.
+    return NS_ERROR_DOM_TYPE_ERR;
   }
 
   nsCOMPtr<nsIPrincipal> principal =
-    PrincipalInfoToPrincipal(aArgs.principalInfo());
+      PrincipalInfoToPrincipal(aArgs.principalInfo());
   MOZ_DIAGNOSTIC_ASSERT(principal);
+
+  nsCOMPtr<nsIContentSecurityPolicy> csp;
+  if (aArgs.cspInfo().isSome()) {
+    csp = CSPInfoToCSP(aArgs.cspInfo().ref(), nullptr);
+  }
 
   // [[6.1 Open Window]]
   if (XRE_IsContentProcess()) {
-
     // Let's create a sandbox in order to have a valid JSContext and correctly
     // propagate the SubjectPrincipal.
     AutoJSAPI jsapi;
@@ -195,14 +194,15 @@ OpenWindow(const ClientOpenWindowArgs& aArgs,
     JS::Rooted<JSObject*> sandbox(cx);
     rv = xpc->CreateSandbox(cx, principal, sandbox.address());
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      return NS_ERROR_TYPE_ERR;
+      // TODO: Improve this error in bug 1412856.
+      return NS_ERROR_DOM_TYPE_ERR;
     }
 
     JSAutoRealm ar(cx, sandbox);
 
     // ContentProcess
     nsCOMPtr<nsIWindowWatcher> wwatch =
-      do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv);
+        do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -215,32 +215,23 @@ OpenWindow(const ClientOpenWindowArgs& aArgs,
       return rv;
     }
 
-    nsCOMPtr<mozIDOMWindowProxy> newWindow;
-    rv = pwwatch->OpenWindow2(nullptr,
-                              spec.get(),
-                              nullptr,
-                              nullptr,
-                              false, false, true, nullptr,
-                              // Not a spammy popup; we got permission, we swear!
-                              /* aIsPopupSpam = */ false,
-                              // Don't force noopener.  We're not passing in an
-                              // opener anyway, and we _do_ want the returned
-                              // window.
-                              /* aForceNoOpener = */ false,
-                              /* aLoadInfp = */ nullptr,
-                              getter_AddRefs(newWindow));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-    nsCOMPtr<nsPIDOMWindowOuter> pwindow = nsPIDOMWindowOuter::From(newWindow);
-    pwindow.forget(aWindow);
-    MOZ_DIAGNOSTIC_ASSERT(*aWindow);
+    MOZ_TRY(pwwatch->OpenWindow2(
+        nullptr, spec.get(), nullptr, nullptr, false, false, true, nullptr,
+        // Not a spammy popup; we got permission, we swear!
+        /* aIsPopupSpam = */ false,
+        // Don't force noopener.  We're not passing in an
+        // opener anyway, and we _do_ want the returned
+        // window.
+        /* aForceNoOpener = */ false,
+        /* aForceNoReferrer = */ false,
+        /* aLoadInfp = */ nullptr, aBC));
+    MOZ_DIAGNOSTIC_ASSERT(*aBC);
     return NS_OK;
   }
 
   // Find the most recent browser window and open a new tab in it.
   nsCOMPtr<nsPIDOMWindowOuter> browserWindow =
-    nsContentUtils::GetMostRecentNonPBWindow();
+      nsContentUtils::GetMostRecentNonPBWindow();
   if (!browserWindow) {
     // It is possible to be running without a browser window on Mac OS, so
     // we need to open a new chrome window.
@@ -260,41 +251,21 @@ OpenWindow(const ClientOpenWindowArgs& aArgs,
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<mozIDOMWindowProxy> win;
-  rv = bwin->OpenURI(uri, nullptr,
-                     nsIBrowserDOMWindow::OPEN_DEFAULTWINDOW,
-                     nsIBrowserDOMWindow::OPEN_NEW,
-                     principal,
-                     getter_AddRefs(win));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-  NS_ENSURE_STATE(win);
-
-  nsCOMPtr<nsPIDOMWindowOuter> pWin = nsPIDOMWindowOuter::From(win);
-  pWin.forget(aWindow);
-  MOZ_DIAGNOSTIC_ASSERT(*aWindow);
-
-  return NS_OK;
+  return bwin->OpenURI(uri, nullptr, nsIBrowserDOMWindow::OPEN_DEFAULTWINDOW,
+                       nsIBrowserDOMWindow::OPEN_NEW, principal, csp, aBC);
 }
 
-void
-WaitForLoad(const ClientOpenWindowArgs& aArgs,
-            nsPIDOMWindowOuter* aOuterWindow,
-            ClientOpPromise::Private* aPromise)
-{
+void WaitForLoad(const ClientOpenWindowArgs& aArgs,
+                 nsPIDOMWindowOuter* aOuterWindow,
+                 ClientOpPromise::Private* aPromise) {
   MOZ_DIAGNOSTIC_ASSERT(aOuterWindow);
 
   RefPtr<ClientOpPromise::Private> promise = aPromise;
 
-  nsresult rv = nsContentUtils::DispatchFocusChromeEvent(aOuterWindow);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    promise->Reject(rv, __func__);
-    return;
-  }
+  nsFocusManager::FocusWindow(aOuterWindow);
 
   nsCOMPtr<nsIURI> baseURI;
-  rv = NS_NewURI(getter_AddRefs(baseURI), aArgs.baseURL());
+  nsresult rv = NS_NewURI(getter_AddRefs(baseURI), aArgs.baseURL());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     promise->Reject(rv, __func__);
     return;
@@ -311,8 +282,7 @@ WaitForLoad(const ClientOpenWindowArgs& aArgs,
   RefPtr<ClientOpPromise> ref = promise;
 
   RefPtr<WebProgressListener> listener =
-    new WebProgressListener(aOuterWindow, baseURI, promise.forget());
-
+      new WebProgressListener(aOuterWindow, baseURI, promise.forget());
 
   rv = webProgress->AddProgressListener(listener,
                                         nsIWebProgress::NOTIFY_STATE_DOCUMENT);
@@ -322,27 +292,73 @@ WaitForLoad(const ClientOpenWindowArgs& aArgs,
   }
 
   // Hold the listener alive until the promise settles
-  ref->Then(aOuterWindow->EventTargetFor(TaskCategory::Other), __func__,
-    [listener] (const ClientOpResult& aResult) { },
-    [listener] (nsresult aResult) { });
+  ref->Then(
+      aOuterWindow->EventTargetFor(TaskCategory::Other), __func__,
+      [listener](const ClientOpResult& aResult) {},
+      [listener](nsresult aResult) {});
 }
 
 #ifdef MOZ_WIDGET_ANDROID
 
-class LaunchObserver final : public nsIObserver
-{
+void GeckoViewOpenWindow(const ClientOpenWindowArgs& aArgs,
+                         ClientOpPromise::Private* aPromise) {
+  RefPtr<ClientOpPromise::Private> promise = aPromise;
+
+  // passes the request to open a new window to GeckoView. Allowing the
+  // application to decide how to hand the open window request.
+  auto genericResult =
+      java::GeckoRuntime::ServiceWorkerOpenWindow(aArgs.baseURL(), aArgs.url());
+  auto typedResult = java::GeckoResult::LocalRef(std::move(genericResult));
+
+  // MozPromise containing the ID for the handling GeckoSession
+  auto promiseResult =
+      mozilla::MozPromise<nsString, nsString, false>::FromGeckoResult(
+          typedResult);
+
+  promiseResult->Then(
+      SystemGroup::EventTargetFor(TaskCategory::Other), __func__,
+      [aArgs, promise](nsString sessionId) {
+        nsresult rv;
+        nsCOMPtr<nsIWindowWatcher> wwatch =
+            do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv);
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          promise->Reject(rv, __func__);
+          return rv;
+        }
+
+        // Retrieve the window by using the GeckoSession ID. The window is named
+        // the same as the ID of the GeckoSession it is associated with.
+        nsCOMPtr<mozIDOMWindowProxy> domWindow;
+        wwatch->GetWindowByName(sessionId, nullptr, getter_AddRefs(domWindow));
+        if (!domWindow) {
+          promise->Reject(NS_ERROR_FAILURE, __func__);
+          return NS_ERROR_FAILURE;
+        }
+
+        nsCOMPtr<nsPIDOMWindowOuter> outerWindow = do_QueryInterface(domWindow);
+        if (NS_WARN_IF(!outerWindow)) {
+          promise->Reject(NS_ERROR_FAILURE, __func__);
+          return NS_ERROR_FAILURE;
+        }
+
+        WaitForLoad(aArgs, outerWindow, promise);
+        return NS_OK;
+      },
+      [promise](nsString aResult) {
+        promise->Reject(NS_ERROR_FAILURE, __func__);
+      });
+}
+
+class LaunchObserver final : public nsIObserver {
   RefPtr<GenericPromise::Private> mPromise;
 
-  LaunchObserver()
-    : mPromise(new GenericPromise::Private(__func__))
-  {
-  }
+  LaunchObserver() : mPromise(new GenericPromise::Private(__func__)) {}
 
   ~LaunchObserver() = default;
 
   NS_IMETHOD
-  Observe(nsISupports* aSubject, const char* aTopic, const char16_t * aData) override
-  {
+  Observe(nsISupports* aSubject, const char* aTopic,
+          const char16_t* aData) override {
     nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (os) {
       os->RemoveObserver(this, "BrowserChrome:Ready");
@@ -351,10 +367,8 @@ class LaunchObserver final : public nsIObserver
     return NS_OK;
   }
 
-public:
-  static already_AddRefed<LaunchObserver>
-  Create()
-  {
+ public:
+  static already_AddRefed<LaunchObserver> Create() {
     nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (NS_WARN_IF(!os)) {
       return nullptr;
@@ -362,7 +376,8 @@ public:
 
     RefPtr<LaunchObserver> ref = new LaunchObserver();
 
-    nsresult rv = os->AddObserver(ref, "BrowserChrome:Ready", /* weakRef */ false);
+    nsresult rv =
+        os->AddObserver(ref, "BrowserChrome:Ready", /* weakRef */ false);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return nullptr;
     }
@@ -370,9 +385,7 @@ public:
     return ref.forget();
   }
 
-  void
-  Cancel()
-  {
+  void Cancel() {
     nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (os) {
       os->RemoveObserver(this, "BrowserChrome:Ready");
@@ -380,78 +393,43 @@ public:
     mPromise->Reject(NS_ERROR_ABORT, __func__);
   }
 
-  GenericPromise*
-  Promise()
-  {
-    return mPromise;
-  }
+  GenericPromise* Promise() { return mPromise; }
 
   NS_DECL_ISUPPORTS
 };
 
 NS_IMPL_ISUPPORTS(LaunchObserver, nsIObserver);
 
-#endif // MOZ_WIDGET_ANDROID
+#endif  // MOZ_WIDGET_ANDROID
 
-} // anonymous namespace
+}  // anonymous namespace
 
-already_AddRefed<ClientOpPromise>
-ClientOpenWindowInCurrentProcess(const ClientOpenWindowArgs& aArgs)
-{
+RefPtr<ClientOpPromise> ClientOpenWindowInCurrentProcess(
+    const ClientOpenWindowArgs& aArgs) {
   RefPtr<ClientOpPromise::Private> promise =
-    new ClientOpPromise::Private(__func__);
-  RefPtr<ClientOpPromise> ref = promise;
+      new ClientOpPromise::Private(__func__);
 
 #ifdef MOZ_WIDGET_ANDROID
-  // This fires an intent that will start launching Fennec and foreground it,
-  // if necessary.  We create an observer so that we can determine when
-  // the launch has completed.
-  RefPtr<LaunchObserver> launchObserver = LaunchObserver::Create();
-  java::GeckoApp::LaunchOrBringToFront();
-#endif // MOZ_WIDGET_ANDROID
+  // If we are on Android we are GeckoView.
+  GeckoViewOpenWindow(aArgs, promise);
+  return promise.forget();
+#endif  // MOZ_WIDGET_ANDROID
 
-  nsCOMPtr<nsPIDOMWindowOuter> outerWindow;
-  nsresult rv = OpenWindow(aArgs, getter_AddRefs(outerWindow));
+  RefPtr<BrowsingContext> bc;
+  nsresult rv = OpenWindow(aArgs, getter_AddRefs(bc));
 
-#ifdef MOZ_WIDGET_ANDROID
-  // If we get the NOT_AVAILABLE error that means the browser is still
-  // launching on android.  Use the observer we created above to wait
-  // until the launch completes and then try to open the window again.
-  if (rv == NS_ERROR_NOT_AVAILABLE && launchObserver) {
-    RefPtr<GenericPromise> p = launchObserver->Promise();
-    p->Then(SystemGroup::EventTargetFor(TaskCategory::Other), __func__,
-      [aArgs, promise] (bool aResult) {
-        nsCOMPtr<nsPIDOMWindowOuter> outerWindow;
-        nsresult rv = OpenWindow(aArgs, getter_AddRefs(outerWindow));
-        if (NS_WARN_IF(NS_FAILED(rv))) {
-          promise->Reject(rv, __func__);
-        }
-
-        WaitForLoad(aArgs, outerWindow, promise);
-      }, [promise] (nsresult aResult) {
-        promise->Reject(aResult, __func__);
-      });
-    return ref.forget();
-  }
-
-  // If we didn't get the NOT_AVAILABLE error then there is no need
-  // wait for the browser to launch.  Cancel the observer so that it
-  // will release.
-  if (launchObserver) {
-    launchObserver->Cancel();
-  }
-#endif // MOZ_WIDGET_ANDROID
+  nsCOMPtr<nsPIDOMWindowOuter> outerWindow(bc->GetDOMWindow());
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
     promise->Reject(rv, __func__);
-    return ref.forget();
+    return promise.forget();
   }
 
   MOZ_DIAGNOSTIC_ASSERT(outerWindow);
   WaitForLoad(aArgs, outerWindow, promise);
 
-  return ref.forget();
+  return promise.forget();
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

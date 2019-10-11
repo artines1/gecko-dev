@@ -5,18 +5,17 @@
 
 #include "gtest/gtest.h"
 #include "mozilla/intl/LocaleService.h"
-#include "mozilla/Services.h"
 #include "nsIToolkitChromeRegistry.h"
 
 using namespace mozilla::intl;
 
-TEST(Intl_Locale_LocaleService, Negotiate) {
+TEST(Intl_Locale_LocaleService, Negotiate)
+{
   nsTArray<nsCString> requestedLocales;
   nsTArray<nsCString> availableLocales;
   nsTArray<nsCString> supportedLocales;
   nsAutoCString defaultLocale("en-US");
-  LocaleService::LangNegStrategy strategy =
-    LocaleService::LangNegStrategy::Filtering;
+  int32_t strategy = LocaleService::kLangNegStrategyFiltering;
 
   requestedLocales.AppendElement(NS_LITERAL_CSTRING("sr"));
 
@@ -24,27 +23,29 @@ TEST(Intl_Locale_LocaleService, Negotiate) {
   availableLocales.AppendElement(NS_LITERAL_CSTRING("sr-Latn"));
 
   LocaleService::GetInstance()->NegotiateLanguages(
-      requestedLocales, availableLocales, defaultLocale, strategy, supportedLocales);
+      requestedLocales, availableLocales, defaultLocale, strategy,
+      supportedLocales);
 
   ASSERT_TRUE(supportedLocales.Length() == 2);
   ASSERT_TRUE(supportedLocales[0].EqualsLiteral("sr-Cyrl"));
   ASSERT_TRUE(supportedLocales[1].EqualsLiteral("en-US"));
 }
 
-TEST(Intl_Locale_LocaleService, UseLSDefaultLocale) {
+TEST(Intl_Locale_LocaleService, UseLSDefaultLocale)
+{
   nsTArray<nsCString> requestedLocales;
   nsTArray<nsCString> availableLocales;
   nsTArray<nsCString> supportedLocales;
   nsAutoCString defaultLocale("");
-  LocaleService::LangNegStrategy strategy =
-    LocaleService::LangNegStrategy::Lookup;
+  int32_t strategy = LocaleService::kLangNegStrategyLookup;
 
   requestedLocales.AppendElement(NS_LITERAL_CSTRING("sr"));
 
   availableLocales.AppendElement(NS_LITERAL_CSTRING("de"));
 
   LocaleService::GetInstance()->NegotiateLanguages(
-      requestedLocales, availableLocales, defaultLocale, strategy, supportedLocales);
+      requestedLocales, availableLocales, defaultLocale, strategy,
+      supportedLocales);
 
   nsAutoCString lsDefaultLocale;
   LocaleService::GetInstance()->GetDefaultLocale(lsDefaultLocale);

@@ -29,6 +29,8 @@ use std::os::unix::io::RawFd;
 /// Basic usage
 ///
 /// ```
+/// # use std::error::Error;
+/// # fn try_main() -> Result<(), Box<Error>> {
 /// use mio::{Ready, Poll, PollOpt, Token};
 /// use mio::unix::EventedFd;
 ///
@@ -36,16 +38,22 @@ use std::os::unix::io::RawFd;
 /// use std::net::TcpListener;
 ///
 /// // Bind a std listener
-/// let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+/// let listener = TcpListener::bind("127.0.0.1:0")?;
 ///
-/// let poll = Poll::new().unwrap();
+/// let poll = Poll::new()?;
 ///
 /// // Register the listener
 /// poll.register(&EventedFd(&listener.as_raw_fd()),
-///              Token(0), Ready::readable(), PollOpt::edge()).unwrap();
+///              Token(0), Ready::readable(), PollOpt::edge())?;
+/// #     Ok(())
+/// # }
+/// #
+/// # fn main() {
+/// #     try_main().unwrap();
+/// # }
 /// ```
 ///
-/// Implementing `Evented` for a custom type backed by a `RawFd`.
+/// Implementing [`Evented`] for a custom type backed by a [`RawFd`].
 ///
 /// ```
 /// use mio::{Ready, Poll, PollOpt, Token};
@@ -78,9 +86,10 @@ use std::os::unix::io::RawFd;
 /// }
 /// ```
 ///
-/// [`RawFd`]: #
-/// [`Evented`]: #
-/// [`Poll`]: #
+/// [`RawFd`]: https://doc.rust-lang.org/std/os/unix/io/type.RawFd.html
+/// [`Evented`]: ../event/trait.Evented.html
+/// [`Poll`]: ../struct.Poll.html
+/// [`Poll::register`]: ../struct.Poll.html#method.register
 pub struct EventedFd<'a>(pub &'a RawFd);
 
 impl<'a> Evented for EventedFd<'a> {

@@ -10,11 +10,13 @@ import org.mozilla.gecko.gfx.GeckoSurface;
 import org.mozilla.gecko.media.FormatParam;
 import org.mozilla.gecko.media.ICodecCallbacks;
 import org.mozilla.gecko.media.Sample;
+import org.mozilla.gecko.media.SampleBuffer;
 
 interface ICodec {
     void setCallbacks(in ICodecCallbacks callbacks);
     boolean configure(in FormatParam format, in GeckoSurface surface, in int flags, in String drmStubId);
     boolean isAdaptivePlaybackSupported();
+    boolean isHardwareAccelerated();
     boolean isTunneledPlaybackSupported();
     void start();
     void stop();
@@ -23,7 +25,9 @@ interface ICodec {
 
     Sample dequeueInput(int size);
     oneway void queueInput(in Sample sample);
+    SampleBuffer getInputBuffer(int id);
+    SampleBuffer getOutputBuffer(int id);
 
     void releaseOutput(in Sample sample, in boolean render);
-    oneway void setRates(in int newBitRate);
+    oneway void setBitrate(in int bps);
 }

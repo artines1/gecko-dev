@@ -6,23 +6,26 @@
 
 DIRS += [
     'addon',
+    'descriptors',
+    'inspector',
+    'targets',
+    'worker',
 ]
 
 DevToolsModules(
     'accessibility.js',
     'actor-registry.js',
     'animation.js',
-    'call-watcher.js',
-    'canvas.js',
+    'array-buffer.js',
+    'changes.js',
     'css-properties.js',
-    'csscoverage.js',
     'device.js',
     'emulation.js',
     'framerate.js',
-    'gcli.js',
     'highlighters.js',
     'inspector.js',
     'layout.js',
+    'manifest.js',
     'memory.js',
     'node.js',
     'perf.js',
@@ -31,11 +34,14 @@ DevToolsModules(
     'preference.js',
     'promises.js',
     'reflow.js',
+    'root.js',
+    'screenshot.js',
+    'source.js',
     'storage.js',
     'string.js',
     'styles.js',
     'stylesheets.js',
-    'timeline.js',
-    'webaudio.js',
-    'webgl.js'
+    'thread.js',
+    'webconsole.js',
+    'websocket.js',
 )

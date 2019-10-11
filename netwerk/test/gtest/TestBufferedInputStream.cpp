@@ -6,9 +6,8 @@
 #include "Helpers.h"
 
 // Helper function for creating a testing::AsyncStringStream
-already_AddRefed<nsBufferedInputStream>
-CreateStream(uint32_t aSize, nsCString& aBuffer)
-{
+already_AddRefed<nsBufferedInputStream> CreateStream(uint32_t aSize,
+                                                     nsCString& aBuffer) {
   aBuffer.SetLength(aSize);
   for (uint32_t i = 0; i < aSize; ++i) {
     aBuffer.BeginWriting()[i] = i % 10;
@@ -22,7 +21,8 @@ CreateStream(uint32_t aSize, nsCString& aBuffer)
 }
 
 // Simple reading.
-TEST(TestBufferedInputStream, SimpleRead) {
+TEST(TestBufferedInputStream, SimpleRead)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
@@ -40,7 +40,8 @@ TEST(TestBufferedInputStream, SimpleRead) {
 }
 
 // Simple segment reading.
-TEST(TestBufferedInputStream, SimpleReadSegments) {
+TEST(TestBufferedInputStream, SimpleReadSegments)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
@@ -48,20 +49,21 @@ TEST(TestBufferedInputStream, SimpleReadSegments) {
 
   char buf2[kBufSize];
   uint32_t count;
-  ASSERT_EQ(NS_OK, bis->ReadSegments(NS_CopySegmentToBuffer, buf2, sizeof(buf2), &count));
+  ASSERT_EQ(NS_OK, bis->ReadSegments(NS_CopySegmentToBuffer, buf2, sizeof(buf2),
+                                     &count));
   ASSERT_EQ(count, buf.Length());
   ASSERT_TRUE(nsCString(buf.get(), kBufSize).Equals(nsCString(buf2, count)));
 }
 
 // AsyncWait - sync
-TEST(TestBufferedInputStream, AsyncWait_sync) {
+TEST(TestBufferedInputStream, AsyncWait_sync)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
   RefPtr<nsBufferedInputStream> bis = CreateStream(kBufSize, buf);
 
-  RefPtr<testing::InputStreamCallback> cb =
-    new testing::InputStreamCallback();
+  RefPtr<testing::InputStreamCallback> cb = new testing::InputStreamCallback();
 
   ASSERT_EQ(NS_OK, bis->AsyncWait(cb, 0, 0, nullptr));
 
@@ -70,14 +72,14 @@ TEST(TestBufferedInputStream, AsyncWait_sync) {
 }
 
 // AsyncWait - async
-TEST(TestBufferedInputStream, AsyncWait_async) {
+TEST(TestBufferedInputStream, AsyncWait_async)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
   RefPtr<nsBufferedInputStream> bis = CreateStream(kBufSize, buf);
 
-  RefPtr<testing::InputStreamCallback> cb =
-    new testing::InputStreamCallback();
+  RefPtr<testing::InputStreamCallback> cb = new testing::InputStreamCallback();
   nsCOMPtr<nsIThread> thread = do_GetCurrentThread();
 
   ASSERT_EQ(NS_OK, bis->AsyncWait(cb, 0, 0, thread));
@@ -90,17 +92,17 @@ TEST(TestBufferedInputStream, AsyncWait_async) {
 }
 
 // AsyncWait - sync - closureOnly
-TEST(TestBufferedInputStream, AsyncWait_sync_closureOnly) {
+TEST(TestBufferedInputStream, AsyncWait_sync_closureOnly)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
   RefPtr<nsBufferedInputStream> bis = CreateStream(kBufSize, buf);
 
-  RefPtr<testing::InputStreamCallback> cb =
-    new testing::InputStreamCallback();
+  RefPtr<testing::InputStreamCallback> cb = new testing::InputStreamCallback();
 
-  ASSERT_EQ(NS_OK, bis->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY,
-                                  0, nullptr));
+  ASSERT_EQ(NS_OK, bis->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY, 0,
+                                  nullptr));
   ASSERT_FALSE(cb->Called());
 
   bis->CloseWithStatus(NS_ERROR_FAILURE);
@@ -110,18 +112,18 @@ TEST(TestBufferedInputStream, AsyncWait_sync_closureOnly) {
 }
 
 // AsyncWait - async
-TEST(TestBufferedInputStream, AsyncWait_async_closureOnly) {
+TEST(TestBufferedInputStream, AsyncWait_async_closureOnly)
+{
   const size_t kBufSize = 10;
 
   nsCString buf;
   RefPtr<nsBufferedInputStream> bis = CreateStream(kBufSize, buf);
 
-  RefPtr<testing::InputStreamCallback> cb =
-    new testing::InputStreamCallback();
+  RefPtr<testing::InputStreamCallback> cb = new testing::InputStreamCallback();
   nsCOMPtr<nsIThread> thread = do_GetCurrentThread();
 
-  ASSERT_EQ(NS_OK, bis->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY,
-                                  0, thread));
+  ASSERT_EQ(NS_OK, bis->AsyncWait(cb, nsIAsyncInputStream::WAIT_CLOSURE_ONLY, 0,
+                                  thread));
 
   ASSERT_FALSE(cb->Called());
   bis->CloseWithStatus(NS_ERROR_FAILURE);

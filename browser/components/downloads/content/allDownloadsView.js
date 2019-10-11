@@ -3,7 +3,10 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* eslint-env mozilla/browser-window */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+var { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
@@ -13,7 +16,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   OS: "resource://gre/modules/osfile.jsm",
-  Services: "resource://gre/modules/Services.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
 });
 
@@ -38,7 +40,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 function HistoryDownloadElementShell(download) {
   this._download = download;
 
-  this.element = document.createElement("richlistitem");
+  this.element = document.createXULElement("richlistitem");
   this.element._shell = this;
 
   this.element.classList.add("download");
@@ -47,22 +49,6 @@ function HistoryDownloadElementShell(download) {
 
 HistoryDownloadElementShell.prototype = {
   __proto__: DownloadsViewUI.DownloadElementShell.prototype,
-
-  /**
-   * Manages the "active" state of the shell.  By default all the shells are
-   * inactive, thus their UI is not updated.  They must be activated when
-   * entering the visible area.
-   */
-  ensureActive() {
-    if (!this._active) {
-      this._active = true;
-      this.element.setAttribute("active", true);
-      this.onChanged();
-    }
-  },
-  get active() {
-    return !!this._active;
-  },
 
   /**
    * Overrides the base getter to return the Download or HistoryDownload object
@@ -97,14 +83,9 @@ HistoryDownloadElementShell.prototype = {
     if (this._downloadState !== newState) {
       this._downloadState = newState;
       this.onStateChanged();
+    } else {
+      this._updateStateInner();
     }
-
-    // This cannot be placed within onStateChanged because
-    // when a download goes from hasBlockedData to !hasBlockedData
-    // it will still remain in the same state.
-    this.element.classList.toggle("temporary-block",
-                                  !!this.download.hasBlockedData);
-    this._updateProgress();
   },
   _downloadState: null,
 
@@ -113,8 +94,10 @@ HistoryDownloadElementShell.prototype = {
     if (!this.active && aCommand != "cmd_delete") {
       return false;
     }
-    return DownloadsViewUI.DownloadElementShell.prototype
-                          .isCommandEnabled.call(this, aCommand);
+    return DownloadsViewUI.DownloadElementShell.prototype.isCommandEnabled.call(
+      this,
+      aCommand
+    );
   },
 
   downloadsCmd_unblock() {
@@ -137,8 +120,11 @@ HistoryDownloadElementShell.prototype = {
       return true;
     }
     aTerm = aTerm.toLowerCase();
-    return this.displayName.toLowerCase().includes(aTerm) ||
-           this.download.source.url.toLowerCase().includes(aTerm);
+    let displayName = DownloadsViewUI.getDisplayName(this.download);
+    return (
+      displayName.toLowerCase().includes(aTerm) ||
+      this.download.source.url.toLowerCase().includes(aTerm)
+    );
   },
 
   // Handles return keypress on the element (the keypress listener is
@@ -170,10 +156,13 @@ HistoryDownloadElementShell.prototype = {
     // Start checking for existence.  This may be done twice if onSelect is
     // called again before the information is collected.
     if (!this._targetFileChecked) {
-      this.download.refresh().catch(Cu.reportError).then(() => {
-        // Do not try to check for existence again even if this failed.
-        this._targetFileChecked = true;
-      });
+      this.download
+        .refresh()
+        .catch(Cu.reportError)
+        .then(() => {
+          // Do not try to check for existence again even if this failed.
+          this._targetFileChecked = true;
+        });
     }
   },
 };
@@ -181,9 +170,9 @@ HistoryDownloadElementShell.prototype = {
 /**
  * Relays commands from the download.xml binding to the selected items.
  */
-const DownloadsView = {
-  onDownloadCommand(event, command) {
-    goDoCommand(command);
+var DownloadsView = {
+  onDownloadButton(event) {
+    event.target.closest("richlistitem")._shell.onButton();
   },
 
   onDownloadClick() {},
@@ -221,18 +210,27 @@ function DownloadsPlacesView(aRichListBox, aActive = true) {
 
   // Get the Download button out of the attention state since we're about to
   // view all downloads.
-  DownloadsCommon.getIndicatorData(window).attention = DownloadsCommon.ATTENTION_NONE;
+  DownloadsCommon.getIndicatorData(window).attention =
+    DownloadsCommon.ATTENTION_NONE;
 
   // Make sure to unregister the view if the window is closed.
-  window.addEventListener("unload", () => {
-    window.controllers.removeController(this);
-    this._downloadsData.removeView(this);
-    this.result = null;
-  }, true);
+  window.addEventListener(
+    "unload",
+    () => {
+      window.controllers.removeController(this);
+      this._downloadsData.removeView(this);
+      this.result = null;
+    },
+    true
+  );
   // Resizing the window may change items visibility.
-  window.addEventListener("resize", () => {
-    this._ensureVisibleElementsAreActive();
-  }, true);
+  window.addEventListener(
+    "resize",
+    () => {
+      this._ensureVisibleElementsAreActive();
+    },
+    true
+  );
 }
 
 DownloadsPlacesView.prototype = {
@@ -247,14 +245,18 @@ DownloadsPlacesView.prototype = {
   },
   set active(val) {
     this._active = val;
-    if (this._active)
+    if (this._active) {
       this._ensureVisibleElementsAreActive();
+    }
     return this._active;
   },
 
   _ensureVisibleElementsAreActive() {
-    if (!this.active || this._ensureVisibleTimer ||
-        !this._richlistbox.firstChild) {
+    if (
+      !this.active ||
+      this._ensureVisibleTimer ||
+      !this._richlistbox.firstChild
+    ) {
       return;
     }
 
@@ -266,9 +268,17 @@ DownloadsPlacesView.prototype = {
 
       let rlbRect = this._richlistbox.getBoundingClientRect();
       let winUtils = window.windowUtils;
-      let nodes = winUtils.nodesFromRect(rlbRect.left, rlbRect.top,
-                                         0, rlbRect.width, rlbRect.height, 0,
-                                         true, false);
+      let nodes = winUtils.nodesFromRect(
+        rlbRect.left,
+        rlbRect.top,
+        0,
+        rlbRect.width,
+        rlbRect.height,
+        0,
+        true,
+        false,
+        false
+      );
       // nodesFromRect returns nodes in z-index order, and for the same z-index
       // sorts them in inverted DOM order, thus starting from the one that would
       // be on top.
@@ -293,8 +303,8 @@ DownloadsPlacesView.prototype = {
         nodeBelowVisibleArea._shell.ensureActive();
       }
 
-      let nodeAboveVisibleArea = firstVisibleNode &&
-                                 firstVisibleNode.previousSibling;
+      let nodeAboveVisibleArea =
+        firstVisibleNode && firstVisibleNode.previousSibling;
       if (nodeAboveVisibleArea && nodeAboveVisibleArea._shell) {
         nodeAboveVisibleArea._shell.ensureActive();
       }
@@ -315,8 +325,10 @@ DownloadsPlacesView.prototype = {
   },
 
   get selectedNodes() {
-      return Array.filter(this._richlistbox.selectedItems,
-                          element => element._shell.download.placesNode);
+    return Array.prototype.filter.call(
+      this._richlistbox.selectedItems,
+      element => element._shell.download.placesNode
+    );
   },
 
   get selectedNode() {
@@ -325,7 +337,7 @@ DownloadsPlacesView.prototype = {
   },
 
   get hasSelection() {
-    return this.selectedNodes.length > 0;
+    return !!this.selectedNodes.length;
   },
 
   get controller() {
@@ -342,7 +354,7 @@ DownloadsPlacesView.prototype = {
       }
       this._ensureVisibleElementsAreActive();
     }
-    return this._searchTerm = aValue;
+    return (this._searchTerm = aValue);
   },
 
   /**
@@ -443,8 +455,9 @@ DownloadsPlacesView.prototype = {
     // Since newest downloads are displayed at the top, either prepend the new
     // element or insert it after the one indicated by the insertBefore option.
     if (insertBefore) {
-      this._viewItemsForDownloads.get(insertBefore)
-          .element.insertAdjacentElement("afterend", shell.element);
+      this._viewItemsForDownloads
+        .get(insertBefore)
+        .element.insertAdjacentElement("afterend", shell.element);
     } else {
       (this.batchFragment || this._richlistbox).prepend(shell.element);
     }
@@ -469,12 +482,15 @@ DownloadsPlacesView.prototype = {
 
     // If the element was selected exclusively, select its next
     // sibling first, if not, try for previous sibling, if any.
-    if ((element.nextSibling || element.previousSibling) &&
-        this._richlistbox.selectedItems &&
-        this._richlistbox.selectedItems.length == 1 &&
-        this._richlistbox.selectedItems[0] == element) {
-      this._richlistbox.selectItem(element.nextSibling ||
-                                   element.previousSibling);
+    if (
+      (element.nextSibling || element.previousSibling) &&
+      this._richlistbox.selectedItems &&
+      this._richlistbox.selectedItems.length == 1 &&
+      this._richlistbox.selectedItems[0] == element
+    ) {
+      this._richlistbox.selectItem(
+        element.nextSibling || element.previousSibling
+      );
     }
 
     this._richlistbox.removeItemFromSelection(element);
@@ -493,8 +509,10 @@ DownloadsPlacesView.prototype = {
     if (!DownloadsViewUI.isCommandName(aCommand)) {
       return false;
     }
-    if (!(aCommand in this) &&
-        !(aCommand in HistoryDownloadElementShell.prototype)) {
+    if (
+      !(aCommand in this) &&
+      !(aCommand in HistoryDownloadElementShell.prototype)
+    ) {
       return false;
     }
     // If this function returns true, other controllers won't get a chance to
@@ -503,8 +521,10 @@ DownloadsPlacesView.prototype = {
     // like copy and paste correctly. The clear downloads command, instead, is
     // specific to the downloads list but can be invoked from the toolbar, so we
     // can just return true unconditionally.
-    return aCommand == "downloadsCmd_clearDownloads" ||
-           document.activeElement == this._richlistbox;
+    return (
+      aCommand == "downloadsCmd_clearDownloads" ||
+      document.activeElement == this._richlistbox
+    );
   },
 
   // nsIController
@@ -521,14 +541,18 @@ DownloadsPlacesView.prototype = {
       case "downloadsCmd_clearDownloads":
         return this.canClearDownloads(this._richlistbox);
       default:
-        return Array.every(this._richlistbox.selectedItems,
-                           element => element._shell.isCommandEnabled(aCommand));
+        return Array.prototype.every.call(
+          this._richlistbox.selectedItems,
+          element => element._shell.isCommandEnabled(aCommand)
+        );
     }
   },
 
   _copySelectedDownloadsToClipboard() {
-    let urls = Array.map(this._richlistbox.selectedItems,
-                         element => element._shell.download.source.url);
+    let urls = Array.from(
+      this._richlistbox.selectedItems,
+      element => element._shell.download.source.url
+    );
 
     Cc["@mozilla.org/widget/clipboardhelper;1"]
       .getService(Ci.nsIClipboardHelper)
@@ -536,8 +560,9 @@ DownloadsPlacesView.prototype = {
   },
 
   _getURLFromClipboardData() {
-    let trans = Cc["@mozilla.org/widget/transferable;1"].
-                createInstance(Ci.nsITransferable);
+    let trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(
+      Ci.nsITransferable
+    );
     trans.init(null);
 
     let flavors = ["text/x-moz-url", "text/unicode"];
@@ -548,9 +573,10 @@ DownloadsPlacesView.prototype = {
     // Getting the data or creating the nsIURI might fail.
     try {
       let data = {};
-      trans.getAnyTransferData({}, data, {});
-      let [url, name] = data.value.QueryInterface(Ci.nsISupportsString)
-                            .data.split("\n");
+      trans.getAnyTransferData({}, data);
+      let [url, name] = data.value
+        .QueryInterface(Ci.nsISupportsString)
+        .data.split("\n");
       if (url) {
         return [NetUtil.newURI(url).spec, name];
       }
@@ -612,9 +638,11 @@ DownloadsPlacesView.prototype = {
   downloadsCmd_clearDownloads() {
     this._downloadsData.removeFinished();
     if (this._place) {
-      PlacesUtils.history.removeVisitsByFilter({
-        transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD
-      }).catch(Cu.reportError);
+      PlacesUtils.history
+        .removeVisitsByFilter({
+          transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
+        })
+        .catch(Cu.reportError);
     }
     // There may be no selection or focus change as a result
     // of these change, and we want the command updated immediately.
@@ -630,11 +658,12 @@ DownloadsPlacesView.prototype = {
     // Set the state attribute so that only the appropriate items are displayed.
     let contextMenu = document.getElementById("downloadsContextMenu");
     let download = element._shell.download;
-    contextMenu.setAttribute("state",
-                             DownloadsCommon.stateOfDownload(download));
+    contextMenu.setAttribute(
+      "state",
+      DownloadsCommon.stateOfDownload(download)
+    );
     contextMenu.setAttribute("exists", "true");
-    contextMenu.classList.toggle("temporary-block",
-                                 !!download.hasBlockedData);
+    contextMenu.classList.toggle("temporary-block", !!download.hasBlockedData);
 
     if (!download.stopped) {
       // The hasPartialData property of a download may change at any time after
@@ -728,9 +757,11 @@ DownloadsPlacesView.prototype = {
 
   onDragOver(aEvent) {
     let types = aEvent.dataTransfer.types;
-    if (types.includes("text/uri-list") ||
-        types.includes("text/x-moz-url") ||
-        types.includes("text/plain")) {
+    if (
+      types.includes("text/uri-list") ||
+      types.includes("text/x-moz-url") ||
+      types.includes("text/plain")
+    ) {
       aEvent.preventDefault();
     }
   },
@@ -744,13 +775,15 @@ DownloadsPlacesView.prototype = {
     }
 
     let links = Services.droppedLinkHandler.dropLinks(aEvent);
-    if (!links.length)
+    if (!links.length) {
       return;
+    }
     let browserWin = BrowserWindowTracker.getTopWindow();
     let initiatingDoc = browserWin ? browserWin.document : document;
     for (let link of links) {
-      if (link.url.startsWith("about:"))
+      if (link.url.startsWith("about:")) {
         continue;
+      }
       DownloadURL(link.url, link.name, initiatingDoc);
     }
   },
@@ -758,8 +791,9 @@ DownloadsPlacesView.prototype = {
 
 for (let methodName of ["load", "applyFilter", "selectNode", "selectItems"]) {
   DownloadsPlacesView.prototype[methodName] = function() {
-    throw new Error("|" + methodName +
-                    "| is not implemented by the downloads view.");
+    throw new Error(
+      "|" + methodName + "| is not implemented by the downloads view."
+    );
   };
 }
 
@@ -774,3 +808,33 @@ function goUpdateDownloadCommands() {
   updateCommandsForObject(DownloadsPlacesView.prototype);
   updateCommandsForObject(HistoryDownloadElementShell.prototype);
 }
+
+document.addEventListener("DOMContentLoaded", function() {
+  let richtListBox = document.getElementById("downloadsRichListBox");
+  richtListBox.addEventListener("scroll", function(event) {
+    return this._placesView.onScroll();
+  });
+  richtListBox.addEventListener("keypress", function(event) {
+    return this._placesView.onKeyPress(event);
+  });
+  richtListBox.addEventListener("dblclick", function(event) {
+    return this._placesView.onDoubleClick(event);
+  });
+  richtListBox.addEventListener("contextmenu", function(event) {
+    return this._placesView.onContextMenu(event);
+  });
+  richtListBox.addEventListener("dragstart", function(event) {
+    this._placesView.onDragStart(event);
+  });
+  richtListBox.addEventListener("dragover", function(event) {
+    this._placesView.onDragOver(event);
+  });
+  richtListBox.addEventListener("drop", function(event) {
+    this._placesView.onDrop(event);
+  });
+  richtListBox.addEventListener("select", function(event) {
+    this._placesView.onSelect();
+  });
+  richtListBox.addEventListener("focus", goUpdateDownloadCommands);
+  richtListBox.addEventListener("blur", goUpdateDownloadCommands);
+});

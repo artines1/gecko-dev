@@ -31,8 +31,10 @@ add_task(async function() {
   const checkbox = doc.querySelector("#grid-list input");
 
   const onHighlighterShown = highlighters.once("grid-highlighter-shown");
-  const onCheckboxChange = waitUntilState(store, state =>
-    state.grids.length == 1 && state.grids[0].highlighted);
+  const onCheckboxChange = waitUntilState(
+    store,
+    state => state.grids.length == 1 && state.grids[0].highlighted
+  );
   const onGridOutlineRendered = waitForDOM(doc, ".grid-outline-cell", 2);
 
   checkbox.click();
@@ -50,7 +52,7 @@ add_task(async function() {
       callback: () => {
         inspector.reflowTracker.untrackReflows(listener, listener.callback);
         resolve();
-      }
+      },
     };
     inspector.reflowTracker.trackReflows(listener, listener.callback);
   });

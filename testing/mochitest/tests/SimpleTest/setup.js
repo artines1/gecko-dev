@@ -9,6 +9,13 @@
 TestRunner.logEnabled = true;
 TestRunner.logger = LogController;
 
+if (!("SpecialPowers" in window)) {
+  dump("SimpleTest setup.js found SpecialPowers unavailable: reloading...\n");
+  setTimeout(() => {
+    window.location.reload();
+  }, 1000);
+}
+
 /* Helper function */
 function parseQueryString(encodedString, useArrays) {
   // strip a leading '?' from the encoded string
@@ -119,8 +126,8 @@ if (params.debugOnFailure) {
 
 // logFile to write our results
 if (params.logFile) {
-  var spl = new SpecialPowersLogger(params.logFile);
-  TestRunner.logger.addListener("mozLogger", fileLevel + "", spl.getLogCallback());
+  var mfl = new MozillaFileLogger(params.logFile);
+  TestRunner.logger.addListener("mozLogger", fileLevel + "", mfl.logCallback);
 }
 
 // A temporary hack for android 4.0 where Fennec utilizes the pandaboard so much it reboots

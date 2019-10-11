@@ -11,7 +11,7 @@ add_task(async function() {
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: TEST_URL,
-    waitForStateStop: true
+    waitForStateStop: true,
   });
 
   registerCleanupFunction(async () => {
@@ -38,7 +38,8 @@ add_task(async function() {
   let tree = gEditItemOverlay._element("folderTree");
 
   tree.view.selection.clearSelection();
-  ok(document.getElementById("editBMPanel_newFolderButton").disabled,
-     "New folder button is disabled if there's no selection");
-
+  ok(
+    document.getElementById("editBMPanel_newFolderButton").disabled,
+    "New folder button is disabled if there's no selection"
+  );
 });

@@ -1,20 +1,22 @@
 use {io, Ready, Poll, PollOpt, Token};
 use event::Evented;
 use unix::EventedFd;
+use sys::unix::uio::VecIo;
+use std::fmt;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::io::{RawFd, IntoRawFd, AsRawFd, FromRawFd};
 
 #[allow(unused_imports)] // only here for Rust 1.8
 use net2::UdpSocketExt;
+use iovec::IoVec;
 
-#[derive(Debug)]
 pub struct UdpSocket {
     io: net::UdpSocket,
 }
 
 impl UdpSocket {
     pub fn new(socket: net::UdpSocket) -> io::Result<UdpSocket> {
-        try!(socket.set_nonblocking(true));
+        socket.set_nonblocking(true)?;
         Ok(UdpSocket {
             io: socket,
         })
@@ -27,7 +29,7 @@ impl UdpSocket {
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
         self.io.try_clone().map(|io| {
             UdpSocket {
-                io: io,
+                io,
             }
         })
     }
@@ -117,8 +119,24 @@ impl UdpSocket {
         self.io.leave_multicast_v6(multiaddr, interface)
     }
 
+    pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
+        self.io.set_only_v6(only_v6)
+    }
+
+    pub fn only_v6(&self) -> io::Result<bool> {
+        self.io.only_v6()
+    }
+
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.io.take_error()
+    }
+
+    pub fn readv(&self, bufs: &mut [&mut IoVec]) -> io::Result<usize> {
+        self.io.readv(bufs)
+    }
+
+    pub fn writev(&self, bufs: &[&IoVec]) -> io::Result<usize> {
+        self.io.writev(bufs)
     }
 }
 
@@ -133,6 +151,12 @@ impl Evented for UdpSocket {
 
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         EventedFd(&self.as_raw_fd()).deregister(poll)
+    }
+}
+
+impl fmt::Debug for UdpSocket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.io, f)
     }
 }
 

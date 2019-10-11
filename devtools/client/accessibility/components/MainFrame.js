@@ -3,24 +3,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-/* global gToolbox */
-
 // React & Redux
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
-const { div } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
+const {
+  span,
+  div,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const { reset } = require("../actions/ui");
+
+// Localization
+const FluentReact = require("devtools/client/shared/vendor/fluent-react");
+const LocalizationProvider = createFactory(FluentReact.LocalizationProvider);
 
 // Constants
 const { SIDEBAR_WIDTH, PORTRAIT_MODE_WIDTH } = require("../constants");
 
 // Accessibility Panel
 const AccessibilityTree = createFactory(require("./AccessibilityTree"));
+const AuditProgressOverlay = createFactory(require("./AuditProgressOverlay"));
 const Description = createFactory(require("./Description").Description);
 const RightSidebar = createFactory(require("./RightSidebar"));
 const Toolbar = createFactory(require("./Toolbar"));
-const SplitBox = createFactory(require("devtools/client/shared/components/splitter/SplitBox"));
+const SplitBox = createFactory(
+  require("devtools/client/shared/components/splitter/SplitBox")
+);
 
 /**
  * Renders basic layout of the Accessibility panel. The Accessibility panel
@@ -30,9 +41,13 @@ class MainFrame extends Component {
   static get propTypes() {
     return {
       accessibility: PropTypes.object.isRequired,
-      walker: PropTypes.object.isRequired,
+      fluentBundles: PropTypes.array.isRequired,
+      accessibilityWalker: PropTypes.object.isRequired,
       enabled: PropTypes.bool.isRequired,
-      dispatch: PropTypes.func.isRequired
+      dispatch: PropTypes.func.isRequired,
+      auditing: PropTypes.array.isRequired,
+      supports: PropTypes.object,
+      simulator: PropTypes.object,
     };
   }
 
@@ -44,11 +59,12 @@ class MainFrame extends Component {
   }
 
   componentWillMount() {
-    // Need inspector for many things such as dom node preview etc.
-    gToolbox.loadTool("inspector");
     this.props.accessibility.on("init", this.resetAccessibility);
     this.props.accessibility.on("shutdown", this.resetAccessibility);
-    this.props.walker.on("document-ready", this.resetAccessibility);
+    this.props.accessibilityWalker.on(
+      "document-ready",
+      this.resetAccessibility
+    );
 
     window.addEventListener("resize", this.onPanelWindowResize, true);
   }
@@ -62,14 +78,17 @@ class MainFrame extends Component {
   componentWillUnmount() {
     this.props.accessibility.off("init", this.resetAccessibility);
     this.props.accessibility.off("shutdown", this.resetAccessibility);
-    this.props.walker.off("document-ready", this.resetAccessibility);
+    this.props.accessibilityWalker.off(
+      "document-ready",
+      this.resetAccessibility
+    );
 
     window.removeEventListener("resize", this.onPanelWindowResize, true);
   }
 
   resetAccessibility() {
-    const { dispatch, accessibility } = this.props;
-    dispatch(reset(accessibility));
+    const { dispatch, accessibility, supports } = this.props;
+    dispatch(reset(accessibility, supports));
   }
 
   get useLandscapeMode() {
@@ -91,35 +110,64 @@ class MainFrame extends Component {
    * Render Accessibility panel content
    */
   render() {
-    const { accessibility, walker, enabled } = this.props;
+    const {
+      accessibility,
+      accessibilityWalker,
+      fluentBundles,
+      enabled,
+      auditing,
+      simulator,
+    } = this.props;
 
     if (!enabled) {
       return Description({ accessibility });
     }
 
-    return (
-      div({ className: "mainFrame", role: "presentation" },
-        Toolbar({ accessibility, walker }),
-        SplitBox({
-          ref: "splitBox",
-          initialSize: SIDEBAR_WIDTH,
-          minSize: "10px",
-          maxSize: "80%",
-          splitterSize: 1,
-          endPanelControl: true,
-          startPanel: div({
-            className: "main-panel",
-            role: "presentation"
-          }, AccessibilityTree({ walker })),
-          endPanel: RightSidebar(),
-          vert: this.useLandscapeMode,
-        })
-      ));
+    // Audit is currently running.
+    const isAuditing = auditing.length > 0;
+
+    return LocalizationProvider(
+      { bundles: fluentBundles },
+      div(
+        { className: "mainFrame", role: "presentation" },
+        Toolbar({ accessibility, accessibilityWalker, simulator }),
+        isAuditing && AuditProgressOverlay(),
+        span(
+          {
+            "aria-hidden": isAuditing,
+            role: "presentation",
+            style: { display: "contents" },
+          },
+          SplitBox({
+            ref: "splitBox",
+            initialSize: SIDEBAR_WIDTH,
+            minSize: "10px",
+            maxSize: "80%",
+            splitterSize: 1,
+            endPanelControl: true,
+            startPanel: div(
+              {
+                className: "main-panel",
+                role: "presentation",
+              },
+              AccessibilityTree({ accessibilityWalker })
+            ),
+            endPanel: RightSidebar({ accessibilityWalker }),
+            vert: this.useLandscapeMode,
+          })
+        )
+      )
+    );
   }
 }
 
-const mapStateToProps = ({ ui }) => ({
-  enabled: ui.enabled
+const mapStateToProps = ({
+  ui: { enabled, supports },
+  audit: { auditing },
+}) => ({
+  enabled,
+  supports,
+  auditing,
 });
 
 // Exports from this module

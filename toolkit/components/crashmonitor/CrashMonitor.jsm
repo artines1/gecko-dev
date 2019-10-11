@@ -31,11 +31,13 @@
  * does not necessarily tell us that the checkpoint wasn't reached.
  */
 
-var EXPORTED_SYMBOLS = [ "CrashMonitor" ];
+var EXPORTED_SYMBOLS = ["CrashMonitor"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/osfile.jsm");
-ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
+const { PromiseUtils } = ChromeUtils.import(
+  "resource://gre/modules/PromiseUtils.jsm"
+);
 
 const NOTIFICATIONS = [
   "final-ui-startup",
@@ -45,11 +47,10 @@ const NOTIFICATIONS = [
   "profile-change-net-teardown",
   "profile-change-teardown",
   "profile-before-change",
-  "sessionstore-final-state-write-complete"
+  "sessionstore-final-state-write-complete",
 ];
 
 var CrashMonitorInternal = {
-
   /**
    * Notifications received during the current session.
    *
@@ -92,13 +93,17 @@ var CrashMonitorInternal = {
     this.previousCheckpoints = (async function() {
       let data;
       try {
-        data = await OS.File.read(CrashMonitorInternal.path, { encoding: "utf-8" });
+        data = await OS.File.read(CrashMonitorInternal.path, {
+          encoding: "utf-8",
+        });
       } catch (ex) {
         if (!(ex instanceof OS.File.Error)) {
           throw ex;
         }
         if (!ex.becauseNoSuchFile) {
-          Cu.reportError("Error while loading crash monitor data: " + ex.toString());
+          Cu.reportError(
+            "Error while loading crash monitor data: " + ex.toString()
+          );
         }
 
         return null;
@@ -114,7 +119,9 @@ var CrashMonitorInternal = {
 
       // If `notifications` isn't an object, then the monitor data isn't valid.
       if (Object(notifications) !== notifications) {
-        Cu.reportError("Error while parsing crash monitor data: invalid monitor data");
+        Cu.reportError(
+          "Error while parsing crash monitor data: invalid monitor data"
+        );
         return null;
       }
 
@@ -122,11 +129,10 @@ var CrashMonitorInternal = {
     })();
 
     return this.previousCheckpoints;
-  }
+  },
 };
 
 var CrashMonitor = {
-
   /**
    * Notifications received during previous session.
    *
@@ -137,7 +143,9 @@ var CrashMonitor = {
    */
   get previousCheckpoints() {
     if (!CrashMonitorInternal.initialized) {
-      throw new Error("CrashMonitor must be initialized before getting previous checkpoints");
+      throw new Error(
+        "CrashMonitor must be initialized before getting previous checkpoints"
+      );
     }
 
     return CrashMonitorInternal.previousCheckpoints;
@@ -195,10 +203,9 @@ var CrashMonitor = {
            * written by the time the notification completes. The
            * exception is profile-before-change which has a shutdown
            * blocker. */
-          await OS.File.writeAtomic(
-            CrashMonitorInternal.path,
-            data, {tmpPath: CrashMonitorInternal.path + ".tmp"});
-
+          await OS.File.writeAtomic(CrashMonitorInternal.path, data, {
+            tmpPath: CrashMonitorInternal.path + ".tmp",
+          });
         } finally {
           // Resolve promise for blocker
           if (aTopic == "profile-before-change") {
@@ -214,6 +221,6 @@ var CrashMonitor = {
         Services.obs.removeObserver(this, aTopic);
       }, this);
     }
-  }
+  },
 };
 Object.freeze(this.CrashMonitor);

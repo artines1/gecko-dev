@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,21 +12,22 @@ features: [Intl.Locale]
 ---*/
 
 const invalidLanguageTags = [
-    // Unicode extension sequence is incomplete.
-    "da-u",
-    "da-u-",
-    "da-u--",
-    "da-u-t-latn",
-    "da-u-x-priv",
+  // Unicode extension sequence is incomplete.
+  "da-u",
+  "da-u-",
+  "da-u--",
+  "da-u-t-latn",
+  "da-u-x-priv",
 
-    // Duplicate 'u' singleton.
-    "da-u-ca-gregory-u-ca-buddhist"
+  // Duplicate 'u' singleton.
+  "da-u-ca-gregory-u-ca-buddhist"
 ];
 
 for (const langtag of invalidLanguageTags) {
-    assert.throws(RangeError, function() {
-        new Intl.Locale(langtag)
-    });
+  assert.throws(RangeError, function() {
+    new Intl.Locale(langtag)
+  },
+  `new Intl.Locale("${langtag}") throws RangeError`);
 }
 
 reportCompare(0, 0);

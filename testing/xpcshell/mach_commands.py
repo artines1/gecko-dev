@@ -162,9 +162,6 @@ class AndroidXPCShellRunner(MozbuildObject):
         if not kwargs["objdir"]:
             kwargs["objdir"] = self.topobjdir
 
-        if not kwargs["localLib"]:
-            kwargs["localLib"] = os.path.join(self.topobjdir, 'dist/fennec')
-
         if not kwargs["localBin"]:
             kwargs["localBin"] = os.path.join(self.topobjdir, 'dist/bin')
 
@@ -181,10 +178,14 @@ class AndroidXPCShellRunner(MozbuildObject):
             kwargs["symbolsPath"] = os.path.join(self.distdir, 'crashreporter-symbols')
 
         if not kwargs["localAPK"]:
-            for file_name in os.listdir(os.path.join(kwargs["objdir"], "dist")):
-                if file_name.endswith(".apk") and file_name.startswith("fennec"):
-                    kwargs["localAPK"] = os.path.join(kwargs["objdir"], "dist", file_name)
-                    print ("using APK: %s" % kwargs["localAPK"])
+            for root, _, paths in os.walk(os.path.join(kwargs["objdir"], "gradle")):
+                for file_name in paths:
+                    if (file_name.endswith(".apk") and
+                        file_name.startswith("geckoview-withGeckoBinaries")):
+                        kwargs["localAPK"] = os.path.join(root, file_name)
+                        print("using APK: %s" % kwargs["localAPK"])
+                        break
+                if kwargs["localAPK"]:
                     break
             else:
                 raise Exception("APK not found in objdir. You must specify an APK.")
@@ -248,7 +249,7 @@ class MachCommands(MachCommandBase):
         if conditions.is_android(self):
             from mozrunner.devices.android_device import verify_android_device, get_adb_path
             device_serial = params.get('deviceSerial')
-            verify_android_device(self, device_serial=device_serial)
+            verify_android_device(self, network=True, device_serial=device_serial)
             if not params['adbPath']:
                 params['adbPath'] = get_adb_path(self)
             xpcshell = self._spawn(AndroidXPCShellRunner)

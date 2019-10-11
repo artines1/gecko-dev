@@ -6,8 +6,8 @@
   <title>Mouse Capture Tests</title>
   <link rel="stylesheet" href="chrome://global/skin/" type="text/css"/>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
 </head>
 <body id="body" xmlns="http://www.w3.org/1999/xhtml">
   <p id="display"/><div id="content" style="display: none"/><pre id="test"/>
@@ -71,7 +71,9 @@ function selectionScrollCheck() {
     otherWindow.removeEventListener("scroll", selectionScrollDone);
 
     var selectedText = otherWindow.getSelection().toString().replace(/\r/g, "");
-    is(selectedText, "One\n\nTwo", "text is selected");
+    // We trim the end of the string because, per the below comment, we might
+    // select additional newlines, and that's OK.
+    is(selectedText.trimEnd(), "One\n\nTwo", "text is selected");
 
     // should have scrolled 20 pixels from the mousemove above and at least 6
     // extra 20-pixel increments from the selection scroll timer. "At least 6"

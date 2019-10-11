@@ -14,7 +14,6 @@ import android.media.MediaFormat;
 import android.os.DeadObjectException;
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.view.Surface;
 import android.util.Log;
 
 import java.util.LinkedList;
@@ -37,12 +36,14 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         return sRemoteManager;
     }
 
-    private List<CodecProxy> mProxies = new LinkedList<CodecProxy>();
+    private List<CodecProxy> mCodecs = new LinkedList<CodecProxy>();
+    private List<IMediaDrmBridge> mDrmBridges = new LinkedList<IMediaDrmBridge>();
+
     private volatile IMediaManager mRemote;
 
     private final class RemoteConnection implements ServiceConnection {
         @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
+        public void onServiceConnected(final ComponentName name, final IBinder service) {
             if (DEBUG) Log.d(LOGTAG, "service connected");
             try {
                 service.linkToDeath(RemoteManager.this, 0);
@@ -56,7 +57,7 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         }
 
         @Override
-        public void onServiceDisconnected(ComponentName name) {
+        public void onServiceDisconnected(final ComponentName name) {
             if (DEBUG) Log.d(LOGTAG, "service disconnected");
             unlink();
         }
@@ -64,7 +65,7 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         private boolean connect() {
             Context appCtxt = GeckoAppShell.getApplicationContext();
             appCtxt.bindService(new Intent(appCtxt, MediaManager.class),
-                    mConnection, Context.BIND_AUTO_CREATE);
+                    mConnection, Context.BIND_AUTO_CREATE | Context.BIND_IMPORTANT);
             waitConnect();
             return mRemote != null;
         }
@@ -77,7 +78,9 @@ public final class RemoteManager implements IBinder.DeathRecipient {
                     wait(1000);
                     waitCount++;
                 } catch (InterruptedException e) {
-                    if (DEBUG) { e.printStackTrace(); }
+                    if (DEBUG) {
+                        e.printStackTrace();
+                    }
                 }
             }
             if (DEBUG) {
@@ -90,7 +93,9 @@ public final class RemoteManager implements IBinder.DeathRecipient {
                 try {
                     wait(1000);
                 } catch (InterruptedException e) {
-                    if (DEBUG) { e.printStackTrace(); }
+                    if (DEBUG) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }
@@ -120,11 +125,11 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         return mConnection.connect();
     }
 
-    public synchronized CodecProxy createCodec(boolean isEncoder,
-                                               MediaFormat format,
-                                               GeckoSurface surface,
-                                               CodecProxy.Callbacks callbacks,
-                                               String drmStubId) {
+    public synchronized CodecProxy createCodec(final boolean isEncoder,
+                                               final MediaFormat format,
+                                               final GeckoSurface surface,
+                                               final CodecProxy.Callbacks callbacks,
+                                               final String drmStubId) {
         if (mRemote == null) {
             if (DEBUG) Log.d(LOGTAG, "createCodec failed due to not initialize");
             return null;
@@ -133,7 +138,7 @@ public final class RemoteManager implements IBinder.DeathRecipient {
             ICodec remote = mRemote.createCodec();
             CodecProxy proxy = CodecProxy.createCodecProxy(isEncoder, format, surface, callbacks, drmStubId);
             if (proxy.init(remote)) {
-                mProxies.add(proxy);
+                mCodecs.add(proxy);
                 return proxy;
             } else {
                 return null;
@@ -144,8 +149,8 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         }
     }
 
-    public synchronized IMediaDrmBridge createRemoteMediaDrmBridge(String keySystem,
-                                                                   String stubId) {
+    public synchronized IMediaDrmBridge createRemoteMediaDrmBridge(final String keySystem,
+                                                                   final String stubId) {
         if (mRemote == null) {
             if (DEBUG) Log.d(LOGTAG, "createRemoteMediaDrmBridge failed due to not initialize");
             return null;
@@ -153,6 +158,7 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         try {
             IMediaDrmBridge remoteBridge =
                 mRemote.createRemoteMediaDrmBridge(keySystem, stubId);
+            mDrmBridges.add(remoteBridge);
             return remoteBridge;
         } catch (RemoteException e) {
             Log.e(LOGTAG, "Got exception during createRemoteMediaDrmBridge().", e);
@@ -176,8 +182,8 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         }
     }
 
-    private synchronized void notifyError(boolean fatal) {
-        for (CodecProxy proxy : mProxies) {
+    private synchronized void notifyError(final boolean fatal) {
+        for (CodecProxy proxy : mCodecs) {
             proxy.reportError(fatal);
         }
     }
@@ -186,7 +192,7 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         if (DEBUG) Log.d(LOGTAG, "recover codec");
         boolean ok = true;
         try {
-            for (CodecProxy proxy : mProxies) {
+            for (CodecProxy proxy : mCodecs) {
                 ok &= proxy.init(mRemote.createCodec());
             }
             return ok;
@@ -195,23 +201,51 @@ public final class RemoteManager implements IBinder.DeathRecipient {
         }
     }
 
-    public void releaseCodec(CodecProxy proxy) throws DeadObjectException, RemoteException {
+    public void releaseCodec(final CodecProxy proxy)
+            throws DeadObjectException, RemoteException {
         if (mRemote == null) {
             if (DEBUG) Log.d(LOGTAG, "releaseCodec called but not initialized yet");
             return;
         }
         proxy.deinit();
         synchronized (this) {
-            if (mProxies.remove(proxy) && mProxies.isEmpty()) {
-                release();
+            if (mCodecs.remove(proxy)) {
+                try {
+                    mRemote.endRequest();
+                    releaseIfNeeded();
+                } catch (RemoteException | NullPointerException e) {
+                    Log.e(LOGTAG, "fail to report remote codec disconnection");
+                }
             }
         }
     }
 
-    private void release() {
+    private void releaseIfNeeded() {
+        if (!mCodecs.isEmpty() || !mDrmBridges.isEmpty()) {
+            return;
+        }
+
         if (DEBUG) Log.d(LOGTAG, "release remote manager " + this);
         mConnection.unlink();
         Context appCtxt = GeckoAppShell.getApplicationContext();
         appCtxt.unbindService(mConnection);
+    }
+
+    public void onRemoteMediaDrmBridgeReleased(final IMediaDrmBridge remote) {
+        if (!mDrmBridges.contains(remote)) {
+            Log.e(LOGTAG, "Try to release unknown remote MediaDrm bridge: " + remote);
+            return;
+        }
+
+        synchronized (this) {
+            if (mDrmBridges.remove(remote)) {
+                try {
+                    mRemote.endRequest();
+                    releaseIfNeeded();
+                } catch (RemoteException | NullPointerException e) {
+                    Log.e(LOGTAG, "Fail to report remote DRM bridge disconnection");
+                }
+            }
+        }
     }
 } // RemoteManager

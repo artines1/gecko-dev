@@ -67,7 +67,9 @@ function asyncInitTransports() {
       'Expect sctpTransport.transport to be instance of RTCDtlsTransport');
     idlTestObjects.dtlsTransport = dtlsTransport;
 
-    const iceTransport = dtlsTransport.transport;
+    const iceTransport = dtlsTransport.iceTransport;
+    assert_true(iceTransport instanceof RTCIceTransport,
+      'Expect sctpTransport.transport to be instance of RTCDtlsTransport');
     idlTestObjects.iceTransport = iceTransport;
   });
 }
@@ -100,7 +102,7 @@ function asyncInit() {
 
 idl_test(
   ['webrtc'],
-  ['mediacapture-streams', 'dom'],
+  ['WebIDL', 'mediacapture-streams', 'dom', 'html'],
   async idlArray => {
     idlArray.add_objects({
       RTCPeerConnection: [`new RTCPeerConnection()`],

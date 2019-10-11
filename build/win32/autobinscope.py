@@ -46,7 +46,8 @@ try:
         "/NoLogo",
         "/Target", binary_path,
         "/SymPath", symbol_path,
-        "/Checks", "ATLVersionCheck",
+        # ATLVersionCheck triggers a crash in msdia120: bug 1525113
+        "/SkippedChecks", "ATLVersionCheck",
         "/Checks", "ATLVulnCheck",
         # We do not ship in the Windows Store
         "/SkippedChecks", "AppContainerCheck",
@@ -68,11 +69,12 @@ try:
         "/Checks", "RSA32Check",
         "/Checks", "SafeSEHCheck",
         "/Checks", "SharedSectionCheck",
-        "/Checks", "VB6Check",
+        # VB6Check triggers a crash in msdia120: bug 1525113
+        "/SkippedChecks", "VB6Check",
         "/Checks", "WXCheck"
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-except WindowsError, (errno, strerror):
+except WindowsError, (errno, strerror):  # noqa
     if errno != 2 and errno != 3:
         print("TEST-UNEXPECTED-FAIL | autobinscope.py | Unexpected error %d : %s" (
             errno, strerror))

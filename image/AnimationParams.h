@@ -25,15 +25,23 @@ enum class BlendMethod : int8_t {
 };
 
 enum class DisposalMethod : int8_t {
-  CLEAR_ALL = -1,  // Clear the whole image, revealing what's underneath.
-  NOT_SPECIFIED,   // Leave the frame and let the new frame draw on top.
-  KEEP,            // Leave the frame and let the new frame draw on top.
-  CLEAR,           // Clear the frame's area, revealing what's underneath.
-  RESTORE_PREVIOUS // Restore the previous (composited) frame.
+  CLEAR_ALL = -1,   // Clear the whole image, revealing what's underneath.
+  NOT_SPECIFIED,    // Leave the frame and let the new frame draw on top.
+  KEEP,             // Leave the frame and let the new frame draw on top.
+  CLEAR,            // Clear the frame's area, revealing what's underneath.
+  RESTORE_PREVIOUS  // Restore the previous (composited) frame.
 };
 
-struct AnimationParams
-{
+struct AnimationParams {
+  AnimationParams(const gfx::IntRect& aBlendRect, const FrameTimeout& aTimeout,
+                  uint32_t aFrameNum, BlendMethod aBlendMethod,
+                  DisposalMethod aDisposalMethod)
+      : mBlendRect(aBlendRect),
+        mTimeout(aTimeout),
+        mFrameNum(aFrameNum),
+        mBlendMethod(aBlendMethod),
+        mDisposalMethod(aDisposalMethod) {}
+
   gfx::IntRect mBlendRect;
   FrameTimeout mTimeout;
   uint32_t mFrameNum;
@@ -41,7 +49,7 @@ struct AnimationParams
   DisposalMethod mDisposalMethod;
 };
 
-} // namespace image
-} // namespace mozilla
+}  // namespace image
+}  // namespace mozilla
 
-#endif // mozilla_image_AnimationParams_h
+#endif  // mozilla_image_AnimationParams_h

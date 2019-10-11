@@ -1,13 +1,5 @@
-// Copyright 2018 Syn Developers
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
 use super::*;
-use punctuated::{Iter, IterMut, Punctuated};
+use crate::punctuated::{Iter, IterMut, Punctuated};
 
 ast_struct! {
     /// Lifetimes and type parameters attached to a declaration of a function,
@@ -36,44 +28,62 @@ ast_enum_of_structs! {
     /// This type is a [syntax tree enum].
     ///
     /// [syntax tree enum]: enum.Expr.html#syntax-tree-enums
+    //
+    // TODO: change syntax-tree-enum link to an intra rustdoc link, currently
+    // blocked on https://github.com/rust-lang/rust/issues/62833
     pub enum GenericParam {
         /// A generic type parameter: `T: Into<String>`.
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Type(TypeParam {
-            pub attrs: Vec<Attribute>,
-            pub ident: Ident,
-            pub colon_token: Option<Token![:]>,
-            pub bounds: Punctuated<TypeParamBound, Token![+]>,
-            pub eq_token: Option<Token![=]>,
-            pub default: Option<Type>,
-        }),
+        Type(TypeParam),
 
         /// A lifetime definition: `'a: 'b + 'c + 'd`.
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Lifetime(LifetimeDef {
-            pub attrs: Vec<Attribute>,
-            pub lifetime: Lifetime,
-            pub colon_token: Option<Token![:]>,
-            pub bounds: Punctuated<Lifetime, Token![+]>,
-        }),
+        Lifetime(LifetimeDef),
 
         /// A const generic parameter: `const LENGTH: usize`.
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Const(ConstParam {
-            pub attrs: Vec<Attribute>,
-            pub const_token: Token![const],
-            pub ident: Ident,
-            pub colon_token: Token![:],
-            pub ty: Type,
-            pub eq_token: Option<Token![=]>,
-            pub default: Option<Expr>,
-        }),
+        Const(ConstParam),
+    }
+}
+
+ast_struct! {
+    /// A generic type parameter: `T: Into<String>`.
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct TypeParam {
+        pub attrs: Vec<Attribute>,
+        pub ident: Ident,
+        pub colon_token: Option<Token![:]>,
+        pub bounds: Punctuated<TypeParamBound, Token![+]>,
+        pub eq_token: Option<Token![=]>,
+        pub default: Option<Type>,
+    }
+}
+
+ast_struct! {
+    /// A lifetime definition: `'a: 'b + 'c + 'd`.
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct LifetimeDef {
+        pub attrs: Vec<Attribute>,
+        pub lifetime: Lifetime,
+        pub colon_token: Option<Token![:]>,
+        pub bounds: Punctuated<Lifetime, Token![+]>,
+    }
+}
+
+ast_struct! {
+    /// A const generic parameter: `const LENGTH: usize`.
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct ConstParam {
+        pub attrs: Vec<Attribute>,
+        pub const_token: Token![const],
+        pub ident: Ident,
+        pub colon_token: Token![:],
+        pub ty: Type,
+        pub eq_token: Option<Token![=]>,
+        pub default: Option<Expr>,
     }
 }
 
@@ -149,12 +159,12 @@ impl Generics {
         // This is Option::get_or_insert_with in Rust 1.20.
         if self.where_clause.is_none() {
             self.where_clause = Some(WhereClause {
-                where_token: Default::default(),
+                where_token: <Token![where]>::default(),
                 predicates: Punctuated::new(),
             });
         }
-        match self.where_clause {
-            Some(ref mut where_clause) => where_clause,
+        match &mut self.where_clause {
+            Some(where_clause) => where_clause,
             None => unreachable!(),
         }
     }
@@ -166,12 +176,11 @@ impl<'a> Iterator for TypeParams<'a> {
     type Item = &'a TypeParam;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Type(ref type_param) = *next {
+        if let GenericParam::Type(type_param) = next {
             Some(type_param)
         } else {
             self.next()
@@ -185,12 +194,11 @@ impl<'a> Iterator for TypeParamsMut<'a> {
     type Item = &'a mut TypeParam;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Type(ref mut type_param) = *next {
+        if let GenericParam::Type(type_param) = next {
             Some(type_param)
         } else {
             self.next()
@@ -204,12 +212,11 @@ impl<'a> Iterator for Lifetimes<'a> {
     type Item = &'a LifetimeDef;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Lifetime(ref lifetime) = *next {
+        if let GenericParam::Lifetime(lifetime) = next {
             Some(lifetime)
         } else {
             self.next()
@@ -223,12 +230,11 @@ impl<'a> Iterator for LifetimesMut<'a> {
     type Item = &'a mut LifetimeDef;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Lifetime(ref mut lifetime) = *next {
+        if let GenericParam::Lifetime(lifetime) = next {
             Some(lifetime)
         } else {
             self.next()
@@ -242,12 +248,11 @@ impl<'a> Iterator for ConstParams<'a> {
     type Item = &'a ConstParam;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Const(ref const_param) = *next {
+        if let GenericParam::Const(const_param) = next {
             Some(const_param)
         } else {
             self.next()
@@ -261,12 +266,11 @@ impl<'a> Iterator for ConstParamsMut<'a> {
     type Item = &'a mut ConstParam;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Remove this when ? on Option is stable
         let next = match self.0.next() {
             Some(item) => item,
             None => return None,
         };
-        if let GenericParam::Const(ref mut const_param) = *next {
+        if let GenericParam::Const(const_param) = next {
             Some(const_param)
         } else {
             self.next()
@@ -307,21 +311,20 @@ impl Generics {
     /// for that type.
     ///
     /// ```
-    /// # extern crate proc_macro2;
-    /// # extern crate syn;
-    /// # #[macro_use]
-    /// # extern crate quote;
     /// # use proc_macro2::{Span, Ident};
+    /// # use quote::quote;
+    /// #
     /// # fn main() {
-    /// # let generics: syn::Generics = Default::default();
-    /// # let name = Ident::new("MyType", Span::call_site());
+    /// #     let generics: syn::Generics = Default::default();
+    /// #     let name = Ident::new("MyType", Span::call_site());
+    /// #
     /// let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     /// quote! {
     ///     impl #impl_generics MyTrait for #name #ty_generics #where_clause {
     ///         // ...
     ///     }
     /// }
-    /// # ;
+    /// #     ;
     /// # }
     /// ```
     ///
@@ -365,7 +368,7 @@ impl LifetimeDef {
     pub fn new(lifetime: Lifetime) -> Self {
         LifetimeDef {
             attrs: Vec::new(),
-            lifetime: lifetime,
+            lifetime,
             colon_token: None,
             bounds: Punctuated::new(),
         }
@@ -376,7 +379,7 @@ impl From<Ident> for TypeParam {
     fn from(ident: Ident) -> Self {
         TypeParam {
             attrs: vec![],
-            ident: ident,
+            ident,
             colon_token: None,
             bounds: Punctuated::new(),
             eq_token: None,
@@ -391,8 +394,8 @@ ast_enum_of_structs! {
     /// *This type is available if Syn is built with the `"derive"` or `"full"`
     /// feature.*
     pub enum TypeParamBound {
-        pub Trait(TraitBound),
-        pub Lifetime(Lifetime),
+        Trait(TraitBound),
+        Lifetime(Lifetime),
     }
 }
 
@@ -447,40 +450,58 @@ ast_enum_of_structs! {
     /// This type is a [syntax tree enum].
     ///
     /// [syntax tree enum]: enum.Expr.html#syntax-tree-enums
+    //
+    // TODO: change syntax-tree-enum link to an intra rustdoc link, currently
+    // blocked on https://github.com/rust-lang/rust/issues/62833
     pub enum WherePredicate {
         /// A type predicate in a `where` clause: `for<'c> Foo<'c>: Trait<'c>`.
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Type(PredicateType {
-            /// Any lifetimes from a `for` binding
-            pub lifetimes: Option<BoundLifetimes>,
-            /// The type being bounded
-            pub bounded_ty: Type,
-            pub colon_token: Token![:],
-            /// Trait and lifetime bounds (`Clone+Send+'static`)
-            pub bounds: Punctuated<TypeParamBound, Token![+]>,
-        }),
+        Type(PredicateType),
 
         /// A lifetime predicate in a `where` clause: `'a: 'b + 'c`.
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Lifetime(PredicateLifetime {
-            pub lifetime: Lifetime,
-            pub colon_token: Option<Token![:]>,
-            pub bounds: Punctuated<Lifetime, Token![+]>,
-        }),
+        Lifetime(PredicateLifetime),
 
         /// An equality predicate in a `where` clause (unsupported).
-        ///
-        /// *This type is available if Syn is built with the `"derive"` or
-        /// `"full"` feature.*
-        pub Eq(PredicateEq {
-            pub lhs_ty: Type,
-            pub eq_token: Token![=],
-            pub rhs_ty: Type,
-        }),
+        Eq(PredicateEq),
+    }
+}
+
+ast_struct! {
+    /// A type predicate in a `where` clause: `for<'c> Foo<'c>: Trait<'c>`.
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct PredicateType {
+        /// Any lifetimes from a `for` binding
+        pub lifetimes: Option<BoundLifetimes>,
+        /// The type being bounded
+        pub bounded_ty: Type,
+        pub colon_token: Token![:],
+        /// Trait and lifetime bounds (`Clone+Send+'static`)
+        pub bounds: Punctuated<TypeParamBound, Token![+]>,
+    }
+}
+
+ast_struct! {
+    /// A lifetime predicate in a `where` clause: `'a: 'b + 'c`.
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct PredicateLifetime {
+        pub lifetime: Lifetime,
+        pub colon_token: Token![:],
+        pub bounds: Punctuated<Lifetime, Token![+]>,
+    }
+}
+
+ast_struct! {
+    /// An equality predicate in a `where` clause (unsupported).
+    ///
+    /// *This type is available if Syn is built with the `"derive"` or
+    /// `"full"` feature.*
+    pub struct PredicateEq {
+        pub lhs_ty: Type,
+        pub eq_token: Token![=],
+        pub rhs_ty: Type,
     }
 }
 
@@ -488,263 +509,386 @@ ast_enum_of_structs! {
 pub mod parsing {
     use super::*;
 
-    use punctuated::Pair;
-    use synom::Synom;
+    use crate::parse::{Parse, ParseStream, Result};
 
-    impl Synom for Generics {
-        named!(parse -> Self, map!(
-            alt!(
-                do_parse!(
-                    lt: punct!(<) >>
-                    lifetimes: call!(Punctuated::<LifetimeDef, Token![,]>::parse_terminated) >>
-                    ty_params: cond!(
-                        lifetimes.empty_or_trailing(),
-                        Punctuated::<TypeParam, Token![,]>::parse_terminated
-                    ) >>
-                    gt: punct!(>) >>
-                    (lifetimes, ty_params, Some(lt), Some(gt))
-                )
-                |
-                epsilon!() => { |_| (Punctuated::new(), None, None, None) }
-            ),
-            |(lifetimes, ty_params, lt, gt)| Generics {
-                lt_token: lt,
-                params: lifetimes.into_pairs()
-                    .map(Pair::into_tuple)
-                    .map(|(life, comma)| Pair::new(GenericParam::Lifetime(life), comma))
-                    .chain(ty_params.unwrap_or_default()
-                        .into_pairs()
-                        .map(Pair::into_tuple)
-                        .map(|(ty, comma)| Pair::new(GenericParam::Type(ty), comma)))
-                    .collect(),
-                gt_token: gt,
-                where_clause: None,
+    impl Parse for Generics {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if !input.peek(Token![<]) {
+                return Ok(Generics::default());
             }
-        ));
 
-        fn description() -> Option<&'static str> {
-            Some("generic parameters in declaration")
-        }
-    }
+            let lt_token: Token![<] = input.parse()?;
 
-    impl Synom for GenericParam {
-        named!(parse -> Self, alt!(
-            syn!(TypeParam) => { GenericParam::Type }
-            |
-            syn!(LifetimeDef) => { GenericParam::Lifetime }
-            |
-            syn!(ConstParam) => { GenericParam::Const }
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("generic parameter")
-        }
-    }
-
-    impl Synom for LifetimeDef {
-        named!(parse -> Self, do_parse!(
-            attrs: many0!(Attribute::parse_outer) >>
-            life: syn!(Lifetime) >>
-            colon: option!(punct!(:)) >>
-            bounds: cond!(
-                colon.is_some(),
-                Punctuated::parse_separated_nonempty
-            ) >>
-            (LifetimeDef {
-                attrs: attrs,
-                lifetime: life,
-                bounds: bounds.unwrap_or_default(),
-                colon_token: colon,
-            })
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("lifetime definition")
-        }
-    }
-
-    impl Synom for BoundLifetimes {
-        named!(parse -> Self, do_parse!(
-            for_: keyword!(for) >>
-            lt: punct!(<) >>
-            lifetimes: call!(Punctuated::parse_terminated) >>
-            gt: punct!(>) >>
-            (BoundLifetimes {
-                for_token: for_,
-                lt_token: lt,
-                gt_token: gt,
-                lifetimes: lifetimes,
-            })
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("bound lifetimes")
-        }
-    }
-
-    impl Synom for TypeParam {
-        named!(parse -> Self, do_parse!(
-            attrs: many0!(Attribute::parse_outer) >>
-            id: syn!(Ident) >>
-            colon: option!(punct!(:)) >>
-            bounds: cond!(
-                colon.is_some(),
-                Punctuated::parse_separated_nonempty
-            ) >>
-            default: option!(do_parse!(
-                eq: punct!(=) >>
-                ty: syn!(Type) >>
-                (eq, ty)
-            )) >>
-            (TypeParam {
-                attrs: attrs,
-                ident: id,
-                bounds: bounds.unwrap_or_default(),
-                colon_token: colon,
-                eq_token: default.as_ref().map(|d| Token![=]((d.0).0)),
-                default: default.map(|d| d.1),
-            })
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("type parameter")
-        }
-    }
-
-    impl Synom for TypeParamBound {
-        named!(parse -> Self, alt!(
-            syn!(Lifetime) => { TypeParamBound::Lifetime }
-            |
-            syn!(TraitBound) => { TypeParamBound::Trait }
-            |
-            parens!(syn!(TraitBound)) => {|(parens, mut bound)| {
-                bound.paren_token = Some(parens);
-                TypeParamBound::Trait(bound)
-            }}
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("type parameter bound")
-        }
-    }
-
-    impl Synom for TraitBound {
-        named!(parse -> Self, do_parse!(
-            modifier: syn!(TraitBoundModifier) >>
-            lifetimes: option!(syn!(BoundLifetimes)) >>
-            mut path: syn!(Path) >>
-            parenthesized: option!(cond_reduce!(
-                path.segments.last().unwrap().value().arguments.is_empty(),
-                syn!(ParenthesizedGenericArguments)
-            )) >>
-            ({
-                if let Some(parenthesized) = parenthesized {
-                    let parenthesized = PathArguments::Parenthesized(parenthesized);
-                    path.segments.last_mut().unwrap().value_mut().arguments = parenthesized;
+            let mut params = Punctuated::new();
+            let mut allow_lifetime_param = true;
+            let mut allow_type_param = true;
+            loop {
+                if input.peek(Token![>]) {
+                    break;
                 }
-                TraitBound {
-                    paren_token: None,
-                    modifier: modifier,
-                    lifetimes: lifetimes,
-                    path: path,
+
+                let attrs = input.call(Attribute::parse_outer)?;
+                let lookahead = input.lookahead1();
+                if allow_lifetime_param && lookahead.peek(Lifetime) {
+                    params.push_value(GenericParam::Lifetime(LifetimeDef {
+                        attrs,
+                        ..input.parse()?
+                    }));
+                } else if allow_type_param && lookahead.peek(Ident) {
+                    allow_lifetime_param = false;
+                    params.push_value(GenericParam::Type(TypeParam {
+                        attrs,
+                        ..input.parse()?
+                    }));
+                } else if lookahead.peek(Token![const]) {
+                    allow_lifetime_param = false;
+                    allow_type_param = false;
+                    params.push_value(GenericParam::Const(ConstParam {
+                        attrs,
+                        ..input.parse()?
+                    }));
+                } else {
+                    return Err(lookahead.error());
                 }
-            })
-        ));
 
-        fn description() -> Option<&'static str> {
-            Some("trait bound")
-        }
-    }
-
-    impl Synom for TraitBoundModifier {
-        named!(parse -> Self, alt!(
-            punct!(?) => { TraitBoundModifier::Maybe }
-            |
-            epsilon!() => { |_| TraitBoundModifier::None }
-        ));
-
-        fn description() -> Option<&'static str> {
-            Some("trait bound modifier")
-        }
-    }
-
-    impl Synom for ConstParam {
-        named!(parse -> Self, do_parse!(
-            attrs: many0!(Attribute::parse_outer) >>
-            const_: keyword!(const) >>
-            ident: syn!(Ident) >>
-            colon: punct!(:) >>
-            ty: syn!(Type) >>
-            eq_def: option!(tuple!(punct!(=), syn!(Expr))) >>
-            ({
-                let (eq_token, default) = match eq_def {
-                    Some((eq_token, default)) => (Some(eq_token), Some(default)),
-                    None => (None, None),
-                };
-                ConstParam {
-                    attrs: attrs,
-                    const_token: const_,
-                    ident: ident,
-                    colon_token: colon,
-                    ty: ty,
-                    eq_token: eq_token,
-                    default: default,
+                if input.peek(Token![>]) {
+                    break;
                 }
-            })
-        ));
+                let punct = input.parse()?;
+                params.push_punct(punct);
+            }
 
-        fn description() -> Option<&'static str> {
-            Some("generic `const` parameter")
+            let gt_token: Token![>] = input.parse()?;
+
+            Ok(Generics {
+                lt_token: Some(lt_token),
+                params,
+                gt_token: Some(gt_token),
+                where_clause: None,
+            })
         }
     }
 
-    impl Synom for WhereClause {
-        named!(parse -> Self, do_parse!(
-            where_: keyword!(where) >>
-            predicates: call!(Punctuated::parse_terminated) >>
-            (WhereClause {
-                predicates: predicates,
-                where_token: where_,
-            })
-        ));
+    impl Parse for GenericParam {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = input.call(Attribute::parse_outer)?;
 
-        fn description() -> Option<&'static str> {
-            Some("where clause")
-        }
-    }
-
-    impl Synom for WherePredicate {
-        named!(parse -> Self, alt!(
-            do_parse!(
-                ident: syn!(Lifetime) >>
-                colon: option!(punct!(:)) >>
-                bounds: cond!(
-                    colon.is_some(),
-                    Punctuated::parse_separated
-                ) >>
-                (WherePredicate::Lifetime(PredicateLifetime {
-                    lifetime: ident,
-                    bounds: bounds.unwrap_or_default(),
-                    colon_token: colon,
+            let lookahead = input.lookahead1();
+            if lookahead.peek(Ident) {
+                Ok(GenericParam::Type(TypeParam {
+                    attrs,
+                    ..input.parse()?
                 }))
-            )
-            |
-            do_parse!(
-                lifetimes: option!(syn!(BoundLifetimes)) >>
-                bounded_ty: syn!(Type) >>
-                colon: punct!(:) >>
-                bounds: call!(Punctuated::parse_separated_nonempty) >>
-                (WherePredicate::Type(PredicateType {
-                    lifetimes: lifetimes,
-                    bounded_ty: bounded_ty,
-                    bounds: bounds,
-                    colon_token: colon,
+            } else if lookahead.peek(Lifetime) {
+                Ok(GenericParam::Lifetime(LifetimeDef {
+                    attrs,
+                    ..input.parse()?
                 }))
-            )
-        ));
+            } else if lookahead.peek(Token![const]) {
+                Ok(GenericParam::Const(ConstParam {
+                    attrs,
+                    ..input.parse()?
+                }))
+            } else {
+                Err(lookahead.error())
+            }
+        }
+    }
 
-        fn description() -> Option<&'static str> {
-            Some("predicate in where clause")
+    impl Parse for LifetimeDef {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let has_colon;
+            Ok(LifetimeDef {
+                attrs: input.call(Attribute::parse_outer)?,
+                lifetime: input.parse()?,
+                colon_token: {
+                    if input.peek(Token![:]) {
+                        has_colon = true;
+                        Some(input.parse()?)
+                    } else {
+                        has_colon = false;
+                        None
+                    }
+                },
+                bounds: {
+                    let mut bounds = Punctuated::new();
+                    if has_colon {
+                        loop {
+                            if input.peek(Token![,]) || input.peek(Token![>]) {
+                                break;
+                            }
+                            let value = input.parse()?;
+                            bounds.push_value(value);
+                            if !input.peek(Token![+]) {
+                                break;
+                            }
+                            let punct = input.parse()?;
+                            bounds.push_punct(punct);
+                        }
+                    }
+                    bounds
+                },
+            })
+        }
+    }
+
+    impl Parse for BoundLifetimes {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(BoundLifetimes {
+                for_token: input.parse()?,
+                lt_token: input.parse()?,
+                lifetimes: {
+                    let mut lifetimes = Punctuated::new();
+                    while !input.peek(Token![>]) {
+                        lifetimes.push_value(input.parse()?);
+                        if input.peek(Token![>]) {
+                            break;
+                        }
+                        lifetimes.push_punct(input.parse()?);
+                    }
+                    lifetimes
+                },
+                gt_token: input.parse()?,
+            })
+        }
+    }
+
+    impl Parse for Option<BoundLifetimes> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![for]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    impl Parse for TypeParam {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let has_colon;
+            let has_default;
+            Ok(TypeParam {
+                attrs: input.call(Attribute::parse_outer)?,
+                ident: input.parse()?,
+                colon_token: {
+                    if input.peek(Token![:]) {
+                        has_colon = true;
+                        Some(input.parse()?)
+                    } else {
+                        has_colon = false;
+                        None
+                    }
+                },
+                bounds: {
+                    let mut bounds = Punctuated::new();
+                    if has_colon {
+                        loop {
+                            if input.peek(Token![,])
+                                || input.peek(Token![>])
+                                || input.peek(Token![=])
+                            {
+                                break;
+                            }
+                            let value = input.parse()?;
+                            bounds.push_value(value);
+                            if !input.peek(Token![+]) {
+                                break;
+                            }
+                            let punct = input.parse()?;
+                            bounds.push_punct(punct);
+                        }
+                    }
+                    bounds
+                },
+                eq_token: {
+                    if input.peek(Token![=]) {
+                        has_default = true;
+                        Some(input.parse()?)
+                    } else {
+                        has_default = false;
+                        None
+                    }
+                },
+                default: {
+                    if has_default {
+                        Some(input.parse()?)
+                    } else {
+                        None
+                    }
+                },
+            })
+        }
+    }
+
+    impl Parse for TypeParamBound {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Lifetime) {
+                return input.parse().map(TypeParamBound::Lifetime);
+            }
+
+            if input.peek(token::Paren) {
+                let content;
+                let paren_token = parenthesized!(content in input);
+                let mut bound: TraitBound = content.parse()?;
+                bound.paren_token = Some(paren_token);
+                return Ok(TypeParamBound::Trait(bound));
+            }
+
+            input.parse().map(TypeParamBound::Trait)
+        }
+    }
+
+    impl Parse for TraitBound {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let modifier: TraitBoundModifier = input.parse()?;
+            let lifetimes: Option<BoundLifetimes> = input.parse()?;
+
+            let mut path: Path = input.parse()?;
+            if path.segments.last().unwrap().arguments.is_empty() && input.peek(token::Paren) {
+                let parenthesized = PathArguments::Parenthesized(input.parse()?);
+                path.segments.last_mut().unwrap().arguments = parenthesized;
+            }
+
+            Ok(TraitBound {
+                paren_token: None,
+                modifier,
+                lifetimes,
+                path,
+            })
+        }
+    }
+
+    impl Parse for TraitBoundModifier {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![?]) {
+                input.parse().map(TraitBoundModifier::Maybe)
+            } else {
+                Ok(TraitBoundModifier::None)
+            }
+        }
+    }
+
+    impl Parse for ConstParam {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let mut default = None;
+            Ok(ConstParam {
+                attrs: input.call(Attribute::parse_outer)?,
+                const_token: input.parse()?,
+                ident: input.parse()?,
+                colon_token: input.parse()?,
+                ty: input.parse()?,
+                eq_token: {
+                    if input.peek(Token![=]) {
+                        let eq_token = input.parse()?;
+                        default = Some(input.parse::<Expr>()?);
+                        Some(eq_token)
+                    } else {
+                        None
+                    }
+                },
+                default,
+            })
+        }
+    }
+
+    impl Parse for WhereClause {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(WhereClause {
+                where_token: input.parse()?,
+                predicates: {
+                    let mut predicates = Punctuated::new();
+                    loop {
+                        if input.is_empty()
+                            || input.peek(token::Brace)
+                            || input.peek(Token![,])
+                            || input.peek(Token![;])
+                            || input.peek(Token![:]) && !input.peek(Token![::])
+                            || input.peek(Token![=])
+                        {
+                            break;
+                        }
+                        let value = input.parse()?;
+                        predicates.push_value(value);
+                        if !input.peek(Token![,]) {
+                            break;
+                        }
+                        let punct = input.parse()?;
+                        predicates.push_punct(punct);
+                    }
+                    predicates
+                },
+            })
+        }
+    }
+
+    impl Parse for Option<WhereClause> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![where]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    impl Parse for WherePredicate {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Lifetime) && input.peek2(Token![:]) {
+                Ok(WherePredicate::Lifetime(PredicateLifetime {
+                    lifetime: input.parse()?,
+                    colon_token: input.parse()?,
+                    bounds: {
+                        let mut bounds = Punctuated::new();
+                        loop {
+                            if input.is_empty()
+                                || input.peek(token::Brace)
+                                || input.peek(Token![,])
+                                || input.peek(Token![;])
+                                || input.peek(Token![:])
+                                || input.peek(Token![=])
+                            {
+                                break;
+                            }
+                            let value = input.parse()?;
+                            bounds.push_value(value);
+                            if !input.peek(Token![+]) {
+                                break;
+                            }
+                            let punct = input.parse()?;
+                            bounds.push_punct(punct);
+                        }
+                        bounds
+                    },
+                }))
+            } else {
+                Ok(WherePredicate::Type(PredicateType {
+                    lifetimes: input.parse()?,
+                    bounded_ty: input.parse()?,
+                    colon_token: input.parse()?,
+                    bounds: {
+                        let mut bounds = Punctuated::new();
+                        loop {
+                            if input.is_empty()
+                                || input.peek(token::Brace)
+                                || input.peek(Token![,])
+                                || input.peek(Token![;])
+                                || input.peek(Token![:]) && !input.peek(Token![::])
+                                || input.peek(Token![=])
+                            {
+                                break;
+                            }
+                            let value = input.parse()?;
+                            bounds.push_value(value);
+                            if !input.peek(Token![+]) {
+                                break;
+                            }
+                            let punct = input.parse()?;
+                            bounds.push_punct(punct);
+                        }
+                        bounds
+                    },
+                }))
+            }
         }
     }
 }
@@ -752,9 +896,12 @@ pub mod parsing {
 #[cfg(feature = "printing")]
 mod printing {
     use super::*;
-    use attr::FilterAttrs;
+
     use proc_macro2::TokenStream;
     use quote::{ToTokens, TokenStreamExt};
+
+    use crate::attr::FilterAttrs;
+    use crate::print::TokensOrDefault;
 
     impl ToTokens for Generics {
         fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -821,9 +968,9 @@ mod printing {
                     <Token![,]>::default().to_tokens(tokens);
                     trailing_or_empty = true;
                 }
-                match **param.value() {
+                match *param.value() {
                     GenericParam::Lifetime(_) => unreachable!(),
-                    GenericParam::Type(ref param) => {
+                    GenericParam::Type(param) => {
                         // Leave off the type parameter defaults
                         tokens.append_all(param.attrs.outer());
                         param.ident.to_tokens(tokens);
@@ -832,7 +979,7 @@ mod printing {
                             param.bounds.to_tokens(tokens);
                         }
                     }
-                    GenericParam::Const(ref param) => {
+                    GenericParam::Const(param) => {
                         // Leave off the const parameter defaults
                         tokens.append_all(param.attrs.outer());
                         param.const_token.to_tokens(tokens);
@@ -863,7 +1010,7 @@ mod printing {
             // not been settled yet. https://github.com/rust-lang/rust/issues/44580
             let mut trailing_or_empty = true;
             for param in self.0.params.pairs() {
-                if let GenericParam::Lifetime(ref def) = **param.value() {
+                if let GenericParam::Lifetime(def) = *param.value() {
                     // Leave off the lifetime bounds and attributes
                     def.lifetime.to_tokens(tokens);
                     param.punct().to_tokens(tokens);
@@ -878,13 +1025,13 @@ mod printing {
                     <Token![,]>::default().to_tokens(tokens);
                     trailing_or_empty = true;
                 }
-                match **param.value() {
+                match *param.value() {
                     GenericParam::Lifetime(_) => unreachable!(),
-                    GenericParam::Type(ref param) => {
+                    GenericParam::Type(param) => {
                         // Leave off the type parameter defaults
                         param.ident.to_tokens(tokens);
                     }
-                    GenericParam::Const(ref param) => {
+                    GenericParam::Const(param) => {
                         // Leave off the const parameter defaults
                         param.ident.to_tokens(tokens);
                     }
@@ -947,8 +1094,8 @@ mod printing {
                 self.lifetimes.to_tokens(tokens);
                 self.path.to_tokens(tokens);
             };
-            match self.paren_token {
-                Some(ref paren) => paren.surround(tokens, to_tokens),
+            match &self.paren_token {
+                Some(paren) => paren.surround(tokens, to_tokens),
                 None => to_tokens(tokens),
             }
         }
@@ -956,9 +1103,9 @@ mod printing {
 
     impl ToTokens for TraitBoundModifier {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            match *self {
+            match self {
                 TraitBoundModifier::None => {}
-                TraitBoundModifier::Maybe(ref t) => t.to_tokens(tokens),
+                TraitBoundModifier::Maybe(t) => t.to_tokens(tokens),
             }
         }
     }
@@ -998,10 +1145,8 @@ mod printing {
     impl ToTokens for PredicateLifetime {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.lifetime.to_tokens(tokens);
-            if !self.bounds.is_empty() {
-                TokensOrDefault(&self.colon_token).to_tokens(tokens);
-                self.bounds.to_tokens(tokens);
-            }
+            self.colon_token.to_tokens(tokens);
+            self.bounds.to_tokens(tokens);
         }
     }
 

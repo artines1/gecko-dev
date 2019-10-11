@@ -8,6 +8,7 @@ import mozinfo
 import os
 import sys
 
+from ..application import (DefaultContext, FirefoxContext)
 from .runner import BaseRunner
 
 
@@ -24,10 +25,15 @@ class GeckoRuntimeRunner(BaseRunner):
         self.binary = binary
         self.cmdargs = cmdargs or []
 
+        if mozinfo.isWin and (isinstance(self.app_ctx, FirefoxContext) or
+                              isinstance(self.app_ctx, DefaultContext)):
+            # The launcher process is present in this configuration. Always
+            # pass this flag so that we can wait for the browser to complete
+            # its execution.
+            self.cmdargs.append('--wait-for-browser')
+
         # allows you to run an instance of Firefox separately from any other instances
         self.env['MOZ_NO_REMOTE'] = '1'
-        # keeps Firefox attached to the terminal window after it starts
-        self.env['NO_EM_RESTART'] = '1'
 
         # Disable crash reporting dialogs that interfere with debugging
         self.env['GNOME_DISABLE_CRASH_DIALOG'] = '1'
@@ -81,6 +87,7 @@ class GeckoRuntimeRunner(BaseRunner):
 
 class BlinkRuntimeRunner(BaseRunner):
     """A base runner class for running apps like Google Chrome or Chromium."""
+
     def __init__(self, binary, cmdargs=None, **runner_args):
         super(BlinkRuntimeRunner, self).__init__(**runner_args)
         self.binary = binary

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
-<script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+<script src="/tests/SimpleTest/SimpleTest.js"></script>
 <script>
 /* global SimpleTest SpecialPowers */
 
@@ -29,8 +29,8 @@ let testPromise = (resistFingerprinting, src, whitelist) => new Promise(resolve 
 async function testBody(resistFingerprinting) {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.resistFingerprinting", resistFingerprinting]
-    ]
+      ["privacy.resistFingerprinting", resistFingerprinting],
+    ],
   });
   await testPromise(
     resistFingerprinting,

@@ -2,7 +2,6 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-proxy-object-internal-methods-and-internal-slots-defineownproperty-p-desc
-es6id: 9.5.6
 description: >
   Throws a TypeError exception if handler is null (honoring the realm of the
   current execution context).
@@ -10,7 +9,7 @@ info: |
   1. Assert: IsPropertyKey(P) is true.
   2. Let handler be O.[[ProxyHandler]].
   3. If handler is null, throw a TypeError exception.
-features: [cross-realm]
+features: [cross-realm, Proxy]
 ---*/
 
 var OProxy = $262.createRealm().global.Proxy;

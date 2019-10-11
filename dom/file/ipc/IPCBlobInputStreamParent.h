@@ -4,83 +4,63 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_dom_ipc_IPCBlobInputStreamParent_h
-#define mozilla_dom_ipc_IPCBlobInputStreamParent_h
+#ifndef mozilla_dom_IPCBlobInputStreamParent_h
+#define mozilla_dom_IPCBlobInputStreamParent_h
 
-#include "mozilla/ipc/PIPCBlobInputStreamParent.h"
+#include "mozilla/dom/PIPCBlobInputStreamParent.h"
 
 class nsIInputStream;
 
 namespace mozilla {
 namespace dom {
 
-class NS_NO_VTABLE IPCBlobInputStreamParentCallback
-{
-public:
-  virtual void
-  ActorDestroyed(const nsID& aID) = 0;
+class NS_NO_VTABLE IPCBlobInputStreamParentCallback {
+ public:
+  virtual void ActorDestroyed(const nsID& aID) = 0;
 
   NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 
-protected:
-  virtual ~IPCBlobInputStreamParentCallback()
-  { }
+ protected:
+  virtual ~IPCBlobInputStreamParentCallback() {}
 };
 
-class IPCBlobInputStreamParent final
-  : public mozilla::ipc::PIPCBlobInputStreamParent
-{
-public:
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(IPCBlobInputStreamParent)
+class IPCBlobInputStreamParent final : public PIPCBlobInputStreamParent {
+ public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(IPCBlobInputStreamParent, final)
 
   // The size of the inputStream must be passed as argument in order to avoid
   // the use of nsIInputStream::Available() which could open a fileDescriptor in
   // case the stream is a nsFileStream.
-  template<typename M>
-  static already_AddRefed<IPCBlobInputStreamParent>
-  Create(nsIInputStream* aInputStream, uint64_t aSize,
-         uint64_t aChildID, nsresult* aRv, M* aManager);
+  template <typename M>
+  static already_AddRefed<IPCBlobInputStreamParent> Create(
+      nsIInputStream* aInputStream, uint64_t aSize, uint64_t aChildID,
+      nsresult* aRv, M* aManager);
 
-  static already_AddRefed<IPCBlobInputStreamParent>
-  Create(const nsID& aID, uint64_t aSize,
-         mozilla::ipc::PBackgroundParent* aManager);
+  static already_AddRefed<IPCBlobInputStreamParent> Create(
+      const nsID& aID, uint64_t aSize,
+      mozilla::ipc::PBackgroundParent* aManager);
 
-  void
-  ActorDestroy(IProtocol::ActorDestroyReason aReason) override;
+  void ActorDestroy(IProtocol::ActorDestroyReason aReason) override;
 
-  const nsID&
-  ID() const
-  {
-    return mID;
-  }
+  const nsID& ID() const { return mID; }
 
-  uint64_t
-  Size() const
-  {
-    return mSize;
-  }
+  uint64_t Size() const { return mSize; }
 
-  void
-  SetCallback(IPCBlobInputStreamParentCallback* aCallback);
+  void SetCallback(IPCBlobInputStreamParentCallback* aCallback);
 
-  mozilla::ipc::IPCResult
-  RecvStreamNeeded() override;
+  mozilla::ipc::IPCResult RecvStreamNeeded();
 
-  mozilla::ipc::IPCResult
-  RecvLengthNeeded() override;
+  mozilla::ipc::IPCResult RecvLengthNeeded();
 
-  mozilla::ipc::IPCResult
-  RecvClose() override;
+  mozilla::ipc::IPCResult RecvClose();
 
-  mozilla::ipc::IPCResult
-  Recv__delete__() override;
+  mozilla::ipc::IPCResult Recv__delete__() override;
 
-  bool
-  HasValidStream() const;
+  bool HasValidStream() const;
 
-private:
+ private:
   IPCBlobInputStreamParent(const nsID& aID, uint64_t aSize,
-                           nsIContentParent* aManager);
+                           ContentParent* aManager);
 
   IPCBlobInputStreamParent(const nsID& aID, uint64_t aSize,
                            mozilla::ipc::PBackgroundParent* aManager);
@@ -92,7 +72,7 @@ private:
 
   // Only 1 of these 2 is set. Raw pointer because these 2 managers are keeping
   // the parent actor alive. The pointers will be nullified in ActorDestroyed.
-  nsIContentParent* mContentManager;
+  ContentParent* mContentManager;
   mozilla::ipc::PBackgroundParent* mPBackgroundManager;
 
   RefPtr<IPCBlobInputStreamParentCallback> mCallback;
@@ -100,7 +80,7 @@ private:
   bool mMigrating;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_ipc_IPCBlobInputStreamParent_h
+#endif  // mozilla_dom_IPCBlobInputStreamParent_h

@@ -447,6 +447,12 @@ int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_
     } else if(pair->state==NR_ICE_PAIR_STATE_SUCCEEDED) {
       r_log(LOG_ICE,LOG_DEBUG,"ICE-PEER(%s)/CAND_PAIR(%s): No new trigger check for succeeded pair",pctx->label,pair->codeword);
       return(0);
+    } else if (pair->local->stream->obsolete) {
+      r_log(LOG_ICE, LOG_DEBUG,
+            "ICE-PEER(%s)/CAND_PAIR(%s): No new trigger check for pair with "
+            "obsolete stream",
+            pctx->label, pair->codeword);
+      return (0);
     }
 
     /* Do not run this logic more than once on a given pair */
@@ -497,7 +503,7 @@ int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_
     return(_status);
   }
 
-int nr_ice_candidate_pair_cancel(nr_ice_peer_ctx *pctx,nr_ice_cand_pair *pair, int move_to_wait_state)
+void nr_ice_candidate_pair_cancel(nr_ice_peer_ctx *pctx,nr_ice_cand_pair *pair, int move_to_wait_state)
   {
     if(pair->state != NR_ICE_PAIR_STATE_FAILED){
       /* If it's already running we need to terminate the stun */
@@ -510,8 +516,6 @@ int nr_ice_candidate_pair_cancel(nr_ice_peer_ctx *pctx,nr_ice_cand_pair *pair, i
       }
       nr_ice_candidate_pair_set_state(pctx,pair,NR_ICE_PAIR_STATE_CANCELLED);
     }
-
-    return(0);
   }
 
 int nr_ice_candidate_pair_select(nr_ice_cand_pair *pair)
@@ -545,10 +549,8 @@ int nr_ice_candidate_pair_select(nr_ice_cand_pair *pair)
     return(_status);
  }
 
-int nr_ice_candidate_pair_set_state(nr_ice_peer_ctx *pctx, nr_ice_cand_pair *pair, int state)
+void nr_ice_candidate_pair_set_state(nr_ice_peer_ctx *pctx, nr_ice_cand_pair *pair, int state)
   {
-    int r,_status;
-
     r_log(LOG_ICE,LOG_INFO,"ICE-PEER(%s)/CAND-PAIR(%s): setting pair to state %s: %s",
       pctx->label,pair->codeword,nr_ice_cand_pair_states[state],pair->as_string);
 
@@ -580,20 +582,13 @@ int nr_ice_candidate_pair_set_state(nr_ice_peer_ctx *pctx, nr_ice_cand_pair *pai
 
     if(pair->state==NR_ICE_PAIR_STATE_FAILED ||
        pair->state==NR_ICE_PAIR_STATE_CANCELLED){
-      if(r=nr_ice_component_failed_pair(pair->remote->component, pair))
-        ABORT(r);
+      nr_ice_component_failed_pair(pair->remote->component, pair);
     }
-
-    _status=0;
-  abort:
-    return(_status);
   }
 
-int nr_ice_candidate_pair_dump_state(nr_ice_cand_pair *pair, FILE *out)
+void nr_ice_candidate_pair_dump_state(nr_ice_cand_pair *pair, int log_level)
   {
-    /*r_log(LOG_ICE,LOG_DEBUG,"CAND-PAIR(%s): pair %s: state=%s, priority=0x%llx\n",pair->codeword,pair->as_string,nr_ice_cand_pair_states[pair->state],pair->priority);*/
-
-    return(0);
+    r_log(LOG_ICE,log_level,"CAND-PAIR(%s): pair %s: state=%s, priority=0x%llx\n",pair->codeword,pair->as_string,nr_ice_cand_pair_states[pair->state],pair->priority);
   }
 
 

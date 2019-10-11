@@ -6,7 +6,8 @@
 
 interface XULControllers;
 
-[HTMLConstructor, Func="IsChromeOrXBL"]
+[HTMLConstructor, Func="IsChromeOrXBL",
+ Exposed=Window]
 interface XULElement : Element {
   // Layout properties
   [SetterThrows]
@@ -60,6 +61,10 @@ interface XULElement : Element {
   [SetterThrows]
   attribute DOMString top;
 
+  // Return the screen coordinates of the element.
+  readonly attribute long screenX;
+  readonly attribute long screenY;
+
   // Tooltip
   [SetterThrows]
   attribute DOMString tooltipText;
@@ -72,21 +77,22 @@ interface XULElement : Element {
 
   [Throws, ChromeOnly]
   readonly attribute XULControllers             controllers;
-  [Throws]
-  readonly attribute BoxObject?                 boxObject;
 
-  [Throws]
-  void                      focus();
-  [Throws]
-  void                      blur();
   [NeedsCallerType]
   void                      click();
   void                      doCommand();
 
-  [Constant]
-  readonly attribute CSSStyleDeclaration style;
+  // Returns true if this is a menu-type element that has a menu
+  // frame associated with it.
+  boolean hasMenu();
+
+  // If this is a menu-type element, opens or closes the menu
+  // depending on the argument passed.
+  void openMenu(boolean open);
 };
 
-XULElement implements GlobalEventHandlers;
-XULElement implements TouchEventHandlers;
-XULElement implements OnErrorEventHandlerForNodes;
+XULElement includes GlobalEventHandlers;
+XULElement includes HTMLOrForeignElement;
+XULElement includes ElementCSSInlineStyle;
+XULElement includes TouchEventHandlers;
+XULElement includes OnErrorEventHandlerForNodes;

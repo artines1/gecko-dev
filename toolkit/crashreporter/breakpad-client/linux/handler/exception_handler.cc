@@ -96,6 +96,11 @@
 #include "linux/minidump_writer/minidump_writer.h"
 #include "common/linux/eintr_wrapper.h"
 #include "third_party/lss/linux_syscall_support.h"
+#include "prenv.h"
+
+#ifdef MOZ_PHC
+#include "replace_malloc_bridge.h"
+#endif
 
 #if defined(__ANDROID__)
 #include "linux/sched.h"
@@ -104,6 +109,8 @@
 #ifndef PR_SET_PTRACER
 #define PR_SET_PTRACER 0x59616d61
 #endif
+
+#define SKIP_SIGILL(sig) if (g_skip_sigill_ && (sig == SIGILL)) continue;
 
 namespace google_breakpad {
 
@@ -213,6 +220,7 @@ pthread_mutex_t g_handler_stack_mutex_ = PTHREAD_MUTEX_INITIALIZER;
 ExceptionHandler::CrashContext g_crash_context_;
 
 FirstChanceHandler g_first_chance_handler_ = nullptr;
+bool g_skip_sigill_ = false;
 }  // namespace
 
 // Runs before crashing: normal context.
@@ -227,6 +235,8 @@ ExceptionHandler::ExceptionHandler(const MinidumpDescriptor& descriptor,
       callback_context_(callback_context),
       minidump_descriptor_(descriptor),
       crash_handler_(NULL) {
+
+  g_skip_sigill_ = PR_GetEnv("MOZ_DISABLE_EXCEPTION_HANDLER_SIGILL") ? true : false;
   if (server_fd >= 0)
     crash_generation_client_.reset(CrashGenerationClient::TryCreate(server_fd));
 
@@ -278,6 +288,7 @@ bool ExceptionHandler::InstallHandlersLocked() {
 
   // Fail if unable to store all the old handlers.
   for (int i = 0; i < kNumHandledSignals; ++i) {
+    SKIP_SIGILL(kExceptionSignals[i]);
     if (sigaction(kExceptionSignals[i], NULL, &old_handlers[i]) == -1)
       return false;
   }
@@ -287,13 +298,16 @@ bool ExceptionHandler::InstallHandlersLocked() {
   sigemptyset(&sa.sa_mask);
 
   // Mask all exception signals when we're handling one of them.
-  for (int i = 0; i < kNumHandledSignals; ++i)
+  for (int i = 0; i < kNumHandledSignals; ++i) {
+    SKIP_SIGILL(kExceptionSignals[i]);
     sigaddset(&sa.sa_mask, kExceptionSignals[i]);
+  }
 
   sa.sa_sigaction = SignalHandler;
   sa.sa_flags = SA_ONSTACK | SA_SIGINFO;
 
   for (int i = 0; i < kNumHandledSignals; ++i) {
+    SKIP_SIGILL(kExceptionSignals[i]);
     if (sigaction(kExceptionSignals[i], &sa, NULL) == -1) {
       // At this point it is impractical to back out changes, and so failure to
       // install a signal is intentionally ignored.
@@ -311,6 +325,7 @@ void ExceptionHandler::RestoreHandlersLocked() {
     return;
 
   for (int i = 0; i < kNumHandledSignals; ++i) {
+    SKIP_SIGILL(kExceptionSignals[i]);
     if (sigaction(kExceptionSignals[i], &old_handlers[i], NULL) == -1) {
       InstallDefaultHandler(kExceptionSignals[i]);
     }
@@ -435,10 +450,25 @@ int ExceptionHandler::ThreadEntry(void *arg) {
                                      thread_arg->context_size) == false;
 }
 
+#ifdef MOZ_PHC
+static void GetPHCAddrInfo(siginfo_t* siginfo,
+                           mozilla::phc::AddrInfo* addr_info) {
+  // Is this a crash involving a PHC allocation?
+  if (siginfo->si_signo == SIGSEGV || siginfo->si_signo == SIGBUS) {
+    ReplaceMalloc::IsPHCAllocation(siginfo->si_addr, addr_info);
+  }
+}
+#endif
+
 // This function runs in a compromised context: see the top of the file.
 // Runs on the crashing thread.
 bool ExceptionHandler::HandleSignal(int /*sig*/, siginfo_t* info, void* uc) {
-  if (filter_ && !filter_(callback_context_))
+  mozilla::phc::AddrInfo addr_info;
+#ifdef MOZ_PHC
+  GetPHCAddrInfo(info, &addr_info);
+#endif
+
+  if (filter_ && !filter_(callback_context_, &addr_info))
     return false;
 
   // Allow ourselves to be dumped if the signal is trusted.
@@ -478,7 +508,8 @@ bool ExceptionHandler::HandleSignal(int /*sig*/, siginfo_t* info, void* uc) {
       return true;
     }
   }
-  return GenerateDump(&g_crash_context_);
+
+  return GenerateDump(&g_crash_context_, &addr_info);
 }
 
 // This is a public interface to HandleSignal that allows the client to
@@ -495,7 +526,8 @@ bool ExceptionHandler::SimulateSignalDelivery(int sig) {
 }
 
 // This function may run in a compromised context: see the top of the file.
-bool ExceptionHandler::GenerateDump(CrashContext *context) {
+bool ExceptionHandler::GenerateDump(
+    CrashContext *context, const mozilla::phc::AddrInfo* addr_info) {
   if (IsOutOfProcess())
     return crash_generation_client_->RequestDump(context, sizeof(*context));
 
@@ -580,7 +612,8 @@ bool ExceptionHandler::GenerateDump(CrashContext *context) {
 
   bool success = r != -1 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
   if (callback_)
-    success = callback_(minidump_descriptor_, callback_context_, success);
+    success =
+      callback_(minidump_descriptor_, callback_context_, addr_info, success);
   return success;
 }
 
@@ -754,11 +787,12 @@ bool ExceptionHandler::WriteMinidump() {
 #error "This code has not been ported to your platform yet."
 #endif
 
-  return GenerateDump(&context);
+  // nullptr here for phc::AddrInfo* is ok because this is not a crash.
+  return GenerateDump(&context, nullptr);
 }
 
 void ExceptionHandler::AddMappingInfo(const string& name,
-                                      const uint8_t identifier[sizeof(MDGUID)],
+                                      const wasteful_vector<uint8_t>& identifier,
                                       uintptr_t start_address,
                                       size_t mapping_size,
                                       size_t file_offset) {
@@ -771,7 +805,7 @@ void ExceptionHandler::AddMappingInfo(const string& name,
 
   MappingEntry mapping;
   mapping.first = info;
-  memcpy(mapping.second, identifier, sizeof(MDGUID));
+  mapping.second.assign(identifier.begin(), identifier.end());
   mapping_list_.push_back(mapping);
 }
 
@@ -811,7 +845,9 @@ bool ExceptionHandler::WriteMinidumpForChild(pid_t child,
                                       child_blamed_thread))
       return false;
 
-  return callback ? callback(descriptor, callback_context, true) : true;
+  // nullptr here for phc::AddrInfo* is ok because this is not a crash.
+  return callback ? callback(descriptor, callback_context, nullptr, true)
+                  : true;
 }
 
 void SetFirstChanceExceptionHandler(FirstChanceHandler callback) {

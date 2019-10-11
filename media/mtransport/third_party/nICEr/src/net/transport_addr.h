@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _transport_addr_h
 #define _transport_addr_h
 
+#include <stdbool.h>
 #include <sys/types.h>
 #ifdef WIN32
 #include <winsock2.h>
@@ -43,6 +44,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/socket.h>
 #include <netinet/in.h>
 #endif
+
+#include "r_types.h"
 
 /* Length of a string  hex representation of a MD5 hash */
 #define MAXIFNAME 33
@@ -67,6 +70,7 @@ typedef struct nr_transport_addr_ {
      56 = 5 ("IP6:[") + 39 (ipv6 address) + 2 ("]:") + 5 (port) + 4 (/UDP) + 1 (null) */
   char as_string[56];
   char tls_host[256];
+  bool is_proxied;
 } nr_transport_addr;
 
 typedef struct nr_transport_addr_mask_ {

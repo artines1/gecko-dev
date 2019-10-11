@@ -6,7 +6,5 @@
 
 DevToolsModules(
     'addons.js',
-    'console.js',
     'webextension-inspected-window.js',
-    'webextension.js',
 )

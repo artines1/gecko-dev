@@ -1,3 +1,4 @@
+// |reftest| async
 // Copyright (C) 2018 Valerie Young. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -6,7 +7,7 @@ description: >
     When invoked via the function invocation pattern with multiple arguments,
     the AsyncGeneratorFunction intrinsic creates a valid generator whose body is the
     last argument evaluated as source code and whose formal parameters are
-    defined by the preceeding arguments.
+    defined by the preceding arguments.
 features: [async-iteration]
 flags: [async]
 ---*/

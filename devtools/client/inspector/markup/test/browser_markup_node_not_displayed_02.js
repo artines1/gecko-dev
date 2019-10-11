@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -21,7 +20,7 @@ const TEST_DATA = [
         document.body.appendChild(div);
       `);
     },
-    after: false
+    after: false,
   },
   {
     desc: "Showing a node by deleting an existing stylesheet",
@@ -32,7 +31,7 @@ const TEST_DATA = [
         document.getElementById("new-style").remove();
       `);
     },
-    after: true
+    after: true,
   },
   {
     desc: "Hiding a node by changing its style property",
@@ -44,7 +43,7 @@ const TEST_DATA = [
         node.style.display = "block";
       `);
     },
-    after: true
+    after: true,
   },
   {
     desc: "Showing a node by removing its hidden attribute",
@@ -56,7 +55,7 @@ const TEST_DATA = [
                 .removeAttribute("hidden");
       `);
     },
-    after: true
+    after: true,
   },
   {
     desc: "Hiding a node by adding a hidden attribute",
@@ -65,7 +64,7 @@ const TEST_DATA = [
     changeStyle: async function(testActor) {
       await testActor.setAttribute("#hidden-true", "hidden", "true");
     },
-    after: false
+    after: false,
   },
   {
     desc: "Showing a node by changin a stylesheet's rule",
@@ -78,7 +77,7 @@ const TEST_DATA = [
                 .setProperty("display", "inline");
       `);
     },
-    after: true
+    after: true,
   },
   {
     desc: "Hiding a node by adding a new rule to a stylesheet",
@@ -90,7 +89,7 @@ const TEST_DATA = [
           "#hidden-via-stylesheet {display: none;}", 1);
       `);
     },
-    after: false
+    after: false,
   },
   {
     desc: "Hiding a node by adding a class that matches an existing rule",
@@ -104,12 +103,12 @@ const TEST_DATA = [
                 .classList.add("a-new-class");
       `);
     },
-    after: false
-  }
+    after: false,
+  },
 ];
 
 add_task(async function() {
-  const {inspector, testActor} = await openInspectorForURL(TEST_URL);
+  const { inspector, testActor } = await openInspectorForURL(TEST_URL);
 
   for (const data of TEST_DATA) {
     info("Running test case: " + data.desc);
@@ -117,13 +116,19 @@ add_task(async function() {
   }
 });
 
-async function runTestData(inspector, testActor,
-                      {selector, before, changeStyle, after}) {
+async function runTestData(
+  inspector,
+  testActor,
+  { selector, before, changeStyle, after }
+) {
   info("Getting the " + selector + " test node");
   const nodeFront = await getNodeFront(selector, inspector);
   const container = getContainerForNodeFront(nodeFront, inspector);
-  is(!container.elt.classList.contains("not-displayed"), before,
-    "The container is marked as " + (before ? "shown" : "hidden"));
+  is(
+    !container.elt.classList.contains("not-displayed"),
+    before,
+    "The container is marked as " + (before ? "shown" : "hidden")
+  );
 
   info("Listening for the display-change event");
   const onDisplayChanged = new Promise(resolve => {
@@ -146,6 +151,9 @@ async function runTestData(inspector, testActor,
   }
   ok(foundContainer, "Container is part of the list of changed nodes");
 
-  is(!container.elt.classList.contains("not-displayed"), after,
-    "The container is marked as " + (after ? "shown" : "hidden"));
+  is(
+    !container.elt.classList.contains("not-displayed"),
+    after,
+    "The container is marked as " + (after ? "shown" : "hidden")
+  );
 }

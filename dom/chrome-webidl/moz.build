@@ -5,10 +5,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
 with Files("ChannelWrapper.webidl"):
     BUG_COMPONENT = ("WebExtensions", "Request Handling")
+
+with Files("Flex.webidl"):
+    BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
 with Files("HeapSnapshot.webidl"):
     BUG_COMPONENT = ("DevTools", "Memory")
@@ -30,24 +33,41 @@ PREPROCESSED_WEBIDL_FILES = [
 ]
 
 WEBIDL_FILES = [
+    'BrowsingContext.webidl',
     'ChannelWrapper.webidl',
+    'DebuggerNotification.webidl',
+    'DebuggerNotificationObserver.webidl',
+    'DebuggerUtils.webidl',
+    'DocumentL10n.webidl',
     'DominatorTree.webidl',
+    'DOMLocalization.webidl',
+    'Flex.webidl',
     'HeapSnapshot.webidl',
     'InspectorUtils.webidl',
+    'IteratorResult.webidl',
+    'JSWindowActor.webidl',
+    'L10nOverlays.webidl',
+    'Localization.webidl',
     'MatchGlob.webidl',
     'MatchPattern.webidl',
     'MessageManager.webidl',
+    'MozDocumentObserver.webidl',
     'MozSharedMap.webidl',
     'MozStorageAsyncStatementParams.webidl',
     'MozStorageStatementParams.webidl',
     'MozStorageStatementRow.webidl',
     'PrecompiledScript.webidl',
     'PromiseDebugging.webidl',
+    'SessionStoreUtils.webidl',
     'StructuredCloneHolder.webidl',
+    'TelemetryStopwatch.webidl',
     'WebExtensionContentScript.webidl',
     'WebExtensionPolicy.webidl',
+    'WindowGlobalActors.webidl',
     'XULFrameElement.webidl',
-    'XULScrollElement.webidl'
+    'XULMenuElement.webidl',
+    'XULTextElement.webidl',
+    'XULTreeElement.webidl'
 ]
 
 if CONFIG['MOZ_PLACES']:
@@ -55,3 +75,8 @@ if CONFIG['MOZ_PLACES']:
         'PlacesEvent.webidl',
         'PlacesObservers.webidl',
     ]
+
+WEBIDL_FILES += [
+    'PrioEncoder.webidl',
+]
+

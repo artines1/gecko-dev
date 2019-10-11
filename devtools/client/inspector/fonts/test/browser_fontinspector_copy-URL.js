@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -10,12 +9,13 @@
 const TEST_URI = URL_ROOT + "doc_browser_fontinspector.html";
 
 add_task(async function() {
-  await pushPref("devtools.inspector.fonteditor.enabled", true);
   const { view, inspector } = await openFontInspectorForURL(TEST_URI);
   const viewDoc = view.document;
   await selectNode("div", inspector);
+  await expandFontsAccordion(viewDoc);
+  const allFontsEls = getAllFontsEls(viewDoc);
+  const fontEl = allFontsEls[0];
 
-  const fontEl = getUsedFontsEls(viewDoc)[0];
   const linkEl = fontEl.querySelector(".font-origin");
   const iconEl = linkEl.querySelector(".copy-icon");
 

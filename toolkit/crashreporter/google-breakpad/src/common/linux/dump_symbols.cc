@@ -59,6 +59,7 @@
 #include "common/dwarf_cfi_to_module.h"
 #include "common/dwarf_cu_to_module.h"
 #include "common/dwarf_line_to_module.h"
+#include "common/dwarf_range_list_handler.h"
 #include "common/linux/crc32.h"
 #include "common/linux/eintr_wrapper.h"
 #include "common/linux/elfutils.h"
@@ -87,6 +88,7 @@ using google_breakpad::DumpOptions;
 using google_breakpad::DwarfCFIToModule;
 using google_breakpad::DwarfCUToModule;
 using google_breakpad::DwarfLineToModule;
+using google_breakpad::DwarfRangeListHandler;
 using google_breakpad::ElfClass;
 using google_breakpad::ElfClass32;
 using google_breakpad::ElfClass64;
@@ -213,6 +215,30 @@ bool LoadStabs(const typename ElfClass::Ehdr* elf_header,
 }
 #endif  // NO_STABS_SUPPORT
 
+// A range handler that accepts rangelist data parsed by
+// dwarf2reader::RangeListReader and populates a range vector (typically
+// owned by a function) with the results.
+class DumperRangesHandler : public DwarfCUToModule::RangesHandler {
+ public:
+  DumperRangesHandler(const uint8_t *buffer, uint64 size,
+                      dwarf2reader::ByteReader* reader)
+      : buffer_(buffer), size_(size), reader_(reader) { }
+
+  bool ReadRanges(uint64 offset, Module::Address base_address,
+                  vector<Module::Range>* ranges) {
+    DwarfRangeListHandler handler(base_address, ranges);
+    dwarf2reader::RangeListReader rangelist_reader(buffer_, size_, reader_,
+                                                   &handler);
+
+    return rangelist_reader.ReadRangeList(offset);
+  }
+
+ private:
+  const uint8_t *buffer_;
+  uint64 size_;
+  dwarf2reader::ByteReader* reader_;
+};
+
 // A line-to-module loader that accepts line number info parsed by
 // dwarf2reader::LineInfo and populates a Module and a line vector
 // with the results.
@@ -225,8 +251,9 @@ class DumperLineToModule: public DwarfCUToModule::LineToModuleHandler {
     compilation_dir_ = compilation_dir;
   }
   void ReadProgram(const uint8_t *program, uint64 length,
-                   Module* module, std::vector<Module::Line>* lines) {
-    DwarfLineToModule handler(module, compilation_dir_, lines);
+                   Module* module, std::vector<Module::Line>* lines,
+                   FileMap *files) {
+    DwarfLineToModule handler(module, compilation_dir_, lines, files);
     dwarf2reader::LineInfo parser(program, length, byte_reader_, &handler);
     parser.Start();
   }
@@ -267,6 +294,18 @@ bool LoadDwarf(const string& dwarf_filename,
     file_context.AddSectionToSectionMap(name, contents, section->sh_size);
   }
 
+  // Optional .debug_ranges reader
+  scoped_ptr<DumperRangesHandler> ranges_handler;
+  dwarf2reader::SectionMap::const_iterator ranges_entry =
+      file_context.section_map().find(".debug_ranges");
+  if (ranges_entry != file_context.section_map().end()) {
+    const std::pair<const uint8_t *, uint64>& ranges_section =
+      ranges_entry->second;
+    ranges_handler.reset(
+      new DumperRangesHandler(ranges_section.first, ranges_section.second,
+                              &byte_reader));
+  }
+
   // Parse all the compilation units in the .debug_info section.
   DumperLineToModule line_to_module(&byte_reader);
   dwarf2reader::SectionMap::const_iterator debug_info_entry =
@@ -282,7 +321,8 @@ bool LoadDwarf(const string& dwarf_filename,
     // Make a handler for the root DIE that populates MODULE with the
     // data that was found.
     DwarfCUToModule::WarningReporter reporter(dwarf_filename, offset);
-    DwarfCUToModule root_handler(&file_context, &line_to_module, &reporter);
+    DwarfCUToModule root_handler(&file_context, &line_to_module,
+                                 ranges_handler.get(), &reporter);
     // Make a Dwarf2Handler that drives the DIEHandler.
     dwarf2reader::DIEDispatcher die_dispatcher(&root_handler);
     // Make a DWARF parser for the compilation unit at OFFSET.
@@ -707,16 +747,9 @@ bool LoadSymbols(const string& obj_file,
                                        elf_header->e_shnum);
     }
 
-    if (dwarf_section) {
-      found_debug_info_section = true;
-      found_usable_info = true;
-      info->LoadedSection(".debug_info");
-      if (!LoadDwarf<ElfClass>(obj_file, elf_header, big_endian,
-                               options.handle_inter_cu_refs, module)) {
-        fprintf(stderr, "%s: \".debug_info\" section found, but failed to load "
-                "DWARF debugging information\n", obj_file.c_str());
-      }
-    }
+    // Parse export symbols prior to parsing DWARF data, so that any
+    // functions found via DWARF data will take precedence over the functions
+    // found via ELF.
 
     // See if there are export symbols available.
     const Shdr* symtab_section =
@@ -773,6 +806,17 @@ bool LoadSymbols(const string& obj_file,
                                ElfClass::kAddrSize,
                                module);
         found_usable_info = found_usable_info || result;
+      }
+    }
+
+    if (dwarf_section) {
+      found_debug_info_section = true;
+      found_usable_info = true;
+      info->LoadedSection(".debug_info");
+      if (!LoadDwarf<ElfClass>(obj_file, elf_header, big_endian,
+                               options.handle_inter_cu_refs, module)) {
+        fprintf(stderr, "%s: \".debug_info\" section found, but failed to load "
+                "DWARF debugging information\n", obj_file.c_str());
       }
     }
   }

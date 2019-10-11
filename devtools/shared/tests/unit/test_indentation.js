@@ -15,16 +15,25 @@ const {
 
 function test_indent_from_prefs() {
   Services.prefs.setBoolPref(DETECT_INDENT, true);
-  equal(getIndentationFromPrefs(), false,
-        "getIndentationFromPrefs returning false");
+  equal(
+    getIndentationFromPrefs(),
+    false,
+    "getIndentationFromPrefs returning false"
+  );
 
   Services.prefs.setIntPref(TAB_SIZE, 73);
   Services.prefs.setBoolPref(EXPAND_TAB, false);
   Services.prefs.setBoolPref(DETECT_INDENT, false);
-  deepEqual(getTabPrefs(), {indentUnit: 73, indentWithTabs: true},
-            "getTabPrefs basic test");
-  deepEqual(getIndentationFromPrefs(), {indentUnit: 73, indentWithTabs: true},
-            "getIndentationFromPrefs basic test");
+  deepEqual(
+    getTabPrefs(),
+    { indentUnit: 73, indentWithTabs: true },
+    "getTabPrefs basic test"
+  );
+  deepEqual(
+    getIndentationFromPrefs(),
+    { indentUnit: 73, indentWithTabs: true },
+    "getIndentationFromPrefs basic test"
+  );
 }
 
 const TESTS = [
@@ -41,9 +50,9 @@ const TESTS = [
       "     ",
       "span {",
       "  padding-left: 10px;",
-      "}"
+      "}",
     ],
-    expected: {indentUnit: 2, indentWithTabs: false}
+    expected: { indentUnit: 2, indentWithTabs: false },
   },
   {
     desc: "four spaces",
@@ -69,9 +78,9 @@ const TESTS = [
       "        var result = x - y;",
       "        result %= 2;",
       "    }",
-      "}"
+      "}",
     ],
-    expected: {indentUnit: 4, indentWithTabs: false}
+    expected: { indentUnit: 4, indentWithTabs: false },
   },
   {
     desc: "tabs",
@@ -86,9 +95,9 @@ const TESTS = [
       "",
       "span {",
       "\tpadding-left: 10px;",
-      "}"
+      "}",
     ],
-    expected: {indentUnit: 2, indentWithTabs: true}
+    expected: { indentUnit: 2, indentWithTabs: true },
   },
   {
     desc: "no indent",
@@ -97,9 +106,9 @@ const TESTS = [
       "           // stray thing",
       "var y = 9;",
       "    ",
-      ""
+      "",
     ],
-    expected: {indentUnit: 2, indentWithTabs: false}
+    expected: { indentUnit: 2, indentWithTabs: false },
   },
 ];
 
@@ -113,13 +122,19 @@ function test_indent_detection() {
       test.input.slice(start, end).forEach(callback);
     };
 
-    deepEqual(getIndentationFromIteration(iterFn), test.expected,
-              "test getIndentationFromIteration " + test.desc);
+    deepEqual(
+      getIndentationFromIteration(iterFn),
+      test.expected,
+      "test getIndentationFromIteration " + test.desc
+    );
   }
 
   for (const test of TESTS) {
-    deepEqual(getIndentationFromString(test.input.join("\n")), test.expected,
-              "test getIndentationFromString " + test.desc);
+    deepEqual(
+      getIndentationFromString(test.input.join("\n")),
+      test.expected,
+      "test getIndentationFromString " + test.desc
+    );
   }
 }
 

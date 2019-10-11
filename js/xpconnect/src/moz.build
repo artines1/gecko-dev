@@ -35,12 +35,17 @@ UNIFIED_SOURCES += [
     'XPCVariant.cpp',
     'XPCWrappedJS.cpp',
     'XPCWrappedJSClass.cpp',
+    'XPCWrappedJSIterator.cpp',
     'XPCWrappedNative.cpp',
     'XPCWrappedNativeInfo.cpp',
     'XPCWrappedNativeJSOps.cpp',
     'XPCWrappedNativeProto.cpp',
     'XPCWrappedNativeScope.cpp',
     'XPCWrapper.cpp',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -61,9 +66,3 @@ LOCAL_INCLUDES += [
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow', '-Werror=format']
-
-if CONFIG['NIGHTLY_BUILD']:
-    DEFINES['ENABLE_WASM_GC'] = True
-
-if CONFIG['MOZ_ASAN'] and CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

@@ -9,7 +9,6 @@ include protocol PContent;
 include protocol PHttpChannel;
 include protocol PCookieService;
 include protocol PBrowser;
-include protocol PWyciwygChannel;
 include protocol PFTPChannel;
 include protocol PWebSocket;
 include protocol PWebSocketEventListener;
@@ -26,6 +25,10 @@ include protocol PChildToParentStream; //FIXME: bug #792908
 include protocol PParentToChildStream; //FIXME: bug #792908
 include protocol PStunAddrsRequest;
 include protocol PFileChannel;
+include protocol PClassifierDummyChannel;
+include protocol PWebrtcTCPSocket;
+include protocol PSocketProcessBridge;
+include protocol PDocumentChannel;
 
 include IPCStream;
 include URIParams;
@@ -35,8 +38,10 @@ include protocol PAltDataOutputStream;
 
 using class IPC::SerializedLoadContext from "SerializedLoadContext.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
-using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
 using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
+using refcounted class nsIURI from "mozilla/ipc/URIUtils.h";
+using refcounted class nsIPrincipal from "mozilla/dom/PermissionMessageUtils.h";
+
 
 namespace mozilla {
 namespace net {
@@ -47,7 +52,6 @@ nested(upto inside_cpow) sync protocol PNecko
   manager PContent;
   manages PHttpChannel;
   manages PCookieService;
-  manages PWyciwygChannel;
   manages PFTPChannel;
   manages PWebSocket;
   manages PWebSocketEventListener;
@@ -62,6 +66,9 @@ nested(upto inside_cpow) sync protocol PNecko
   manages PTransportProvider;
   manages PAltDataOutputStream;
   manages PStunAddrsRequest;
+  manages PClassifierDummyChannel;
+  manages PWebrtcTCPSocket;
+  manages PDocumentChannel;
 
 parent:
   async __delete__();
@@ -70,32 +77,36 @@ parent:
   async PHttpChannel(PBrowserOrId browser,
                      SerializedLoadContext loadContext,
                      HttpChannelCreationArgs args);
-  async PWyciwygChannel();
   async PFTPChannel(PBrowserOrId browser, SerializedLoadContext loadContext,
                     FTPChannelCreationArgs args);
 
   async PWebSocket(PBrowserOrId browser, SerializedLoadContext loadContext,
                    uint32_t aSerialID);
   async PTCPServerSocket(uint16_t localPort, uint16_t backlog, bool useArrayBuffers);
-  async PUDPSocket(Principal principal, nsCString filter);
+  async PUDPSocket(nsIPrincipal principal, nsCString filter);
 
   async PDNSRequest(nsCString hostName, OriginAttributes originAttributes,
                     uint32_t flags);
 
+  async PDocumentChannel(PBrowserOrId browser,
+                         SerializedLoadContext loadContext,
+                         DocumentChannelCreationArgs args);
+
   async PWebSocketEventListener(uint64_t aInnerWindowID);
 
   /* Predictor Methods */
-  async PredPredict(OptionalURIParams targetURI, OptionalURIParams sourceURI,
+  async PredPredict(URIParams? targetURI, URIParams? sourceURI,
                     uint32_t reason, OriginAttributes originAttributes,
                     bool hasVerifier);
-  async PredLearn(URIParams targetURI, OptionalURIParams sourceURI,
+  async PredLearn(URIParams targetURI, URIParams? sourceURI,
                   uint32_t reason, OriginAttributes originAttributes);
   async PredReset();
 
-  async SpeculativeConnect(URIParams uri, Principal principal, bool anonymous);
-  async HTMLDNSPrefetch(nsString hostname, OriginAttributes originAttributes,
-                        uint16_t flags);
-  async CancelHTMLDNSPrefetch(nsString hostname, OriginAttributes originAttributes,
+  async SpeculativeConnect(URIParams uri, nsIPrincipal principal, bool anonymous);
+  async HTMLDNSPrefetch(nsString hostname, bool isHttps,
+                        OriginAttributes originAttributes, uint16_t flags);
+  async CancelHTMLDNSPrefetch(nsString hostname, bool isHttps,
+                              OriginAttributes originAttributes,
                               uint16_t flags, nsresult reason);
 
   /**
@@ -107,6 +118,11 @@ parent:
   async PFileChannel(uint32_t channelId);
 
   async PChannelDiverter(ChannelDiverterArgs channel);
+
+  async PClassifierDummyChannel(nsIURI uri, nsIURI aTopWindowURI,
+                                nsIPrincipal contentBlockingAllowListPrincipal,
+                                nsresult aTopWindowURIResult,
+                                LoadInfoArgs? loadInfo);
 
   /**
    * These are called from the child with the results of the auth prompt.
@@ -125,11 +141,20 @@ parent:
 
   async PStunAddrsRequest();
 
+  /* tabId is only required for web-proxy support, which isn't always needed */
+  async PWebrtcTCPSocket(TabId? tabId);
+
   /**
    * WebExtension-specific remote resource loading
    */
   async GetExtensionStream(URIParams uri) returns (nsIInputStream stream);
   async GetExtensionFD(URIParams uri) returns (FileDescriptor fd);
+
+  async InitSocketProcessBridge()
+    returns (Endpoint<PSocketProcessBridgeChild> endpoint);
+
+  async EnsureHSTSData()
+    returns (bool result);
 
 child:
   /*

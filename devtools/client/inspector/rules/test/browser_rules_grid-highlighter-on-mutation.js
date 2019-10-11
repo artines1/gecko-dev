@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -21,7 +20,7 @@ const TEST_URI = `
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view, testActor} = await openRuleView();
+  const { inspector, view, testActor } = await openRuleView();
   const highlighters = view.highlighters;
 
   await selectNode("#grid", inspector);
@@ -32,7 +31,7 @@ add_task(async function() {
   const onHighlighterShown = highlighters.once("grid-highlighter-shown");
   gridToggle.click();
   await onHighlighterShown;
-  ok(highlighters.gridHighlighterShown, "CSS grid highlighter is shown.");
+  is(highlighters.gridHighlighters.size, 1, "CSS grid highlighter is shown.");
 
   const onHighlighterHidden = highlighters.once("grid-highlighter-hidden");
   info("Remove the #grid container in the content page");
@@ -40,5 +39,5 @@ add_task(async function() {
     document.querySelector("#grid").remove();
   `);
   await onHighlighterHidden;
-  ok(!highlighters.gridHighlighterShown, "CSS grid highlighter is hidden.");
+  ok(!highlighters.gridHighlighters.size, "CSS grid highlighter is hidden.");
 });

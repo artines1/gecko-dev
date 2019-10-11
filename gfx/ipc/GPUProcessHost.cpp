@@ -6,10 +6,12 @@
 
 #include "GPUProcessHost.h"
 #include "chrome/common/process_watcher.h"
-#include "gfxPrefs.h"
 #include "mozilla/gfx/Logging.h"
 #include "nsITimer.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_layers.h"
+#include "VRGPUChild.h"
+#include "ProcessUtils.h"
 
 namespace mozilla {
 namespace gfx {
@@ -17,28 +19,28 @@ namespace gfx {
 using namespace ipc;
 
 GPUProcessHost::GPUProcessHost(Listener* aListener)
- : GeckoChildProcessHost(GeckoProcessType_GPU),
-   mListener(aListener),
-   mTaskFactory(this),
-   mLaunchPhase(LaunchPhase::Unlaunched),
-   mProcessToken(0),
-   mShutdownRequested(false),
-   mChannelClosed(false)
-{
+    : GeckoChildProcessHost(GeckoProcessType_GPU),
+      mListener(aListener),
+      mTaskFactory(this),
+      mLaunchPhase(LaunchPhase::Unlaunched),
+      mProcessToken(0),
+      mShutdownRequested(false),
+      mChannelClosed(false) {
   MOZ_COUNT_CTOR(GPUProcessHost);
 }
 
-GPUProcessHost::~GPUProcessHost()
-{
-  MOZ_COUNT_DTOR(GPUProcessHost);
-}
+GPUProcessHost::~GPUProcessHost() { MOZ_COUNT_DTOR(GPUProcessHost); }
 
-bool
-GPUProcessHost::Launch(StringVector aExtraOpts)
-{
+bool GPUProcessHost::Launch(StringVector aExtraOpts) {
   MOZ_ASSERT(mLaunchPhase == LaunchPhase::Unlaunched);
   MOZ_ASSERT(!mGPUChild);
   MOZ_ASSERT(!gfxPlatform::IsHeadless());
+
+  mPrefSerializer = MakeUnique<ipc::SharedPreferenceSerializer>();
+  if (!mPrefSerializer->SerializeToSharedMemory()) {
+    return false;
+  }
+  mPrefSerializer->AddSharedPrefCmdLineArgs(*this, aExtraOpts);
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
   mSandboxLevel = Preferences::GetInt("security.sandbox.gpu.level");
@@ -49,23 +51,25 @@ GPUProcessHost::Launch(StringVector aExtraOpts)
 
   if (!GeckoChildProcessHost::AsyncLaunch(aExtraOpts)) {
     mLaunchPhase = LaunchPhase::Complete;
+    mPrefSerializer = nullptr;
     return false;
   }
   return true;
 }
 
-bool
-GPUProcessHost::WaitForLaunch()
-{
+bool GPUProcessHost::WaitForLaunch() {
   if (mLaunchPhase == LaunchPhase::Complete) {
     return !!mGPUChild;
   }
 
-  int32_t timeoutMs = gfxPrefs::GPUProcessTimeoutMs();
+  int32_t timeoutMs =
+      StaticPrefs::layers_gpu_process_startup_timeout_ms_AtStartup();
 
   // If one of the following environment variables are set we can effectively
-  // ignore the timeout - as we can guarantee the compositor process will be terminated
-  if (PR_GetEnv("MOZ_DEBUG_CHILD_PROCESS") || PR_GetEnv("MOZ_DEBUG_CHILD_PAUSE")) {
+  // ignore the timeout - as we can guarantee the compositor process will be
+  // terminated
+  if (PR_GetEnv("MOZ_DEBUG_CHILD_PROCESS") ||
+      PR_GetEnv("MOZ_DEBUG_CHILD_PAUSE")) {
     timeoutMs = 0;
   }
 
@@ -77,9 +81,7 @@ GPUProcessHost::WaitForLaunch()
   return result;
 }
 
-void
-GPUProcessHost::OnChannelConnected(int32_t peer_pid)
-{
+void GPUProcessHost::OnChannelConnected(int32_t peer_pid) {
   MOZ_ASSERT(!NS_IsMainThread());
 
   GeckoChildProcessHost::OnChannelConnected(peer_pid);
@@ -89,14 +91,13 @@ GPUProcessHost::OnChannelConnected(int32_t peer_pid)
   RefPtr<Runnable> runnable;
   {
     MonitorAutoLock lock(mMonitor);
-    runnable = mTaskFactory.NewRunnableMethod(&GPUProcessHost::OnChannelConnectedTask);
+    runnable =
+        mTaskFactory.NewRunnableMethod(&GPUProcessHost::OnChannelConnectedTask);
   }
   NS_DispatchToMainThread(runnable);
 }
 
-void
-GPUProcessHost::OnChannelError()
-{
+void GPUProcessHost::OnChannelError() {
   MOZ_ASSERT(!NS_IsMainThread());
 
   GeckoChildProcessHost::OnChannelError();
@@ -106,22 +107,19 @@ GPUProcessHost::OnChannelError()
   RefPtr<Runnable> runnable;
   {
     MonitorAutoLock lock(mMonitor);
-    runnable = mTaskFactory.NewRunnableMethod(&GPUProcessHost::OnChannelErrorTask);
+    runnable =
+        mTaskFactory.NewRunnableMethod(&GPUProcessHost::OnChannelErrorTask);
   }
   NS_DispatchToMainThread(runnable);
 }
 
-void
-GPUProcessHost::OnChannelConnectedTask()
-{
+void GPUProcessHost::OnChannelConnectedTask() {
   if (mLaunchPhase == LaunchPhase::Waiting) {
     InitAfterConnect(true);
   }
 }
 
-void
-GPUProcessHost::OnChannelErrorTask()
-{
+void GPUProcessHost::OnChannelErrorTask() {
   if (mLaunchPhase == LaunchPhase::Waiting) {
     InitAfterConnect(false);
   }
@@ -129,19 +127,18 @@ GPUProcessHost::OnChannelErrorTask()
 
 static uint64_t sProcessTokenCounter = 0;
 
-void
-GPUProcessHost::InitAfterConnect(bool aSucceeded)
-{
+void GPUProcessHost::InitAfterConnect(bool aSucceeded) {
   MOZ_ASSERT(mLaunchPhase == LaunchPhase::Waiting);
   MOZ_ASSERT(!mGPUChild);
 
   mLaunchPhase = LaunchPhase::Complete;
+  mPrefSerializer = nullptr;
 
   if (aSucceeded) {
     mProcessToken = ++sProcessTokenCounter;
     mGPUChild = MakeUnique<GPUChild>(this);
     DebugOnly<bool> rv =
-      mGPUChild->Open(GetChannel(), base::GetProcId(GetChildProcessHandle()));
+        mGPUChild->Open(GetChannel(), base::GetProcId(GetChildProcessHandle()));
     MOZ_ASSERT(rv);
 
     mGPUChild->Init();
@@ -152,9 +149,7 @@ GPUProcessHost::InitAfterConnect(bool aSucceeded)
   }
 }
 
-void
-GPUProcessHost::Shutdown()
-{
+void GPUProcessHost::Shutdown() {
   MOZ_ASSERT(!mShutdownRequested);
 
   mListener = nullptr;
@@ -166,6 +161,10 @@ GPUProcessHost::Shutdown()
 
     // The channel might already be closed if we got here unexpectedly.
     if (!mChannelClosed) {
+      if (VRGPUChild::IsCreated()) {
+        VRGPUChild::Get()->Close();
+      }
+      mGPUChild->SendShutdownVR();
       mGPUChild->Close();
     }
 
@@ -187,9 +186,7 @@ GPUProcessHost::Shutdown()
   DestroyProcess();
 }
 
-void
-GPUProcessHost::OnChannelClosed()
-{
+void GPUProcessHost::OnChannelClosed() {
   mChannelClosed = true;
 
   if (!mShutdownRequested && mListener) {
@@ -204,9 +201,7 @@ GPUProcessHost::OnChannelClosed()
   MOZ_ASSERT(!mGPUChild);
 }
 
-void
-GPUProcessHost::KillHard(const char* aReason)
-{
+void GPUProcessHost::KillHard(const char* aReason) {
   ProcessHandle handle = GetChildProcessHandle();
   if (!base::KillProcess(handle, base::PROCESS_END_KILLED_BY_USER, false)) {
     NS_WARNING("failed to kill subprocess!");
@@ -215,28 +210,11 @@ GPUProcessHost::KillHard(const char* aReason)
   SetAlreadyDead();
 }
 
-uint64_t
-GPUProcessHost::GetProcessToken() const
-{
-  return mProcessToken;
-}
+uint64_t GPUProcessHost::GetProcessToken() const { return mProcessToken; }
 
-static void
-DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
-{
-  XRE_GetIOMessageLoop()->
-    PostTask(mozilla::MakeAndAddRef<DeleteTask<GeckoChildProcessHost>>(aSubprocess));
-}
+void GPUProcessHost::KillProcess() { KillHard("DiagnosticKill"); }
 
-void
-GPUProcessHost::KillProcess()
-{
-  KillHard("DiagnosticKill");
-}
-
-void
-GPUProcessHost::DestroyProcess()
-{
+void GPUProcessHost::DestroyProcess() {
   // Cancel all tasks. We don't want anything triggering after our caller
   // expects this to go away.
   {
@@ -244,9 +222,9 @@ GPUProcessHost::DestroyProcess()
     mTaskFactory.RevokeAll();
   }
 
-  MessageLoop::current()->
-    PostTask(NewRunnableFunction("DestroyProcessRunnable", DelayedDeleteSubprocess, this));
+  MessageLoop::current()->PostTask(
+      NS_NewRunnableFunction("DestroyProcessRunnable", [this] { Destroy(); }));
 }
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla

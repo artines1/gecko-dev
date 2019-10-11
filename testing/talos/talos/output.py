@@ -6,10 +6,10 @@
 """output formats for Talos"""
 from __future__ import absolute_import
 
-import filter
+from talos import filter
 # NOTE: we have a circular dependency with output.py when we import results
 import simplejson as json
-import utils
+from talos import utils
 from mozlog import get_proxy_logger
 
 LOG = get_proxy_logger()
@@ -117,6 +117,12 @@ class Output(object):
                         if test.test_config.get('lower_is_better') is not None:
                             subtest['lowerIsBetter'] = \
                                 test.test_config['lower_is_better']
+                        if test.test_config.get('alert_threshold') is not None:
+                            subtest['alertThreshold'] = \
+                                test.test_config['alert_threshold']
+                        if test.test_config.get('subtest_alerts') is not None:
+                            subtest['shouldAlert'] = \
+                                test.test_config['subtest_alerts']
                         if test.test_config.get('alert_threshold') is not None:
                             subtest['alertThreshold'] = \
                                 test.test_config['alert_threshold']
@@ -239,23 +245,6 @@ class Output(object):
         return sum(results)
 
     @classmethod
-    def speedometer_score(cls, val_list):
-        """
-        speedometer_score: https://bug-172968-attachments.webkit.org/attachment.cgi?id=319888
-        """
-        correctionFactor = 3
-        results = [i for i, j in val_list]
-        # speedometer has 16 tests, each of these are made of up 9 subtests
-        # and a sum of the 9 values.  We receive 160 values, and want to use
-        # the 16 test values, not the sub test values.
-        if len(results) != 160:
-            raise Exception("Speedometer has 160 subtests, found: %s instead" % len(results))
-
-        results = results[9::10]
-        score = 60 * 1000 / filter.geometric_mean(results) / correctionFactor
-        return score
-
-    @classmethod
     def benchmark_score(cls, val_list):
         """
         benchmark_score: ares6/jetstream self reported as 'geomean'
@@ -304,7 +293,8 @@ class Output(object):
         # We receive 76 entries per test, which ads up to 380. We want to use
         # the 5 test entries, not the rest.
         if len(results) != 380:
-            raise Exception("StyleBench has 380 entries, found: %s instead" % len(results))
+            raise Exception("StyleBench requires 380 entries, found: %s instead"
+                            % len(results))
 
         results = results[75::76]
         score = 60 * 1000 / filter.geometric_mean(results) / correctionFactor

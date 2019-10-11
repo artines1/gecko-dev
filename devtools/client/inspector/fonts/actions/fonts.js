@@ -4,21 +4,16 @@
 
 "use strict";
 
-const {
-  UPDATE_FONTS,
-} = require("./index");
+const { UPDATE_FONTS } = require("./index");
 
 module.exports = {
-
   /**
    * Update the list of fonts in the font inspector
    */
-  updateFonts(fonts, otherFonts) {
+  updateFonts(allFonts) {
     return {
       type: UPDATE_FONTS,
-      fonts,
-      otherFonts,
+      allFonts,
     };
   },
-
 };

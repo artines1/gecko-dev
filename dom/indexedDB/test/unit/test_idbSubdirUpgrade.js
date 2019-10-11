@@ -5,11 +5,10 @@
 
 var testGenerator = testSteps();
 
-function* testSteps()
-{
+function* testSteps() {
   const openParams = [
     // This one lives in storage/default/http+++www.mozilla.org
-    { url: "http://www.mozilla.org", dbName: "dbB", dbVersion: 1 }
+    { url: "http://www.mozilla.org", dbName: "dbB", dbVersion: 1 },
   ];
 
   for (let i = 1; i <= 2; i++) {
@@ -19,9 +18,11 @@ function* testSteps()
     installPackagedProfile("idbSubdirUpgrade" + i + "_profile");
 
     for (let params of openParams) {
-      let request = indexedDB.openForPrincipal(getPrincipal(params.url),
-                                               params.dbName,
-                                               params.dbVersion);
+      let request = indexedDB.openForPrincipal(
+        getPrincipal(params.url),
+        params.dbName,
+        params.dbVersion
+      );
       request.onerror = errorHandler;
       request.onupgradeneeded = unexpectedSuccessHandler;
       request.onsuccess = grabEventAndContinueHandler;
@@ -34,9 +35,11 @@ function* testSteps()
     yield undefined;
 
     for (let params of openParams) {
-      let request = indexedDB.openForPrincipal(getPrincipal(params.url),
-                                               params.dbName,
-                                               params.dbVersion);
+      let request = indexedDB.openForPrincipal(
+        getPrincipal(params.url),
+        params.dbName,
+        params.dbVersion
+      );
       request.onerror = errorHandler;
       request.onupgradeneeded = unexpectedSuccessHandler;
       request.onsuccess = grabEventAndContinueHandler;

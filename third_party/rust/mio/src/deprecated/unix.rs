@@ -1,4 +1,5 @@
-use {io, sys, Evented, Ready, Poll, PollOpt, Token};
+use {io, sys, Ready, Poll, PollOpt, Token};
+use event::Evented;
 use deprecated::TryAccept;
 use io::MapNonBlock;
 use std::io::{Read, Write};
@@ -37,7 +38,7 @@ impl UnixSocket {
 
     /// Listen for incoming requests
     pub fn listen(self, backlog: usize) -> io::Result<UnixListener> {
-        try!(self.sys.listen(backlog));
+        self.sys.listen(backlog)?;
         Ok(From::from(self.sys))
     }
 
@@ -63,7 +64,7 @@ impl Evented for UnixSocket {
 
 impl From<sys::UnixSocket> for UnixSocket {
     fn from(sys: sys::UnixSocket) -> UnixSocket {
-        UnixSocket { sys: sys }
+        UnixSocket { sys }
     }
 }
 
@@ -143,7 +144,7 @@ impl Evented for UnixStream {
 
 impl From<sys::UnixSocket> for UnixStream {
     fn from(sys: sys::UnixSocket) -> UnixStream {
-        UnixStream { sys: sys }
+        UnixStream { sys }
     }
 }
 
@@ -161,7 +162,7 @@ pub struct UnixListener {
 impl UnixListener {
     pub fn bind<P: AsRef<Path> + ?Sized>(addr: &P) -> io::Result<UnixListener> {
         UnixSocket::stream().and_then(|sock| {
-            try!(sock.bind(addr));
+            sock.bind(addr)?;
             sock.listen(256)
         })
     }
@@ -199,7 +200,7 @@ impl TryAccept for UnixListener {
 
 impl From<sys::UnixSocket> for UnixListener {
     fn from(sys: sys::UnixSocket) -> UnixListener {
-        UnixListener { sys: sys }
+        UnixListener { sys }
     }
 }
 
@@ -210,7 +211,7 @@ impl From<sys::UnixSocket> for UnixListener {
  */
 
 pub fn pipe() -> io::Result<(PipeReader, PipeWriter)> {
-    let (rd, wr) = try!(sys::pipe());
+    let (rd, wr) = sys::pipe()?;
     Ok((From::from(rd), From::from(wr)))
 }
 
@@ -221,18 +222,16 @@ pub struct PipeReader {
 
 impl PipeReader {
     pub fn from_stdout(stdout: process::ChildStdout) -> io::Result<Self> {
-        match sys::set_nonblock(stdout.as_raw_fd()) {
-            Err(e) => return Err(e),
-            _ => {},
+        if let Err(e) = sys::set_nonblock(stdout.as_raw_fd()) {
+            return Err(e);
         }
-        return Ok(PipeReader::from(unsafe { Io::from_raw_fd(stdout.into_raw_fd()) }));
+        Ok(PipeReader::from(unsafe { Io::from_raw_fd(stdout.into_raw_fd()) }))
     }
     pub fn from_stderr(stderr: process::ChildStderr) -> io::Result<Self> {
-        match sys::set_nonblock(stderr.as_raw_fd()) {
-            Err(e) => return Err(e),
-            _ => {},
+        if let Err(e) = sys::set_nonblock(stderr.as_raw_fd()) {
+            return Err(e);
         }
-        return Ok(PipeReader::from(unsafe { Io::from_raw_fd(stderr.into_raw_fd()) }));
+        Ok(PipeReader::from(unsafe { Io::from_raw_fd(stderr.into_raw_fd()) }))
     }
 }
 
@@ -264,7 +263,7 @@ impl Evented for PipeReader {
 
 impl From<Io> for PipeReader {
     fn from(io: Io) -> PipeReader {
-        PipeReader { io: io }
+        PipeReader { io }
     }
 }
 
@@ -275,11 +274,10 @@ pub struct PipeWriter {
 
 impl PipeWriter {
     pub fn from_stdin(stdin: process::ChildStdin) -> io::Result<Self> {
-        match sys::set_nonblock(stdin.as_raw_fd()) {
-            Err(e) => return Err(e),
-            _ => {},
+        if let Err(e) = sys::set_nonblock(stdin.as_raw_fd()) {
+            return Err(e);
         }
-        return Ok(PipeWriter::from(unsafe { Io::from_raw_fd(stdin.into_raw_fd()) }));
+        Ok(PipeWriter::from(unsafe { Io::from_raw_fd(stdin.into_raw_fd()) }))
     }
 }
 
@@ -319,7 +317,7 @@ impl Evented for PipeWriter {
 
 impl From<Io> for PipeWriter {
     fn from(io: Io) -> PipeWriter {
-        PipeWriter { io: io }
+        PipeWriter { io }
     }
 }
 

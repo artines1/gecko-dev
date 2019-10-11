@@ -1,32 +1,32 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Keyframes: https://drafts.csswg.org/css-animations/#keyframes
 
-use cssparser::{AtRuleParser, CowRcStr, Parser, ParserInput, QualifiedRuleParser, RuleListParser};
+use crate::error_reporting::ContextualParseError;
+use crate::parser::ParserContext;
+use crate::properties::longhands::transition_timing_function::single_value::SpecifiedValue as SpecifiedTimingFunction;
+use crate::properties::LonghandIdSet;
+use crate::properties::{Importance, PropertyDeclaration};
+use crate::properties::{LonghandId, PropertyDeclarationBlock, PropertyId};
+use crate::properties::{PropertyDeclarationId, SourcePropertyDeclaration};
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, SharedRwLock, SharedRwLockReadGuard};
+use crate::shared_lock::{Locked, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::rule_parser::VendorPrefix;
+use crate::stylesheets::{CssRuleType, StylesheetContents};
+use crate::values::{serialize_percentage, KeyframesName};
 use cssparser::{parse_one_rule, DeclarationListParser, DeclarationParser, SourceLocation, Token};
-use error_reporting::ContextualParseError;
-use parser::ParserContext;
-use properties::{Importance, PropertyDeclaration};
-use properties::{LonghandId, PropertyDeclarationBlock, PropertyId};
-use properties::{PropertyDeclarationId, SourcePropertyDeclaration};
-use properties::LonghandIdSet;
-use properties::longhands::transition_timing_function::single_value::SpecifiedValue as SpecifiedTimingFunction;
+use cssparser::{AtRuleParser, CowRcStr, Parser, ParserInput, QualifiedRuleParser, RuleListParser};
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, SharedRwLock, SharedRwLockReadGuard};
-use shared_lock::{Locked, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
 use style_traits::{CssWriter, ParseError, ParsingMode, StyleParseErrorKind, ToCss};
-use stylesheets::{CssRuleType, StylesheetContents};
-use stylesheets::rule_parser::VendorPrefix;
-use values::{serialize_percentage, KeyframesName};
 
 /// A [`@keyframes`][keyframes] rule.
 ///
 /// [keyframes]: https://drafts.csswg.org/css-animations/#keyframes
-#[derive(Debug)]
+#[derive(Debug, ToShmem)]
 pub struct KeyframesRule {
     /// The name of the current animation.
     pub name: KeyframesName,
@@ -82,14 +82,13 @@ impl DeepCloneWithLock for KeyframesRule {
     ) -> Self {
         KeyframesRule {
             name: self.name.clone(),
-            keyframes: self.keyframes
+            keyframes: self
+                .keyframes
                 .iter()
                 .map(|x| {
-                    Arc::new(lock.wrap(x.read_with(guard).deep_clone_with_lock(
-                        lock,
-                        guard,
-                        params,
-                    )))
+                    Arc::new(
+                        lock.wrap(x.read_with(guard).deep_clone_with_lock(lock, guard, params)),
+                    )
                 })
                 .collect(),
             vendor_prefix: self.vendor_prefix.clone(),
@@ -100,7 +99,7 @@ impl DeepCloneWithLock for KeyframesRule {
 
 /// A number from 0 to 1, indicating the percentage of the animation when this
 /// keyframe should run.
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd, ToShmem)]
 pub struct KeyframePercentage(pub f32);
 
 impl ::std::cmp::Ord for KeyframePercentage {
@@ -142,10 +141,7 @@ impl KeyframePercentage {
             Token::Percentage {
                 unit_value: percentage,
                 ..
-            } if percentage >= 0. && percentage <= 1. =>
-            {
-                Ok(KeyframePercentage::new(percentage))
-            },
+            } if percentage >= 0. && percentage <= 1. => Ok(KeyframePercentage::new(percentage)),
             _ => Err(input.new_unexpected_token_error(token)),
         }
     }
@@ -154,7 +150,7 @@ impl KeyframePercentage {
 /// A keyframes selector is a list of percentages or from/to symbols, which are
 /// converted at parse time to percentages.
 #[css(comma)]
-#[derive(Clone, Debug, Eq, PartialEq, ToCss)]
+#[derive(Clone, Debug, Eq, PartialEq, ToCss, ToShmem)]
 pub struct KeyframeSelector(#[css(iterable)] Vec<KeyframePercentage>);
 
 impl KeyframeSelector {
@@ -178,7 +174,7 @@ impl KeyframeSelector {
 }
 
 /// A keyframe.
-#[derive(Debug)]
+#[derive(Debug, ToShmem)]
 pub struct Keyframe {
     /// The selector this keyframe was specified from.
     pub selector: KeyframeSelector,
@@ -218,6 +214,7 @@ impl Keyframe {
             Some(CssRuleType::Keyframe),
             ParsingMode::DEFAULT,
             parent_stylesheet_contents.quirks_mode,
+            None,
             None,
         );
         context.namespaces = Some(&*namespaces);
@@ -260,8 +257,10 @@ pub enum KeyframesStepValue {
     /// A step formed by a declaration block specified by the CSS.
     Declarations {
         /// The declaration block per se.
-        #[cfg_attr(feature = "gecko",
-                   ignore_malloc_size_of = "XXX: Primary ref, measure if DMD says it's worthwhile")]
+        #[cfg_attr(
+            feature = "gecko",
+            ignore_malloc_size_of = "XXX: Primary ref, measure if DMD says it's worthwhile"
+        )]
         #[cfg_attr(feature = "servo", ignore_malloc_size_of = "Arc")]
         block: Arc<Locked<PropertyDeclarationBlock>>,
     },
@@ -498,8 +497,9 @@ pub fn parse_keyframe_list(
             shared_lock: shared_lock,
             declarations: &mut declarations,
         },
-    ).filter_map(Result::ok)
-        .collect()
+    )
+    .filter_map(Result::ok)
+    .collect()
 }
 
 impl<'a, 'i> AtRuleParser<'i> for KeyframeListParser<'a> {
@@ -524,7 +524,7 @@ impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
             let error = ContextualParseError::InvalidKeyframeRule(
                 input.slice_from(start_position),
                 e.clone(),
-                );
+            );
             self.context.log_css_error(location, error);
             e
         })
@@ -551,10 +551,7 @@ impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
         while let Some(declaration) = iter.next() {
             match declaration {
                 Ok(()) => {
-                    block.extend(
-                        iter.parser.declarations.drain(),
-                        Importance::Normal,
-                    );
+                    block.extend(iter.parser.declarations.drain(), Importance::Normal);
                 },
                 Err((error, slice)) => {
                     iter.parser.declarations.clear();
@@ -598,9 +595,9 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for KeyframeDeclarationParser<'a, 'b> {
     ) -> Result<(), ParseError<'i>> {
         let id = match PropertyId::parse(&name, self.context) {
             Ok(id) => id,
-            Err(()) => return Err(input.new_custom_error(
-                StyleParseErrorKind::UnknownProperty(name)
-            )),
+            Err(()) => {
+                return Err(input.new_custom_error(StyleParseErrorKind::UnknownProperty(name)));
+            },
         };
 
         // TODO(emilio): Shouldn't this use parse_entirely?

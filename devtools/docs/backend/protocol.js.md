@@ -51,7 +51,7 @@ The actor implementation would go somewhere like
     // You also need to export the actor class in your module for discovery.
     exports.HelloActor = HelloActor;
 
-To activate your actor, register it in the `_addBrowserActors` method in `server/main.js`.
+To activate your actor, register it in the `addBrowserActors` method in `server/actors/utils/actor-registry.js`.
 The registration code would look something like this:
 
     this.registerModule("devtools/server/actors/hello-world", {
@@ -97,7 +97,7 @@ How do you get an initial reference to the front?  That's a bit tricky, but basi
 
 Manually - If you're using a DebuggerClient instance, you can discover the actorID manually and create a Front for it:
 
-    let hello = HelloFront(this.client, { actor: <hello actorID> });
+    let hello = new HelloFront(this.client, { actor: <hello actorID> });
 
 Magically - Once you have an initial reference to a protocol.js object, it can return other protocol.js objects and fronts will automatically be created.
 
@@ -433,31 +433,6 @@ Now our response will look like:
 
     { from: <childActorID>, self: { actor: <childActorID>, greeting: <id>, a: <a>, b: <b>, c: "hello", d: <d> }
 
-But that's wasteful.  Only c changed.  So we can provide a *detail* to the type using `#`:
-
-    response: { self: RetVal("childActor#changec") }
-
-and update our form methods to make use of that data:
-
-    // In ChildActor:
-    form: function (detail) {
-        if (detail === "changec") {
-            return { actor: this.actorID, c: this.c }
-        }
-        // ... the rest of the form method stays the same.
-    }
-
-    // In ChildFront:
-    form: function (form, detail) {
-        if (detail === "changec") {
-            this.actorID = form.actor;
-            this.c = form.c;
-            return;
-        }
-        // ... the rest of the form method stays the same.
-    }
-
-Now the packet looks like a much more reasonable `{ from: <childActorID>, self: { actor: <childActorID>, c: "hello" } }`
 
 Lifetimes
 ---------
@@ -501,17 +476,24 @@ Now you can listen to events on a front:
     });
     front.giveGoodNews().then(() => { console.log("request returned.") });
 
-You might want to update your front's state when an event is fired, before emitting it against the front.  You can use `preEvent` in the front definition for that:
+If you want to modify the argument that will be passed to event listeners callbacks, you
+can use `before(eventName, fn)` in the front definition. This can only be used once for a
+given `eventName`. The `fn` function will be called before emitting the event via
+the EventEmitter API on the Front, and its return value will be passed to the event 
+listener callbacks. If `fn` is async, the event will only be emitted after `fn` call resolves.
 
-    countGoodNews: protocol.preEvent("good-news", function (news) {
-        this.amountOfGoodNews++;
+    // In front file, most probably in the constructor:
+    this.before("good-news", function(news) {
+      return news.join(" - ");
     });
 
-You can have events wait until an asynchronous action completes before firing by returning a promise. If you have multiple preEvents defined for a specific event, and atleast one fires asynchronously, then all preEvents most resolve before all events are fired.
-
-    countGoodNews: protocol.preEvent("good-news", function (news) {
-        return this.updateGoodNews().then(() => this.amountOfGoodNews++);
+    // In any consumer
+    front.on("good-news", function(news) {
+      console.log(news);
     });
+
+So if the server sent the following array: `[1, 2, 3]`, the console.log in the consumer
+would print `1 - 2 - 3`.
 
 On a somewhat related note, not every method needs to be request/response.  Just like an actor can emit a one-way event, a method can be marked as a one-way request.  Maybe we don't care about giveGoodNews returning anything:
 
@@ -588,7 +570,7 @@ You can customize this behavior in two ways.  The first is by defining a `marsha
       return new ChildActor(this.conn, id);
     }
 
-This creates a new child actor owned by the current child actor.  But in this example we want all actors created by the child to be owned by the HelloActor.  So we can define a `defaultParent` property that makes use of the `parent` proeprty provided by the Actor class:
+This creates a new child actor owned by the current child actor.  But in this example we want all actors created by the child to be owned by the HelloActor.  So we can define a `defaultParent` property that makes use of the `parent` property provided by the Actor class:
 
     get marshallPool() { return this.parent }
 
@@ -617,7 +599,8 @@ For more complex situations, you can define your own lifetime properties.  Take 
       if (!this._temporaryParent) {
         // Create an actor to serve as the parent for all temporary children and explicitly
         // add it as a child of this actor.
-        this._temporaryParent = this.manage(new Actor(this.conn));
+        this._temporaryParent = new Actor(this.conn));
+        this.manage(this._temporaryParent);
       }
       return new ChildActor(this.conn, id);
     }

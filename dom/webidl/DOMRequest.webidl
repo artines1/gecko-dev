@@ -5,8 +5,8 @@
 
 enum DOMRequestReadyState { "pending", "done" };
 
-[Exposed=(Window,Worker,System), NoInterfaceObject]
-interface DOMRequestShared {
+[Exposed=(Window,Worker)]
+interface mixin DOMRequestShared {
   readonly attribute DOMRequestReadyState readyState;
 
   readonly attribute any result;
@@ -16,7 +16,7 @@ interface DOMRequestShared {
   attribute EventHandler onerror;
 };
 
-[Exposed=(Window,Worker,System)]
+[Exposed=(Window,Worker)]
 interface DOMRequest : EventTarget {
   // The [TreatNonCallableAsNull] annotation is required since then() should do
   // nothing instead of throwing errors when non-callable arguments are passed.
@@ -29,4 +29,4 @@ interface DOMRequest : EventTarget {
   void fireDetailedError(DOMException aError);
 };
 
-DOMRequest implements DOMRequestShared;
+DOMRequest includes DOMRequestShared;

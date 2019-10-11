@@ -6,17 +6,17 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1157469
 <head>
   <meta charset="utf-8">
   <title>Test for Bug 1157469</title>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
   <script type="application/javascript" src="inspector-helpers.js"></script>
   <script type="application/javascript">
 "use strict";
 
 window.onload = function() {
-  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-  const {InspectorFront} = require("devtools/shared/fronts/inspector");
-
   SimpleTest.waitForExplicitFinish();
+
+  const prevPrefValue = Services.prefs.getBoolPref("devtools.chrome.enabled");
+  Services.prefs.setBoolPref("devtools.chrome.enabled", true);
 
   let inspectee = null;
   let inspector = null;
@@ -31,17 +31,10 @@ window.onload = function() {
   addAsyncTest(async function setup() {
     info("Setting up inspector and walker actors.");
     const url = document.getElementById("inspectorContent").href;
-
-    await new Promise(resolve => {
-      attachURL(url, function(err, client, tab, doc) {
-        inspectee = doc;
-        inspector = InspectorFront(client, tab);
-        resolve();
-      });
-    });
-
-    walker = await inspector.getWalker();
-    ok(walker, "getWalker() should return an actor.");
+    const { target, doc } = await attachURL(url);
+    inspectee = doc;
+    inspector = await target.getFront("inspector");
+    walker = inspector.walker;
 
     runNextTest();
   });
@@ -158,6 +151,7 @@ window.onload = function() {
     is(mutations.length, 1, "expect only one mutation");
     isnot(mutations.type, "events", "mutation type should not be events");
 
+    Services.prefs.setBoolPref("devtools.chrome.enabled", prevPrefValue);
     runNextTest();
   });
 

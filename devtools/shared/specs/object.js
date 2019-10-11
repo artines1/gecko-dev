@@ -24,6 +24,11 @@ types.addDictType("object.descriptor", {
   set: "nullable:json",
 });
 
+types.addDictType("object.completion", {
+  return: "nullable:json",
+  throw: "nullable:json",
+});
+
 types.addDictType("object.definitionSite", {
   source: "source",
   line: "number",
@@ -42,7 +47,15 @@ types.addDictType("object.prototype", {
 });
 
 types.addDictType("object.property", {
-  descriptor: "nullable:object.descriptor"
+  descriptor: "nullable:object.descriptor",
+});
+
+types.addDictType("object.propertyValue", {
+  value: "nullable:object.completion",
+});
+
+types.addDictType("object.apply", {
+  value: "nullable:object.completion",
 });
 
 types.addDictType("object.bindings", {
@@ -51,7 +64,7 @@ types.addDictType("object.bindings", {
 });
 
 types.addDictType("object.scope", {
-  scope: "environment"
+  scope: "environment",
 });
 
 types.addDictType("object.enumProperties.Options", {
@@ -63,45 +76,49 @@ types.addDictType("object.enumProperties.Options", {
 });
 
 types.addDictType("object.ownPropertyNames", {
-  ownPropertyNames: "array:string"
+  ownPropertyNames: "array:string",
 });
 
 types.addDictType("object.displayString", {
-  displayString: "string"
+  displayString: "string",
 });
 
 types.addDictType("object.decompile", {
-  decompiledCode: "string"
+  decompiledCode: "string",
 });
 
 types.addDictType("object.parameterNames", {
-  parameterNames: "nullable:array:string"
+  parameterNames: "nullable:array:string",
 });
 
 types.addDictType("object.dependentPromises", {
-  promises: "array:object.descriptor"
+  promises: "array:object.descriptor",
 });
 
 types.addDictType("object.originalSourceLocation", {
   source: "source",
   line: "number",
   column: "number",
-  functionDisplayName: "string"
+  functionDisplayName: "string",
+});
+
+types.addDictType("object.proxySlots", {
+  proxyTarget: "object.descriptor",
+  proxyHandler: "object.descriptor",
 });
 
 const objectSpec = generateActorSpec({
   typeName: "obj",
-
   methods: {
     allocationStack: {
       request: {},
       response: {
-        allocationStack: RetVal("array:object.originalSourceLocation")
+        allocationStack: RetVal("array:object.originalSourceLocation"),
       },
     },
     decompile: {
       request: {
-        pretty: Arg(0, "boolean")
+        pretty: Arg(0, "boolean"),
       },
       response: RetVal("object.decompile"),
     },
@@ -111,66 +128,99 @@ const objectSpec = generateActorSpec({
     },
     dependentPromises: {
       request: {},
-      response: RetVal("object.dependentPromises")
+      response: RetVal("object.dependentPromises"),
     },
     displayString: {
       request: {},
-      response: RetVal("object.displayString")
+      response: RetVal("object.displayString"),
     },
     enumEntries: {
       request: {},
       response: {
-        iterator: RetVal("propertyIterator")
-      }
+        iterator: RetVal("propertyIterator"),
+      },
     },
     enumProperties: {
       request: {
         options: Arg(0, "nullable:object.enumProperties.Options"),
       },
       response: {
-        iterator: RetVal("propertyIterator")
-      }
+        iterator: RetVal("propertyIterator"),
+      },
     },
     enumSymbols: {
       request: {},
       response: {
-        iterator: RetVal("symbolIterator")
-      }
+        iterator: RetVal("symbolIterator"),
+      },
     },
     fulfillmentStack: {
       request: {},
       response: {
-        fulfillmentStack: RetVal("array:object.originalSourceLocation")
+        fulfillmentStack: RetVal("array:object.originalSourceLocation"),
       },
     },
     ownPropertyNames: {
       request: {},
-      response: RetVal("object.ownPropertyNames")
+      response: RetVal("object.ownPropertyNames"),
     },
     parameterNames: {
       request: {},
-      response: RetVal("object.parameterNames")
+      response: RetVal("object.parameterNames"),
     },
     prototypeAndProperties: {
       request: {},
-      response: RetVal("object.prototypeproperties")
+      response: RetVal("object.prototypeproperties"),
     },
     prototype: {
       request: {},
-      response: RetVal("object.prototype")
+      response: RetVal("object.prototype"),
     },
     property: {
       request: {
-        name: Arg(0, "string")
+        name: Arg(0, "string"),
       },
-      response: RetVal("object.property")
+      response: RetVal("object.property"),
+    },
+    propertyValue: {
+      request: {
+        name: Arg(0, "string"),
+        receiverId: Arg(1, "nullable:string"),
+      },
+      response: RetVal("object.propertyValue"),
+    },
+    apply: {
+      request: {
+        context: Arg(0, "nullable:json"),
+        arguments: Arg(1, "nullable:array:json"),
+      },
+      response: RetVal("object.apply"),
     },
     rejectionStack: {
       request: {},
       response: {
-        rejectionStack: RetVal("array:object.originalSourceLocation")
+        rejectionStack: RetVal("array:object.originalSourceLocation"),
       },
     },
+    proxySlots: {
+      request: {},
+      response: RetVal("object.proxySlots"),
+    },
+    addWatchpoint: {
+      request: {
+        property: Arg(0, "string"),
+        label: Arg(1, "string"),
+        watchpointType: Arg(2, "string"),
+      },
+      response: {},
+    },
+    removeWatchpoint: {
+      request: {
+        property: Arg(0, "string"),
+      },
+      response: {},
+    },
+
     release: { release: true },
     scope: {
       request: {},
@@ -180,8 +230,8 @@ const objectSpec = generateActorSpec({
     threadGrip: {
       request: {},
       response: {},
-    }
-  }
+    },
+  },
 });
 
 exports.objectSpec = objectSpec;

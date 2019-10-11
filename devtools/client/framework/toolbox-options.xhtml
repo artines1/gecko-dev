@@ -11,13 +11,16 @@
     <title>Toolbox option</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
     <link rel="stylesheet" href="chrome://devtools/content/framework/options-panel.css" type="text/css"/>
-    <script type="application/javascript" src="chrome://devtools/content/shared/theme-switching.js"/>
+    <script src="chrome://devtools/content/shared/theme-switching.js"/>
   </head>
   <body role="application" class="theme-body">
   <form id="options-panel">
     <div id="tools-box" class="options-vertical-pane">
       <fieldset id="default-tools-box" class="options-groupbox">
         <legend>&options.selectDefaultTools.label2;</legend>
+        <span id="tools-not-supported-label"
+              class="options-citation-label theme-comment">
+          &options.toolNotSupported.label;</span>
       </fieldset>
 
       <fieldset id="additional-tools-box" class="options-groupbox">
@@ -26,9 +29,6 @@
 
       <fieldset id="enabled-toolbox-buttons-box" class="options-groupbox">
         <legend>&options.selectEnabledToolboxButtons.label;</legend>
-        <span id="tools-not-supported-label"
-              class="options-citation-label theme-comment">
-          &options.toolNotSupported.label;</span>
       </fieldset>
     </div>
 
@@ -73,6 +73,12 @@
                  id="webconsole-timestamp-messages"
                  data-pref="devtools.webconsole.timestampMessages"/>
           <span>&options.timestampMessages.label;</span>
+        </label>
+        <label title="&options.warningGroups.tooltip;">
+          <input type="checkbox"
+                 id="webconsole-warning-groups"
+                 data-pref="devtools.webconsole.groupWarningMessages"/>
+          <span>&options.warningGroups.label;</span>
         </label>
       </fieldset>
 
@@ -189,6 +195,7 @@
             <span>&options.enableRemote.label3;</span>
           </label>
           <span class="options-citation-label theme-comment"
+                id="triggers-page-refresh-label"
           >&options.context.triggersPageRefresh;</span>
       </fieldset>
     </div>

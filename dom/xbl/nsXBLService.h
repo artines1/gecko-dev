@@ -18,27 +18,25 @@
 class nsXBLBinding;
 class nsXBLDocumentInfo;
 class nsIContent;
-class nsIDocument;
 class nsIURI;
 class nsIPrincipal;
 
 namespace mozilla {
 namespace dom {
+class Document;
+class Element;
 class EventTarget;
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-class nsXBLService final : public nsSupportsWeakReference
-{
+class nsXBLService final : public nsSupportsWeakReference {
   NS_DECL_ISUPPORTS
 
   static nsXBLService* gInstance;
 
   static void Init();
 
-  static void Shutdown() {
-    NS_IF_RELEASE(gInstance);
-  }
+  static void Shutdown() { NS_IF_RELEASE(gInstance); }
 
   static nsXBLService* GetInstance() { return gInstance; }
 
@@ -48,45 +46,44 @@ class nsXBLService final : public nsSupportsWeakReference
   // onto the element.  aOriginPrincipal must not be null here.
   nsresult LoadBindings(mozilla::dom::Element* aElement, nsIURI* aURL,
                         nsIPrincipal* aOriginPrincipal,
-                        nsXBLBinding** aBinding, bool* aResolveStyle);
+                        nsXBLBinding** aBinding);
 
   // Indicates whether or not a binding is fully loaded.
-  nsresult BindingReady(nsIContent* aBoundElement, nsIURI* aURI, bool* aIsReady);
+  nsresult BindingReady(nsIContent* aBoundElement, nsIURI* aURI,
+                        bool* aIsReady);
+
+ private:
+  nsXBLService();
+  virtual ~nsXBLService();
 
   // This method checks the hashtable and then calls FetchBindingDocument on a
   // miss.  aOriginPrincipal or aBoundDocument may be null to bypass security
   // checks.
   nsresult LoadBindingDocumentInfo(nsIContent* aBoundElement,
-                                   nsIDocument* aBoundDocument,
+                                   mozilla::dom::Document* aBoundDocument,
                                    nsIURI* aBindingURI,
                                    nsIPrincipal* aOriginPrincipal,
                                    bool aForceSyncLoad,
                                    nsXBLDocumentInfo** aResult);
 
-  // Used by XUL key bindings and for window XBL.
-  static nsresult AttachGlobalKeyHandler(mozilla::dom::EventTarget* aTarget);
-  static nsresult DetachGlobalKeyHandler(mozilla::dom::EventTarget* aTarget);
-
-private:
-  nsXBLService();
-  virtual ~nsXBLService();
-
-protected:
+ protected:
   // This function clears out the bindings on a given element.
   void FlushStyleBindings(mozilla::dom::Element*);
 
   // This method synchronously loads and parses an XBL file.
-  nsresult FetchBindingDocument(nsIContent* aBoundElement, nsIDocument* aBoundDocument,
+  nsresult FetchBindingDocument(nsIContent* aBoundElement,
+                                mozilla::dom::Document* aBoundDocument,
                                 nsIURI* aDocumentURI, nsIURI* aBindingURI,
-                                nsIPrincipal* aOriginPrincipal, bool aForceSyncLoad,
-                                nsIDocument** aResult);
+                                nsIPrincipal* aOriginPrincipal,
+                                bool aForceSyncLoad,
+                                mozilla::dom::Document** aResult);
 
   /**
    * This method calls the one below with an empty |aDontExtendURIs| array.
    */
-  nsresult GetBinding(nsIContent* aBoundElement, nsIURI* aURI,
-                      bool aPeekFlag, nsIPrincipal* aOriginPrincipal,
-                      bool* aIsReady, nsXBLBinding** aResult);
+  nsresult GetBinding(nsIContent* aBoundElement, nsIURI* aURI, bool aPeekFlag,
+                      nsIPrincipal* aOriginPrincipal, bool* aIsReady,
+                      nsXBLBinding** aResult);
 
   /**
    * This method loads a binding doc and then builds the specific binding
@@ -105,17 +102,17 @@ protected:
    * @note This method always calls LoadBindingDocumentInfo(), so it's
    *       enough to funnel all security checks through that function.
    */
-  nsresult GetBinding(nsIContent* aBoundElement, nsIURI* aURI,
-                      bool aPeekFlag, nsIPrincipal* aOriginPrincipal,
-                      bool* aIsReady, nsXBLBinding** aResult,
+  nsresult GetBinding(nsIContent* aBoundElement, nsIURI* aURI, bool aPeekFlag,
+                      nsIPrincipal* aOriginPrincipal, bool* aIsReady,
+                      nsXBLBinding** aResult,
                       nsTArray<nsCOMPtr<nsIURI>>& aDontExtendURIs);
 
-// MEMBER VARIABLES
-public:
+  // MEMBER VARIABLES
+ public:
   static bool gDisableChromeCache;
-  static bool     gAllowDataURIs;            // Whether we should allow data
-                                             // urls in -moz-binding. Needed for
-                                             // testing.
+  static bool gAllowDataURIs;  // Whether we should allow data
+                               // urls in -moz-binding. Needed for
+                               // testing.
 };
 
 #endif

@@ -7,16 +7,15 @@
 
 #include <wincrypt.h>
 
-struct CertificateCheckInfo
-{
+struct CertificateCheckInfo {
   LPCWSTR name;
   LPCWSTR issuer;
 };
 
 BOOL DoCertificateAttributesMatch(PCCERT_CONTEXT pCertContext,
-                                  CertificateCheckInfo &infoToMatch);
+                                  CertificateCheckInfo& infoToMatch);
 DWORD VerifyCertificateTrustForFile(LPCWSTR filePath);
 DWORD CheckCertificateForPEFile(LPCWSTR filePath,
-                                CertificateCheckInfo &infoToMatch);
+                                CertificateCheckInfo& infoToMatch);
 
 #endif

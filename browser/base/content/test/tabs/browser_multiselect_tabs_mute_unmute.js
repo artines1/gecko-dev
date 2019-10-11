@@ -1,5 +1,7 @@
 const PREF_MULTISELECT_TABS = "browser.tabs.multiselect";
-const PAGE = "https://example.com/browser/browser/base/content/test/tabs/file_mediaPlayback.html";
+const PREF_DELAY_AUTOPLAY = "media.block-autoplay-until-in-foreground";
+const PAGE =
+  "https://example.com/browser/browser/base/content/test/tabs/file_mediaPlayback.html";
 
 function muted(tab) {
   return tab.linkedBrowser.audioMuted;
@@ -18,7 +20,7 @@ async function addMediaTab() {
 
 add_task(async function setPref() {
   await SpecialPowers.pushPrefEnv({
-    set: [[PREF_MULTISELECT_TABS, true]]
+    set: [[PREF_MULTISELECT_TABS, true], [PREF_DELAY_AUTOPLAY, true]],
   });
 });
 
@@ -55,7 +57,7 @@ add_task(async function muteTabs_usingButton() {
   }
 
   // Mute tab0 which is not multiselected, thus other tabs muted state should not be affected
-  let tab0MuteAudioBtn = document.getAnonymousElementByAttribute(tab0, "anonid", "soundplaying-icon");
+  let tab0MuteAudioBtn = tab0.soundPlayingIcon;
   await test_mute_tab(tab0, tab0MuteAudioBtn, true);
 
   ok(muted(tab0), "Tab0 is muted");
@@ -74,18 +76,21 @@ add_task(async function muteTabs_usingButton() {
 
   // Check mute state
   ok(muted(tab0), "Tab0 is still muted");
-  ok(!muted(tab1) && !activeMediaBlocked(tab1), "Tab1 is not muted");
+  ok(!muted(tab1), "Tab1 is not muted");
+  ok(!activeMediaBlocked(tab1), "Tab1 is not activemedia-blocked");
   ok(activeMediaBlocked(tab2), "Tab2 is media-blocked");
-  ok(!muted(tab3) && !activeMediaBlocked(tab3), "Tab3 is not muted and not activemedia-blocked");
-  ok(!muted(tab4) && !activeMediaBlocked(tab4), "Tab4 is not muted and not activemedia-blocked");
+  ok(!muted(tab3), "Tab3 is not muted");
+  ok(!activeMediaBlocked(tab3), "Tab3 is not activemedia-blocked");
+  ok(!muted(tab4), "Tab4 is not muted");
+  ok(!activeMediaBlocked(tab4), "Tab4 is not activemedia-blocked");
 
-  // Mute tab1 which is mutliselected, thus other multiselected tabs should be affected too
+  // Mute tab1 which is multiselected, thus other multiselected tabs should be affected too
   // in the following way:
   //  a) muted tabs (tab0) will remain muted.
   //  b) unmuted tabs (tab1, tab3) will become muted.
   //  b) media-blocked tabs (tab2) will remain media-blocked.
   // However tab4 (unmuted) which is not multiselected should not be affected.
-  let tab1MuteAudioBtn = document.getAnonymousElementByAttribute(tab1, "anonid", "soundplaying-icon");
+  let tab1MuteAudioBtn = tab1.soundPlayingIcon;
   await test_mute_tab(tab1, tab1MuteAudioBtn, true);
 
   // Check mute state
@@ -93,8 +98,8 @@ add_task(async function muteTabs_usingButton() {
   ok(muted(tab1), "Tab1 is muted");
   ok(activeMediaBlocked(tab2), "Tab2 is still media-blocked");
   ok(muted(tab3), "Tab3 is now muted");
-  ok(!muted(tab4) && !activeMediaBlocked(tab4), "Tab4 is not muted and not activemedia-blocked");
-
+  ok(!muted(tab4), "Tab4 is not muted");
+  ok(!activeMediaBlocked(tab4), "Tab4 is not activemedia-blocked");
 
   for (let tab of tabs) {
     BrowserTestUtils.removeTab(tab);
@@ -122,35 +127,92 @@ add_task(async function unmuteTabs_usingButton() {
   // Multiselecting tab0, tab1, tab2 and tab3
   await triggerClickOn(tab3, { shiftKey: true });
 
-  // Check mutliselection
+  // Check multiselection
   for (let i = 0; i <= 3; i++) {
     ok(tabs[i].multiselected, "tab" + i + " is multiselected");
   }
   ok(!tab4.multiselected, "tab4 is not multiselected");
 
   // Check tabs mute state
-  ok(!muted(tab0) && !activeMediaBlocked(tab0), "Tab0 is not muted and not media-blocked");
+  ok(!muted(tab0), "Tab0 is not muted");
+  ok(!activeMediaBlocked(tab0), "Tab0 is not activemedia-blocked");
   ok(activeMediaBlocked(tab1), "Tab1 is media-blocked");
   ok(activeMediaBlocked(tab2), "Tab2 is media-blocked");
   ok(muted(tab3), "Tab3 is muted");
   ok(muted(tab4), "Tab4 is muted");
   is(gBrowser.selectedTab, tab0, "Tab0 is active");
 
-  // unmute tab0 which is mutliselected, thus other multiselected tabs should be affected too
+  // unmute tab0 which is multiselected, thus other multiselected tabs should be affected too
   // in the following way:
   //  a) muted tabs (tab3) will become unmuted.
   //  b) unmuted tabs (tab0) will remain unmuted.
   //  b) media-blocked tabs (tab1, tab2) will get playing. (media not blocked anymore)
   // However tab4 (muted) which is not multiselected should not be affected.
-  let tab3MuteAudioBtn = document.getAnonymousElementByAttribute(tab3, "anonid", "soundplaying-icon");
+  let tab3MuteAudioBtn = tab3.soundPlayingIcon;
   await test_mute_tab(tab3, tab3MuteAudioBtn, false);
 
-  ok(!muted(tab0) && !activeMediaBlocked(tab0), "Tab0 is unmuted and not media-blocked");
-  ok(!muted(tab1) && !activeMediaBlocked(tab1), "Tab1 is unmuted and not media-blocked");
-  ok(!muted(tab2) && !activeMediaBlocked(tab2), "Tab2 is unmuted and not media-blocked");
-  ok(!muted(tab3) && !activeMediaBlocked(tab3), "Tab3 is unmuted and not media-blocked");
+  ok(!muted(tab0), "Tab0 is not muted");
+  ok(!activeMediaBlocked(tab0), "Tab0 is not activemedia-blocked");
+  ok(!muted(tab1), "Tab1 is not muted");
+  ok(!activeMediaBlocked(tab1), "Tab1 is not activemedia-blocked");
+  ok(!muted(tab2), "Tab2 is not muted");
+  ok(!activeMediaBlocked(tab2), "Tab2 is not activemedia-blocked");
+  ok(!muted(tab3), "Tab3 is not muted");
+  ok(!activeMediaBlocked(tab3), "Tab3 is not activemedia-blocked");
   ok(muted(tab4), "Tab4 is muted");
   is(gBrowser.selectedTab, tab0, "Tab0 is active");
+
+  for (let tab of tabs) {
+    BrowserTestUtils.removeTab(tab);
+  }
+});
+
+add_task(async function muteAndUnmuteTabs_usingKeyboard() {
+  let tab0 = await addMediaTab();
+  let tab1 = await addMediaTab();
+  let tab2 = await addMediaTab();
+  let tab3 = await addMediaTab();
+  let tab4 = await addMediaTab();
+
+  let tabs = [tab0, tab1, tab2, tab3, tab4];
+
+  await BrowserTestUtils.switchTab(gBrowser, tab0);
+
+  let mutedPromise = get_wait_for_mute_promise(tab0, true);
+  EventUtils.synthesizeKey("M", { ctrlKey: true });
+  await mutedPromise;
+  ok(muted(tab0), "Tab0 should be muted");
+  ok(!muted(tab1), "Tab1 should not be muted");
+  ok(!muted(tab2), "Tab2 should not be muted");
+  ok(!muted(tab3), "Tab3 should not be muted");
+  ok(!muted(tab4), "Tab4 should not be muted");
+
+  // Multiselecting tab0, tab1, tab2 and tab3
+  await triggerClickOn(tab3, { shiftKey: true });
+
+  // Check multiselection
+  for (let i = 0; i <= 3; i++) {
+    ok(tabs[i].multiselected, "tab" + i + " is multiselected");
+  }
+  ok(!tab4.multiselected, "tab4 is not multiselected");
+
+  mutedPromise = get_wait_for_mute_promise(tab0, false);
+  EventUtils.synthesizeKey("M", { ctrlKey: true });
+  await mutedPromise;
+  ok(!muted(tab0), "Tab0 should not be muted");
+  ok(!muted(tab1), "Tab1 should not be muted");
+  ok(!muted(tab2), "Tab2 should not be muted");
+  ok(!muted(tab3), "Tab3 should not be muted");
+  ok(!muted(tab4), "Tab4 should not be muted");
+
+  mutedPromise = get_wait_for_mute_promise(tab0, true);
+  EventUtils.synthesizeKey("M", { ctrlKey: true });
+  await mutedPromise;
+  ok(muted(tab0), "Tab0 should be muted");
+  ok(muted(tab1), "Tab1 should be muted");
+  ok(muted(tab2), "Tab2 should be muted");
+  ok(muted(tab3), "Tab3 should be muted");
+  ok(!muted(tab4), "Tab4 should not be muted");
 
   for (let tab of tabs) {
     BrowserTestUtils.removeTab(tab);
@@ -178,7 +240,7 @@ add_task(async function playTabs_usingButton() {
   tab0.toggleMuteAudio();
   tab4.toggleMuteAudio();
 
-  // Check mutliselection
+  // Check multiselection
   for (let i = 0; i <= 3; i++) {
     ok(tabs[i].multiselected, "tab" + i + " is multiselected");
   }
@@ -188,26 +250,30 @@ add_task(async function playTabs_usingButton() {
   ok(muted(tab0), "Tab0 is muted");
   ok(activeMediaBlocked(tab1), "Tab1 is media-blocked");
   ok(activeMediaBlocked(tab2), "Tab2 is media-blocked");
-  ok(!muted(tab3) && !activeMediaBlocked(tab3), "Tab3 is not muted and not activemedia-blocked");
+  ok(!muted(tab3), "Tab3 is not muted");
+  ok(!activeMediaBlocked(tab3), "Tab3 is not activemedia-blocked");
   ok(muted(tab4), "Tab4 is muted");
   is(gBrowser.selectedTab, tab0, "Tab0 is active");
 
-  // play tab2 which is mutliselected, thus other multiselected tabs should be affected too
+  // play tab2 which is multiselected, thus other multiselected tabs should be affected too
   // in the following way:
   //  a) muted tabs (tab0) will become unmuted.
   //  b) unmuted tabs (tab3) will remain unmuted.
   //  b) media-blocked tabs (tab1, tab2) will get playing. (media not blocked anymore)
   // However tab4 (muted) which is not multiselected should not be affected.
-  let tab2MuteAudioBtn = document.getAnonymousElementByAttribute(tab2, "anonid", "soundplaying-icon");
+  let tab2MuteAudioBtn = tab2.soundPlayingIcon;
   await test_mute_tab(tab2, tab2MuteAudioBtn, false);
 
-  ok(!muted(tab0) && !activeMediaBlocked(tab0), "Tab0 is unmuted and not activemedia-blocked");
-  ok(!muted(tab1) && !activeMediaBlocked(tab1), "Tab1 is unmuted and not activemedia-blocked");
-  ok(!muted(tab2) && !activeMediaBlocked(tab2), "Tab2 is unmuted and not activemedia-blocked");
-  ok(!muted(tab3) && !activeMediaBlocked(tab3), "Tab3 is unmuted and not activemedia-blocked");
+  ok(!muted(tab0), "Tab0 is not muted");
+  ok(!activeMediaBlocked(tab0), "Tab0 is not activemedia-blocked");
+  ok(!muted(tab1), "Tab1 is not muted");
+  ok(!activeMediaBlocked(tab1), "Tab1 is not activemedia-blocked");
+  ok(!muted(tab2), "Tab2 is not muted");
+  ok(!activeMediaBlocked(tab2), "Tab2 is not activemedia-blocked");
+  ok(!muted(tab3), "Tab3 is not muted");
+  ok(!activeMediaBlocked(tab3), "Tab3 is not activemedia-blocked");
   ok(muted(tab4), "Tab4 is muted");
   is(gBrowser.selectedTab, tab0, "Tab0 is active");
-
 
   for (let tab of tabs) {
     BrowserTestUtils.removeTab(tab);
@@ -222,26 +288,29 @@ add_task(async function checkTabContextMenu() {
   let tabs = [tab0, tab1, tab2, tab3];
 
   let menuItemToggleMuteTab = document.getElementById("context_toggleMuteTab");
-  let menuItemToggleMuteSelectedTabs = document.getElementById("context_toggleMuteSelectedTabs");
+  let menuItemToggleMuteSelectedTabs = document.getElementById(
+    "context_toggleMuteSelectedTabs"
+  );
 
   await play(tab0, false);
   tab0.toggleMuteAudio();
   await play(tab1, false);
   tab2.toggleMuteAudio();
 
-  // Mutliselect tab0, tab1, tab2.
+  // multiselect tab0, tab1, tab2.
   await triggerClickOn(tab0, { ctrlKey: true });
   await triggerClickOn(tab1, { ctrlKey: true });
   await triggerClickOn(tab2, { ctrlKey: true });
 
-  // Check mutliselected tabs
+  // Check multiselected tabs
   for (let i = 0; i <= 2; i++) {
     ok(tabs[i].multiselected, "Tab" + i + " is multi-selected");
   }
   ok(!tab3.multiselected, "Tab3 is not multiselected");
 
   // Check mute state for tabs
-  ok(!muted(tab0) && !activeMediaBlocked(tab0), "Tab0 is not muted and not activemedia-blocked");
+  ok(!muted(tab0), "Tab0 is not muted");
+  ok(!activeMediaBlocked(tab0), "Tab0 is not activemedia-blocked");
   ok(activeMediaBlocked(tab1), "Tab1 is media-blocked");
   ok(muted(tab2), "Tab2 is muted");
   ok(!muted(tab3, "Tab3 is not muted"));
@@ -250,16 +319,30 @@ add_task(async function checkTabContextMenu() {
 
   for (let i = 0; i <= 2; i++) {
     updateTabContextMenu(tabs[i]);
-    ok(menuItemToggleMuteTab.hidden,
-      "toggleMuteAudio menu for one tab is hidden - contextTab" + i);
-    ok(!menuItemToggleMuteSelectedTabs.hidden,
-      "toggleMuteAudio menu for selected tab is not hidden - contextTab" + i);
-    is(menuItemToggleMuteSelectedTabs.label, labels[i], labels[i] + " should be shown");
+    ok(
+      menuItemToggleMuteTab.hidden,
+      "toggleMuteAudio menu for one tab is hidden - contextTab" + i
+    );
+    ok(
+      !menuItemToggleMuteSelectedTabs.hidden,
+      "toggleMuteAudio menu for selected tab is not hidden - contextTab" + i
+    );
+    is(
+      menuItemToggleMuteSelectedTabs.label,
+      labels[i],
+      labels[i] + " should be shown"
+    );
   }
 
   updateTabContextMenu(tab3);
-  ok(!menuItemToggleMuteTab.hidden, "toggleMuteAudio menu for one tab is not hidden");
-  ok(menuItemToggleMuteSelectedTabs.hidden, "toggleMuteAudio menu for selected tab is hidden");
+  ok(
+    !menuItemToggleMuteTab.hidden,
+    "toggleMuteAudio menu for one tab is not hidden"
+  );
+  ok(
+    menuItemToggleMuteSelectedTabs.hidden,
+    "toggleMuteAudio menu for selected tab is hidden"
+  );
 
   for (let tab of tabs) {
     BrowserTestUtils.removeTab(tab);

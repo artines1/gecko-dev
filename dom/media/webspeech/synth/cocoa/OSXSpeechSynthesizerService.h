@@ -14,10 +14,9 @@
 namespace mozilla {
 namespace dom {
 
-class OSXSpeechSynthesizerService final : public nsISpeechService
-                                        , public nsIObserver
-{
-public:
+class OSXSpeechSynthesizerService final : public nsISpeechService,
+                                          public nsIObserver {
+ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSISPEECHSERVICE
   NS_DECL_NSIOBSERVER
@@ -26,9 +25,8 @@ public:
 
   static OSXSpeechSynthesizerService* GetInstance();
   static already_AddRefed<OSXSpeechSynthesizerService> GetInstanceForService();
-  static void Shutdown();
 
-private:
+ private:
   OSXSpeechSynthesizerService();
   virtual ~OSXSpeechSynthesizerService() = default;
 
@@ -38,7 +36,7 @@ private:
   static mozilla::StaticRefPtr<OSXSpeechSynthesizerService> sSingleton;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

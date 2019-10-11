@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
 import sys
 import os
 
@@ -20,9 +21,7 @@ import xpidl
 
 # Load the webidl configuration file.
 glbl = {}
-execfile(mozpath.join(buildconfig.topsrcdir,
-                      'dom', 'bindings', 'Bindings.conf'),
-         glbl)
+exec(open(mozpath.join(buildconfig.topsrcdir, 'dom', 'bindings', 'Bindings.conf')).read(), glbl)
 webidlconfig = glbl['DOMInterfaces']
 
 # Instantiate the parser.
@@ -50,7 +49,7 @@ def loadEventIDL(parser, includePath, eventname):
 class Configuration:
     def __init__(self, filename):
         config = {}
-        execfile(filename, config)
+        exec(open(filename).read(), config)
         self.simple_events = config.get('simple_events', [])
 
 

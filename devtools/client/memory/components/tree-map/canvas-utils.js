@@ -45,7 +45,6 @@ function Canvases(parentEl, debounceRate) {
 }
 
 Canvases.prototype = {
-
   /**
    * Remove the handlers and elements
    *
@@ -55,7 +54,7 @@ Canvases.prototype = {
     this.removeHandlers();
     this.container.removeChild(this.main.canvas);
     this.container.removeChild(this.zoom.canvas);
-  }
+  },
 };
 
 module.exports = Canvases;
@@ -89,7 +88,7 @@ function createCanvas(container, className) {
   canvas.className = className;
 
   Object.assign(canvas.style, FULLSCREEN_STYLE, {
-    pointerEvents: "none"
+    pointerEvents: "none",
   });
 
   const ctx = canvas.getContext("2d");
@@ -121,9 +120,8 @@ function handleResizes(canvases, debounceRate) {
   }
 
   // Tests may not need debouncing
-  const debouncedResize = debounceRate > 0
-    ? debounce(resize, debounceRate)
-    : resize;
+  const debouncedResize =
+    debounceRate > 0 ? debounce(resize, debounceRate) : resize;
 
   window.addEventListener("resize", debouncedResize);
   resize();

@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -49,16 +48,15 @@ const validNumberingSystemOptions = [
   ["1234abcd-abc123", "en-u-nu-1234abcd-abc123"],
 ];
 for (const [numberingSystem, expected] of validNumberingSystemOptions) {
-  let options = { numberingSystem };
   assert.sameValue(
-    new Intl.Locale('en', options).toString(),
+    new Intl.Locale('en', { numberingSystem }).toString(),
     expected,
-    `new Intl.Locale('en', options).toString() equals the value of ${expected}`
+    `new Intl.Locale("en", { numberingSystem: ${numberingSystem} }).toString() returns "${expected}"`
   );
   assert.sameValue(
-    new Intl.Locale('en-u-nu-latn', options).toString(),
+    new Intl.Locale('en-u-nu-latn', { numberingSystem }).toString(),
     expected,
-    `new Intl.Locale('en-u-nu-latn', options).toString() equals the value of ${expected}`
+    `new Intl.Locale("en-u-nu-latn", { numberingSystem: ${numberingSystem} }).toString() returns "${expected}"`
   );
 }
 

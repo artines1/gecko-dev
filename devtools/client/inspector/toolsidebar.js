@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -126,31 +124,6 @@ ToolSidebar.prototype = {
   },
 
   /**
-   * Helper API for adding side-panels that use existing <iframe> nodes
-   * (defined within inspector.xhtml) as the content.
-   * The document must have a title, which will be used as the name of the tab.
-   *
-   * @param {String} tab uniq id
-   * @param {String} title tab title
-   * @param {String} url
-   * @param {Boolean} selected true if the panel should be selected
-   * @param {Number} index the position where the tab should be inserted
-   */
-  addFrameTab: function(id, title, url, selected, index) {
-    const panel = this.InspectorTabPanel({
-      id: id,
-      idPrefix: this.TABPANEL_ID_PREFIX,
-      key: id,
-      title: title,
-      url: url,
-      onMount: this.onSidePanelMounted.bind(this),
-      onUnmount: this.onSidePanelUnmounted.bind(this),
-    });
-
-    this.addTab(id, title, panel, selected, index);
-  },
-
-  /**
    * Queues a side-panel tab to be added..
    *
    * @param {String} tab uniq id
@@ -185,66 +158,6 @@ ToolSidebar.prototype = {
   },
 
   /**
-   * Helper API for queuing side-panels that use existing <iframe> nodes
-   * (defined within inspector.xhtml) as the content.
-   * The document must have a title, which will be used as the name of the tab.
-   *
-   * @param {String} tab uniq id
-   * @param {String} title tab title
-   * @param {String} url
-   * @param {Boolean} selected true if the panel should be selected
-   * @param {Number} index the position where the tab should be inserted
-   */
-  queueFrameTab: function(id, title, url, selected, index) {
-    const panel = this.InspectorTabPanel({
-      id: id,
-      idPrefix: this.TABPANEL_ID_PREFIX,
-      key: id,
-      title: title,
-      url: url,
-      onMount: this.onSidePanelMounted.bind(this),
-      onUnmount: this.onSidePanelUnmounted.bind(this),
-    });
-
-    this.queueTab(id, title, panel, selected, index);
-  },
-
-  onSidePanelMounted: function(content, props) {
-    const iframe = content.querySelector("iframe");
-    if (!iframe || iframe.getAttribute("src")) {
-      return;
-    }
-
-    const onIFrameLoaded = (event) => {
-      iframe.removeEventListener("load", onIFrameLoaded, true);
-
-      const doc = event.target;
-      const win = doc.defaultView;
-      if ("setPanel" in win) {
-        win.setPanel(this._toolPanel, iframe);
-      }
-      this.emit(props.id + "-ready");
-    };
-
-    iframe.addEventListener("load", onIFrameLoaded, true);
-    iframe.setAttribute("src", props.url);
-  },
-
-  onSidePanelUnmounted: function(content, props) {
-    const iframe = content.querySelector("iframe");
-    if (!iframe || !iframe.hasAttribute("src")) {
-      return;
-    }
-
-    const win = iframe.contentWindow;
-    if ("destroy" in win) {
-      win.destroy(this._toolPanel, iframe);
-    }
-
-    iframe.removeAttribute("src");
-  },
-
-  /**
    * Remove an existing tab.
    * @param {String} tabId The ID of the tab that was used to register it, or
    * the tab id attribute value if the tab existed before the sidebar
@@ -254,11 +167,6 @@ ToolSidebar.prototype = {
    */
   async removeTab(tabId, tabPanelId) {
     this._tabbar.removeTab(tabId);
-
-    const win = this.getWindowForTab(tabId);
-    if (win && ("destroy" in win)) {
-      await win.destroy();
-    }
 
     this.emit("tab-unregistered", tabId);
   },
@@ -294,8 +202,9 @@ ToolSidebar.prototype = {
   getTabPanel: function(id) {
     // Search with and without the ID prefix as there might have been existing
     // tabpanels by the time the sidebar got created
-    return this._panelDoc.querySelector("#" +
-      this.TABPANEL_ID_PREFIX + id + ", #" + id);
+    return this._panelDoc.querySelector(
+      "#" + this.TABPANEL_ID_PREFIX + id + ", #" + id
+    );
   },
 
   /**
@@ -332,18 +241,49 @@ ToolSidebar.prototype = {
       return;
     }
 
-    if (previousToolId) {
-      this._telemetry.toolClosed(previousToolId);
+    const sessionId = this._toolPanel._toolbox.sessionId;
 
-      this._telemetry.recordEvent("devtools.main", "sidepanel_changed", "inspector", null,
-        {
-          "oldpanel": previousToolId,
-          "newpanel": currentToolId,
-          "session_id": this._toolPanel._toolbox.sessionId
-        }
-      );
+    currentToolId = this.getTelemetryPanelNameOrOther(currentToolId);
+
+    if (previousToolId) {
+      previousToolId = this.getTelemetryPanelNameOrOther(previousToolId);
+      this._telemetry.toolClosed(previousToolId, sessionId, this);
+
+      this._telemetry.recordEvent("sidepanel_changed", "inspector", null, {
+        oldpanel: previousToolId,
+        newpanel: currentToolId,
+        os: this._telemetry.osNameAndVersion,
+        session_id: sessionId,
+      });
     }
-    this._telemetry.toolOpened(currentToolId);
+    this._telemetry.toolOpened(currentToolId, sessionId, this);
+  },
+
+  /**
+   * Returns a panel id in the case of built in panels or "other" in the case of
+   * third party panels. This is necessary due to limitations in addon id strings,
+   * the permitted length of event telemetry property values and what we actually
+   * want to see in our telemetry.
+   *
+   * @param {String} id
+   *        The panel id we would like to process.
+   */
+  getTelemetryPanelNameOrOther: function(id) {
+    if (!this._toolNames) {
+      // Get all built in tool ids. We identify third party tool ids by checking
+      // for a "-", which shows it originates from an addon.
+      const ids = this._tabbar.state.tabs.map(({ id: toolId }) => {
+        return toolId.includes("-") ? "other" : toolId;
+      });
+
+      this._toolNames = new Set(ids);
+    }
+
+    if (!this._toolNames.has(id)) {
+      return "other";
+    }
+
+    return id;
   },
 
   /**
@@ -373,22 +313,9 @@ ToolSidebar.prototype = {
   },
 
   /**
-   * Return the window containing the tab content.
-   */
-  getWindowForTab: function(id) {
-    // Get the tabpanel and make sure it contains an iframe
-    const panel = this.getTabPanel(id);
-    if (!panel || !panel.firstElementChild || !panel.firstElementChild.contentWindow) {
-      return null;
-    }
-
-    return panel.firstElementChild.contentWindow;
-  },
-
-  /**
    * Clean-up.
    */
-  async destroy() {
+  destroy() {
     if (this._destroyed) {
       return;
     }
@@ -396,24 +323,9 @@ ToolSidebar.prototype = {
 
     this.emit("destroy");
 
-    // Note that we check for the existence of this._tabbox.tabpanels at each
-    // step as the container window may have been closed by the time one of the
-    // panel's destroy promise resolves.
-    const tabpanels = [...this._tabbox.querySelectorAll(".tab-panel-box")];
-    for (const panel of tabpanels) {
-      const iframe = panel.querySelector("iframe");
-      if (!iframe) {
-        continue;
-      }
-      const win = iframe.contentWindow;
-      if (win && ("destroy" in win)) {
-        await win.destroy();
-      }
-      panel.remove();
-    }
-
     if (this._currentTool && this._telemetry) {
-      this._telemetry.toolClosed(this._currentTool);
+      const sessionId = this._toolPanel._toolbox.sessionId;
+      this._telemetry.toolClosed(this._currentTool, sessionId, this);
     }
 
     this._toolPanel.emit("sidebar-destroyed", this);
@@ -423,5 +335,5 @@ ToolSidebar.prototype = {
     this._telemetry = null;
     this._panelDoc = null;
     this._toolPanel = null;
-  }
+  },
 };

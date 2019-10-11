@@ -6,6 +6,7 @@
  * The origin of this IDL file is
  * http://www.whatwg.org/specs/web-apps/current-work/#the-input-element
  * http://www.whatwg.org/specs/web-apps/current-work/#other-elements,-attributes-and-apis
+ * https://wicg.github.io/entries-api/#idl-index
  *
  * © Copyright 2004-2011 Apple Computer, Inc., Mozilla Foundation, and
  * Opera Software ASA. You are granted a license to use, reproduce
@@ -21,7 +22,8 @@ enum SelectionMode {
 
 interface XULControllers;
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLInputElement : HTMLElement {
   [CEReactions, Pure, SetterThrows]
            attribute DOMString accept;
@@ -31,6 +33,8 @@ interface HTMLInputElement : HTMLElement {
            attribute DOMString autocomplete;
   [CEReactions, Pure, SetterThrows]
            attribute boolean autofocus;
+  [CEReactions, Pure, SetterThrows, Pref="dom.capture.enabled"]
+           attribute DOMString capture;
   [CEReactions, Pure, SetterThrows]
            attribute boolean defaultChecked;
   [Pure]
@@ -89,8 +93,8 @@ interface HTMLInputElement : HTMLElement {
            attribute DOMString type;
   [CEReactions, Pure, SetterThrows]
            attribute DOMString defaultValue;
-  [CEReactions, Pure, TreatNullAs=EmptyString, SetterThrows, NeedsCallerType]
-           attribute DOMString value;
+  [CEReactions, Pure, SetterThrows, NeedsCallerType]
+           attribute [TreatNullAs=EmptyString] DOMString value;
   [Throws, Func="HTMLInputElement::ValueAsDateEnabled"]
            attribute Date? valueAsDate;
   [Pure, SetterThrows]
@@ -182,24 +186,35 @@ partial interface HTMLInputElement {
   boolean mozIsTextField(boolean aExcludePassword);
 
   [ChromeOnly]
+  readonly attribute boolean hasBeenTypePassword;
+
+  [ChromeOnly]
+  attribute DOMString previewValue;
+
+  [ChromeOnly]
   // This function will return null if @autocomplete is not defined for the
   // current @type
   AutocompleteInfo? getAutocompleteInfo();
 };
 
-[NoInterfaceObject]
-interface MozEditableElement {
+interface mixin MozEditableElement {
   [Pure, ChromeOnly]
   readonly attribute nsIEditor? editor;
+
+  // This is set to true if "input" event should be fired with InputEvent on
+  // the element.  Otherwise, i.e., if "input" event should be fired with
+  // Event, set to false.
+  [Func="IsChromeOrXBLOrUAWidget"]
+  readonly attribute boolean isInputEventTarget;
 
   // This is similar to set .value on nsIDOMInput/TextAreaElements, but handling
   // of the value change is closer to the normal user input, so 'change' event
   // for example will be dispatched when focusing out the element.
-  [Func="IsChromeOrXBL", NeedsSubjectPrincipal]
+  [Func="IsChromeOrXBLOrUAWidget", NeedsSubjectPrincipal]
   void setUserInput(DOMString input);
 };
 
-HTMLInputElement implements MozEditableElement;
+HTMLInputElement includes MozEditableElement;
 
 partial interface HTMLInputElement {
   [Pref="dom.input.dirpicker", SetterThrows]
@@ -218,9 +233,9 @@ partial interface HTMLInputElement {
   void chooseDirectory();
 };
 
-HTMLInputElement implements MozImageLoadingContent;
+HTMLInputElement includes MozImageLoadingContent;
 
-// Webkit/Blink
+// https://wicg.github.io/entries-api/#idl-index
 partial interface HTMLInputElement {
   [Pref="dom.webkitBlink.filesystem.enabled", Frozen, Cached, Pure]
   readonly attribute sequence<FileSystemEntry> webkitEntries;
@@ -242,10 +257,7 @@ partial interface HTMLInputElement {
   DateTimeValue getDateTimeInputBoxValue();
 
   [Pref="dom.forms.datetime", ChromeOnly]
-  void updateDateTimeInputBox(optional DateTimeValue value);
-
-  [Pref="dom.forms.datetime", ChromeOnly]
-  void setDateTimePickerState(boolean open);
+  readonly attribute Element? dateTimeBoxElement;
 
   [Pref="dom.forms.datetime", ChromeOnly,
    BinaryName="getMinimumAsDouble"]
@@ -255,31 +267,26 @@ partial interface HTMLInputElement {
    BinaryName="getMaximumAsDouble"]
   double getMaximum();
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL"]
-  void openDateTimePicker(optional DateTimeValue initialValue);
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget"]
+  void openDateTimePicker(optional DateTimeValue initialValue = {});
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL"]
-  void updateDateTimePicker(optional DateTimeValue value);
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget"]
+  void updateDateTimePicker(optional DateTimeValue value = {});
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL"]
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget"]
   void closeDateTimePicker();
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL"]
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget"]
   void setFocusState(boolean aIsFocused);
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL"]
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget"]
   void updateValidityState();
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL",
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget",
    BinaryName="getStepAsDouble"]
   double getStep();
 
-  [Pref="dom.forms.datetime", Func="IsChromeOrXBL",
+  [Pref="dom.forms.datetime", Func="IsChromeOrXBLOrUAWidget",
    BinaryName="getStepBaseAsDouble"]
   double getStepBase();
-};
-
-partial interface HTMLInputElement {
-  [ChromeOnly]
-  attribute DOMString previewValue;
 };

@@ -12,21 +12,33 @@ from contextlib import contextmanager
 JITFLAGS = {
     'all': [
         [],  # no flags, normal baseline and ion
-        ['--ion-eager', '--ion-offthread-compile=off'],  # implies --baseline-eager
+        ['--ion-eager', '--ion-offthread-compile=off',  # implies --baseline-eager
+         '--more-compartments'],
         ['--ion-eager', '--ion-offthread-compile=off',
          '--ion-check-range-analysis', '--ion-extra-checks', '--no-sse3', '--no-threads'],
         ['--baseline-eager'],
-        ['--no-baseline', '--no-ion'],
+        ['--no-blinterp', '--no-baseline', '--no-ion', '--more-compartments'],
+        ['--blinterp-eager'],
+    ],
+    # Like 'all' above but for jstests. This has fewer jit-specific
+    # configurations.
+    'jstests': [
+        [],  # no flags, normal baseline and ion
+        ['--ion-eager', '--ion-offthread-compile=off',  # implies --baseline-eager
+         '--more-compartments'],
+        ['--baseline-eager'],
+        ['--no-blinterp', '--no-baseline', '--no-ion', '--more-compartments'],
     ],
     # used by jit_test.py
     'ion': [
         ['--baseline-eager'],
-        ['--ion-eager', '--ion-offthread-compile=off']
+        ['--ion-eager', '--ion-offthread-compile=off', '--more-compartments']
     ],
     # Run reduced variants on debug builds, since they take longer time.
     'debug': [
         [],  # no flags, normal baseline and ion
-        ['--ion-eager', '--ion-offthread-compile=off'],  # implies --baseline-eager
+        ['--ion-eager', '--ion-offthread-compile=off',  # implies --baseline-eager
+         '--more-compartments'],
         ['--baseline-eager'],
     ],
     # Cover cases useful for tsan. Note that we test --ion-eager without
@@ -34,14 +46,15 @@ JITFLAGS = {
     'tsan': [
         [],
         ['--ion-eager', '--ion-check-range-analysis', '--ion-extra-checks', '--no-sse3'],
-        ['--no-baseline', '--no-ion'],
+        ['--no-blinterp', '--no-baseline', '--no-ion'],
     ],
     'baseline': [
         ['--no-ion'],
     ],
     # Interpreter-only, for tools that cannot handle binary code generation.
     'interp': [
-        ['--no-baseline', '--no-asmjs', '--no-wasm', '--no-native-regexp']
+        ['--no-blinterp', '--no-baseline', '--no-asmjs', '--wasm-compiler=none',
+         '--no-native-regexp']
     ],
     'none': [
         []  # no flags, normal baseline and ion
@@ -67,11 +80,12 @@ def get_environment_overlay(js_shell):
     Build a dict of additional environment variables that must be set to run
     tests successfully.
     """
+    # When updating this also update |buildBrowserEnv| in layout/tools/reftest/runreftest.py.
     env = {
         # Force Pacific time zone to avoid failures in Date tests.
         'TZ': 'PST8PDT',
         # Force date strings to English.
-        'LC_TIME': 'en_US.UTF-8',
+        'LC_ALL': 'en_US.UTF-8',
         # Tell the shell to disable crash dialogs on windows.
         'XRE_NO_WINDOWS_CRASH_DIALOG': '1',
     }
@@ -154,11 +168,16 @@ class RefTestCase(object):
         self.options = []
         # [str]: JIT flags to pass to the shell
         self.jitflags = []
+        # [str]: flags to never pass to the shell for this test
+        self.ignoredflags = []
         # str or None: path to reflect-stringify.js file to test
         # instead of actually running tests
         self.test_reflect_stringify = None
         # bool: True => test is module code
         self.is_module = False
+        # bool: True => test is asynchronous and runs additional code after completing the first
+        # turn of the event loop.
+        self.is_async = False
         # bool: True => run test, False => don't run
         self.enable = True
         # str?: Optional error type
@@ -212,6 +231,9 @@ class RefTestCase(object):
             cmd += ["--module", self.abs_path()]
         else:
             cmd += ["-f", self.abs_path()]
+        for flag in self.ignoredflags:
+            if flag in cmd:
+                cmd.remove(flag)
         return cmd
 
     def __str__(self):

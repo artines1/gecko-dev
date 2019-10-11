@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Calculate [specified][specified] and [computed values][computed] from a
 //! tree of DOM nodes and a set of stylesheets.
@@ -32,14 +32,14 @@ extern crate atomic_refcell;
 extern crate bitflags;
 #[allow(unused_extern_crates)]
 extern crate byteorder;
-#[cfg(feature = "gecko")]
-#[macro_use]
-#[no_link]
-extern crate cfg_if;
+#[cfg(feature = "servo")]
+extern crate crossbeam_channel;
 #[macro_use]
 extern crate cssparser;
 #[macro_use]
 extern crate debug_unreachable;
+#[macro_use]
+extern crate derive_more;
 extern crate euclid;
 extern crate fallible;
 extern crate fxhash;
@@ -50,6 +50,7 @@ extern crate hashglobe;
 #[cfg(feature = "servo")]
 #[macro_use]
 extern crate html5ever;
+extern crate indexmap;
 extern crate itertools;
 extern crate itoa;
 #[macro_use]
@@ -67,6 +68,8 @@ extern crate matches;
 pub extern crate nsstring;
 #[cfg(feature = "gecko")]
 extern crate num_cpus;
+#[macro_use]
+extern crate num_derive;
 extern crate num_integer;
 extern crate num_traits;
 extern crate ordered_float;
@@ -88,6 +91,8 @@ extern crate servo_config;
 extern crate servo_url;
 extern crate smallbitvec;
 extern crate smallvec;
+#[cfg(feature = "gecko")]
+extern crate static_prefs;
 #[cfg(feature = "servo")]
 extern crate string_cache;
 #[macro_use]
@@ -96,6 +101,9 @@ extern crate style_traits;
 #[cfg(feature = "gecko")]
 extern crate thin_slice;
 extern crate time;
+extern crate to_shmem;
+#[macro_use]
+extern crate to_shmem_derive;
 extern crate uluru;
 extern crate unicode_bidi;
 #[allow(unused_extern_crates)]
@@ -128,19 +136,19 @@ pub mod font_face;
 pub mod font_metrics;
 #[cfg(feature = "gecko")]
 #[allow(unsafe_code)]
-pub mod gecko;
-#[cfg(feature = "gecko")]
-#[allow(unsafe_code)]
 pub mod gecko_bindings;
+pub mod global_style_data;
 pub mod hash;
 pub mod invalidation;
 #[allow(missing_docs)] // TODO.
 pub mod logical_geometry;
 pub mod matching;
+#[macro_use]
 pub mod media_queries;
 pub mod parallel;
 pub mod parser;
 pub mod rule_cache;
+pub mod rule_collector;
 pub mod rule_tree;
 pub mod scoped_tls;
 pub mod selector_map;
@@ -157,29 +165,34 @@ pub mod thread_state;
 pub mod timer;
 pub mod traversal;
 pub mod traversal_flags;
+pub mod use_counters;
 #[macro_use]
 #[allow(non_camel_case_types)]
 pub mod values;
 
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache as string_cache;
+pub use crate::gecko_string_cache as string_cache;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom;
+pub use crate::gecko_string_cache::Atom;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Namespace;
+pub use crate::gecko_string_cache::Atom as Prefix;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom as Prefix;
+pub use crate::gecko_string_cache::Atom as LocalName;
 #[cfg(feature = "gecko")]
-pub use gecko_string_cache::Atom as LocalName;
+pub use crate::gecko_string_cache::Namespace;
 
-#[cfg(feature = "servo")]
-pub use servo_atoms::Atom;
-#[cfg(feature = "servo")]
-pub use html5ever::Prefix;
 #[cfg(feature = "servo")]
 pub use html5ever::LocalName;
 #[cfg(feature = "servo")]
 pub use html5ever::Namespace;
+#[cfg(feature = "servo")]
+pub use html5ever::Prefix;
+#[cfg(feature = "servo")]
+pub use servo_atoms::Atom;
+
+pub use style_traits::arc_slice::ArcSlice;
+pub use style_traits::owned_slice::OwnedSlice;
+pub use style_traits::owned_str::OwnedStr;
 
 /// The CSS properties supported by the style system.
 /// Generated from the properties.mako.rs template by build.rs
@@ -189,6 +202,10 @@ pub use html5ever::Namespace;
 pub mod properties {
     include!(concat!(env!("OUT_DIR"), "/properties.rs"));
 }
+
+#[cfg(feature = "gecko")]
+#[allow(unsafe_code)]
+pub mod gecko;
 
 // uses a macro from properties
 #[cfg(feature = "servo")]
@@ -208,17 +225,17 @@ macro_rules! reexport_computed_values {
         /// [computed]: https://drafts.csswg.org/css-cascade/#computed
         pub mod computed_values {
             $(
-                pub use properties::longhands::$name::computed_value as $name;
+                pub use crate::properties::longhands::$name::computed_value as $name;
             )+
             // Don't use a side-specific name needlessly:
-            pub use properties::longhands::border_top_style::computed_value as border_style;
+            pub use crate::properties::longhands::border_top_style::computed_value as border_style;
         }
     }
 }
 longhand_properties_idents!(reexport_computed_values);
 
 #[cfg(feature = "gecko")]
-use gecko_string_cache::WeakAtom;
+use crate::gecko_string_cache::WeakAtom;
 #[cfg(feature = "servo")]
 use servo_atoms::Atom as WeakAtom;
 
@@ -234,5 +251,28 @@ impl CaseSensitivityExt for selectors::attr::CaseSensitivity {
             selectors::attr::CaseSensitivity::CaseSensitive => a == b,
             selectors::attr::CaseSensitivity::AsciiCaseInsensitive => a.eq_ignore_ascii_case(b),
         }
+    }
+}
+
+/// A trait pretty much similar to num_traits::Zero, but without the need of
+/// implementing `Add`.
+pub trait Zero {
+    /// Returns the zero value.
+    fn zero() -> Self;
+
+    /// Returns whether this value is zero.
+    fn is_zero(&self) -> bool;
+}
+
+impl<T> Zero for T
+where
+    T: num_traits::Zero,
+{
+    fn zero() -> Self {
+        <Self as num_traits::Zero>::zero()
+    }
+
+    fn is_zero(&self) -> bool {
+        <Self as num_traits::Zero>::is_zero(self)
     }
 }

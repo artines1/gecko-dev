@@ -4,7 +4,12 @@
 
 "use strict";
 
-ChromeUtils.import("resource://formautofill/FormAutofillNameUtils.jsm");
+var FormAutofillNameUtils;
+add_task(async function() {
+  ({ FormAutofillNameUtils } = ChromeUtils.import(
+    "resource://formautofill/FormAutofillNameUtils.jsm"
+  ));
+});
 
 // Test cases initially copied from
 // https://cs.chromium.org/chromium/src/components/autofill/core/browser/autofill_data_util_unittest.cc
@@ -78,7 +83,7 @@ const TESTCASES = [
     expectedFullName: "孫德明",
   },
   {
-    description: "Chinese name, Unihan, \"IDEOGRAPHIC SPACE\"",
+    description: 'Chinese name, Unihan, "IDEOGRAPHIC SPACE"',
     fullName: "孫　德明",
     nameParts: {
       given: "德明",

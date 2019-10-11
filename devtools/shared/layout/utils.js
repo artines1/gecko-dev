@@ -6,17 +6,30 @@
 
 const { Ci, Cc } = require("chrome");
 const nodeFilterConstants = require("devtools/shared/dom-node-filter-constants");
+loader.lazyRequireGetter(
+  this,
+  "DevToolsUtils",
+  "devtools/shared/DevToolsUtils"
+);
+loader.lazyRequireGetter(this, "ChromeUtils");
 
 const SHEET_TYPE = {
-  "agent": "AGENT_SHEET",
-  "user": "USER_SHEET",
-  "author": "AUTHOR_SHEET"
+  agent: "AGENT_SHEET",
+  user: "USER_SHEET",
+  author: "AUTHOR_SHEET",
 };
 
 // eslint-disable-next-line no-unused-vars
-loader.lazyRequireGetter(this, "setIgnoreLayoutChanges", "devtools/server/actors/reflow", true);
+loader.lazyRequireGetter(
+  this,
+  "setIgnoreLayoutChanges",
+  "devtools/server/actors/reflow",
+  true
+);
 exports.setIgnoreLayoutChanges = (...args) =>
   this.setIgnoreLayoutChanges(...args);
+
+const ReplayInspector = require("devtools/server/actors/replay/inspector");
 
 /**
  * Returns the `DOMWindowUtils` for the window given.
@@ -35,51 +48,18 @@ function utilsFor(win) {
 }
 
 /**
- * like win.top, but goes through mozbrowsers and mozapps iframes.
+ * Check a window is part of the boundary window given.
  *
- * @param {DOMWindow} win
- * @return {DOMWindow}
- */
-function getTopWindow(win) {
-  const docShell = win.docShell;
-
-  if (!docShell.isMozBrowser) {
-    return win.top;
-  }
-
-  const topDocShell =
-    docShell.getSameTypeRootTreeItemIgnoreBrowserBoundaries();
-
-  return topDocShell
-          ? topDocShell.contentViewer.DOMDocument.defaultView
-          : null;
-}
-
-exports.getTopWindow = getTopWindow;
-
-/**
- * Returns `true` is the window given is a top level window.
- * like win.top === win, but goes through mozbrowsers and mozapps iframes.
- *
+ * @param {DOMWindow} boundaryWindow
  * @param {DOMWindow} win
  * @return {Boolean}
  */
-const isTopWindow = win => win && getTopWindow(win) === win;
-exports.isTopWindow = isTopWindow;
-
-/**
-   * Check a window is part of the boundary window given.
-   *
-   * @param {DOMWindow} boundaryWindow
-   * @param {DOMWindow} win
-   * @return {Boolean}
-   */
 function isWindowIncluded(boundaryWindow, win) {
   if (win === boundaryWindow) {
     return true;
   }
 
-  const parent = getParentWindow(win);
+  const parent = win.parent;
 
   if (!parent || parent === win) {
     return false;
@@ -90,33 +70,6 @@ function isWindowIncluded(boundaryWindow, win) {
 exports.isWindowIncluded = isWindowIncluded;
 
 /**
- * like win.parent, but goes through mozbrowsers and mozapps iframes.
- *
- * @param {DOMWindow} win
- * @return {DOMWindow}
- */
-function getParentWindow(win) {
-  if (isTopWindow(win)) {
-    return null;
-  }
-
-  const docShell = win.docShell;
-
-  if (!docShell.isMozBrowser) {
-    return win.parent;
-  }
-
-  const parentDocShell =
-    docShell.getSameTypeParentIgnoreBrowserBoundaries();
-
-  return parentDocShell
-          ? parentDocShell.contentViewer.DOMDocument.defaultView
-          : null;
-}
-
-exports.getParentWindow = getParentWindow;
-
-/**
  * like win.frameElement, but goes through mozbrowsers and mozapps iframes.
  *
  * @param {DOMWindow} win
@@ -124,8 +77,10 @@ exports.getParentWindow = getParentWindow;
  * @return {DOMNode}
  *         The element in which the window is embedded.
  */
-const getFrameElement = (win) =>
-  isTopWindow(win) ? null : utilsFor(win).containerElement;
+const getFrameElement = win => {
+  const isTopWindow = win && DevToolsUtils.getTopWindow(win) === win;
+  return isTopWindow ? null : utilsFor(win).containerElement;
+};
 exports.getFrameElement = getFrameElement;
 
 /**
@@ -148,7 +103,7 @@ function getFrameOffsets(boundaryWindow, node) {
   const scale = getCurrentZoom(node);
 
   if (boundaryWindow === null) {
-    boundaryWindow = getTopWindow(frameWin);
+    boundaryWindow = DevToolsUtils.getTopWindow(frameWin);
   } else if (typeof boundaryWindow === "undefined") {
     throw new Error("No boundaryWindow given. Use null for the default one.");
   }
@@ -169,7 +124,7 @@ function getFrameOffsets(boundaryWindow, node) {
     xOffset += frameRect.left + offsetLeft;
     yOffset += frameRect.top + offsetTop;
 
-    frameWin = getParentWindow(frameWin);
+    frameWin = frameWin.parent;
   }
 
   return [xOffset * scale, yOffset * scale];
@@ -193,25 +148,28 @@ exports.getFrameOffsets = getFrameOffsets;
  * @param {String} region
  *        The box model region to return: "content", "padding", "border" or
  *        "margin".
+ * @param {Object} [options.ignoreZoom=false]
+ *        Ignore zoom used in the context of e.g. canvas.
  * @return {Array}
  *        An array of objects that have the same structure as quads returned by
  *        getBoxQuads. An empty array if the node has no quads or is invalid.
  */
-function getAdjustedQuads(boundaryWindow, node, region) {
+function getAdjustedQuads(boundaryWindow, node, region, { ignoreZoom } = {}) {
   if (!node || !node.getBoxQuads) {
     return [];
   }
 
   const quads = node.getBoxQuads({
     box: region,
-    relativeTo: boundaryWindow.document
+    relativeTo: boundaryWindow.document,
+    createFramesForSuppressedWhitespace: false,
   });
 
   if (!quads.length) {
     return [];
   }
 
-  const scale = getCurrentZoom(node);
+  const scale = ignoreZoom ? 1 : getCurrentZoom(node);
   const { scrollX, scrollY } = boundaryWindow;
 
   const xOffset = scrollX * scale;
@@ -225,25 +183,25 @@ function getAdjustedQuads(boundaryWindow, node, region) {
         w: quad.p1.w * scale,
         x: quad.p1.x * scale + xOffset,
         y: quad.p1.y * scale + yOffset,
-        z: quad.p1.z * scale
+        z: quad.p1.z * scale,
       },
       p2: {
         w: quad.p2.w * scale,
         x: quad.p2.x * scale + xOffset,
         y: quad.p2.y * scale + yOffset,
-        z: quad.p2.z * scale
+        z: quad.p2.z * scale,
       },
       p3: {
         w: quad.p3.w * scale,
         x: quad.p3.x * scale + xOffset,
         y: quad.p3.y * scale + yOffset,
-        z: quad.p3.z * scale
+        z: quad.p3.z * scale,
       },
       p4: {
         w: quad.p4.w * scale,
         x: quad.p4.x * scale + xOffset,
         y: quad.p4.y * scale + yOffset,
-        z: quad.p4.z * scale
+        z: quad.p4.z * scale,
       },
       bounds: {
         bottom: bounds.bottom * scale + yOffset,
@@ -253,8 +211,8 @@ function getAdjustedQuads(boundaryWindow, node, region) {
         top: bounds.top * scale + yOffset,
         width: bounds.width * scale,
         x: bounds.x * scale + xOffset,
-        y: bounds.y * scale + yOffset
-      }
+        y: bounds.y * scale + yOffset,
+      },
     });
   }
 
@@ -281,7 +239,7 @@ function getRect(boundaryWindow, node, contentWindow) {
   const clientRect = node.getBoundingClientRect();
 
   if (boundaryWindow === null) {
-    boundaryWindow = getTopWindow(frameWin);
+    boundaryWindow = DevToolsUtils.getTopWindow(frameWin);
   } else if (typeof boundaryWindow === "undefined") {
     throw new Error("No boundaryWindow given. Use null for the default one.");
   }
@@ -292,7 +250,7 @@ function getRect(boundaryWindow, node, contentWindow) {
     top: clientRect.top + contentWindow.pageYOffset,
     left: clientRect.left + contentWindow.pageXOffset,
     width: clientRect.width,
-    height: clientRect.height
+    height: clientRect.height,
   };
 
   // We iterate through all the parent windows.
@@ -312,7 +270,7 @@ function getRect(boundaryWindow, node, contentWindow) {
     rect.top += frameRect.top + offsetTop;
     rect.left += frameRect.left + offsetLeft;
 
-    frameWin = getParentWindow(frameWin);
+    frameWin = frameWin.parent;
   }
 
   return rect;
@@ -369,16 +327,16 @@ function getNodeBounds(boundaryWindow, node) {
   const height = node.offsetHeight * scale;
 
   return {
-    p1: {x: xOffset, y: yOffset},
-    p2: {x: xOffset + width, y: yOffset},
-    p3: {x: xOffset + width, y: yOffset + height},
-    p4: {x: xOffset, y: yOffset + height},
+    p1: { x: xOffset, y: yOffset },
+    p2: { x: xOffset + width, y: yOffset },
+    p3: { x: xOffset + width, y: yOffset + height },
+    p4: { x: xOffset, y: yOffset + height },
     top: yOffset,
     right: xOffset + width,
     bottom: yOffset + height,
     left: xOffset,
     width,
-    height
+    height,
   };
 }
 exports.getNodeBounds = getNodeBounds;
@@ -396,8 +354,9 @@ function safelyGetContentWindow(frame) {
     return frame.contentWindow;
   }
 
-  const walker = Cc["@mozilla.org/inspector/deep-tree-walker;1"]
-               .createInstance(Ci.inIDeepTreeWalker);
+  const walker = Cc["@mozilla.org/inspector/deep-tree-walker;1"].createInstance(
+    Ci.inIDeepTreeWalker
+  );
   walker.showSubDocuments = true;
   walker.showDocumentsAsNodes = true;
   walker.init(frame, nodeFilterConstants.SHOW_ALL);
@@ -455,8 +414,10 @@ function isNodeConnected(node) {
   }
 
   try {
-    return !(node.compareDocumentPosition(node.ownerDocument.documentElement) &
-             node.DOCUMENT_POSITION_DISCONNECTED);
+    return !(
+      node.compareDocumentPosition(node.ownerDocument.documentElement) &
+      node.DOCUMENT_POSITION_DISCONNECTED
+    );
   } catch (e) {
     // "can't access dead object" error
     return false;
@@ -512,7 +473,7 @@ exports.getBindingParent = getBindingParent;
  * @return {Boolean}
  *
  */
-const isAnonymous = (node) => getRootBindingParent(node) !== node;
+const isAnonymous = node => getRootBindingParent(node) !== node;
 exports.isAnonymous = isAnonymous;
 
 /**
@@ -522,7 +483,7 @@ exports.isAnonymous = isAnonymous;
  * @return {Boolean}
  *
  */
-const hasBindingParent = (node) => !!getBindingParent(node);
+const hasBindingParent = node => !!getBindingParent(node);
 
 /**
  * Determine whether a node is native anonymous content (as opposed
@@ -534,7 +495,7 @@ const hasBindingParent = (node) => !!getBindingParent(node);
  * @return {Boolean}
  *
  */
-const isNativeAnonymous = (node) =>
+const isNativeAnonymous = node =>
   hasBindingParent(node) && !(isXBLAnonymous(node) || isShadowAnonymous(node));
 
 exports.isNativeAnonymous = isNativeAnonymous;
@@ -554,7 +515,7 @@ function isXBLAnonymous(node) {
     return false;
   }
 
-  const anonNodes = [...node.ownerDocument.getAnonymousNodes(parent) || []];
+  const anonNodes = [...(node.ownerDocument.getAnonymousNodes(parent) || [])];
   return anonNodes.indexOf(node) > -1;
 }
 exports.isXBLAnonymous = isXBLAnonymous;
@@ -574,7 +535,10 @@ function isShadowAnonymous(node) {
 
   // If there is a shadowRoot and this is part of it then this
   // is not native anonymous
-  return parent.openOrClosedShadowRoot && parent.openOrClosedShadowRoot.contains(node);
+  return (
+    parent.openOrClosedShadowRoot &&
+    parent.openOrClosedShadowRoot.contains(node)
+  );
 }
 exports.isShadowAnonymous = isShadowAnonymous;
 
@@ -585,7 +549,9 @@ exports.isShadowAnonymous = isShadowAnonymous;
  * @return {Boolean}
  */
 function isTemplateElement(node) {
-  return node.ownerGlobal && node instanceof node.ownerGlobal.HTMLTemplateElement;
+  return (
+    node.ownerGlobal && node instanceof node.ownerGlobal.HTMLTemplateElement
+  );
 }
 exports.isTemplateElement = isTemplateElement;
 
@@ -634,8 +600,13 @@ exports.isShadowHost = isShadowHost;
  * @return {Boolean}
  */
 function isDirectShadowHostChild(node) {
-  // Pseudo elements are always part of the anonymous tree.
-  if (isBeforePseudoElement(node) || isAfterPseudoElement(node)) {
+  // Pseudo elements and native anonymous elements are always part of the anonymous tree.
+  if (
+    isMarkerPseudoElement(node) ||
+    isBeforePseudoElement(node) ||
+    isAfterPseudoElement(node) ||
+    isNativeAnonymous(node)
+  ) {
     return false;
   }
 
@@ -643,6 +614,17 @@ function isDirectShadowHostChild(node) {
   return parentNode && !!parentNode.openOrClosedShadowRoot;
 }
 exports.isDirectShadowHostChild = isDirectShadowHostChild;
+
+/**
+ * Determine whether a node is a ::marker pseudo.
+ *
+ * @param {DOMNode} node
+ * @return {Boolean}
+ */
+function isMarkerPseudoElement(node) {
+  return node.nodeName === "_moz_generated_content_marker";
+}
+exports.isMarkerPseudoElement = isMarkerPseudoElement;
 
 /**
  * Determine whether a node is a ::before pseudo.
@@ -763,6 +745,13 @@ exports.getViewportDimensions = getViewportDimensions;
  * @return {DOMWindow}
  */
 function getWindowFor(node) {
+  // Check if we are replaying, as the tests below don't work when inspecting
+  // nodes in another process.
+  if (isReplaying) {
+    // Multiple windows are not supported yet when replaying, so return the
+    // global window.
+    return ReplayInspector.window;
+  }
   if (Node.isInstance(node)) {
     if (node.nodeType === node.DOCUMENT_NODE) {
       return node.defaultView;
@@ -819,3 +808,152 @@ function removeSheet(window, url, type = "agent") {
   }
 }
 exports.removeSheet = removeSheet;
+
+/**
+ * Get the untransformed coordinates for a node.
+ *
+ * @param  {DOMNode} node
+ *         The node for which the DOMQuad is to be returned.
+ * @param  {String} region
+ *         The box model region to return: "content", "padding", "border" or
+ *         "margin".
+ * @return {DOMQuad}
+ *         A DOMQuad representation of the node.
+ */
+function getUntransformedQuad(node, region = "border") {
+  // Get the inverse transformation matrix for the node.
+  const matrix = node.getTransformToViewport();
+  const inverse = matrix.inverse();
+  const win = node.ownerGlobal;
+
+  // Get the adjusted quads for the node (including scroll offsets).
+  const quads = getAdjustedQuads(win, node, region, {
+    ignoreZoom: true,
+  });
+
+  // Create DOMPoints from the transformed node position.
+  const p1 = new DOMPoint(quads[0].p1.x, quads[0].p1.y);
+  const p2 = new DOMPoint(quads[0].p2.x, quads[0].p2.y);
+  const p3 = new DOMPoint(quads[0].p3.x, quads[0].p3.y);
+  const p4 = new DOMPoint(quads[0].p4.x, quads[0].p4.y);
+
+  // Apply the inverse transformation matrix to the points to get the
+  // untransformed points.
+  const ip1 = inverse.transformPoint(p1);
+  const ip2 = inverse.transformPoint(p2);
+  const ip3 = inverse.transformPoint(p3);
+  const ip4 = inverse.transformPoint(p4);
+
+  // Save the results in a DOMQuad.
+  const quad = new DOMQuad(
+    { x: ip1.x, y: ip1.y },
+    { x: ip2.x, y: ip2.y },
+    { x: ip3.x, y: ip3.y },
+    { x: ip4.x, y: ip4.y }
+  );
+
+  // Remove the border offsets because we include them when calculating
+  // offsets in the while loop.
+  const style = win.getComputedStyle(node);
+  const leftAdjustment = parseInt(style.borderLeftWidth, 10) || 0;
+  const topAdjustment = parseInt(style.borderTopWidth, 10) || 0;
+
+  quad.p1.x -= leftAdjustment;
+  quad.p2.x -= leftAdjustment;
+  quad.p3.x -= leftAdjustment;
+  quad.p4.x -= leftAdjustment;
+  quad.p1.y -= topAdjustment;
+  quad.p2.y -= topAdjustment;
+  quad.p3.y -= topAdjustment;
+  quad.p4.y -= topAdjustment;
+
+  // Calculate offsets.
+  while (node) {
+    const nodeStyle = win.getComputedStyle(node);
+    const borderLeftWidth = parseInt(nodeStyle.borderLeftWidth, 10) || 0;
+    const borderTopWidth = parseInt(nodeStyle.borderTopWidth, 10) || 0;
+    const leftOffset = node.offsetLeft - node.scrollLeft + borderLeftWidth;
+    const topOffset = node.offsetTop - node.scrollTop + borderTopWidth;
+
+    quad.p1.x += leftOffset;
+    quad.p2.x += leftOffset;
+    quad.p3.x += leftOffset;
+    quad.p4.x += leftOffset;
+    quad.p1.y += topOffset;
+    quad.p2.y += topOffset;
+    quad.p3.y += topOffset;
+    quad.p4.y += topOffset;
+
+    node = node.offsetParent;
+  }
+
+  return quad;
+}
+exports.getUntransformedQuad = getUntransformedQuad;
+
+/**
+ * Calculate the total of the node and all of its ancestor's scrollTop and
+ * scrollLeft values.
+ *
+ * @param  {DOMNode} node
+ *         The node for which the absolute scroll offsets should be calculated.
+ * @return {Object} object
+ *         An object containing scrollTop and scrollLeft values.
+ * @return {Number} object.scrollLeft
+ *         The total scrollLeft values of the node and all of its ancestors.
+ * @return {Number} object.scrollTop
+ *         The total scrollTop values of the node and all of its ancestors.
+ */
+function getAbsoluteScrollOffsetsForNode(node) {
+  const doc = node.ownerDocument;
+
+  // Our walker will only iterate up to document.body so we start by saving the
+  // scroll values for `document.documentElement`.
+  let scrollTop = doc.documentElement.scrollTop;
+  let scrollLeft = doc.documentElement.scrollLeft;
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+  walker.currentNode = node;
+  let currentNode = walker.currentNode;
+
+  // Iterate from `node` up the tree to `document.body` adding scroll offsets
+  // as we go.
+  while (currentNode) {
+    const nodeScrollTop = currentNode.scrollTop;
+    const nodeScrollLeft = currentNode.scrollLeft;
+
+    if (nodeScrollTop || nodeScrollLeft) {
+      scrollTop += nodeScrollTop;
+      scrollLeft += nodeScrollLeft;
+    }
+
+    currentNode = walker.parentNode();
+  }
+
+  return {
+    scrollLeft,
+    scrollTop,
+  };
+}
+exports.getAbsoluteScrollOffsetsForNode = getAbsoluteScrollOffsetsForNode;
+
+/**
+ * Check if the provided node is representing a remote frame.
+ *
+ * - In the context of the browser toolbox, a remote frame can be the <browser remote>
+ * element found inside each tab.
+ * - In the context of the content toolbox, a remote frame can be a <iframe> that contains
+ * a different origin document.
+ *
+ * For now, this function only checks the former.
+ *
+ * @param  {DOMNode} node
+ * @return {Boolean}
+ */
+function isRemoteFrame(node) {
+  return (
+    node.childNodes.length == 0 &&
+    ChromeUtils.getClassName(node) == "XULFrameElement" &&
+    node.getAttribute("remote") == "true"
+  );
+}
+exports.isRemoteFrame = isRemoteFrame;

@@ -14,22 +14,57 @@ const getWaterfallScale = createSelector(
   state => state.timingMarkers,
   state => state.ui,
   (requests, timingMarkers, ui) => {
-    if (requests.firstStartedMillis === +Infinity || ui.waterfallWidth === null) {
+    if (requests.firstStartedMs === +Infinity || ui.waterfallWidth === null) {
       return null;
     }
 
-    const lastEventMillis = Math.max(requests.lastEndedMillis,
-                                     timingMarkers.firstDocumentDOMContentLoadedTimestamp,
-                                     timingMarkers.firstDocumentLoadTimestamp);
-    const longestWidth = lastEventMillis - requests.firstStartedMillis;
+    const lastEventMs = Math.max(
+      requests.lastEndedMs,
+      timingMarkers.firstDocumentDOMContentLoadedTimestamp,
+      timingMarkers.firstDocumentLoadTimestamp
+    );
+    const longestWidth = lastEventMs - requests.firstStartedMs;
 
-  // Reduce 20px for the last request's requests-list-timings-total
-    return Math.min(Math.max(
-      (ui.waterfallWidth - REQUESTS_WATERFALL.LABEL_WIDTH - 20) / longestWidth,
-      EPSILON), 1);
+    // Reduce 20px for the last request's requests-list-timings-total
+    return Math.min(
+      Math.max(
+        (ui.waterfallWidth - REQUESTS_WATERFALL.LABEL_WIDTH - 20) /
+          longestWidth,
+        EPSILON
+      ),
+      1
+    );
+  }
+);
+
+function getVisibleColumns(columns) {
+  return Object.entries(columns).filter(([_, shown]) => shown);
+}
+
+const getColumns = createSelector(
+  state => state.ui,
+  state => state.search,
+  (ui, search) => {
+    if (
+      ((ui.networkDetailsOpen || search.panelOpen) &&
+        getVisibleColumns(ui.columns).length === 1 &&
+        ui.columns.waterfall) ||
+      (!ui.networkDetailsOpen && !search.panelOpen)
+    ) {
+      return ui.columns;
+    }
+
+    // Remove the Waterfall/Timeline column from the list of available
+    // columns if the details side-bar is opened and more than one column is
+    // visible.
+    const columns = { ...ui.columns };
+    delete columns.waterfall;
+    return columns;
   }
 );
 
 module.exports = {
+  getColumns,
+  getVisibleColumns,
   getWaterfallScale,
 };

@@ -20,12 +20,12 @@
  * Any of these methods may throw NS_ERROR_OUT_OF_MEMORY when the
  * array must grow to complete the call, but the allocation fails.
  */
-[scriptable, uuid(af059da0-c85b-40ec-af07-ae4bfdc192cc)]
+[scriptable, builtinclass, uuid(af059da0-c85b-40ec-af07-ae4bfdc192cc)]
 interface nsIMutableArray : nsIArrayExtensions
 {
     /**
      * appendElement()
-     * 
+     *
      * Append an element at the end of the array.
      *
      * @param element The element to append.
@@ -34,7 +34,7 @@ interface nsIMutableArray : nsIArrayExtensions
 
     /**
      * removeElementAt()
-     * 
+     *
      * Remove an element at a specific position, moving all elements
      * stored at a higher position down one.
      * To remove a specific element, use indexOf() to find the index
@@ -48,7 +48,7 @@ interface nsIMutableArray : nsIArrayExtensions
     /**
      * insertElementAt()
      *
-     * Insert an element at the given position, moving the element 
+     * Insert an element at the given position, moving the element
      * currently located in that position, and all elements in higher
      * position, up by one.
      *
@@ -81,8 +81,8 @@ interface nsIMutableArray : nsIArrayExtensions
      *                An index lower than 0 is invalid and will be ignored.
      */
     void replaceElementAt(in nsISupports element, in unsigned long index);
-    
-    
+
+
     /**
      * clear()
      *

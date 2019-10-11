@@ -35,15 +35,40 @@
       "type": "string",
       "description": "Snippet icon. 64x64px. SVG or PNG preferred."
     },
+    "icon_dark_theme": {
+      "type": "string",
+      "description": "Snippet icon, dark theme variant. 64x64px. SVG or PNG preferred."
+    },
+    "icon_alt_text": {
+      "type": "string",
+      "description": "Alt text describing icon for screen readers",
+      "default": ""
+    },
     "title_icon": {
       "type": "string",
       "description": "Small icon that shows up before the title / text. 16x16px. SVG or PNG preferred. Grayscale."
+    },
+    "title_icon_dark_theme": {
+      "type": "string",
+      "description": "Small icon that shows up before the title / text. Dark theme variant. 16x16px. SVG or PNG preferred. Grayscale."
+    },
+    "title_icon_alt_text": {
+      "type": "string",
+      "description": "Alt text describing title icon for screen readers",
+      "default": ""
+    },
+    "button_action": {
+      "type": "string",
+      "description": "The type of action the button should trigger."
     },
     "button_url": {
       "allOf": [
         {"$ref": "#/definitions/link_url"},
         {"description": "A url, button_label links to this"}
       ]
+    },
+    "button_action_args": {
+      "description": "Additional parameters for button action, example which specific menu the button should open"
     },
     "button_label": {
       "allOf": [
@@ -59,14 +84,18 @@
       "type": "string",
       "description": "The background color of the button. Valid CSS color."
     },
-    "button_type": {
+    "block_button_text": {
       "type": "string",
-      "enum": ["anchor", "button"],
-      "description": "(**temporary**, until we get html support in text field Bug 1457233) Style for button, either a regular button or a text link."
+      "description": "Tooltip text used for dismiss button.",
+      "default": "Remove this"
     },
     "tall": {
       "type": "boolean",
       "description": "To be used by fundraising only, increases height to roughly 120px. Defaults to false."
+    },
+    "do_not_autoblock": {
+      "type": "boolean",
+      "description": "Used to prevent blocking the snippet after the CTA (link or button) has been clicked"
     },
     "links": {
       "additionalProperties": {
@@ -79,17 +108,39 @@
         "metric": {
           "type": "string",
           "description": "Custom event name sent with telemetry event."
+        },
+        "args": {
+          "type": "string",
+          "description": "Additional parameters for link action, example which specific menu the button should open"
         }
       }
+    },
+    "section_title_icon": {
+      "type": "string",
+      "description": "Section title icon. 16x16px. SVG or PNG preferred. section_title_text must also be specified to display."
+    },
+    "section_title_icon_dark_theme": {
+      "type": "string",
+      "description": "Section title icon, dark theme variant. 16x16px. SVG or PNG preferred. section_title_text must also be specified to display."
+    },
+    "section_title_text": {
+      "type": "string",
+      "description": "Section title text. section_title_icon must also be specified to display."
+    },
+    "section_title_url": {
+      "allOf": [
+        {"$ref": "#/definitions/link_url"},
+        {"description": "A url, section_title_text links to this"}
+      ]
     }
   },
   "additionalProperties": false,
   "required": ["text"],
   "dependencies": {
+    "button_action": ["button_label"],
     "button_url": ["button_label"],
-    "button_label": ["button_url"],
-    "button_type": ["button_url"],
-    "button_color": ["button_url"],
-    "button_background_color": ["button_url"]
+    "button_color": ["button_label"],
+    "button_background_color": ["button_label"],
+    "section_title_url": ["section_title_text"]
   }
 }

@@ -2,8 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 ChromeUtils.import("resource://services-sync/engines/tabs.js");
-ChromeUtils.import("resource://services-sync/service.js");
-ChromeUtils.import("resource://services-sync/util.js");
+const { Service } = ChromeUtils.import("resource://services-sync/service.js");
 
 let clientsEngine;
 
@@ -16,35 +15,32 @@ function fakeSvcWinMediator() {
   // actions on windows are captured in logs
   let logs = [];
   delete Services.wm;
+
+  function getNext() {
+    let elt = { addTopics: [], remTopics: [], numAPL: 0, numRPL: 0 };
+    logs.push(elt);
+    return {
+      addEventListener(topic) {
+        elt.addTopics.push(topic);
+      },
+      removeEventListener(topic) {
+        elt.remTopics.push(topic);
+      },
+      gBrowser: {
+        addProgressListener() {
+          elt.numAPL++;
+        },
+        removeProgressListener() {
+          elt.numRPL++;
+        },
+      },
+    };
+  }
+
   Services.wm = {
     getEnumerator() {
-      return {
-        cnt: 2,
-        hasMoreElements() {
-          return this.cnt-- > 0;
-        },
-        getNext() {
-          let elt = {addTopics: [], remTopics: [], numAPL: 0, numRPL: 0};
-          logs.push(elt);
-          return {
-            addEventListener(topic) {
-              elt.addTopics.push(topic);
-            },
-            removeEventListener(topic) {
-              elt.remTopics.push(topic);
-            },
-            gBrowser: {
-              addProgressListener() {
-                elt.numAPL++;
-              },
-              removeProgressListener() {
-                elt.numRPL++;
-              },
-            },
-          };
-        }
-      };
-    }
+      return [getNext(), getNext()];
+    },
   };
   return logs;
 }
@@ -57,8 +53,11 @@ add_task(async function run_test() {
   tracker.persistChangedIDs = false;
 
   Assert.ok(tracker.modified);
-  Assert.ok(Utils.deepEquals(Object.keys((await engine.getChangedIDs())),
-                             [clientsEngine.localID]));
+  Assert.ok(
+    Utils.deepEquals(Object.keys(await engine.getChangedIDs()), [
+      clientsEngine.localID,
+    ])
+  );
 
   let logs;
 
@@ -101,19 +100,25 @@ add_task(async function run_test() {
     Assert.ok(!tracker.modified);
 
     // Send a fake tab event
-    tracker.onTab({type: evttype, originalTarget: evttype});
+    tracker.onTab({ type: evttype, originalTarget: evttype });
     Assert.ok(tracker.modified);
-    Assert.ok(Utils.deepEquals(Object.keys((await engine.getChangedIDs())),
-                               [clientsEngine.localID]));
+    Assert.ok(
+      Utils.deepEquals(Object.keys(await engine.getChangedIDs()), [
+        clientsEngine.localID,
+      ])
+    );
   }
 
   // Pretend we just synced.
   await tracker.clearChangedIDs();
   Assert.ok(!tracker.modified);
 
-  tracker.onTab({type: "pageshow", originalTarget: "pageshow"});
-  Assert.ok(Utils.deepEquals(Object.keys((await engine.getChangedIDs())),
-                             [clientsEngine.localID]));
+  tracker.onTab({ type: "pageshow", originalTarget: "pageshow" });
+  Assert.ok(
+    Utils.deepEquals(Object.keys(await engine.getChangedIDs()), [
+      clientsEngine.localID,
+    ])
+  );
 
   // Pretend we just synced and saw some progress listeners.
   await tracker.clearChangedIDs();
@@ -121,12 +126,25 @@ add_task(async function run_test() {
   tracker.onLocationChange({ isTopLevel: false }, undefined, undefined, 0);
   Assert.ok(!tracker.modified, "non-toplevel request didn't flag as modified");
 
-  tracker.onLocationChange({ isTopLevel: true }, undefined, undefined,
-                           Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT);
-  Assert.ok(!tracker.modified, "location change within the same document request didn't flag as modified");
+  tracker.onLocationChange(
+    { isTopLevel: true },
+    undefined,
+    undefined,
+    Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT
+  );
+  Assert.ok(
+    !tracker.modified,
+    "location change within the same document request didn't flag as modified"
+  );
 
   tracker.onLocationChange({ isTopLevel: true }, undefined, undefined, 0);
-  Assert.ok(tracker.modified, "location change for a new top-level document flagged as modified");
-  Assert.ok(Utils.deepEquals(Object.keys((await engine.getChangedIDs())),
-                             [clientsEngine.localID]));
+  Assert.ok(
+    tracker.modified,
+    "location change for a new top-level document flagged as modified"
+  );
+  Assert.ok(
+    Utils.deepEquals(Object.keys(await engine.getChangedIDs()), [
+      clientsEngine.localID,
+    ])
+  );
 });

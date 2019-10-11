@@ -2,7 +2,7 @@
 <html><head>
 <meta http-equiv="content-type" content="text/html; charset=windows-1252">
   <title>MSE: Don't get stuck buffering for too long when we have frames to show</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript" src="mediasource.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -39,8 +39,8 @@ runWithMSE(async (ms, v) => {
   await fetchAndLoad(sb, "bipbop/bipbop_480_624kbps-video", ["1"], ".m4s");
   ms.endOfStream();
   await Promise.all([once(ms, "sourceended"), once(v, "playing"), once(v, "ended")]);
-  if (v.width, 640, "has proper width");
-  if (v.height, 480, "has proper height");
+  is(v.videoWidth, 640, "has proper width");
+  is(v.videoHeight, 480, "has proper height");
   SimpleTest.finish();
 });
 </script>

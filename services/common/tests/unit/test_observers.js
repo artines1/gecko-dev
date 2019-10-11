@@ -1,7 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-ChromeUtils.import("resource://services-common/observers.js");
+const { Observers } = ChromeUtils.import(
+  "resource://services-common/observers.js"
+);
 
 var gSubject = {};
 
@@ -36,7 +38,7 @@ add_test(function test_method_observer() {
       this.foo = !this.foo;
       Assert.equal(subject, gSubject);
       Assert.equal(data, "some data");
-    }
+    },
   };
 
   // The observer is notified after being added.
@@ -61,7 +63,7 @@ add_test(function test_object_observer() {
       Assert.equal(subject, gSubject);
       Assert.equal(topic, "foo");
       Assert.equal(data, "some data");
-    }
+    },
   };
 
   Observers.add("foo", obj);

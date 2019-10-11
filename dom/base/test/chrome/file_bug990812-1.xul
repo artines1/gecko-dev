@@ -19,7 +19,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=990812
     var globalMM = Cc["@mozilla.org/globalmessagemanager;1"].getService();
 
     function is(val, exp, msg) {
-      opener.wrappedJSObject.is(val, exp, msg);
+      window.arguments[0].is(val, exp, msg);
     }
 
     /**
@@ -37,15 +37,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=990812
 
       messageManager.addMessageListener("test", function onMessage(msg) {
         var next = order.shift();
-        opener.wrappedJSObject.is(msg.data, next, "received test:" + next);
+        window.arguments[0].is(msg.data, next, "received test:" + next);
 
         if (order.length == 0) {
-          opener.setTimeout("next()");
+          window.arguments[0].setTimeout(function() { this.next(); });
           window.close();
         }
       });
 
-      var browser = document.createElement("browser");
+      var browser = document.createXULElement("browser");
       browser.setAttribute("messagemanagergroup", "test");
       browser.setAttribute("src", "about:mozilla");
       browser.setAttribute("type", "content");

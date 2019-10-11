@@ -12,18 +12,20 @@ include URIParams;
 include PBackgroundSharedTypes;
 include NeckoChannelParams;
 include IPCServiceWorkerDescriptor;
+include IPCStream;
 
 include "mozilla/net/NeckoMessageUtils.h";
 
 using class nsHttpHeaderArray from "nsHttpHeaderArray.h";
 using mozilla::net::NetAddr from "mozilla/net/DNS.h";
 using struct mozilla::net::ResourceTimingStruct from "mozilla/net/TimingStruct.h";
+using refcounted class nsIReferrerInfo from "mozilla/dom/ReferrerInfoUtils.h";
 
 namespace mozilla {
 namespace net {
 
 //-------------------------------------------------------------------
-protocol PHttpChannel
+refcounted protocol PHttpChannel
 {
   manager PNecko;
 
@@ -35,8 +37,6 @@ parent:
 
   async SetCacheTokenCachedCharset(nsCString charset);
 
-  async UpdateAssociatedContentSecurity(int32_t broken,
-                                        int32_t no);
   async Suspend();
   async Resume();
 
@@ -44,11 +44,11 @@ parent:
 
   // Reports approval/veto of redirect by child process redirect observers
   async Redirect2Verify(nsresult result, RequestHeaderTuples changedHeaders,
-                        ChildLoadInfoForwarderArgs loadInfoForwarder,
-                        uint32_t loadFlags, uint32_t referrerPolicy,
-                        OptionalURIParams referrerUri,
-                        OptionalURIParams apiRedirectTo,
-                        OptionalCorsPreflightArgs corsPreflightArgs,
+                        uint32_t sourceRequestBlockingReason,
+                        ChildLoadInfoForwarderArgs targetLoadInfoForwarder,
+                        uint32_t loadFlags, nsIReferrerInfo referrerInfo,
+                        URIParams? apiRedirectTo,
+                        CorsPreflightArgs? corsPreflightArgs,
                         bool chooseAppcache);
 
   // For document loads we keep this protocol open after child's
@@ -91,6 +91,16 @@ parent:
   // sure not to send any more messages after that.
   async DeletingChannel();
 
+  // Called to get the input stream when altData was delivered.
+  async OpenOriginalCacheInputStream();
+
+  // Called to get the input stream when altData is available.
+  async OpenAltDataCacheInputStream(nsCString aType);
+
+  // Tell the parent the amount bytes read by child for the e10s back pressure
+  // flow control
+  async BytesRead(int32_t count);
+
   async __delete__();
 
 child:
@@ -100,6 +110,7 @@ child:
                        nsHttpHeaderArray   requestHeaders,
                        ParentLoadInfoForwarderArgs loadInfoForwarder,
                        bool                isFromCache,
+                       bool                isRacing,
                        bool                cacheEntryAvailable,
                        uint64_t            cacheEntryId,
                        int32_t             cacheFetchCount,
@@ -112,8 +123,11 @@ child:
                        uint32_t            cacheKey,
                        nsCString           altDataType,
                        int64_t             altDataLength,
+                       bool                deliveringAltData,
                        bool                applyConversion,
-                       ResourceTimingStruct timing);
+                       bool                isResolvedByTRR,
+                       ResourceTimingStruct timing,
+                       bool                allRedirectsSameOrigin);
 
   // Used to cancel child channel if we hit errors during creating and
   // AsyncOpen of nsHttpChannel on the parent.
@@ -129,7 +143,8 @@ child:
                        nsHttpResponseHead responseHead,
                        nsCString          securityInfoSerialization,
                        uint64_t           channelId,
-                       NetAddr            oldPeerAddr);
+                       NetAddr            oldPeerAddr,
+                       ResourceTimingStruct timing);
 
   // Called if redirect successful so that child can complete setup.
   async Redirect3Complete();
@@ -141,6 +156,11 @@ child:
   // Report a security message to the console associated with this
   // channel.
   async ReportSecurityMessage(nsString messageTag, nsString messageCategory);
+
+  // This message is sent to a child that has been redirected to another process.
+  // As a consequence, it should cleanup the channel listeners and remove the
+  // request from the loadGroup.
+  async CancelRedirected();
 
   // Tell child to delete channel (all IPDL deletes must be done from child to
   // avoid races: see bug 591708).
@@ -154,10 +174,19 @@ child:
   // console.
   async LogBlockedCORSRequest(nsString message, nsCString category);
 
+  async LogMimeTypeMismatch(nsCString messageName,
+                            bool warning,
+                            nsString url,
+                            nsString contentType);
+
   async AttachStreamFilter(Endpoint<PStreamFilterParent> aEndpoint);
 
   // See ADivertableParentChannel::CancelDiversion
   async CancelDiversion();
+
+  async OriginalCacheInputStreamAvailable(IPCStream? stream);
+
+  async AltDataCacheInputStreamAvailable(IPCStream? stream);
 
 both:
   // After receiving this message, the parent also calls

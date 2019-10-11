@@ -1,4 +1,3 @@
-// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright 2017 Leo Balter. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,6 +20,8 @@ features: [BigInt, Symbol, Symbol.toPrimitive]
 ---*/
 
 var toString = BigInt.prototype.toString;
+
+assert.sameValue(typeof toString, 'function');
 
 assert.throws(TypeError, function() {
   toString.call({

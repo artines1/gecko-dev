@@ -15,7 +15,7 @@ function assertOffsetColumns(code, expectedBpts, expectedOrdering = null) {
     }
 
     // Define the function `f` in a new global.
-    const global = newGlobal();
+    const global = newGlobal({newCompartment: true});
 
     const lines = code.split(/\r?\n|\r]/g);
     const initCode = lines.slice(0, -1).join("\n");
@@ -33,7 +33,12 @@ function assertOffsetColumns(code, expectedBpts, expectedOrdering = null) {
 
     // Set breakpoints everywhere and call the function.
     const dbg = new Debugger;
-    const script = dbg.addDebuggee(global).makeDebuggeeValue(global.f).script;
+    let debuggeeFn = dbg.addDebuggee(global).makeDebuggeeValue(global.f);
+    if (debuggeeFn.isBoundFunction) {
+        debuggeeFn = debuggeeFn.boundTargetFunction;
+    }
+
+    const { script } = debuggeeFn;
     for (const offset of script.getAllColumnOffsets()) {
         assertEq(offset.lineNumber, 1);
         assertEq(offset.columnNumber < execCode.length, true);

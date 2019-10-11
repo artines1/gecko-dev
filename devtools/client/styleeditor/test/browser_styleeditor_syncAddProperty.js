@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -27,8 +26,11 @@ add_task(async function() {
   info("Focusing a new property name in the rule-view");
   const ruleEditor = getRuleViewRuleEditor(view, 1);
   const editor = await focusEditableField(view, ruleEditor.closeBrace);
-  is(inplaceEditor(ruleEditor.newPropSpan), editor,
-    "The new property editor has focus");
+  is(
+    inplaceEditor(ruleEditor.newPropSpan),
+    editor,
+    "The new property editor has focus"
+  );
 
   const input = editor.input;
   input.value = "/* background-color: yellow; */";

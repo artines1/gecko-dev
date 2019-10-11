@@ -2,8 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this,
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# If we add unicode_literals, Python 2.6.1 (required for OS X 10.6) breaks.
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import, print_function, unicode_literals
 
 import errno
 import os
@@ -14,7 +13,7 @@ import sys
 # We need the NDK version in multiple different places, and it's inconvenient
 # to pass down the NDK version to all relevant places, so we have this global
 # variable.
-NDK_VERSION = 'r15c'
+NDK_VERSION = 'r20'
 
 ANDROID_NDK_EXISTS = '''
 Looks like you have the Android NDK installed at:
@@ -47,14 +46,19 @@ Paste the lines between the chevrons (>>> and <<<) into your
 $topsrcdir/mozconfig file, or create the file if it does not exist:
 
 >>>
-# Build Firefox for Android:
+# Build GeckoView/Firefox for Android:
 ac_add_options --enable-application=mobile/android
-ac_add_options --target=arm-linux-androideabi
+
+# Targeting the following architecture.
+# For regular phones, no --target is needed.
+# For x86 emulators (and x86 devices, which are uncommon):
+# ac_add_options --target=i686
+# For newer phones.
+# ac_add_options --target=aarch64
+# For x86_64 emulators (and x86_64 devices, which are even less common):
+# ac_add_options --target=x86_64
 
 {extra_lines}
-# With the following Android SDK and NDK:
-ac_add_options --with-android-sdk="{sdk_path}"
-ac_add_options --with-android-ndk="{ndk_path}"
 <<<
 '''
 
@@ -63,15 +67,12 @@ Paste the lines between the chevrons (>>> and <<<) into your
 $topsrcdir/mozconfig file, or create the file if it does not exist:
 
 >>>
-# Build Firefox for Android Artifact Mode:
+# Build GeckoView/Firefox for Android Artifact Mode:
 ac_add_options --enable-application=mobile/android
 ac_add_options --target=arm-linux-androideabi
 ac_add_options --enable-artifact-builds
 
 {extra_lines}
-# With the following Android SDK:
-ac_add_options --with-android-sdk="{sdk_path}"
-
 # Write build artifacts to:
 mk_add_options MOZ_OBJDIR=./objdir-frontend
 <<<
@@ -150,6 +151,12 @@ def get_paths(os_name):
     return (mozbuild_path, sdk_path, ndk_path)
 
 
+def sdkmanager_tool(sdk_path):
+    # sys.platform is win32 even if Python/Win64.
+    sdkmanager = 'sdkmanager.bat' if sys.platform.startswith('win') else 'sdkmanager'
+    return os.path.join(sdk_path, 'tools', 'bin', sdkmanager)
+
+
 def ensure_dir(dir):
     '''Ensures the given directory exists'''
     if dir and not os.path.exists(dir):
@@ -175,7 +182,7 @@ def ensure_android(os_name, artifact_mode=False, ndk_only=False, no_interactive=
     # ~/.mozbuild/{android-sdk-$OS_NAME, android-ndk-$VER}.
     mozbuild_path, sdk_path, ndk_path = get_paths(os_name)
     os_tag = 'darwin' if os_name == 'macosx' else os_name
-    sdk_url = 'https://dl.google.com/android/repository/sdk-tools-{0}-3859397.zip'.format(os_tag)
+    sdk_url = 'https://dl.google.com/android/repository/sdk-tools-{0}-4333796.zip'.format(os_tag)
     ndk_url = android_ndk_url(os_name)
 
     ensure_android_sdk_and_ndk(mozbuild_path, os_name,
@@ -189,8 +196,8 @@ def ensure_android(os_name, artifact_mode=False, ndk_only=False, no_interactive=
 
     # We expect the |sdkmanager| tool to be at
     # ~/.mozbuild/android-sdk-$OS_NAME/tools/bin/sdkmanager.
-    sdkmanager_tool = os.path.join(sdk_path, 'tools', 'bin', 'sdkmanager')
-    ensure_android_packages(sdkmanager_tool=sdkmanager_tool, no_interactive=no_interactive)
+    ensure_android_packages(sdkmanager_tool=sdkmanager_tool(sdk_path),
+                            no_interactive=no_interactive)
 
 
 def ensure_android_sdk_and_ndk(mozbuild_path, os_name, sdk_path, sdk_url, ndk_path, ndk_url,
@@ -219,7 +226,7 @@ def ensure_android_sdk_and_ndk(mozbuild_path, os_name, sdk_path, sdk_url, ndk_pa
     # |sdkmanager| tool to install additional parts of the Android
     # toolchain.  If we overwrite, we lose whatever Android packages
     # the user may have already installed.
-    if os.path.isfile(os.path.join(sdk_path, 'tools', 'bin', 'sdkmanager')):
+    if os.path.isfile(sdkmanager_tool(sdk_path)):
         print(ANDROID_SDK_EXISTS % sdk_path)
     elif os.path.isdir(sdk_path):
         raise NotImplementedError(ANDROID_SDK_TOO_OLD % sdk_path)
@@ -273,7 +280,7 @@ def ensure_android_packages(sdkmanager_tool, packages=None, no_interactive=False
 
     # Emulate yes.  For a discussion of passing input to check_output,
     # see https://stackoverflow.com/q/10103551.
-    yes = '\n'.join(['y']*100)
+    yes = '\n'.join(['y']*100).encode("UTF-8")
     proc = subprocess.Popen(args,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT,
@@ -290,15 +297,10 @@ def ensure_android_packages(sdkmanager_tool, packages=None, no_interactive=False
     print(output)
 
 
-def suggest_mozconfig(os_name, artifact_mode=False, java_bin_path=None):
-    _mozbuild_path, sdk_path, ndk_path = get_paths(os_name)
+def suggest_mozconfig(os_name, artifact_mode=False):
+    moz_state_dir, sdk_path, ndk_path = get_paths(os_name)
 
     extra_lines = []
-    if java_bin_path:
-        extra_lines += [
-            '# With the following java and javac:',
-            'ac_add_options --with-java-bin-path="{}"'.format(java_bin_path),
-        ]
     if extra_lines:
         extra_lines.append('')
 
@@ -310,6 +312,7 @@ def suggest_mozconfig(os_name, artifact_mode=False, java_bin_path=None):
     kwargs = dict(
         sdk_path=sdk_path,
         ndk_path=ndk_path,
+        moz_state_dir=moz_state_dir,
         extra_lines='\n'.join(extra_lines),
     )
     print(template.format(**kwargs))

@@ -1,7 +1,7 @@
 <html>
 <head>
   <title>Bug 1251238 - track service worker install time</title>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"?>
 </head>
 <iframe id="iframe"></iframe>
@@ -56,13 +56,13 @@ let expectedResults = [
   {
     state: State.REDUNDANT, installedTimeRecorded: true,
     activatedTimeRecorded: true, redundantTimeRecorded: true
-  }
+  },
 ];
 
 function waitForRegister(aScope, aCallback) {
   return new Promise(function (aResolve) {
     let listener = {
-      onRegister: function (aRegistration) {
+      onRegister (aRegistration) {
         if (aRegistration.scope !== aScope) {
           return;
         }
@@ -78,7 +78,7 @@ function waitForRegister(aScope, aCallback) {
 function waitForUnregister(aScope) {
   return new Promise(function (aResolve) {
     let listener = {
-      onUnregister: function (aRegistration) {
+      onUnregister (aRegistration) {
         if (aRegistration.scope !== aScope) {
           return;
         }

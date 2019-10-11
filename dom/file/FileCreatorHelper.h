@@ -15,76 +15,28 @@
 // Undefine the macro of CreateFile to avoid FileCreatorHelper#CreateFile being
 // replaced by FileCreatorHelper#CreateFileW.
 #ifdef CreateFile
-#undef CreateFile
+#  undef CreateFile
 #endif
 
 class nsIFile;
 class nsIGlobalObject;
-class nsPIDOMWindowInner;
 
 namespace mozilla {
 namespace dom {
 
 struct ChromeFilePropertyBag;
 class Promise;
-class File;
 
-class FileCreatorHelper final
-{
-public:
-  NS_INLINE_DECL_REFCOUNTING(FileCreatorHelper);
-
-  static already_AddRefed<Promise>
-  CreateFile(nsIGlobalObject* aGlobalObject,
-             nsIFile* aFile,
-             const ChromeFilePropertyBag& aBag,
-             bool aIsFromNsIFile,
-             ErrorResult& aRv);
-
-  void
-  ResponseReceived(BlobImpl* aBlobImpl, nsresult aRv);
-
-  // For IPC only
-  static nsresult
-  CreateBlobImplForIPC(const nsAString& aPath,
-                       const nsAString& aType,
-                       const nsAString& aName,
-                       bool aLastModifiedPassed,
-                       int64_t aLastModified,
-                       bool aExistenceCheck,
-                       bool aIsFromNsIFile,
-                       BlobImpl** aBlobImpl);
-
-private:
-  static already_AddRefed<File>
-  CreateFileInternal(nsPIDOMWindowInner* aWindow,
-                     nsIFile* aFile,
-                     const ChromeFilePropertyBag& aBag,
-                     bool aIsFromNsIFile,
-                     ErrorResult& aRv);
-
-  static nsresult
-  CreateBlobImpl(nsIFile* aFile,
-                 const nsAString& aType,
-                 const nsAString& aName,
-                 bool aLastModifiedPassed,
-                 int64_t aLastModified,
-                 bool aExistenceCheck,
-                 bool aIsFromNsIFile,
-                 BlobImpl** aBlobImpl);
-
-  FileCreatorHelper(Promise* aPromise, nsPIDOMWindowInner* aWindow);
-  ~FileCreatorHelper();
-
-  void
-  SendRequest(nsIFile* aFile, const ChromeFilePropertyBag& aBag,
-              bool aIsFromNsIFile, ErrorResult& aRv);
-
-  RefPtr<Promise> mPromise;
-  nsCOMPtr<nsPIDOMWindowInner> mWindow;
+class FileCreatorHelper final {
+ public:
+  static already_AddRefed<Promise> CreateFile(nsIGlobalObject* aGlobalObject,
+                                              nsIFile* aFile,
+                                              const ChromeFilePropertyBag& aBag,
+                                              bool aIsFromNsIFile,
+                                              ErrorResult& aRv);
 };
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_FileCreatorHelper_h
+#endif  // mozilla_dom_FileCreatorHelper_h

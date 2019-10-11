@@ -5,10 +5,12 @@
 DIRS += [
     'actions',
     'components',
+    'modules',
     'reducers',
 ]
 
 DevToolsModules(
+	'base.css',
     'constants.js',
     'create-store.js',
 )

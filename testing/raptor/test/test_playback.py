@@ -1,6 +1,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import os
+import time
 
 import mozinfo
 import mozunit
@@ -9,9 +10,14 @@ from mozlog.structuredlog import set_default_logger, StructuredLogger
 
 set_default_logger(StructuredLogger('test_playback'))
 
-from raptor.playback import get_playback, Mitmproxy
+from mozproxy import get_playback
+from mozproxy.backends.mitm import MitmproxyDesktop
 
 config = {}
+
+run_local = True
+if os.environ.get('TOOLTOOLCACHE') is None:
+    run_local = False
 
 
 def test_get_playback(get_binary):
@@ -22,12 +28,23 @@ def test_get_playback(get_binary):
         return
     config['obj_path'] = os.path.dirname(get_binary('firefox'))
     config['playback_tool'] = 'mitmproxy'
-    config['playback_binary_manifest'] = 'mitmproxy-rel-bin-osx.manifest'
-    config['playback_pageset_manifest'] = 'mitmproxy-playback-set.manifest'
-    config['playback_recordings'] = 'mitmproxy-recording-amazon.mp'
+    config['playback_version'] = '4.0.4'
+    config['playback_binary_manifest'] = 'mitmproxy-rel-bin-4.0.4-{platform}.manifest'
+    config['playback_pageset_manifest'] = os.path.join(
+        os.path.dirname(os.path.abspath(os.path.dirname(__file__))), "raptor", "playback",
+        'mitm4-linux-firefox-amazon.manifest')
+    config['playback_recordings'] = 'amazon.mp'
     config['binary'] = get_binary('firefox')
+    config['run_local'] = run_local
+    config['app'] = 'firefox'
+    config['host'] = 'https://www.amazon.com/s?k=laptop&ref=nb_sb_noss_1'
+
     playback = get_playback(config)
-    assert isinstance(playback, Mitmproxy)
+    playback.config['playback_files'] = [os.path.join(playback.mozproxy_dir,
+                                                      config['playback_recordings'])]
+    assert isinstance(playback, MitmproxyDesktop)
+    playback.start()
+    time.sleep(1)
     playback.stop()
 
 

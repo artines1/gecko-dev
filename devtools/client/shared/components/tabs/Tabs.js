@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,10 +5,12 @@
 "use strict";
 
 define(function(require, exports, module) {
-  const { Component } = require("devtools/client/shared/vendor/react");
+  const {
+    Component,
+    createRef,
+  } = require("devtools/client/shared/vendor/react");
   const dom = require("devtools/client/shared/vendor/react-dom-factories");
   const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-  const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
 
   /**
    * Renders simple 'tab' widget.
@@ -38,16 +38,14 @@ define(function(require, exports, module) {
         className: PropTypes.oneOfType([
           PropTypes.array,
           PropTypes.string,
-          PropTypes.object
+          PropTypes.object,
         ]),
-        tabActive: PropTypes.number,
+        activeTab: PropTypes.number,
         onMount: PropTypes.func,
         onBeforeChange: PropTypes.func,
         onAfterChange: PropTypes.func,
-        children: PropTypes.oneOfType([
-          PropTypes.array,
-          PropTypes.element
-        ]).isRequired,
+        children: PropTypes.oneOfType([PropTypes.array, PropTypes.element])
+          .isRequired,
         showAllTabsMenu: PropTypes.bool,
         onAllTabsMenuClick: PropTypes.func,
 
@@ -63,7 +61,7 @@ define(function(require, exports, module) {
 
     static get defaultProps() {
       return {
-        tabActive: 0,
+        activeTab: 0,
         showAllTabsMenu: false,
         renderOnlySelected: false,
       };
@@ -73,7 +71,7 @@ define(function(require, exports, module) {
       super(props);
 
       this.state = {
-        tabActive: props.tabActive,
+        activeTab: props.activeTab,
 
         // This array is used to store an object containing information on whether a tab
         // at a specified index has already been created (e.g. selected at least once) and
@@ -90,6 +88,8 @@ define(function(require, exports, module) {
         overflow: false,
       };
 
+      this.tabsEl = createRef();
+
       this.onOverflow = this.onOverflow.bind(this);
       this.onUnderflow = this.onUnderflow.bind(this);
       this.onKeyDown = this.onKeyDown.bind(this);
@@ -100,7 +100,7 @@ define(function(require, exports, module) {
     }
 
     componentDidMount() {
-      const node = findDOMNode(this);
+      const node = this.tabsEl.current;
       node.addEventListener("keydown", this.onKeyDown);
 
       // Register overflow listeners to manage visibility
@@ -112,14 +112,14 @@ define(function(require, exports, module) {
         node.addEventListener("underflow", this.onUnderflow);
       }
 
-      const index = this.state.tabActive;
+      const index = this.state.activeTab;
       if (this.props.onMount) {
         this.props.onMount(index);
       }
     }
 
     componentWillReceiveProps(nextProps) {
-      let { children, tabActive } = nextProps;
+      let { children, activeTab } = nextProps;
       const panels = children.filter(panel => panel);
       let created = [...this.state.created];
 
@@ -142,18 +142,17 @@ define(function(require, exports, module) {
         });
       }
 
-      // Check type of 'tabActive' props to see if it's valid (it's 0-based index).
-      if (typeof tabActive === "number") {
+      // Check type of 'activeTab' props to see if it's valid (it's 0-based index).
+      if (typeof activeTab === "number") {
         // Reset to index 0 if index overflows the range of panel array
-        tabActive = (tabActive < panels.length && tabActive >= 0) ?
-          tabActive : 0;
+        activeTab = activeTab < panels.length && activeTab >= 0 ? activeTab : 0;
 
-        created[tabActive] = Object.assign({}, created[tabActive], {
+        created[activeTab] = Object.assign({}, created[activeTab], {
           isCreated: true,
         });
 
         this.setState({
-          tabActive,
+          activeTab,
         });
       }
 
@@ -163,7 +162,7 @@ define(function(require, exports, module) {
     }
 
     componentWillUnmount() {
-      const node = findDOMNode(this);
+      const node = this.tabsEl.current;
       node.removeEventListener("keydown", this.onKeyDown);
 
       if (this.props.showAllTabsMenu) {
@@ -177,7 +176,7 @@ define(function(require, exports, module) {
     onOverflow(event) {
       if (event.target.classList.contains("tabs-menu")) {
         this.setState({
-          overflow: true
+          overflow: true,
         });
       }
     }
@@ -185,7 +184,7 @@ define(function(require, exports, module) {
     onUnderflow(event) {
       if (event.target.classList.contains("tabs-menu")) {
         this.setState({
-          overflow: false
+          overflow: false,
         });
       }
     }
@@ -196,20 +195,32 @@ define(function(require, exports, module) {
         return;
       }
 
-      let tabActive = this.state.tabActive;
+      let activeTab = this.state.activeTab;
       const tabCount = this.props.children.length;
+
+      const ltr = event.target.ownerDocument.dir == "ltr";
+      const nextOrLastTab = Math.min(tabCount - 1, activeTab + 1);
+      const previousOrFirstTab = Math.max(0, activeTab - 1);
 
       switch (event.code) {
         case "ArrowRight":
-          tabActive = Math.min(tabCount - 1, tabActive + 1);
+          if (ltr) {
+            activeTab = nextOrLastTab;
+          } else {
+            activeTab = previousOrFirstTab;
+          }
           break;
         case "ArrowLeft":
-          tabActive = Math.max(0, tabActive - 1);
+          if (ltr) {
+            activeTab = previousOrFirstTab;
+          } else {
+            activeTab = nextOrLastTab;
+          }
           break;
       }
 
-      if (this.state.tabActive != tabActive) {
-        this.setActive(tabActive);
+      if (this.state.activeTab != activeTab) {
+        this.setActive(activeTab);
       }
     }
 
@@ -241,13 +252,12 @@ define(function(require, exports, module) {
 
       const newState = Object.assign({}, this.state, {
         created,
-        tabActive: index,
+        activeTab: index,
       });
 
       this.setState(newState, () => {
         // Properly set focus on selected tab.
-        const node = findDOMNode(this);
-        const selectedTab = node.querySelector(".is-active > a");
+        const selectedTab = this.tabsEl.current.querySelector(".is-active > a");
         if (selectedTab) {
           selectedTab.focus();
         }
@@ -270,8 +280,8 @@ define(function(require, exports, module) {
       }
 
       const tabs = this.props.children
-        .map((tab) => typeof tab === "function" ? tab() : tab)
-        .filter((tab) => tab)
+        .map(tab => (typeof tab === "function" ? tab() : tab))
+        .filter(tab => tab)
         .map((tab, index) => {
           const {
             id,
@@ -282,7 +292,7 @@ define(function(require, exports, module) {
           } = tab.props;
 
           const ref = "tab-menu-" + index;
-          const isTabSelected = this.state.tabActive === index;
+          const isTabSelected = this.state.activeTab === index;
 
           const className = [
             "tabs-menu-item",
@@ -295,15 +305,16 @@ define(function(require, exports, module) {
           // Changing selected tab (and so, moving focus) is done through
           // left and right arrow keys.
           // See also `onKeyDown()` event handler.
-          return (
-            dom.li({
+          return dom.li(
+            {
               className,
               key: index,
               ref,
               role: "presentation",
             },
-              dom.span({className: "devtools-tab-line"}),
-              dom.a({
+            dom.span({ className: "devtools-tab-line" }),
+            dom.a(
+              {
                 id: id ? id + "-tab" : "tab-" + index,
                 tabIndex: isTabSelected ? 0 : -1,
                 title,
@@ -312,37 +323,33 @@ define(function(require, exports, module) {
                 role: "tab",
                 onClick: this.onClickTab.bind(this, index),
               },
-                title,
-                badge && !isTabSelected && showBadge() ?
-                  dom.span({ className: "tab-badge" }, badge)
-                  :
-                  null
-              )
+              title,
+              badge && !isTabSelected && showBadge()
+                ? dom.span({ className: "tab-badge" }, badge)
+                : null
             )
           );
         });
 
       // Display the menu only if there is not enough horizontal
       // space for all tabs (and overflow happened).
-      const allTabsMenu = this.state.overflow ? (
-        dom.button({
-          className: "all-tabs-menu",
-          onClick: this.props.onAllTabsMenuClick,
-        })
-      ) : null;
+      const allTabsMenu = this.state.overflow
+        ? dom.button({
+            className: "all-tabs-menu",
+            onClick: this.props.onAllTabsMenuClick,
+          })
+        : null;
 
       // Get the sidebar toggle button if a renderSidebarToggle function is provided.
-      const sidebarToggle =  this.props.renderSidebarToggle ?
-        this.props.renderSidebarToggle() : null;
+      const sidebarToggle = this.props.renderSidebarToggle
+        ? this.props.renderSidebarToggle()
+        : null;
 
-      return (
-        dom.nav({className: "tabs-navigation"},
-          sidebarToggle,
-          dom.ul({className: "tabs-menu", role: "tablist"},
-            tabs
-          ),
-          allTabsMenu
-        )
+      return dom.nav(
+        { className: "tabs-navigation" },
+        sidebarToggle,
+        dom.ul({ className: "tabs-menu", role: "tablist" }, tabs),
+        allTabsMenu
       );
     }
 
@@ -357,11 +364,11 @@ define(function(require, exports, module) {
         children = [children];
       }
 
-      const selectedIndex = this.state.tabActive;
+      const selectedIndex = this.state.activeTab;
 
       const panels = children
-        .map((tab) => typeof tab === "function" ? tab() : tab)
-        .filter((tab) => tab)
+        .map(tab => (typeof tab === "function" ? tab() : tab))
+        .filter(tab => tab)
         .map((tab, index) => {
           const selected = selectedIndex === index;
           if (renderOnlySelected && !selected) {
@@ -369,8 +376,8 @@ define(function(require, exports, module) {
           }
 
           const id = tab.props.id;
-          const isCreated = this.state.created[index] &&
-            this.state.created[index].isCreated;
+          const isCreated =
+            this.state.created[index] && this.state.created[index].isCreated;
 
           // Use 'visibility:hidden' + 'height:0' for hiding content of non-selected
           // tab. It's faster than 'display:none' because it avoids triggering frame
@@ -387,8 +394,8 @@ define(function(require, exports, module) {
           }
           const panel = tab.panel || tab;
 
-          return (
-            dom.div({
+          return dom.div(
+            {
               id: id ? id + "-panel" : "panel-" + index,
               key: id,
               style: style,
@@ -396,24 +403,21 @@ define(function(require, exports, module) {
               role: "tabpanel",
               "aria-labelledby": id ? id + "-tab" : "tab-" + index,
             },
-              (selected || isCreated) ? panel : null
-            )
+            selected || isCreated ? panel : null
           );
         });
 
-      return (
-        dom.div({className: "panels"},
-          panels
-        )
-      );
+      return dom.div({ className: "panels" }, panels);
     }
 
     render() {
-      return (
-        dom.div({ className: ["tabs", this.props.className].join(" ") },
-          this.renderMenuItems(),
-          this.renderPanels()
-        )
+      return dom.div(
+        {
+          className: ["tabs", this.props.className].join(" "),
+          ref: this.tabsEl,
+        },
+        this.renderMenuItems(),
+        this.renderPanels()
       );
     }
   }
@@ -427,15 +431,15 @@ define(function(require, exports, module) {
         id: PropTypes.string.isRequired,
         className: PropTypes.string,
         title: PropTypes.string.isRequired,
-        children: PropTypes.oneOfType([
-          PropTypes.array,
-          PropTypes.element
-        ]).isRequired
+        children: PropTypes.oneOfType([PropTypes.array, PropTypes.element])
+          .isRequired,
       };
     }
 
     render() {
-      return dom.div({className: "tab-panel"},
+      const { className } = this.props;
+      return dom.div(
+        { className: `tab-panel ${className || ""}` },
         this.props.children
       );
     }

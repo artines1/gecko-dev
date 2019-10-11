@@ -13,14 +13,14 @@ var gResultListener = {
     this._lastResult = aResult;
     this._lastValue = aValue;
     this._lastRemoveFromDb = aRemoveFromDb;
-  }
+  },
 };
-
 
 // main
 function run_test() {
-  var result = Cc["@mozilla.org/autocomplete/simple-result;1"].
-               createInstance(Ci.nsIAutoCompleteSimpleResult);
+  var result = Cc["@mozilla.org/autocomplete/simple-result;1"].createInstance(
+    Ci.nsIAutoCompleteSimpleResult
+  );
   result.appendMatch("a", "");
   result.appendMatch("b", "");
   result.appendMatch("c", "");

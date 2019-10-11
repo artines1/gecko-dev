@@ -12,9 +12,8 @@ namespace mozilla {
 
 DDLoggedTypeDeclName(ByteStream);
 
-class ByteStream : public DecoderDoctorLifeLogger<ByteStream>
-{
-public:
+class ByteStream : public DecoderDoctorLifeLogger<ByteStream> {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ByteStream);
 
   virtual bool ReadAt(int64_t offset, void* data, size_t size,
@@ -25,10 +24,18 @@ public:
 
   virtual void DiscardBefore(int64_t offset) {}
 
-protected:
+  // If this ByteStream's underlying storage of media is in-memory, this
+  // function returns a pointer to the in-memory storage of data at offset.
+  // Note that even if a ByteStream stores data in memory, it may not be
+  // stored contiguously, in which case this returns nullptr.
+  virtual const uint8_t* GetContiguousAccess(int64_t aOffset, size_t aSize) {
+    return nullptr;
+  }
+
+ protected:
   virtual ~ByteStream() {}
 };
 
-}
+}  // namespace mozilla
 
 #endif

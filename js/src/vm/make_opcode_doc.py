@@ -1,4 +1,8 @@
 #!/usr/bin/python -B
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 
 """ Usage: make_opcode_doc.py PATH_TO_MOZILLA_CENTRAL
 
@@ -15,7 +19,7 @@ import sys
 
 import os
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import opcode
+import jsopcode
 
 from xml.sax.saxutils import escape
 
@@ -139,7 +143,7 @@ if __name__ == '__main__':
     dir = sys.argv[1]
 
     try:
-        index, _ = opcode.get_opcodes(dir)
+        index, _ = jsopcode.get_opcodes(dir)
     except Exception as e:
         print("Error: {}".format(e.args[0]), file=sys.stderr)
         sys.exit(1)

@@ -30,24 +30,21 @@ namespace dom {
 class Promise;
 } /* namespace dom */
 
-enum class CSSPseudoElementType : uint8_t;
+enum class PseudoStyleType : uint8_t;
 struct NonOwningAnimationTarget;
 
 namespace dom {
 
-class CSSAnimation final : public Animation
-{
-public:
- explicit CSSAnimation(nsIGlobalObject* aGlobal,
-                       nsAtom* aAnimationName)
-    : dom::Animation(aGlobal)
-    , mAnimationName(aAnimationName)
-    , mIsStylePaused(false)
-    , mPauseShouldStick(false)
-    , mNeedsNewAnimationIndexWhenRun(false)
-    , mPreviousPhase(ComputedTiming::AnimationPhase::Idle)
-    , mPreviousIteration(0)
-  {
+class CSSAnimation final : public Animation {
+ public:
+  explicit CSSAnimation(nsIGlobalObject* aGlobal, nsAtom* aAnimationName)
+      : dom::Animation(aGlobal),
+        mAnimationName(aAnimationName),
+        mIsStylePaused(false),
+        mPauseShouldStick(false),
+        mNeedsNewAnimationIndexWhenRun(false),
+        mPreviousPhase(ComputedTiming::AnimationPhase::Idle),
+        mPreviousIteration(0) {
     // We might need to drop this assertion once we add a script-accessible
     // constructor but for animations generated from CSS markup the
     // animation-name should never be empty.
@@ -62,8 +59,7 @@ public:
   const CSSAnimation* AsCSSAnimation() const override { return this; }
 
   // CSSAnimation interface
-  void GetAnimationName(nsString& aRetVal) const
-  {
+  void GetAnimationName(nsString& aRetVal) const {
     mAnimationName->ToString(aRetVal);
   }
 
@@ -88,8 +84,7 @@ public:
 
   void PlayFromStyle();
   void PauseFromStyle();
-  void CancelFromStyle() override
-  {
+  void CancelFromStyle(PostRestyleMode aPostRestyle) {
     // When an animation is disassociated with style it enters an odd state
     // where its composite order is undefined until it first transitions
     // out of the idle state.
@@ -103,26 +98,25 @@ public:
     mAnimationIndex = sNextAnimationIndex++;
     mNeedsNewAnimationIndexWhenRun = true;
 
-    Animation::CancelFromStyle();
+    Animation::Cancel(aPostRestyle);
 
-    // We need to do this *after* calling CancelFromStyle() since
-    // CancelFromStyle might synchronously trigger a cancel event for which
+    // We need to do this *after* calling Cancel() since
+    // Cancel() might synchronously trigger a cancel event for which
     // we need an owning element to target the event at.
     mOwningElement = OwningElementRef();
   }
 
   void Tick() override;
-  void QueueEvents(const StickyTimeDuration& aActiveTime = StickyTimeDuration());
+  void QueueEvents(
+      const StickyTimeDuration& aActiveTime = StickyTimeDuration());
 
   bool IsStylePaused() const { return mIsStylePaused; }
 
   bool HasLowerCompositeOrderThan(const CSSAnimation& aOther) const;
 
-  void SetAnimationIndex(uint64_t aIndex)
-  {
+  void SetAnimationIndex(uint64_t aIndex) {
     MOZ_ASSERT(IsTiedToMarkup());
-    if (IsRelevant() &&
-        mAnimationIndex != aIndex) {
+    if (IsRelevant() && mAnimationIndex != aIndex) {
       nsNodeUtils::AnimationChanged(this);
       PostUpdate();
     }
@@ -133,8 +127,7 @@ public:
   // order of CSSAnimation objects generated from CSS markup.
   //
   // @see mOwningElement
-  void SetOwningElement(const OwningElementRef& aElement)
-  {
+  void SetOwningElement(const OwningElementRef& aElement) {
     mOwningElement = aElement;
   }
   // True for animations that are generated from CSS markup and continue to
@@ -145,11 +138,11 @@ public:
     QueueEvents(aActiveTime);
   }
 
-protected:
-  virtual ~CSSAnimation()
-  {
-    MOZ_ASSERT(!mOwningElement.IsSet(), "Owning element should be cleared "
-                                        "before a CSS animation is destroyed");
+ protected:
+  virtual ~CSSAnimation() {
+    MOZ_ASSERT(!mOwningElement.IsSet(),
+               "Owning element should be cleared "
+               "before a CSS animation is destroyed");
   }
 
   // Animation overrides
@@ -162,9 +155,9 @@ protected:
   // which case it is the absolute value of that delay.
   // This is used for setting the elapsedTime member of CSS AnimationEvents.
   TimeDuration InitialAdvance() const {
-    return mEffect ?
-           std::max(TimeDuration(), mEffect->SpecifiedTiming().Delay() * -1) :
-           TimeDuration();
+    return mEffect ? std::max(TimeDuration(),
+                              mEffect->SpecifiedTiming().Delay() * -1)
+                   : TimeDuration();
   }
 
   RefPtr<nsAtom> mAnimationName;
@@ -254,37 +247,32 @@ protected:
 } /* namespace dom */
 
 template <>
-struct AnimationTypeTraits<dom::CSSAnimation>
-{
-  static nsAtom* ElementPropertyAtom()
-  {
-    return nsGkAtoms::animationsProperty;
-  }
-  static nsAtom* BeforePropertyAtom()
-  {
+struct AnimationTypeTraits<dom::CSSAnimation> {
+  static nsAtom* ElementPropertyAtom() { return nsGkAtoms::animationsProperty; }
+  static nsAtom* BeforePropertyAtom() {
     return nsGkAtoms::animationsOfBeforeProperty;
   }
-  static nsAtom* AfterPropertyAtom()
-  {
+  static nsAtom* AfterPropertyAtom() {
     return nsGkAtoms::animationsOfAfterProperty;
+  }
+  static nsAtom* MarkerPropertyAtom() {
+    return nsGkAtoms::animationsOfMarkerProperty;
   }
 };
 
 } /* namespace mozilla */
 
 class nsAnimationManager final
-  : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>
-{
-public:
-  explicit nsAnimationManager(nsPresContext *aPresContext)
-    : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>(aPresContext)
-  {
-  }
+    : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation> {
+ public:
+  explicit nsAnimationManager(nsPresContext* aPresContext)
+      : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>(
+            aPresContext) {}
 
   typedef mozilla::AnimationCollection<mozilla::dom::CSSAnimation>
-    CSSAnimationCollection;
+      CSSAnimationCollection;
   typedef nsTArray<RefPtr<mozilla::dom::CSSAnimation>>
-    OwningCSSAnimationPtrArray;
+      OwningCSSAnimationPtrArray;
 
   ~nsAnimationManager() override = default;
 
@@ -292,11 +280,9 @@ public:
    * This function does the same thing as the above UpdateAnimations()
    * but with servo's computed values.
    */
-  void UpdateAnimations(
-    mozilla::dom::Element* aElement,
-    mozilla::CSSPseudoElementType aPseudoType,
-    const mozilla::ComputedStyle* aComputedValues);
-
+  void UpdateAnimations(mozilla::dom::Element* aElement,
+                        mozilla::PseudoStyleType aPseudoType,
+                        const mozilla::ComputedStyle* aComputedValues);
 
   // Utility function to walk through |aIter| to find the Keyframe with
   // matching offset and timing function but stopping as soon as the offset
@@ -313,11 +299,8 @@ public:
   //   Keyframe.
   template <class IterType, class TimingFunctionType>
   static bool FindMatchingKeyframe(
-    IterType&& aIter,
-    double aOffset,
-    const TimingFunctionType& aTimingFunctionToMatch,
-    size_t& aIndex)
-  {
+      IterType&& aIter, double aOffset,
+      const TimingFunctionType& aTimingFunctionToMatch, size_t& aIndex) {
     aIndex = 0;
     for (mozilla::Keyframe& keyframe : aIter) {
       if (keyframe.mOffset.value() != aOffset) {
@@ -331,12 +314,11 @@ public:
     return false;
   }
 
-  bool AnimationMayBeReferenced(nsAtom* aName) const
-  {
+  bool AnimationMayBeReferenced(nsAtom* aName) const {
     return mMaybeReferencedAnimations.Contains(aName);
   }
 
-private:
+ private:
   // This includes all animation names referenced regardless of whether a
   // corresponding `@keyframes` rule is available.
   //
@@ -345,10 +327,9 @@ private:
   // style invalidation.
   nsTHashtable<nsRefPtrHashKey<nsAtom>> mMaybeReferencedAnimations;
 
-  void DoUpdateAnimations(
-    const mozilla::NonOwningAnimationTarget& aTarget,
-    const nsStyleDisplay& aStyleDisplay,
-    ServoCSSAnimationBuilder& aBuilder);
+  void DoUpdateAnimations(const mozilla::NonOwningAnimationTarget& aTarget,
+                          const nsStyleDisplay& aStyleDisplay,
+                          ServoCSSAnimationBuilder& aBuilder);
 };
 
 #endif /* !defined(nsAnimationManager_h_) */

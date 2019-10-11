@@ -11,7 +11,7 @@
 #include "SharedMemory.h"
 
 #ifdef FUZZING
-#include "SharedMemoryFuzzer.h"
+#  include "SharedMemoryFuzzer.h"
 #endif
 
 #include "nsDebug.h"
@@ -24,19 +24,16 @@
 namespace mozilla {
 namespace ipc {
 
-class SharedMemoryBasic final : public SharedMemoryCommon<base::SharedMemoryHandle>
-{
-public:
-  SharedMemoryBasic()
-  {
-  }
+class SharedMemoryBasic final
+    : public SharedMemoryCommon<base::SharedMemoryHandle> {
+ public:
+  SharedMemoryBasic() {}
 
   virtual bool SetHandle(const Handle& aHandle, OpenRights aRights) override {
     return mSharedMemory.SetHandle(aHandle, aRights == RightsReadOnly);
   }
 
-  virtual bool Create(size_t aNbytes) override
-  {
+  virtual bool Create(size_t aNbytes) override {
     bool ok = mSharedMemory.Create(aNbytes);
     if (ok) {
       Created(aNbytes);
@@ -44,22 +41,17 @@ public:
     return ok;
   }
 
-  virtual bool Map(size_t nBytes) override
-  {
-    bool ok = mSharedMemory.Map(nBytes);
+  virtual bool Map(size_t nBytes, void* fixed_address = nullptr) override {
+    bool ok = mSharedMemory.Map(nBytes, fixed_address);
     if (ok) {
       Mapped(nBytes);
     }
     return ok;
   }
 
-  virtual void CloseHandle() override
-  {
-    mSharedMemory.Close(false);
-  }
+  virtual void CloseHandle() override { mSharedMemory.Close(false); }
 
-  virtual void* memory() const override
-  {
+  virtual void* memory() const override {
 #ifdef FUZZING
     return SharedMemoryFuzzer::MutateSharedMemory(mSharedMemory.memory(),
                                                   mAllocSize);
@@ -68,41 +60,33 @@ public:
 #endif
   }
 
-  virtual SharedMemoryType Type() const override
-  {
-    return TYPE_BASIC;
-  }
+  virtual SharedMemoryType Type() const override { return TYPE_BASIC; }
 
-  static Handle NULLHandle()
-  {
-    return base::SharedMemory::NULLHandle();
-  }
+  static Handle NULLHandle() { return base::SharedMemory::NULLHandle(); }
 
-  virtual bool IsHandleValid(const Handle &aHandle) const override
-  {
+  virtual bool IsHandleValid(const Handle& aHandle) const override {
     return base::SharedMemory::IsHandleValid(aHandle);
   }
 
   virtual bool ShareToProcess(base::ProcessId aProcessId,
-                              Handle* new_handle) override
-  {
+                              Handle* new_handle) override {
     base::SharedMemoryHandle handle;
     bool ret = mSharedMemory.ShareToProcess(aProcessId, &handle);
-    if (ret)
-      *new_handle = handle;
+    if (ret) *new_handle = handle;
     return ret;
   }
 
-private:
-  ~SharedMemoryBasic()
-  {
+  static void* FindFreeAddressSpace(size_t size) {
+    return base::SharedMemory::FindFreeAddressSpace(size);
   }
+
+ private:
+  ~SharedMemoryBasic() {}
 
   base::SharedMemory mSharedMemory;
 };
 
-} // namespace ipc
-} // namespace mozilla
+}  // namespace ipc
+}  // namespace mozilla
 
-
-#endif // ifndef mozilla_ipc_SharedMemoryBasic_chromium_h
+#endif  // ifndef mozilla_ipc_SharedMemoryBasic_chromium_h

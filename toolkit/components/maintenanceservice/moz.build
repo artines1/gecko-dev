@@ -32,8 +32,14 @@ LOCAL_INCLUDES += [
 
 USE_STATIC_LIBS = True
 
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+if CONFIG['CC_TYPE'] == 'clang-cl':
     WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
+
+if CONFIG['OS_TARGET'] == 'WINNT' and CONFIG['CC_TYPE'] in ('gcc', 'clang'):
+    # This allows us to use wmain as the entry point on mingw
+    LDFLAGS += [
+        '-municode',
+    ]
 
 RCINCLUDE = 'maintenanceservice.rc'
 
@@ -43,10 +49,8 @@ OS_LIBS += [
     'comctl32',
     'ws2_32',
     'shell32',
+    'shlwapi',
 ]
 
 with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'Application Update')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

@@ -10,7 +10,7 @@ var EXPORTED_SYMBOLS = [
   "findAllCssSelectors",
   "findCssSelector",
   "getCssPath",
-  "getXPath"
+  "getXPath",
 ];
 
 /**
@@ -81,7 +81,7 @@ function findNodeAndContainer(node) {
     // we can find the node via shadowRoot.querySelector(path).
     return {
       containingDocOrShadow: shadowRoot,
-      node
+      node,
     };
   }
 
@@ -90,7 +90,7 @@ function findNodeAndContainer(node) {
   const bindingParent = getRootBindingParent(node);
   return {
     containingDocOrShadow: bindingParent.ownerDocument,
-    node: bindingParent
+    node: bindingParent,
   };
 }
 
@@ -112,8 +112,10 @@ const findCssSelector = function(ele) {
   let cssEscape = ele.ownerGlobal.CSS.escape;
 
   // document.querySelectorAll("#id") returns multiple if elements share an ID
-  if (ele.id &&
-      containingDocOrShadow.querySelectorAll("#" + cssEscape(ele.id)).length === 1) {
+  if (
+    ele.id &&
+    containingDocOrShadow.querySelectorAll("#" + cssEscape(ele.id)).length === 1
+  ) {
     return "#" + cssEscape(ele.id);
   }
 
@@ -227,9 +229,10 @@ function getCssPath(ele) {
       return "";
     }
 
-    let label = element.nodeName == element.nodeName.toUpperCase()
-                ? element.localName.toLowerCase()
-                : element.localName;
+    let label =
+      element.nodeName == element.nodeName.toUpperCase()
+        ? element.localName.toLowerCase()
+        : element.localName;
 
     if (element.id) {
       label += "#" + element.id;
@@ -289,8 +292,10 @@ function getXPath(ele) {
     let sibling = ele.previousSibling;
     while (sibling) {
       // Ignore document type declaration.
-      if (sibling.nodeType !== nodeGlobal.DOCUMENT_TYPE_NODE &&
-          sibling.nodeName == ele.nodeName) {
+      if (
+        sibling.nodeType !== nodeGlobal.DOCUMENT_TYPE_NODE &&
+        sibling.nodeName == ele.nodeName
+      ) {
         nbOfPreviousSiblings++;
       }
 
@@ -308,8 +313,10 @@ function getXPath(ele) {
     }
 
     const prefix = ele.prefix ? ele.prefix + ":" : "";
-    const nth = nbOfPreviousSiblings || hasNextSiblings
-                ? `[${nbOfPreviousSiblings + 1}]` : "";
+    const nth =
+      nbOfPreviousSiblings || hasNextSiblings
+        ? `[${nbOfPreviousSiblings + 1}]`
+        : "";
 
     parts.push(prefix + ele.localName + nth);
 

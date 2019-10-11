@@ -1,14 +1,47 @@
+#![doc(html_root_url = "https://docs.rs/mio/0.6.19")]
+// Mio targets old versions of the Rust compiler. In order to do this, uses
+// deprecated APIs.
+#![allow(deprecated)]
+#![deny(missing_docs, missing_debug_implementations)]
+#![cfg_attr(test, deny(warnings))]
+
+// Many of mio's public methods violate this lint, but they can't be fixed
+// without a breaking change.
+#![cfg_attr(feature = "cargo-clippy", allow(clippy::trivially_copy_pass_by_ref))]
+
 //! A fast, low-level IO library for Rust focusing on non-blocking APIs, event
 //! notification, and other useful utilities for building high performance IO
 //! apps.
 //!
-//! # Goals
+//! # Features
 //!
-//! * Fast - minimal overhead over the equivalent OS facilities (epoll, kqueue, etc...)
-//! * Zero allocations
-//! * A scalable readiness-based API, similar to epoll on Linux
-//! * Design to allow for stack allocated buffers when possible (avoid double buffering).
-//! * Provide utilities such as a timers, a notification channel, buffer abstractions, and a slab.
+//! * Non-blocking TCP, UDP
+//! * I/O event notification queue backed by epoll, kqueue, and IOCP
+//! * Zero allocations at runtime
+//! * Platform specific extensions
+//!
+//! # Non-goals
+//!
+//! The following are specifically omitted from Mio and are left to the user or higher-level libraries.
+//!
+//! * File operations
+//! * Thread pools / multi-threaded event loop
+//! * Timers
+//!
+//! # Platforms
+//!
+//! Currently supported platforms:
+//!
+//! * Linux
+//! * OS X
+//! * Windows
+//! * FreeBSD
+//! * NetBSD
+//! * Android
+//! * iOS
+//!
+//! mio can handle interfacing with each of the event notification systems of the aforementioned platforms. The details of
+//! their implementation are further discussed in [`Poll`].
 //!
 //! # Usage
 //!
@@ -24,7 +57,7 @@
 //!
 //! ```
 //! use mio::*;
-//! use mio::tcp::{TcpListener, TcpStream};
+//! use mio::net::{TcpListener, TcpStream};
 //!
 //! // Setup some tokens to allow us to identify which event is
 //! // for which socket.
@@ -75,15 +108,14 @@
 //!
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/mio/0.6.1")]
-#![crate_name = "mio"]
-
-#![deny(warnings, missing_docs, missing_debug_implementations)]
-
-extern crate lazycell;
 extern crate net2;
-extern crate slab;
 extern crate iovec;
+extern crate slab;
+
+#[cfg(target_os = "fuchsia")]
+extern crate fuchsia_zircon as zircon;
+#[cfg(target_os = "fuchsia")]
+extern crate fuchsia_zircon_sys as zircon_sys;
 
 #[cfg(unix)]
 extern crate libc;
@@ -100,23 +132,21 @@ extern crate kernel32;
 #[macro_use]
 extern crate log;
 
-#[cfg(test)]
-extern crate env_logger;
-
 mod event_imp;
 mod io;
 mod poll;
 mod sys;
 mod token;
+mod lazycell;
 
 pub mod net;
 
-#[deprecated(since = "0.6.5", note = "use mio-more instead")]
+#[deprecated(since = "0.6.5", note = "use mio-extras instead")]
 #[cfg(feature = "with-deprecated")]
 #[doc(hidden)]
 pub mod channel;
 
-#[deprecated(since = "0.6.5", note = "use mio-more instead")]
+#[deprecated(since = "0.6.5", note = "use mio-extras instead")]
 #[cfg(feature = "with-deprecated")]
 #[doc(hidden)]
 pub mod timer;
@@ -181,13 +211,28 @@ pub use poll::Iter as EventsIter;
 #[doc(hidden)]
 pub use io::deprecated::would_block;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "fuchsia")))]
 pub mod unix {
     //! Unix only extensions
     pub use sys::{
         EventedFd,
     };
     pub use sys::unix::UnixReady;
+}
+
+#[cfg(target_os = "fuchsia")]
+pub mod fuchsia {
+    //! Fuchsia-only extensions
+    //!
+    //! # Stability
+    //!
+    //! This module depends on the [magenta-sys crate](https://crates.io/crates/magenta-sys)
+    //! and so might introduce breaking changes, even on minor releases,
+    //! so long as that crate remains unstable.
+    pub use sys::{
+        EventedHandle,
+    };
+    pub use sys::fuchsia::{FuchsiaReady, zx_signals_t};
 }
 
 /// Windows-only extensions to the mio crate.
@@ -221,7 +266,7 @@ pub mod unix {
 ///   buffering to ensure that a readiness interface can be provided. For a
 ///   sample implementation see the TCP/UDP modules in mio itself.
 ///
-/// * `Overlapped` - this type is intended to be used as the concreate instances
+/// * `Overlapped` - this type is intended to be used as the concrete instances
 ///   of the `OVERLAPPED` type that most win32 methods expect. It's crucial, for
 ///   safety, that all asynchronous operations are initiated with an instance of
 ///   `Overlapped` and not another instantiation of `OVERLAPPED`.
@@ -261,6 +306,6 @@ mod convert {
     pub fn millis(duration: Duration) -> u64 {
         // Round up.
         let millis = (duration.subsec_nanos() + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
-        duration.as_secs().saturating_mul(MILLIS_PER_SEC).saturating_add(millis as u64)
+        duration.as_secs().saturating_mul(MILLIS_PER_SEC).saturating_add(u64::from(millis))
     }
 }

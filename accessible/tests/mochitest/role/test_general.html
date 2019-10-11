@@ -4,8 +4,7 @@
   <title>test nsHyperTextAccessible accesible objects creation and their roles</title>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -21,19 +20,19 @@
 
       // nsHyperTextAcc tests section
       // Test html:form.
-      testRole("nav", ROLE_SECTION);
-      testRole("header", ROLE_HEADER);
-      testRole("footer", ROLE_FOOTER);
+      testRole("nav", ROLE_LANDMARK);
+      testRole("header", ROLE_LANDMARK);
+      testRole("footer", ROLE_LANDMARK);
       testRole("article", ROLE_ARTICLE);
-      testRole("aside", ROLE_NOTE);
+      testRole("aside", ROLE_LANDMARK);
       testRole("section", ROLE_SECTION);
 
       // Bug 996821
       // Check that landmark elements get accessibles with styled overflow.
       testRole("section_overflow", ROLE_SECTION);
-      testRole("nav_overflow", ROLE_SECTION);
+      testRole("nav_overflow", ROLE_LANDMARK);
       testRole("header_overflow", ROLE_SECTION);
-      testRole("aside_overflow", ROLE_NOTE);
+      testRole("aside_overflow", ROLE_LANDMARK);
       testRole("footer_overflow", ROLE_SECTION);
       testRole("article_overflow", ROLE_ARTICLE);
 
@@ -51,10 +50,8 @@
       testRole("head5", ROLE_HEADING);
       testRole("head6", ROLE_HEADING);
 
-      // Test that an html:input @type="file" is exposed as ROLE_TEXT_CONTAINER.
-      // After fix for bug 471356, it was temporarily exposed as a paragraph,
-      // breaking JAWS compatibility.
-      testRole("data", ROLE_TEXT_CONTAINER);
+      // Test that an html:input @type="file" is exposed as ROLE_GROUPING.
+      testRole("data", ROLE_GROUPING);
 
       // Test that input type="checkbox" and type="radio" are
       // exposed as such regardless of appearance style.

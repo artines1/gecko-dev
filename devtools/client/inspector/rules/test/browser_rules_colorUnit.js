@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -17,22 +16,23 @@ const TEST_URI = `
 
 add_task(async function() {
   const TESTS = [
-    {name: "hex", result: "#0f0"},
-    {name: "rgb", result: "rgb(0, 255, 0)"}
+    { name: "hex", result: "#0f0" },
+    { name: "rgb", result: "rgb(0, 255, 0)" },
   ];
 
-  for (const {name, result} of TESTS) {
+  for (const { name, result } of TESTS) {
     info("starting test for " + name);
     Services.prefs.setCharPref("devtools.defaultColorUnit", name);
 
-    const tab = await addTab("data:text/html;charset=utf-8," +
-                           encodeURIComponent(TEST_URI));
-    const {inspector, view} = await openRuleView();
+    const tab = await addTab(
+      "data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI)
+    );
+    const { inspector, view } = await openRuleView();
 
     await selectNode("#testid", inspector);
     await basicTest(view, name, result);
 
-    const target = TargetFactory.forTab(tab);
+    const target = await TargetFactory.forTab(tab);
     await gDevTools.closeToolbox(target);
     gBrowser.removeCurrentTab();
   }
@@ -40,8 +40,11 @@ add_task(async function() {
 
 async function basicTest(view, name, result) {
   const cPicker = view.tooltips.getTooltip("colorPicker");
-  const swatch = getRuleViewProperty(view, "#testid", "color").valueSpan
-      .querySelector(".ruleview-colorswatch");
+  const swatch = getRuleViewProperty(
+    view,
+    "#testid",
+    "color"
+  ).valueSpan.querySelector(".ruleview-colorswatch");
   const onColorPickerReady = cPicker.once("ready");
   swatch.click();
   await onColorPickerReady;
@@ -49,7 +52,7 @@ async function basicTest(view, name, result) {
   await simulateColorPickerChange(view, cPicker, [0, 255, 0, 1], {
     selector: "#testid",
     name: "color",
-    value: "rgb(0, 255, 0)"
+    value: "rgb(0, 255, 0)",
   });
 
   const spectrum = cPicker.spectrum;
@@ -60,6 +63,9 @@ async function basicTest(view, name, result) {
   await onHidden;
   await onRuleViewChanged;
 
-  is(getRuleViewPropertyValue(view, "#testid", "color"), result,
-     "changing the color used the " + name + " unit");
+  is(
+    getRuleViewPropertyValue(view, "#testid", "color"),
+    result,
+    "changing the color used the " + name + " unit"
+  );
 }

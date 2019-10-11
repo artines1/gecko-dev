@@ -96,6 +96,10 @@ class Connector {
     return this.connector.sendHTTPRequest(...arguments);
   }
 
+  setBlockedUrls() {
+    return this.connector.setBlockedUrls(...arguments);
+  }
+
   setPreferences() {
     return this.connector.setPreferences(...arguments);
   }

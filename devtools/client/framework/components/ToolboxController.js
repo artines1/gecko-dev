@@ -3,8 +3,13 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {Component, createFactory} = require("devtools/client/shared/vendor/react");
-const ToolboxToolbar = createFactory(require("devtools/client/framework/components/ToolboxToolbar"));
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
+const ToolboxToolbar = createFactory(
+  require("devtools/client/framework/components/ToolboxToolbar")
+);
 const ELEMENT_PICKER_ID = "command-button-pick";
 
 /**
@@ -36,7 +41,7 @@ class ToolboxController extends Component {
       buttonIds: [],
       checkedButtonsUpdated: () => {
         this.forceUpdate();
-      }
+      },
     };
 
     this.setFocusedButton = this.setFocusedButton.bind(this);
@@ -71,20 +76,20 @@ class ToolboxController extends Component {
    * using the arrow keys.
    */
   updateButtonIds() {
-    const {
-      toolboxButtons,
-      panelDefinitions,
-      canCloseToolbox,
-    } = this.state;
+    const { toolboxButtons, panelDefinitions, canCloseToolbox } = this.state;
 
     // This is a little gnarly, but go through all of the state and extract the IDs.
     this.setState({
       buttonIds: [
-        ...toolboxButtons.filter(btn => btn.isInStartContainer).map(({id}) => id),
-        ...panelDefinitions.map(({id}) => id),
-        ...toolboxButtons.filter(btn => !btn.isInStartContainer).map(({id}) => id),
-        canCloseToolbox ? "toolbox-close" : null
-      ].filter(id => id)
+        ...toolboxButtons
+          .filter(btn => btn.isInStartContainer)
+          .map(({ id }) => id),
+        ...panelDefinitions.map(({ id }) => id),
+        ...toolboxButtons
+          .filter(btn => !btn.isInStartContainer)
+          .map(({ id }) => id),
+        canCloseToolbox ? "toolbox-close" : null,
+      ].filter(id => id),
     });
 
     this.updateFocusedButton();
@@ -95,20 +100,21 @@ class ToolboxController extends Component {
   }
 
   setFocusedButton(focusedButton) {
-    const {buttonIds} = this.state;
+    const { buttonIds } = this.state;
 
-    focusedButton = focusedButton && buttonIds.includes(focusedButton)
+    focusedButton =
+      focusedButton && buttonIds.includes(focusedButton)
         ? focusedButton
         : buttonIds[0];
     if (this.state.focusedButton !== focusedButton) {
       this.setState({
-        focusedButton
+        focusedButton,
       });
     }
   }
 
   setCurrentToolId(currentToolId) {
-    this.setState({currentToolId}, () => {
+    this.setState({ currentToolId }, () => {
       // Also set the currently focused button to this tool.
       this.setFocusedButton(currentToolId);
     });
@@ -177,10 +183,14 @@ class ToolboxController extends Component {
       button.on("updatechecked", this.state.checkedButtonsUpdated);
     });
 
-    const visibleToolboxButtonCount =
-      toolboxButtons.filter(button => button.isVisible).length;
+    const visibleToolboxButtonCount = toolboxButtons.filter(
+      button => button.isVisible
+    ).length;
 
-    this.setState({ toolboxButtons, visibleToolboxButtonCount }, this.updateButtonIds);
+    this.setState(
+      { toolboxButtons, visibleToolboxButtonCount },
+      this.updateButtonIds
+    );
   }
 
   render() {

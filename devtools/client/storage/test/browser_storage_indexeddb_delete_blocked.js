@@ -13,19 +13,22 @@ add_task(async function() {
 
   info("test state before delete");
   await checkState([
-    [["indexedDB", "http://test1.example.org"], ["idb (default)"]]
+    [["indexedDB", "http://test1.example.org"], ["idb (default)"]],
   ]);
 
   info("do the delete");
   await selectTreeItem(["indexedDB", "http://test1.example.org"]);
   const front = gUI.getCurrentFront();
-  let result = await front.removeDatabase("http://test1.example.org", "idb (default)");
+  let result = await front.removeDatabase(
+    "http://test1.example.org",
+    "idb (default)"
+  );
 
   ok(result.blocked, "removeDatabase attempt is blocked");
 
   info("test state after blocked delete");
   await checkState([
-    [["indexedDB", "http://test1.example.org"], ["idb (default)"]]
+    [["indexedDB", "http://test1.example.org"], ["idb (default)"]],
   ]);
 
   const eventWait = gUI.once("store-objects-edit");
@@ -40,14 +43,15 @@ add_task(async function() {
   await eventWait;
 
   info("test state after real delete");
-  await checkState([
-    [["indexedDB", "http://test1.example.org"], []]
-  ]);
+  await checkState([[["indexedDB", "http://test1.example.org"], []]]);
 
   info("try to delete database from nonexistent host");
   let errorThrown = false;
   try {
-    result = await front.removeDatabase("http://test2.example.org", "idb (default)");
+    result = await front.removeDatabase(
+      "http://test2.example.org",
+      "idb (default)"
+    );
   } catch (ex) {
     errorThrown = true;
   }

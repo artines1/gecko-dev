@@ -1,22 +1,23 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Style resolution for a given element or pseudo-element.
 
-use applicable_declarations::ApplicableDeclarationList;
-use context::{CascadeInputs, ElementCascadeInputs, StyleContext};
-use data::{EagerPseudoStyles, ElementStyles};
-use dom::TElement;
+use crate::applicable_declarations::ApplicableDeclarationList;
+use crate::context::{CascadeInputs, ElementCascadeInputs, StyleContext};
+use crate::data::{EagerPseudoStyles, ElementStyles};
+use crate::dom::TElement;
+use crate::matching::MatchMethods;
+use crate::properties::longhands::display::computed_value::T as Display;
+use crate::properties::{AnimationRules, ComputedValues};
+use crate::rule_tree::StrongRuleNode;
+use crate::selector_parser::{PseudoElement, SelectorImpl};
+use crate::stylist::RuleInclusion;
 use log::Level::Trace;
-use matching::MatchMethods;
-use properties::{AnimationRules, ComputedValues};
-use properties::longhands::display::computed_value::T as Display;
-use rule_tree::StrongRuleNode;
-use selector_parser::{PseudoElement, SelectorImpl};
-use selectors::matching::{ElementSelectorFlags, MatchingContext, MatchingMode, VisitedHandlingMode};
+use selectors::matching::{ElementSelectorFlags, MatchingContext};
+use selectors::matching::{MatchingMode, VisitedHandlingMode};
 use servo_arc::Arc;
-use stylist::RuleInclusion;
 
 /// Whether pseudo-elements should be resolved or not.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,7 +110,7 @@ fn eager_pseudo_is_definitely_not_generated(
     pseudo: &PseudoElement,
     style: &ComputedValues,
 ) -> bool {
-    use properties::computed_value_flags::ComputedValueFlags;
+    use crate::properties::computed_value_flags::ComputedValueFlags;
 
     if !pseudo.is_before_or_after() {
         return false;
@@ -190,8 +191,7 @@ where
     ) -> PrimaryStyle {
         // Before doing the cascade, check the sharing cache and see if we can
         // reuse the style via rule node identity.
-        let may_reuse =
-            !self.element.is_in_native_anonymous_subtree() &&
+        let may_reuse = !self.element.is_in_native_anonymous_subtree() &&
             parent_style.is_some() &&
             inputs.rules.is_some();
 
@@ -233,7 +233,7 @@ where
 
         let mut pseudo_styles = EagerPseudoStyles::default();
 
-        if self.element.implemented_pseudo_element().is_none() {
+        if !self.element.is_pseudo_element() {
             let layout_parent_style_for_pseudo = if primary_style.style().is_display_contents() {
                 layout_parent_style
             } else {
@@ -293,10 +293,6 @@ where
         layout_parent_style: Option<&ComputedValues>,
         pseudo: Option<&PseudoElement>,
     ) -> ResolvedStyle {
-        debug_assert!(
-            self.element.implemented_pseudo_element().is_none() || pseudo.is_none(),
-            "Pseudo-elements can't have other pseudos!"
-        );
         debug_assert!(pseudo.map_or(true, |p| p.is_eager()));
 
         let implemented_pseudo = self.element.implemented_pseudo_element();
@@ -477,15 +473,16 @@ where
         );
         debug_assert!(pseudo_element.is_eager());
         debug_assert!(
-            self.element.implemented_pseudo_element().is_none(),
-            "Element pseudos can't have any other pseudo."
+            !self.element.is_pseudo_element(),
+            "Element pseudos can't have any other eager pseudo."
         );
 
         let mut applicable_declarations = ApplicableDeclarationList::new();
 
         let stylist = &self.context.shared.stylist;
 
-        if !self.element
+        if !self
+            .element
             .may_generate_pseudo(pseudo_element, originating_element_style)
         {
             return None;

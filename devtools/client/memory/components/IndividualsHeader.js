@@ -10,13 +10,13 @@ const { L10N } = require("../utils");
 
 class IndividualsHeader extends Component {
   static get propTypes() {
-    return { };
+    return {};
   }
 
   render() {
     return dom.div(
       {
-        className: "header"
+        className: "header",
       },
 
       dom.span(

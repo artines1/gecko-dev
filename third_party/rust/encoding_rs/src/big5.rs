@@ -23,6 +23,10 @@ impl Big5Decoder {
         VariantDecoder::Big5(Big5Decoder { lead: None })
     }
 
+    pub fn in_neutral_state(&self) -> bool {
+        self.lead.is_none()
+    }
+
     fn plus_one_if_lead(&self, byte_length: usize) -> Option<usize> {
         byte_length.checked_add(match self.lead {
             None => 0,
@@ -141,7 +145,7 @@ impl Big5Decoder {
                     }
                 }
             } else if big5_is_astral(rebased_pointer) {
-                handle.write_astral(low_bits as u32 |
+                handle.write_astral(u32::from(low_bits) |
                                     0x20000u32)
             } else {
                 handle.write_bmp_excl_ascii(low_bits)

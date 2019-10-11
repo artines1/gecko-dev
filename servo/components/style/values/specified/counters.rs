@@ -1,26 +1,26 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Specified types for counter properties.
 
 #[cfg(feature = "servo")]
-use computed_values::list_style_type::T as ListStyleType;
+use crate::computed_values::list_style_type::T as ListStyleType;
+use crate::parser::{Parse, ParserContext};
+use crate::values::generics::counters as generics;
+use crate::values::generics::counters::CounterPair;
+use crate::values::generics::counters::GenericCounterIncrement;
+use crate::values::generics::counters::GenericCounterSetOrReset;
+#[cfg(feature = "gecko")]
+use crate::values::generics::CounterStyle;
+use crate::values::specified::url::SpecifiedImageUrl;
+#[cfg(feature = "gecko")]
+use crate::values::specified::Attr;
+use crate::values::specified::Integer;
+use crate::values::CustomIdent;
 use cssparser::{Parser, Token};
-use parser::{Parse, ParserContext};
 use selectors::parser::SelectorParseErrorKind;
 use style_traits::{ParseError, StyleParseErrorKind};
-use values::CustomIdent;
-#[cfg(feature = "gecko")]
-use values::generics::CounterStyleOrNone;
-use values::generics::counters as generics;
-use values::generics::counters::CounterIncrement as GenericCounterIncrement;
-use values::generics::counters::CounterPair;
-use values::generics::counters::CounterReset as GenericCounterReset;
-#[cfg(feature = "gecko")]
-use values::specified::Attr;
-use values::specified::Integer;
-use values::specified::url::SpecifiedImageUrl;
 
 /// A specified value for the `counter-increment` property.
 pub type CounterIncrement = GenericCounterIncrement<Integer>;
@@ -34,10 +34,10 @@ impl Parse for CounterIncrement {
     }
 }
 
-/// A specified value for the `counter-increment` property.
-pub type CounterReset = GenericCounterReset<Integer>;
+/// A specified value for the `counter-set` and `counter-reset` properties.
+pub type CounterSetOrReset = GenericCounterSetOrReset<Integer>;
 
-impl Parse for CounterReset {
+impl Parse for CounterSetOrReset {
     fn parse<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
@@ -98,13 +98,13 @@ impl Content {
     }
 
     #[cfg(feature = "gecko")]
-    fn parse_counter_style(context: &ParserContext, input: &mut Parser) -> CounterStyleOrNone {
+    fn parse_counter_style(context: &ParserContext, input: &mut Parser) -> CounterStyle {
         input
             .try(|input| {
                 input.expect_comma()?;
-                CounterStyleOrNone::parse(context, input)
+                CounterStyle::parse(context, input)
             })
-            .unwrap_or(CounterStyleOrNone::decimal())
+            .unwrap_or(CounterStyle::decimal())
     }
 }
 
@@ -181,7 +181,7 @@ impl Parse for Content {
                         None => {
                             return Err(input.new_custom_error(
                                 StyleParseErrorKind::UnexpectedFunction(name.clone()),
-                            ))
+                            ));
                         },
                     }
                 },

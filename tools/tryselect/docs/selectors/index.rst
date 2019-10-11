@@ -3,6 +3,7 @@ Selectors
 
 These are the currently implemented try selectors:
 
+* :doc:`chooser <chooser>`: Select tasks using a web interface.
 * :doc:`fuzzy <fuzzy>`: Select tasks using a fuzzy finding algorithm and
   a terminal interface.
 * :doc:`again <again>`: Re-run a previous ``try_task_config.json`` based
@@ -11,6 +12,7 @@ These are the currently implemented try selectors:
   some tasks automatically (like lint and python unittest tasks). Further tasks
   can be chosen with treeherder's ``Add New Jobs`` feature.
 * :doc:`syntax <syntax>`: Select tasks using classic try syntax.
+* :doc:`release <release>`: Prepare a tree for doing a staging release.
 
 You can run them with:
 
@@ -29,6 +31,9 @@ See selector specific options by running:
   :maxdepth: 1
   :hidden:
 
+  Chooser <chooser>
   Fuzzy <fuzzy>
+  Again <again>
   Empty <empty>
   Syntax <syntax>
+  Release <release>

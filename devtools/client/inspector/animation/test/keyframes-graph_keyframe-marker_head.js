@@ -24,7 +24,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "rgb(0, 255, 0)",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -37,7 +37,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "round space",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -50,7 +50,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "20px",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -63,7 +63,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "100px",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -76,7 +76,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "1",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -89,7 +89,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "center",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
       {
@@ -102,7 +102,7 @@ const KEYFRAMES_TEST_DATA = [
           {
             title: "translate(100px)",
             marginInlineStart: "100%",
-          }
+          },
         ],
       },
     ],
@@ -179,38 +179,54 @@ const KEYFRAMES_TEST_DATA = [
 // eslint-disable-next-line no-unused-vars
 async function testKeyframesGraphKeyframesMarker() {
   await addTab(URL_ROOT + "doc_multi_keyframes.html");
-  await removeAnimatedElementsExcept(KEYFRAMES_TEST_DATA.map(t => `.${ t.targetClass }`));
+  await removeAnimatedElementsExcept(
+    KEYFRAMES_TEST_DATA.map(t => `.${t.targetClass}`)
+  );
   const { animationInspector, panel } = await openAnimationInspector();
 
   for (const { properties, targetClass } of KEYFRAMES_TEST_DATA) {
-    info(`Checking keyframe marker for ${ targetClass }`);
-    await clickOnAnimationByTargetSelector(animationInspector,
-                                           panel, `.${ targetClass }`);
+    info(`Checking keyframe marker for ${targetClass}`);
+    await clickOnAnimationByTargetSelector(
+      animationInspector,
+      panel,
+      `.${targetClass}`
+    );
 
     for (const { name, expectedValues } of properties) {
-      const testTarget = `${ name } in ${ targetClass }`;
-      info(`Checking keyframe marker for ${ testTarget }`);
-      info(`Checking keyframe marker existence for ${ testTarget }`);
-      const markerEls = panel.querySelectorAll(`.${ name } .keyframe-marker-item`);
-      is(markerEls.length, expectedValues.length,
-        `Count of keyframe marker elements of ${ testTarget } ` +
-        `should be ${ expectedValues.length }`);
+      const testTarget = `${name} in ${targetClass}`;
+      info(`Checking keyframe marker for ${testTarget}`);
+      info(`Checking keyframe marker existence for ${testTarget}`);
+      const markerEls = panel.querySelectorAll(
+        `.${name} .keyframe-marker-item`
+      );
+      is(
+        markerEls.length,
+        expectedValues.length,
+        `Count of keyframe marker elements of ${testTarget} ` +
+          `should be ${expectedValues.length}`
+      );
 
       for (let i = 0; i < expectedValues.length; i++) {
-        const hintTarget = `.keyframe-marker-item[${ i }] of ${ testTarget }`;
+        const hintTarget = `.keyframe-marker-item[${i}] of ${testTarget}`;
 
-        info(`Checking ${ hintTarget }`);
+        info(`Checking ${hintTarget}`);
         const markerEl = markerEls[i];
         const expectedValue = expectedValues[i];
 
-        info(`Checking title in ${ hintTarget }`);
-        is(markerEl.getAttribute("title"), expectedValue.title,
-         `title in ${ hintTarget } should be ${ expectedValue.title }`);
+        info(`Checking title in ${hintTarget}`);
+        is(
+          markerEl.getAttribute("title"),
+          expectedValue.title,
+          `title in ${hintTarget} should be ${expectedValue.title}`
+        );
 
-        info(`Checking marginInlineStart style in ${ hintTarget }`);
-        is(markerEl.style.marginInlineStart, expectedValue.marginInlineStart,
-          `marginInlineStart in ${ hintTarget } should be ` +
-          `${ expectedValue.marginInlineStart }`);
+        info(`Checking marginInlineStart style in ${hintTarget}`);
+        is(
+          markerEl.style.marginInlineStart,
+          expectedValue.marginInlineStart,
+          `marginInlineStart in ${hintTarget} should be ` +
+            `${expectedValue.marginInlineStart}`
+        );
       }
     }
   }

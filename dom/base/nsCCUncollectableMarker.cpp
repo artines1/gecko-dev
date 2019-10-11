@@ -9,14 +9,13 @@
 #include "nsIDocShell.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIContentViewer.h"
-#include "nsIDocument.h"
-#include "XULDocument.h"
+#include "mozilla/dom/Document.h"
+#include "InProcessBrowserChildMessageManager.h"
 #include "nsIWindowMediator.h"
 #include "nsPIDOMWindow.h"
 #include "nsIWebNavigation.h"
 #include "nsISHistory.h"
 #include "nsISHEntry.h"
-#include "nsISHContainer.h"
 #include "nsIWindowWatcher.h"
 #include "mozilla/Services.h"
 #include "nsIXULWindow.h"
@@ -25,17 +24,16 @@
 #include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
 #include "nsJSEnvironment.h"
-#include "nsInProcessTabChildGlobal.h"
 #include "nsFrameLoader.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/dom/ChromeMessageBroadcaster.h"
 #include "mozilla/dom/ContentFrameMessageManager.h"
+#include "mozilla/dom/ContentProcessMessageManager.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ParentProcessMessageManager.h"
-#include "mozilla/dom/ProcessGlobal.h"
-#include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/TimeoutManager.h"
 #include "xpcpublic.h"
 #include "nsObserverService.h"
@@ -52,25 +50,21 @@ static bool sInited = 0;
 // to dom::TraceBlackJS().
 uint32_t nsCCUncollectableMarker::sGeneration = 1;
 #ifdef MOZ_XUL
-#include "nsXULPrototypeCache.h"
+#  include "nsXULPrototypeCache.h"
 #endif
 
 NS_IMPL_ISUPPORTS(nsCCUncollectableMarker, nsIObserver)
 
 /* static */
-nsresult
-nsCCUncollectableMarker::Init()
-{
+nsresult nsCCUncollectableMarker::Init() {
   if (sInited) {
     return NS_OK;
   }
 
   nsCOMPtr<nsIObserver> marker = new nsCCUncollectableMarker;
 
-  nsCOMPtr<nsIObserverService> obs =
-    mozilla::services::GetObserverService();
-  if (!obs)
-    return NS_ERROR_FAILURE;
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  if (!obs) return NS_ERROR_FAILURE;
 
   nsresult rv;
 
@@ -88,19 +82,18 @@ nsCCUncollectableMarker::Init()
   return NS_OK;
 }
 
-static void
-MarkChildMessageManagers(MessageBroadcaster* aMM)
-{
+static void MarkChildMessageManagers(MessageBroadcaster* aMM) {
   aMM->MarkForCC();
 
-  uint32_t tabChildCount = aMM->ChildCount();
-  for (uint32_t j = 0; j < tabChildCount; ++j) {
+  uint32_t browserChildCount = aMM->ChildCount();
+  for (uint32_t j = 0; j < browserChildCount; ++j) {
     RefPtr<MessageListenerManager> childMM = aMM->GetChildAt(j);
     if (!childMM) {
       continue;
     }
 
-    RefPtr<MessageBroadcaster> strongNonLeafMM = MessageBroadcaster::From(childMM);
+    RefPtr<MessageBroadcaster> strongNonLeafMM =
+        MessageBroadcaster::From(childMM);
     MessageBroadcaster* nonLeafMM = strongNonLeafMM;
 
     MessageListenerManager* tabMM = childMM;
@@ -115,12 +108,13 @@ MarkChildMessageManagers(MessageBroadcaster* aMM)
 
     tabMM->MarkForCC();
 
-    //XXX hack warning, but works, since we know that
+    // XXX hack warning, but works, since we know that
     //    callback is frameloader.
     mozilla::dom::ipc::MessageManagerCallback* cb = tabMM->GetCallback();
     if (cb) {
       nsFrameLoader* fl = static_cast<nsFrameLoader*>(cb);
-      nsInProcessTabChildGlobal* et = fl->GetTabChildGlobal();
+      InProcessBrowserChildMessageManager* et =
+          fl->GetBrowserChildMessageManager();
       if (!et) {
         continue;
       }
@@ -133,12 +127,10 @@ MarkChildMessageManagers(MessageBroadcaster* aMM)
   }
 }
 
-static void
-MarkMessageManagers()
-{
+static void MarkMessageManagers() {
   if (nsFrameMessageManager::GetChildProcessManager()) {
-    // ProcessGlobal's MarkForCC marks also ChildProcessManager.
-    ProcessGlobal* pg = ProcessGlobal::Get();
+    // ContentProcessMessageManager's MarkForCC also marks ChildProcessManager.
+    ContentProcessMessageManager* pg = ContentProcessMessageManager::Get();
     if (pg) {
       pg->MarkForCC();
     }
@@ -149,7 +141,7 @@ MarkMessageManagers()
     return;
   }
   RefPtr<ChromeMessageBroadcaster> strongGlobalMM =
-    nsFrameMessageManager::GetGlobalMessageManager();
+      nsFrameMessageManager::GetGlobalMessageManager();
   if (!strongGlobalMM) {
     return;
   }
@@ -159,10 +151,11 @@ MarkMessageManagers()
 
   if (nsFrameMessageManager::sParentProcessManager) {
     nsFrameMessageManager::sParentProcessManager->MarkForCC();
-    uint32_t childCount = nsFrameMessageManager::sParentProcessManager->ChildCount();
+    uint32_t childCount =
+        nsFrameMessageManager::sParentProcessManager->ChildCount();
     for (uint32_t i = 0; i < childCount; ++i) {
       RefPtr<MessageListenerManager> childMM =
-        nsFrameMessageManager::sParentProcessManager->GetChildAt(i);
+          nsFrameMessageManager::sParentProcessManager->GetChildAt(i);
       if (!childMM) {
         continue;
       }
@@ -176,14 +169,12 @@ MarkMessageManagers()
   }
 }
 
-void
-MarkContentViewer(nsIContentViewer* aViewer, bool aCleanupJS)
-{
+void MarkContentViewer(nsIContentViewer* aViewer, bool aCleanupJS) {
   if (!aViewer) {
     return;
   }
 
-  nsIDocument *doc = aViewer->GetDocument();
+  Document* doc = aViewer->GetDocument();
   if (doc &&
       doc->GetMarkedCCGeneration() != nsCCUncollectableMarker::sGeneration) {
     doc->MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
@@ -192,32 +183,32 @@ MarkContentViewer(nsIContentViewer* aViewer, bool aCleanupJS)
       if (elm) {
         elm->MarkForCC();
       }
-      nsCOMPtr<EventTarget> win = do_QueryInterface(doc->GetInnerWindow());
+      RefPtr<nsGlobalWindowInner> win =
+          nsGlobalWindowInner::Cast(doc->GetInnerWindow());
       if (win) {
         elm = win->GetExistingListenerManager();
         if (elm) {
           elm->MarkForCC();
         }
-        static_cast<nsGlobalWindowInner*>(win.get())->AsInner()->
-          TimeoutManager().UnmarkGrayTimers();
+        win->TimeoutManager().UnmarkGrayTimers();
       }
     }
   }
   if (doc) {
     if (nsPIDOMWindowInner* inner = doc->GetInnerWindow()) {
-      inner->MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
+      inner->MarkUncollectableForCCGeneration(
+          nsCCUncollectableMarker::sGeneration);
     }
     if (nsPIDOMWindowOuter* outer = doc->GetWindow()) {
-      outer->MarkUncollectableForCCGeneration(nsCCUncollectableMarker::sGeneration);
+      outer->MarkUncollectableForCCGeneration(
+          nsCCUncollectableMarker::sGeneration);
     }
   }
 }
 
 void MarkDocShell(nsIDocShellTreeItem* aNode, bool aCleanupJS);
 
-void
-MarkSHEntry(nsISHEntry* aSHEntry, bool aCleanupJS)
-{
+void MarkSHEntry(nsISHEntry* aSHEntry, bool aCleanupJS) {
   if (!aSHEntry) {
     return;
   }
@@ -233,20 +224,16 @@ MarkSHEntry(nsISHEntry* aSHEntry, bool aCleanupJS)
     MarkDocShell(child, aCleanupJS);
   }
 
-  nsCOMPtr<nsISHContainer> shCont = do_QueryInterface(aSHEntry);
   int32_t count;
-  shCont->GetChildCount(&count);
+  aSHEntry->GetChildCount(&count);
   for (i = 0; i < count; ++i) {
     nsCOMPtr<nsISHEntry> childEntry;
-    shCont->GetChildAt(i, getter_AddRefs(childEntry));
+    aSHEntry->GetChildAt(i, getter_AddRefs(childEntry));
     MarkSHEntry(childEntry, aCleanupJS);
   }
-
 }
 
-void
-MarkDocShell(nsIDocShellTreeItem* aNode, bool aCleanupJS)
-{
+void MarkDocShell(nsIDocShellTreeItem* aNode, bool aCleanupJS) {
   nsCOMPtr<nsIDocShell> shell = do_QueryInterface(aNode);
   if (!shell) {
     return;
@@ -262,36 +249,33 @@ MarkDocShell(nsIDocShellTreeItem* aNode, bool aCleanupJS)
     int32_t historyCount = history->Count();
     for (int32_t i = 0; i < historyCount; ++i) {
       nsCOMPtr<nsISHEntry> shEntry;
-      history->LegacySHistory()->GetEntryAtIndex(
-        i, false, getter_AddRefs(shEntry));
+      history->LegacySHistory()->GetEntryAtIndex(i, getter_AddRefs(shEntry));
 
       MarkSHEntry(shEntry, aCleanupJS);
     }
   }
 
   int32_t i, childCount;
-  aNode->GetChildCount(&childCount);
+  aNode->GetInProcessChildCount(&childCount);
   for (i = 0; i < childCount; ++i) {
     nsCOMPtr<nsIDocShellTreeItem> child;
-    aNode->GetChildAt(i, getter_AddRefs(child));
+    aNode->GetInProcessChildAt(i, getter_AddRefs(child));
     MarkDocShell(child, aCleanupJS);
   }
 }
 
-void
-MarkWindowList(nsISimpleEnumerator* aWindowList, bool aCleanupJS)
-{
+void MarkWindowList(nsISimpleEnumerator* aWindowList, bool aCleanupJS) {
   nsCOMPtr<nsISupports> iter;
-  while (NS_SUCCEEDED(aWindowList->GetNext(getter_AddRefs(iter))) &&
-         iter) {
+  while (NS_SUCCEEDED(aWindowList->GetNext(getter_AddRefs(iter))) && iter) {
     if (nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryInterface(iter)) {
       nsCOMPtr<nsIDocShell> rootDocShell = window->GetDocShell();
 
       MarkDocShell(rootDocShell, aCleanupJS);
 
-      RefPtr<TabChild> tabChild = TabChild::GetFrom(rootDocShell);
-      if (tabChild) {
-        RefPtr<TabChildGlobal> mm = tabChild->GetMessageManager();
+      RefPtr<BrowserChild> browserChild = BrowserChild::GetFrom(rootDocShell);
+      if (browserChild) {
+        RefPtr<BrowserChildMessageManager> mm =
+            browserChild->GetMessageManager();
         if (mm) {
           // MarkForCC ends up calling UnmarkGray on message listeners, which
           // TraceBlackJS can't do yet.
@@ -302,17 +286,14 @@ MarkWindowList(nsISimpleEnumerator* aWindowList, bool aCleanupJS)
   }
 }
 
-nsresult
-nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
-                                 const char16_t* aData)
-{
+nsresult nsCCUncollectableMarker::Observe(nsISupports* aSubject,
+                                          const char* aTopic,
+                                          const char16_t* aData) {
   if (!strcmp(aTopic, "xpcom-shutdown")) {
     Element::ClearContentUnbinder();
 
-    nsCOMPtr<nsIObserverService> obs =
-      mozilla::services::GetObserverService();
-    if (!obs)
-      return NS_ERROR_FAILURE;
+    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+    if (!obs) return NS_ERROR_FAILURE;
 
     // No need for kungFuDeathGrip here, yay observerservice!
     obs->RemoveObserver(this, "xpcom-shutdown");
@@ -325,12 +306,12 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
   }
 
   NS_ASSERTION(!strcmp(aTopic, "cycle-collector-begin") ||
-               !strcmp(aTopic, "cycle-collector-forget-skippable"), "wrong topic");
+                   !strcmp(aTopic, "cycle-collector-forget-skippable"),
+               "wrong topic");
 
   // JS cleanup can be slow. Do it only if there has been a GC.
-  const bool cleanupJS =
-    nsJSContext::CleanupsSinceLastGC() == 0 &&
-    !strcmp(aTopic, "cycle-collector-forget-skippable");
+  const bool cleanupJS = nsJSContext::CleanupsSinceLastGC() == 0 &&
+                         !strcmp(aTopic, "cycle-collector-forget-skippable");
 
   const bool prepareForCC = !strcmp(aTopic, "cycle-collector-begin");
   if (prepareForCC) {
@@ -348,8 +329,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
 
   // Iterate all toplevel windows
   nsCOMPtr<nsISimpleEnumerator> windowList;
-  nsCOMPtr<nsIWindowMediator> med =
-    do_GetService(NS_WINDOWMEDIATOR_CONTRACTID);
+  nsCOMPtr<nsIWindowMediator> med = do_GetService(NS_WINDOWMEDIATOR_CONTRACTID);
   if (med) {
     rv = med->GetEnumerator(nullptr, getter_AddRefs(windowList));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -357,8 +337,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
     MarkWindowList(windowList, cleanupJS);
   }
 
-  nsCOMPtr<nsIWindowWatcher> ww =
-    do_GetService(NS_WINDOWWATCHER_CONTRACTID);
+  nsCOMPtr<nsIWindowWatcher> ww = do_GetService(NS_WINDOWWATCHER_CONTRACTID);
   if (ww) {
     rv = ww->GetWindowEnumerator(getter_AddRefs(windowList));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -367,11 +346,13 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
   }
 
   nsCOMPtr<nsIAppShellService> appShell =
-    do_GetService(NS_APPSHELLSERVICE_CONTRACTID);
+      do_GetService(NS_APPSHELLSERVICE_CONTRACTID);
   if (appShell) {
-    nsCOMPtr<nsIXULWindow> hw;
-    appShell->GetHiddenWindow(getter_AddRefs(hw));
-    if (hw) {
+    bool hasHiddenWindow = false;
+    appShell->GetHasHiddenWindow(&hasHiddenWindow);
+    if (hasHiddenWindow) {
+      nsCOMPtr<nsIXULWindow> hw;
+      appShell->GetHiddenWindow(getter_AddRefs(hw));
       nsCOMPtr<nsIDocShell> shell;
       hw->GetDocShell(getter_AddRefs(shell));
       MarkDocShell(shell, cleanupJS);
@@ -379,6 +360,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
     bool hasHiddenPrivateWindow = false;
     appShell->GetHasHiddenPrivateWindow(&hasHiddenPrivateWindow);
     if (hasHiddenPrivateWindow) {
+      nsCOMPtr<nsIXULWindow> hw;
       appShell->GetHiddenPrivateWindow(getter_AddRefs(hw));
       if (hw) {
         nsCOMPtr<nsIDocShell> shell;
@@ -395,8 +377,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
   }
 #endif
 
-  enum ForgetSkippableCleanupState
-  {
+  enum ForgetSkippableCleanupState {
     eInitial = 0,
     eUnmarkJSEventListeners = 1,
     eUnmarkMessageManagers = 2,
@@ -405,7 +386,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
     eDone = 5
   };
 
-  static_assert(eDone == NS_MAJOR_FORGET_SKIPPABLE_CALLS,
+  static_assert(eDone == kMajorForgetSkippableCalls,
                 "There must be one forgetSkippable call per cleanup state.");
 
   static uint32_t sFSState = eDone;
@@ -425,7 +406,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
     ++sFSState;
   }
 
-  switch(sFSState) {
+  switch (sFSState) {
     case eUnmarkJSEventListeners: {
       nsContentUtils::UnmarkGrayJSListenersInCCGenerationDocuments();
       break;
@@ -435,8 +416,9 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
       break;
     }
     case eUnmarkStrongObservers: {
-      nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-      static_cast<nsObserverService *>(obs.get())->UnmarkGrayStrongObservers();
+      nsCOMPtr<nsIObserverService> obs =
+          mozilla::services::GetObserverService();
+      static_cast<nsObserverService*>(obs.get())->UnmarkGrayStrongObservers();
       break;
     }
     case eUnmarkJSHolders: {
@@ -451,9 +433,7 @@ nsCCUncollectableMarker::Observe(nsISupports* aSubject, const char* aTopic,
   return NS_OK;
 }
 
-void
-mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC)
-{
+void mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC) {
 #ifdef MOZ_XUL
   // Mark the scripts held in the XULPrototypeCache. This is required to keep
   // the JS script in the cache live across GC.
@@ -471,8 +451,9 @@ mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC)
     return;
   }
 
-  if (ProcessGlobal::WasCreated() && nsFrameMessageManager::GetChildProcessManager()) {
-    ProcessGlobal* pg = ProcessGlobal::Get();
+  if (ContentProcessMessageManager::WasCreated() &&
+      nsFrameMessageManager::GetChildProcessManager()) {
+    auto* pg = ContentProcessMessageManager::Get();
     if (pg) {
       mozilla::TraceScriptHolder(ToSupports(pg), aTrc);
     }
@@ -480,14 +461,13 @@ mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC)
 
   // Mark globals of active windows black.
   nsGlobalWindowOuter::OuterWindowByIdTable* windowsById =
-    nsGlobalWindowOuter::GetWindowsTable();
+      nsGlobalWindowOuter::GetWindowsTable();
   if (windowsById) {
     for (auto iter = windowsById->Iter(); !iter.Done(); iter.Next()) {
       nsGlobalWindowOuter* window = iter.Data();
       if (!window->IsCleanedUp()) {
         nsGlobalWindowInner* inner = nullptr;
-        for (PRCList* win = PR_LIST_HEAD(window);
-             win != window;
+        for (PRCList* win = PR_LIST_HEAD(window); win != window;
              win = PR_NEXT_LINK(inner)) {
           inner = static_cast<nsGlobalWindowInner*>(win);
           if (inner->IsCurrentInnerWindow() ||
@@ -502,19 +482,20 @@ mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC)
         }
 
         if (window->IsRootOuterWindow()) {
-          // In child process trace all the TabChildGlobals.
-          // Since there is one root outer window per TabChildGlobal, we need
-          // to look for only those windows, not all.
+          // In child process trace all the BrowserChildMessageManagers.
+          // Since there is one root outer window per
+          // BrowserChildMessageManager, we need to look for only those windows,
+          // not all.
           nsIDocShell* ds = window->GetDocShell();
           if (ds) {
-            nsCOMPtr<nsITabChild> tabChild = ds->GetTabChild();
-            if (tabChild) {
+            nsCOMPtr<nsIBrowserChild> browserChild = ds->GetBrowserChild();
+            if (browserChild) {
               RefPtr<ContentFrameMessageManager> mm;
-              tabChild->GetMessageManager(getter_AddRefs(mm));
+              browserChild->GetMessageManager(getter_AddRefs(mm));
               if (mm) {
-                nsCOMPtr<nsISupports> tabChildAsSupports =
-                  do_QueryInterface(tabChild);
-                mozilla::TraceScriptHolder(tabChildAsSupports, aTrc);
+                nsCOMPtr<nsISupports> browserChildAsSupports =
+                    do_QueryInterface(browserChild);
+                mozilla::TraceScriptHolder(browserChildAsSupports, aTrc);
                 EventListenerManager* elm = mm->GetExistingListenerManager();
                 if (elm) {
                   elm->TraceListeners(aTrc);
@@ -526,10 +507,9 @@ mozilla::dom::TraceBlackJS(JSTracer* aTrc, bool aIsShutdownGC)
         }
 
 #ifdef MOZ_XUL
-        nsIDocument* doc = window->GetExtantDoc();
-        if (doc && doc->IsXULDocument()) {
-          XULDocument* xulDoc = static_cast<XULDocument*>(doc);
-          xulDoc->TraceProtos(aTrc);
+        Document* doc = window->GetExtantDoc();
+        if (doc) {
+          doc->TraceProtos(aTrc);
         }
 #endif
       }

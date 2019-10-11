@@ -8,11 +8,14 @@
 # NS_FormatCodeAddress(), which on Mac often lack a file name and a line
 # number.
 
-import subprocess
-import sys
-import re
+from __future__ import print_function
+
+import json
 import os
 import pty
+import re
+import subprocess
+import sys
 import termios
 
 
@@ -44,7 +47,7 @@ class unbufferedLineConverter:
     def test():
         assert unbufferedLineConverter("rev").convert("123") == "321"
         assert unbufferedLineConverter("cut", ["-c3"]).convert("abcde") == "c"
-        print "Pass"
+        print("Pass")
 
 
 def separate_debug_file_for(file):
@@ -65,13 +68,13 @@ def address_adjustment(file):
             if line == "  segname __TEXT\n":
                 line = otool.stdout.readline()
                 if not line.startswith("   vmaddr "):
-                    raise StandardError("unexpected otool output")
+                    raise Exception("unexpected otool output")
                 result = int(line[10:], 16)
                 break
         otool.stdout.close()
 
         if result is None:
-            raise StandardError("unexpected otool output")
+            raise Exception("unexpected otool output")
 
         address_adjustments[file] = result
 
@@ -113,7 +116,7 @@ line_re = re.compile("^(.*#\d+: )(.+)\[(.+) \+(0x[0-9A-Fa-f]+)\](.*)$")
 atos_name_re = re.compile("^(.+) \(in ([^)]+)\) \((.+)\)$")
 
 
-def fixSymbols(line):
+def fixSymbols(line, jsonEscape=False):
     result = line_re.match(line)
     if result is not None:
         (before, fn, file, address, after) = result.groups()
@@ -136,6 +139,9 @@ def fixSymbols(line):
                 if (name.startswith("_Z")):
                     name = cxxfilt(name)
                 info = "%s (%s, in %s)" % (name, fileline, library)
+
+            if jsonEscape:
+                info = json.dumps(info)[1:-1]   # [1:-1] strips the quotes
 
             nl = '\n' if line[-1] == '\n' else ''
             return before + info + after + nl

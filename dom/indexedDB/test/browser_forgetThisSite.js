@@ -3,12 +3,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-let {ForgetAboutSite} = ChromeUtils.import("resource://gre/modules/ForgetAboutSite.jsm", {});
+let { ForgetAboutSite } = ChromeUtils.import(
+  "resource://gre/modules/ForgetAboutSite.jsm"
+);
 
-const domains = [
-  "mochi.test:8888",
-  "www.example.com"
-];
+const domains = ["mochi.test:8888", "www.example.com"];
 
 const addPath = "/browser/dom/indexedDB/test/browser_forgetThisSiteAdd.html";
 const getPath = "/browser/dom/indexedDB/test/browser_forgetThisSiteGet.html";
@@ -26,7 +25,7 @@ add_task(async function test1() {
 
   // Set database version for domain 1
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.loadURI(testPageURL1);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL1);
   await waitForMessage(11, gBrowser);
   gBrowser.removeCurrentTab();
 });
@@ -34,7 +33,7 @@ add_task(async function test1() {
 add_task(async function test2() {
   // Set database version for domain 2
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.loadURI(testPageURL2);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL2);
   await waitForMessage(11, gBrowser);
   gBrowser.removeCurrentTab();
 });
@@ -49,7 +48,7 @@ add_task(async function test3() {
 add_task(async function test4() {
   // Get database version for domain 1
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.loadURI(testPageURL3);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL3);
   await waitForMessage(11, gBrowser);
   gBrowser.removeCurrentTab();
 });
@@ -57,7 +56,7 @@ add_task(async function test4() {
 add_task(async function test5() {
   // Get database version for domain 2
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.loadURI(testPageURL4);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL4);
   await waitForMessage(1, gBrowser);
   gBrowser.removeCurrentTab();
 });

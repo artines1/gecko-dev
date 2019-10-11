@@ -1,6 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+if (Services.prefs.getBoolPref("fission.autostart")) {
+  requestLongerTimeout(2);
+}
+
+const DEFAULT_PROCESS_COUNT = Services.prefs
+  .getDefaultBranch(null)
+  .getIntPref("dom.ipc.processCount");
+
 /**
  * A test that checks whether any preference getter from the given list
  * of stats was called more often than the max parameter.
@@ -20,9 +28,9 @@
  *                 }
  */
 function checkPrefGetters(stats, max, whitelist = {}) {
-  let getterStats = Object
-    .entries(stats)
-    .sort(([, val1], [, val2]) => val2 - val1);
+  let getterStats = Object.entries(stats).sort(
+    ([, val1], [, val2]) => val2 - val1
+  );
 
   // Clone the whitelist to be able to delete entries to check if we
   // forgot any later on.
@@ -31,27 +39,54 @@ function checkPrefGetters(stats, max, whitelist = {}) {
   for (let [pref, count] of getterStats) {
     let whitelistItem = whitelist[pref];
     if (!whitelistItem) {
-      Assert.lessOrEqual(count, max, `${pref} should not be accessed more than ${max} times.`);
+      Assert.lessOrEqual(
+        count,
+        max,
+        `${pref} should not be accessed more than ${max} times.`
+      );
     } else {
       // Still record how much this pref was accessed even if we don't do any real assertions.
       if (!whitelistItem.min && !whitelistItem.max) {
-        info(`${pref} should not be accessed more than ${max} times and was accessed ${count} times.`);
+        info(
+          `${pref} should not be accessed more than ${max} times and was accessed ${count} times.`
+        );
       }
 
       if (whitelistItem.min) {
-        Assert.lessOrEqual(whitelistItem.min, count,
-          `Whitelist item ${pref} should be accessed at least ${whitelistItem.min} times.`);
+        Assert.lessOrEqual(
+          whitelistItem.min,
+          count,
+          `Whitelist item ${pref} should be accessed at least ${
+            whitelistItem.min
+          } times.`
+        );
       }
       if (whitelistItem.max) {
-        Assert.lessOrEqual(count, whitelistItem.max,
-          `Whitelist item ${pref} should be accessed at most ${whitelistItem.max} times.`);
+        Assert.lessOrEqual(
+          count,
+          whitelistItem.max,
+          `Whitelist item ${pref} should be accessed at most ${
+            whitelistItem.max
+          } times.`
+        );
       }
       delete whitelist[pref];
     }
   }
 
+  // This pref will be accessed by mozJSComponentLoader when loading modules,
+  // which fails TV runs since they run the test multiple times without restarting.
+  // We just ignore this pref, since it's for testing only anyway.
+  if (whitelist["browser.startup.record"]) {
+    delete whitelist["browser.startup.record"];
+  }
+
   let remainingWhitelist = Object.keys(whitelist);
-  is(remainingWhitelist.length, 0, `Should have checked all whitelist items. Remaining: ${remainingWhitelist}`);
+  is(
+    remainingWhitelist.length,
+    0,
+    `Should have checked all whitelist items. Remaining: ${remainingWhitelist}`
+  );
 }
 
 /**
@@ -60,7 +95,7 @@ function checkPrefGetters(stats, max, whitelist = {}) {
  */
 function getPreferenceStats() {
   let stats = {};
-  Services.prefs.readStats((key, value) => stats[key] = value);
+  Services.prefs.readStats((key, value) => (stats[key] = value));
   return stats;
 }
 
@@ -77,28 +112,33 @@ add_task(async function startup() {
       min: 200,
       max: 350,
     },
-    "layout.css.prefixes.webkit": {
-      min: 135,
-      max: 170,
-    },
-    "browser.search.log": {
-      min: 100,
-      max: 200,
-    },
     "layout.css.dpi": {
       min: 45,
-      max: 75,
+      max: 81,
     },
     "network.loadinfo.skip_type_assertion": {
-      max: 654,
+      // This is accessed in debug only.
     },
     "extensions.getAddons.cache.enabled": {
-      min: 7,
+      min: 4,
       max: 55,
+    },
+    "chrome.override_package.global": {
+      min: 0,
+      max: 50,
+    },
+    "csp.skip_about_page_has_csp_assert": {
+      // This is accessed in debug only.
     },
   };
 
-  let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService().wrappedJSObject;
+  if (SpecialPowers.useRemoteSubframes) {
+    // Bug 1585732 - Number of accesses with Fission enabled is higher than without.
+    max = 50;
+  }
+
+  let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService()
+    .wrappedJSObject;
   await startupRecorder.done;
 
   ok(startupRecorder.data.prefStats, "startupRecorder has prefStats");
@@ -108,7 +148,10 @@ add_task(async function startup() {
 
 // This opens 10 tabs and checks pref getters.
 add_task(async function open_10_tabs() {
-  let max = 15;
+  // This is somewhat arbitrary. When we had a default of 4 content processes
+  // the value was 15. We need to scale it as we increase the number of
+  // content processes so we approximate with 4 * process_count.
+  const max = 4 * DEFAULT_PROCESS_COUNT;
 
   let whitelist = {
     "layout.css.dpi": {
@@ -118,34 +161,14 @@ add_task(async function open_10_tabs() {
       min: 10,
       max: 25,
     },
-    "security.insecure_connection_icon.pbmode.enabled": {
-      min: 10,
-      max: 18,
-    },
-    "security.insecure_connection_icon.enabled": {
-      min: 10,
-      max: 18,
-    },
-    "security.insecure_connection_text.enabled": {
-      min: 10,
-      max: 18,
-    },
-    "security.insecure_connection_text.pbmode.enabled": {
-      min: 10,
-      max: 18,
-    },
-    "dom.ipc.processCount": {
-      min: 10,
-      max: 15,
-    },
     "browser.startup.record": {
       max: 20,
     },
     "browser.tabs.remote.logSwitchTiming": {
-      max: 25,
+      max: 35,
     },
     "network.loadinfo.skip_type_assertion": {
-      max: 70,
+      // This is accessed in debug only.
     },
     "toolkit.cosmeticAnimations.enabled": {
       min: 5,
@@ -157,7 +180,14 @@ add_task(async function open_10_tabs() {
 
   let tabs = [];
   while (tabs.length < 10) {
-    tabs.push(await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com", true, true));
+    tabs.push(
+      await BrowserTestUtils.openNewForegroundTab(
+        gBrowser,
+        "http://example.com",
+        true,
+        true
+      )
+    );
   }
 
   for (let tab of tabs) {
@@ -177,23 +207,7 @@ add_task(async function navigate_around() {
       max: 110,
     },
     "network.loadinfo.skip_type_assertion": {
-      max: 130,
-    },
-    "security.insecure_connection_icon.pbmode.enabled": {
-      min: 20,
-      max: 30,
-    },
-    "security.insecure_connection_icon.enabled": {
-      min: 20,
-      max: 30,
-    },
-    "security.insecure_connection_text.enabled": {
-      min: 20,
-      max: 30,
-    },
-    "security.insecure_connection_text.pbmode.enabled": {
-      min: 20,
-      max: 30,
+      // This is accessed in debug only.
     },
     "toolkit.cosmeticAnimations.enabled": {
       min: 45,
@@ -201,11 +215,44 @@ add_task(async function navigate_around() {
     },
   };
 
+  if (SpecialPowers.useRemoteSubframes) {
+    // Bug 1585732 - Number of accesses with Fission enabled is higher than without.
+    max = 50;
+
+    whitelist = Object.assign(
+      {
+        "fission.rebuild_frameloaders_on_remoteness_change": {
+          min: 1,
+          max: 100,
+        },
+        "media.cubeb.sandbox": {
+          min: 1,
+          max: 200,
+        },
+        "security.sandbox.content.level": {
+          min: 1,
+          max: 200,
+        },
+      },
+      whitelist
+    );
+  }
+
   Services.prefs.resetStats();
 
-  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com", true, true);
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "http://example.com",
+    true,
+    true
+  );
 
-  let urls = ["http://example.com", "https://example.com", "http://example.org", "https://example.org"];
+  let urls = [
+    "http://example.com",
+    "https://example.com",
+    "http://example.org",
+    "https://example.org",
+  ];
 
   for (let i = 0; i < 50; i++) {
     let url = urls[i % urls.length];

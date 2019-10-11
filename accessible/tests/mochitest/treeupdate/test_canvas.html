@@ -7,8 +7,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -26,7 +25,7 @@
       this.node = getNode(aID);
 
       this.eventSeq = [
-        new invokerChecker(EVENT_SHOW, this.node)
+        new invokerChecker(EVENT_SHOW, this.node),
       ];
 
       this.invoke = function addSubtree_invoke() {

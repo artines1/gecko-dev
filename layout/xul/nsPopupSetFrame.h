@@ -11,32 +11,33 @@
 #include "nsAtom.h"
 #include "nsBoxFrame.h"
 
-nsIFrame* NS_NewPopupSetFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle* aStyle);
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
 
-class nsPopupSetFrame final : public nsBoxFrame
-{
-public:
+nsIFrame* NS_NewPopupSetFrame(mozilla::PresShell* aPresShell,
+                              mozilla::ComputedStyle* aStyle);
+
+class nsPopupSetFrame final : public nsBoxFrame {
+ public:
   NS_DECL_FRAMEARENA_HELPERS(nsPopupSetFrame)
 
-  explicit nsPopupSetFrame(ComputedStyle* aStyle)
-    : nsBoxFrame(aStyle, kClassID)
-  {}
+  explicit nsPopupSetFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
+      : nsBoxFrame(aStyle, aPresContext, kClassID) {}
 
   ~nsPopupSetFrame() {}
 
-  virtual void Init(nsIContent*       aContent,
-                    nsContainerFrame* aParent,
-                    nsIFrame*         aPrevInFlow) override;
+  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
+                    nsIFrame* aPrevInFlow) override;
 
-  virtual void SetInitialChildList(ChildListID  aListID,
-                                    nsFrameList& aChildList) override;
-  virtual void AppendFrames(ChildListID     aListID,
-                            nsFrameList&    aFrameList) override;
-  virtual void RemoveFrame(ChildListID     aListID,
-                           nsIFrame*       aOldFrame) override;
-  virtual void InsertFrames(ChildListID     aListID,
-                            nsIFrame*       aPrevFrame,
-                            nsFrameList&    aFrameList) override;
+  virtual void SetInitialChildList(ChildListID aListID,
+                                   nsFrameList& aChildList) override;
+  virtual void AppendFrames(ChildListID aListID,
+                            nsFrameList& aFrameList) override;
+  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) override;
+  virtual void InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
+                            const nsLineList::iterator* aPrevFrameLine,
+                            nsFrameList& aFrameList) override;
 
   virtual const nsFrameList& GetChildList(ChildListID aList) const override;
   virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
@@ -44,16 +45,16 @@ public:
   NS_IMETHOD DoXULLayout(nsBoxLayoutState& aBoxLayoutState) override;
 
   // Used to destroy our popup frames.
-  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot,
+                           PostDestroyData& aPostDestroyData) override;
 
 #ifdef DEBUG_FRAME_DUMP
-  virtual nsresult GetFrameName(nsAString& aResult) const override
-  {
-      return MakeFrameName(NS_LITERAL_STRING("PopupSet"), aResult);
+  virtual nsresult GetFrameName(nsAString& aResult) const override {
+    return MakeFrameName(NS_LITERAL_STRING("PopupSet"), aResult);
   }
 #endif
 
-protected:
+ protected:
   void AddPopupFrameList(nsFrameList& aPopupFrameList);
   void RemovePopupFrame(nsIFrame* aPopup);
 

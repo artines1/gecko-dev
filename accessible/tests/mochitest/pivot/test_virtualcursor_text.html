@@ -5,11 +5,9 @@
   <meta charset="utf-8" />
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js">
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js">
   </script>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/chrome-harness.js">
+  <script src="chrome://mochikit/content/chrome-harness.js">
   </script>
 
   <script type="application/javascript" src="../common.js"></script>
@@ -235,6 +233,13 @@
                                       getAccessible(doc.getElementById("section-1")).lastChild));
       gQueue.push(new setVCTextInvoker(docAcc, "movePreviousByText", WORD_BOUNDARY, [20, 28],
                   getAccessible(doc.getElementById("section-1"), nsIAccessibleText)));
+
+      gQueue.push(new setVCPosInvoker(docAcc, null, null,
+                                      getAccessible(doc.getElementById("image-desc-link"))));
+      gQueue.push(new setVCTextInvoker(docAcc, "moveNextByText", CHAR_BOUNDARY, [0, 1],
+                  getAccessible(doc.getElementById("image-desc-link"), nsIAccessibleText)));
+      gQueue.push(new setVCTextInvoker(docAcc, "moveNextByText", CHAR_BOUNDARY, [1, 2],
+                  getAccessible(doc.getElementById("image-desc-link"), nsIAccessibleText)));
 
       gQueue.invoke();
     }

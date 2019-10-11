@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Bug 1181370 - Test triggeringPrincipal for iframe navigations</title>
   <!-- Including SimpleTest.js so we can use waitForExplicitFinish !-->
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
@@ -48,9 +48,9 @@ window.addEventListener("message", receiveMessage);
 
 function receiveMessage(event) {
   is(event.data.triggeringPrincipalURI, TRIGGERINGPRINCIPALURI,
-  	 "TriggeringPrincipal should be the navigating iframe (Frame 1)");
+     "TriggeringPrincipal should be the navigating iframe (Frame 1)");
   is(event.data.loadingPrincipalURI, LOADINGPRINCIPALURI,
-  	 "LoadingPrincipal should be the enclosing iframe (Frame 2)");
+     "LoadingPrincipal should be the enclosing iframe (Frame 2)");
   is(event.data.referrerURI, TRIGGERINGPRINCIPALURI,
      "Referrer and TriggeringPrincipal should be identical (Frame 1)");
 

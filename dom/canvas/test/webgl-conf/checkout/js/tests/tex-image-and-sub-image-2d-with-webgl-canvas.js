@@ -120,8 +120,13 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
 
     function runOneIteration(canvas, useTexSubImage2D, flipY, program, bindingTarget, opt_texture)
     {
+        var objType = 'canvas';
+        if (canvas.transferToImageBitmap)
+            objType = 'OffscreenCanvas';
+        else if (canvas.parentNode)
+            objType = 'canvas attached to DOM';
         debug('Testing ' + (useTexSubImage2D ? 'texSubImage2D' : 'texImage2D') + ' with flipY=' +
-              flipY + ' visible=' + (canvas.parentNode ? true : false)  +
+              flipY + ' source object: ' + objType +
               ' bindingTarget=' + (bindingTarget == gl.TEXTURE_2D ? 'TEXTURE_2D' : 'TEXTURE_CUBE_MAP') +
               ' canvas size: ' + canvas.width + 'x' + canvas.height + ' with red-green');
 
@@ -171,18 +176,8 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
         var bottom = flipY ? 0 : (height - halfHeight);
 
         var loc;
-        var skipCorner = false;
         if (bindingTarget == gl.TEXTURE_CUBE_MAP) {
             loc = gl.getUniformLocation(program, "face");
-            switch (gl[pixelFormat]) {
-              case gl.RED_INTEGER:
-              case gl.RG_INTEGER:
-              case gl.RGB_INTEGER:
-              case gl.RGBA_INTEGER:
-                // https://github.com/KhronosGroup/WebGL/issues/1819
-                skipCorner = true;
-                break;
-            }
         }
 
         for (var tt = 0; tt < targets.length; ++tt) {
@@ -194,10 +189,10 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
 
             // Check the top and bottom halves and make sure they have the right color.
             debug("Checking " + (flipY ? "top" : "bottom"));
-            wtu.checkCanvasRect(gl, 0, bottom, (skipCorner && !flipY) ? halfWidth : width, halfHeight, redColor,
+            wtu.checkCanvasRect(gl, 0, bottom, width, halfHeight, redColor,
                     "shouldBe " + redColor);
             debug("Checking " + (flipY ? "bottom" : "top"));
-            wtu.checkCanvasRect(gl, 0, top, (skipCorner && flipY) ? halfWidth : width, halfHeight, greenColor,
+            wtu.checkCanvasRect(gl, 0, top, width, halfHeight, greenColor,
                     "shouldBe " + greenColor);
         }
 
@@ -220,26 +215,40 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
         // Note: We use preserveDrawingBuffer:true to prevent canvas
         // visibility from interfering with the tests.
         var visibleCtx = wtu.create3DContext(null, { preserveDrawingBuffer:true });
+        if (!visibleCtx) {
+            testFailed("context does not exist");
+            finishTest();
+            return;
+        }
         var visibleCanvas = visibleCtx.canvas;
-        visibleCanvas.width = visibleCanvas.height = 32;
-        setCanvasToRedGreen(visibleCtx);
         var descriptionNode = document.getElementById("description");
         document.body.insertBefore(visibleCanvas, descriptionNode);
 
         var cases = [
-            { sub: false, flipY: true,  canvas: canvas, init: setCanvasToMin },
-            { sub: false, flipY: false, canvas: canvas },
-            { sub: true,  flipY: true,  canvas: canvas },
-            { sub: true,  flipY: false, canvas: canvas },
-            { sub: false, flipY: true,  canvas: canvas, init: setCanvasTo257x257 },
-            { sub: false, flipY: false, canvas: canvas },
-            { sub: true,  flipY: true,  canvas: canvas },
-            { sub: true,  flipY: false, canvas: canvas },
-            { sub: false, flipY: true,  canvas: visibleCanvas },
-            { sub: false, flipY: false, canvas: visibleCanvas },
-            { sub: true,  flipY: true,  canvas: visibleCanvas },
-            { sub: true,  flipY: false, canvas: visibleCanvas },
+            { sub: false, flipY: true,  ctx: ctx, init: setCanvasToMin },
+            { sub: false, flipY: false, ctx: ctx },
+            { sub: true,  flipY: true,  ctx: ctx },
+            { sub: true,  flipY: false, ctx: ctx },
+            { sub: false, flipY: true,  ctx: ctx, init: setCanvasTo257x257 },
+            { sub: false, flipY: false, ctx: ctx },
+            { sub: true,  flipY: true,  ctx: ctx },
+            { sub: true,  flipY: false, ctx: ctx },
+            { sub: false, flipY: true,  ctx: visibleCtx, init: setCanvasToMin },
+            { sub: false, flipY: false, ctx: visibleCtx },
+            { sub: true,  flipY: true,  ctx: visibleCtx },
+            { sub: true,  flipY: false, ctx: visibleCtx },
         ];
+
+        if (window.OffscreenCanvas) {
+            var offscreen = new OffscreenCanvas(1, 1);
+            var offscreenCtx = wtu.create3DContext(offscreen);
+            cases = cases.concat([
+                { sub: false, flipY: true,  ctx: offscreenCtx, init: setCanvasToMin },
+                { sub: false, flipY: false, ctx: offscreenCtx },
+                { sub: true,  flipY: true,  ctx: offscreenCtx },
+                { sub: true,  flipY: false, ctx: offscreenCtx },
+            ]);
+        }
 
         function runTexImageTest(bindingTarget) {
             var program;
@@ -256,11 +265,12 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
                 function runNextTest() {
                     var c = cases[caseNdx];
                     if (c.init) {
-                      c.init(ctx, bindingTarget);
+                      c.init(c.ctx, bindingTarget);
                     }
-                    texture = runOneIteration(c.canvas, c.sub, c.flipY, program, bindingTarget, texture);
+                    texture = runOneIteration(c.ctx.canvas, c.sub, c.flipY, program, bindingTarget, texture);
                     // for the first 2 iterations always make a new texture.
-                    if (count > 2) {
+                    if (count < 2) {
+                      gl.deleteTexture(texture);
                       texture = undefined;
                     }
                     ++caseNdx;
@@ -272,7 +282,7 @@ function generateTest(internalFormat, pixelFormat, pixelType, prologue, resource
                             return;
                         }
                     }
-                    wtu.waitForComposite(runNextTest);
+                    wtu.dispatchPromise(runNextTest);
                 }
                 runNextTest();
             });

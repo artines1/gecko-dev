@@ -5,24 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ScriptTrace.h"
+#include "mozilla/StaticPrefs_dom.h"
 
 namespace mozilla {
 namespace dom {
 namespace script {
 
-static nsresult
-TestingDispatchEvent(nsIScriptElement* aScriptElement,
-                     const nsAString& aEventType)
-{
-  static bool sExposeTestInterfaceEnabled = false;
-  static bool sExposeTestInterfacePrefCached = false;
-  if (!sExposeTestInterfacePrefCached) {
-    sExposeTestInterfacePrefCached = true;
-    Preferences::AddBoolVarCache(&sExposeTestInterfaceEnabled,
-                                 "dom.expose_test_interfaces",
-                                 false);
-  }
-  if (!sExposeTestInterfaceEnabled) {
+static nsresult TestingDispatchEvent(nsIScriptElement* aScriptElement,
+                                     const nsAString& aEventType) {
+  if (!StaticPrefs::dom_expose_test_interfaces()) {
     return NS_OK;
   }
 
@@ -31,14 +22,11 @@ TestingDispatchEvent(nsIScriptElement* aScriptElement,
     return NS_OK;
   }
 
-  RefPtr<AsyncEventDispatcher> dispatcher =
-    new AsyncEventDispatcher(target,
-                             aEventType,
-                             CanBubble::eYes,
-                             ChromeOnlyDispatch::eNo);
+  RefPtr<AsyncEventDispatcher> dispatcher = new AsyncEventDispatcher(
+      target, aEventType, CanBubble::eYes, ChromeOnlyDispatch::eNo);
   return dispatcher->PostDOMEvent();
 }
 
-} // script namespace
-} // dom namespace
-} // mozilla namespace
+}  // namespace script
+}  // namespace dom
+}  // namespace mozilla

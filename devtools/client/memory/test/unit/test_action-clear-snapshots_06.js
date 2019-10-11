@@ -7,15 +7,12 @@
 
 const {
   takeSnapshotAndCensus,
-  clearSnapshots
+  clearSnapshots,
 } = require("devtools/client/memory/actions/snapshot");
-const {
-  actions,
-  treeMapState
-} = require("devtools/client/memory/constants");
+const { actions, treeMapState } = require("devtools/client/memory/constants");
 const {
   toggleDiffing,
-  selectSnapshotForDiffingAndRefresh
+  selectSnapshotForDiffingAndRefresh,
 } = require("devtools/client/memory/actions/diffing");
 
 add_task(async function() {
@@ -28,15 +25,19 @@ add_task(async function() {
   ok(true, "create 2 snapshots with a saved census");
   dispatch(takeSnapshotAndCensus(front, heapWorker));
   dispatch(takeSnapshotAndCensus(front, heapWorker));
-  await waitUntilCensusState(store, snapshot => snapshot.treeMap,
-                             [treeMapState.SAVED, treeMapState.SAVED]);
+  await waitUntilCensusState(store, snapshot => snapshot.treeMap, [
+    treeMapState.SAVED,
+    treeMapState.SAVED,
+  ]);
   ok(true, "snapshots created with a saved census");
 
   dispatch(toggleDiffing());
-  dispatch(selectSnapshotForDiffingAndRefresh(heapWorker,
-                                              getState().snapshots[0]));
-  dispatch(selectSnapshotForDiffingAndRefresh(heapWorker,
-                                              getState().snapshots[1]));
+  dispatch(
+    selectSnapshotForDiffingAndRefresh(heapWorker, getState().snapshots[0])
+  );
+  dispatch(
+    selectSnapshotForDiffingAndRefresh(heapWorker, getState().snapshots[1])
+  );
 
   ok(getState().diffing, "We should be in diffing view");
 
@@ -46,7 +47,7 @@ add_task(async function() {
   ok(true, "Dispatch clearSnapshots action");
   const deleteEvents = Promise.all([
     waitUntilAction(store, actions.DELETE_SNAPSHOTS_START),
-    waitUntilAction(store, actions.DELETE_SNAPSHOTS_END)
+    waitUntilAction(store, actions.DELETE_SNAPSHOTS_END),
   ]);
   dispatch(clearSnapshots(heapWorker));
   await deleteEvents;

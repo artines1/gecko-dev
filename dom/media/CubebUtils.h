@@ -5,13 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #if !defined(CubebUtils_h_)
-#define CubebUtils_h_
+#  define CubebUtils_h_
 
-#include "cubeb/cubeb.h"
-#include "nsString.h"
-#include "mozilla/RefPtr.h"
+#  include "cubeb/cubeb.h"
+#  include "nsString.h"
+#  include "mozilla/RefPtr.h"
 
 class AudioDeviceInfo;
+
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(cubeb_stream_prefs)
 
 namespace mozilla {
 namespace CubebUtils {
@@ -21,6 +23,9 @@ typedef cubeb_devid AudioDeviceID;
 // Initialize Audio Library. Some Audio backends require initializing the
 // library before using it.
 void InitLibrary();
+#  ifdef XP_LINUX
+void InitAudioThreads();
+#  endif
 
 // Shutdown Audio Library. Some Audio backends require shutting down the
 // library after using it.
@@ -32,10 +37,7 @@ uint32_t MaxNumberOfChannels();
 // Get the sample rate the hardware/mixer runs at. Thread safe.
 uint32_t PreferredSampleRate();
 
-enum Side {
-  Input,
-  Output
-};
+enum Side { Input, Output };
 
 double GetVolumeScale();
 bool GetFirstStream();
@@ -43,23 +45,25 @@ cubeb* GetCubebContext();
 void ReportCubebStreamInitFailure(bool aIsFirstStream);
 void ReportCubebBackendUsed();
 uint32_t GetCubebPlaybackLatencyInMilliseconds();
-uint32_t GetCubebMSGLatencyInFrames(cubeb_stream_params * params);
+uint32_t GetCubebMTGLatencyInFrames(cubeb_stream_params* params);
 bool CubebLatencyPrefSet();
 void GetCurrentBackend(nsAString& aBackend);
-void GetDeviceCollection(nsTArray<RefPtr<AudioDeviceInfo>>& aDeviceInfos,
-                         Side aSide);
 cubeb_stream_prefs GetDefaultStreamPrefs();
+char* GetForcedOutputDevice();
+// No-op on all platforms but Android, where it tells the device's AudioManager
+// to switch to "communication mode", which might change audio routing,
+// bluetooth communication type, etc.
+void SetInCommunication(bool aInCommunication);
 
-#ifdef MOZ_WIDGET_ANDROID
+#  ifdef MOZ_WIDGET_ANDROID
 uint32_t AndroidGetAudioOutputSampleRate();
 uint32_t AndroidGetAudioOutputFramesPerBuffer();
-#endif
+#  endif
 
-#ifdef ENABLE_SET_CUBEB_BACKEND
-void
-ForceSetCubebContext(cubeb* aCubebContext);
-#endif
-} // namespace CubebUtils
-} // namespace mozilla
+#  ifdef ENABLE_SET_CUBEB_BACKEND
+void ForceSetCubebContext(cubeb* aCubebContext);
+#  endif
+}  // namespace CubebUtils
+}  // namespace mozilla
 
-#endif // CubebUtils_h_
+#endif  // CubebUtils_h_

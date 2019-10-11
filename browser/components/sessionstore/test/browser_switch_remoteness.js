@@ -6,8 +6,11 @@ function countHistoryEntries(browser, expected) {
   return ContentTask.spawn(browser, { expected }, async function(args) {
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
     let history = webNavigation.sessionHistory;
-    Assert.equal(history && history.count, args.expected,
-      "correct number of shistory entries");
+    Assert.equal(
+      history && history.count,
+      args.expected,
+      "correct number of shistory entries"
+    );
   });
 }
 
@@ -16,18 +19,20 @@ add_task(async function() {
   let win = await promiseNewWindowLoaded();
 
   // Add a new tab.
-  let tab = win.gBrowser.addTab("about:blank");
+  let tab = BrowserTestUtils.addTab(win.gBrowser, "about:blank");
   let browser = tab.linkedBrowser;
   await promiseBrowserLoaded(browser);
   ok(browser.isRemoteBrowser, "browser is remote");
 
   // Get the maximum number of preceding entries to save.
-  const MAX_BACK = Services.prefs.getIntPref("browser.sessionstore.max_serialize_back");
+  const MAX_BACK = Services.prefs.getIntPref(
+    "browser.sessionstore.max_serialize_back"
+  );
   ok(MAX_BACK > -1, "check that the default has a value that caps data");
 
   // Load more pages than we would save to disk on a clean shutdown.
   for (let i = 0; i < MAX_BACK + 2; i++) {
-    browser.loadURI(URL + i);
+    BrowserTestUtils.loadURI(browser, URL + i);
     await promiseBrowserLoaded(browser);
     ok(browser.isRemoteBrowser, "browser is still remote");
   }
@@ -36,7 +41,7 @@ add_task(async function() {
   await countHistoryEntries(browser, MAX_BACK + 2);
 
   // Load a non-remote page.
-  browser.loadURI("about:robots");
+  BrowserTestUtils.loadURI(browser, "about:robots");
   await promiseTabRestored(tab);
   ok(!browser.isRemoteBrowser, "browser is not remote anymore");
 

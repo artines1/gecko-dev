@@ -11,19 +11,30 @@
 
 namespace mozilla {
 
+namespace ipc {
+
+class PrincipalInfo;
+
+}  // namespace ipc
+
 namespace dom {
 
 class ClientManagerParent;
 class ClientSourceParent;
+class ClientHandleParent;
+class ContentParent;
 
 // Define a singleton service to manage client activity throughout the
 // browser.  This service runs on the PBackground thread.  To interact
 // it with it please use the ClientManager and ClientHandle classes.
-class ClientManagerService final
-{
+class ClientManagerService final {
   // Store the ClientSourceParent objects in a hash table.  We want to
   // optimize for insertion, removal, and lookup by UUID.
   nsDataHashtable<nsIDHashKey, ClientSourceParent*> mSourceTable;
+
+  // The set of handles waiting for their corresponding ClientSourceParent
+  // to be created.
+  nsDataHashtable<nsIDHashKey, nsTArray<ClientHandleParent*>> mPendingHandles;
 
   nsTArray<ClientManagerParent*> mManagerList;
 
@@ -32,53 +43,52 @@ class ClientManagerService final
   ClientManagerService();
   ~ClientManagerService();
 
-  void
-  Shutdown();
+  void Shutdown();
 
-public:
-  static already_AddRefed<ClientManagerService>
-  GetOrCreateInstance();
+ public:
+  static already_AddRefed<ClientManagerService> GetOrCreateInstance();
 
   // Returns nullptr if the service is not already created.
-  static already_AddRefed<ClientManagerService>
-  GetInstance();
+  static already_AddRefed<ClientManagerService> GetInstance();
 
-  bool
-  AddSource(ClientSourceParent* aSource);
+  bool AddSource(ClientSourceParent* aSource);
 
-  bool
-  RemoveSource(ClientSourceParent* aSource);
+  bool RemoveSource(ClientSourceParent* aSource);
 
-  ClientSourceParent*
-  FindSource(const nsID& aID,
-             const mozilla::ipc::PrincipalInfo& aPrincipalInfo);
+  ClientSourceParent* FindSource(
+      const nsID& aID, const mozilla::ipc::PrincipalInfo& aPrincipalInfo);
 
-  void
-  AddManager(ClientManagerParent* aManager);
+  // Called when a ClientHandle is created before the corresponding
+  // ClientSource. Will call FoundSource on the ClientHandleParent when it
+  // becomes available.
+  void WaitForSource(ClientHandleParent* aHandle, const nsID& aID);
+  void StopWaitingForSource(ClientHandleParent* aHandle, const nsID& aID);
 
-  void
-  RemoveManager(ClientManagerParent* aManager);
+  void AddManager(ClientManagerParent* aManager);
 
-  RefPtr<ClientOpPromise>
-  Navigate(const ClientNavigateArgs& aArgs);
+  void RemoveManager(ClientManagerParent* aManager);
 
-  RefPtr<ClientOpPromise>
-  MatchAll(const ClientMatchAllArgs& aArgs);
+  RefPtr<ClientOpPromise> Navigate(const ClientNavigateArgs& aArgs);
 
-  RefPtr<ClientOpPromise>
-  Claim(const ClientClaimArgs& aArgs);
+  RefPtr<ClientOpPromise> MatchAll(const ClientMatchAllArgs& aArgs);
 
-  RefPtr<ClientOpPromise>
-  GetInfoAndState(const ClientGetInfoAndStateArgs& aArgs);
+  RefPtr<ClientOpPromise> Claim(const ClientClaimArgs& aArgs);
 
-  RefPtr<ClientOpPromise>
-  OpenWindow(const ClientOpenWindowArgs& aArgs,
-             already_AddRefed<ContentParent> aSourceProcess);
+  RefPtr<ClientOpPromise> GetInfoAndState(
+      const ClientGetInfoAndStateArgs& aArgs);
+
+  RefPtr<ClientOpPromise> OpenWindow(
+      const ClientOpenWindowArgs& aArgs,
+      already_AddRefed<ContentParent> aSourceProcess);
+
+  bool HasWindow(const Maybe<ContentParentId>& aContentParentId,
+                 const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
+                 const nsID& aClientId);
 
   NS_INLINE_DECL_REFCOUNTING(mozilla::dom::ClientManagerService)
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // _mozilla_dom_ClientManagerService_h
+#endif  // _mozilla_dom_ClientManagerService_h

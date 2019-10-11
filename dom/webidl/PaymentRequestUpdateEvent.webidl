@@ -4,14 +4,19 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this WebIDL file is
- *   https://www.w3.org/TR/payment-request/#paymentrequestupdateevent-interface
+ *   https://w3c.github.io/payment-request/#paymentrequestupdateevent-interface
+ *
+ * Copyright © 2018 W3C® (MIT, ERCIM, Keio), All Rights Reserved. W3C
+ * liability, trademark and document use rules apply.
  */
 
-[Constructor(DOMString type,
-             optional PaymentRequestUpdateEventInit eventInitDict),
- SecureContext,
- Func="mozilla::dom::PaymentRequest::PrefEnabled"]
+[SecureContext,
+ Func="mozilla::dom::PaymentRequest::PrefEnabled",
+ Exposed=Window]
 interface PaymentRequestUpdateEvent : Event {
+  constructor(DOMString type,
+              optional PaymentRequestUpdateEventInit eventInitDict = {});
+
   [Throws]
   void updateWith(Promise<PaymentDetailsUpdate> detailsPromise);
 };

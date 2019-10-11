@@ -6,8 +6,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -33,7 +32,7 @@
       this.DOMNode = getNode(aID);
 
       this.eventSeq = [
-        new expandedStateChecker(aIsExpanded, this.DOMNode)
+        new expandedStateChecker(aIsExpanded, this.DOMNode),
       ];
 
       this.invoke = function expandNode_invoke() {
@@ -50,7 +49,7 @@
       this.DOMNode = getNode(aID);
 
       this.eventSeq = [
-        new stateChangeChecker(STATE_BUSY, kOrdinalState, aIsBusy, this.DOMNode)
+        new stateChangeChecker(STATE_BUSY, kOrdinalState, aIsBusy, this.DOMNode),
       ];
 
       this.invoke = function busyify_invoke() {
@@ -66,7 +65,7 @@
       this.DOMNode = getNode(aID);
 
       this.eventSeq = [
-        new stateChangeChecker(EXT_STATE_CURRENT, true, aIsCurrent, this.DOMNode)
+        new stateChangeChecker(EXT_STATE_CURRENT, true, aIsCurrent, this.DOMNode),
       ];
 
       this.invoke = function makeCurrent_invoke() {
@@ -83,7 +82,7 @@
 
       this.eventSeq = [
         new stateChangeChecker(aState, kOrdinalState,
-                               aValue == "true", this.DOMNode)
+                               aValue == "true", this.DOMNode),
       ];
 
       if (hasState(aID, STATE_MIXED) || aValue == "mixed") {

@@ -19,7 +19,7 @@
         '<(DEPTH)/gtests/google_test/google_test.gyp:gtest',
       ],
       'conditions': [
-        [ 'test_build==1', {
+        [ 'static_libs==1', {
           'dependencies': [
             '<(DEPTH)/lib/nss/nss.gyp:nss_static',
             '<(DEPTH)/lib/pk11wrap/pk11wrap.gyp:pk11wrap_static',
@@ -30,6 +30,7 @@
             '<(DEPTH)/lib/dev/dev.gyp:nssdev',
             '<(DEPTH)/lib/pki/pki.gyp:nsspki',
             '<(DEPTH)/lib/ssl/ssl.gyp:ssl',
+            '<(DEPTH)/lib/libpkix/libpkix.gyp:libpkix',
           ],
         }, {
           'dependencies': [

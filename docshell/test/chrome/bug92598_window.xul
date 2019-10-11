@@ -14,6 +14,7 @@
         title="92598 test">
 
   <script type="application/javascript"><![CDATA[
+    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
     const LISTEN_EVENTS = ["load", "unload", "pageshow", "pagehide"];
 
     var gBrowser;
@@ -21,11 +22,11 @@
     var gExpected = [];
 
     function ok(condition, message) {
-      window.opener.wrappedJSObject.SimpleTest.ok(condition, message);
+      window.arguments[0].SimpleTest.ok(condition, message);
     }
 
     function is(a, b, message) {
-      window.opener.wrappedJSObject.SimpleTest.is(a, b, message);
+      window.arguments[0].SimpleTest.is(a, b, message);
     }
 
     function finish() {
@@ -38,7 +39,7 @@
       history.legacySHistory.PurgeHistory(history.count);
 
       window.close();
-      window.opener.wrappedJSObject.SimpleTest.finish();
+      window.arguments[0].SimpleTest.finish();
     }
 
     function onLoad() {
@@ -87,7 +88,7 @@
       gExpected = [{type: "pagehide", persisted: true},
                    {type: "load", title: "test1"},
                    {type: "pageshow", title: "test1", persisted: false}];
-      gBrowser.loadURI(test1DocURI);
+      BrowserTestUtils.loadURI(gBrowser, test1DocURI);
       yield undefined;
 
       var test2Doc = "data:text/html,<html><head><title>test2</title></head>" +
@@ -97,7 +98,7 @@
                    {type: "unload", title: "test1"},
                    {type: "load", title: "test2"},
                    {type: "pageshow", title: "test2", persisted: false}];
-      gBrowser.loadURI(test2Doc);
+      BrowserTestUtils.loadURI(gBrowser, test2Doc);
       yield undefined;
 
       // Now go back in history. First page should not have been cached.

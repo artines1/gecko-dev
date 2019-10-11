@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import unittest
@@ -209,6 +209,7 @@ CONFIGS = defaultdict(lambda: {
         'defines': {},
         'non_global_defines': [],
         'substs': {
+            'CC_TYPE': 'clang',
             'COMPILE_ENVIRONMENT': '1',
             'LIB_SUFFIX': 'a',
             'BIN_SUFFIX': '.exe',
@@ -238,11 +239,14 @@ class BackendTester(unittest.TestCase):
         config = CONFIGS[name]
         config['substs']['MOZ_UI_LOCALE'] = 'en-US'
 
-        objdir = mkdtemp()
-        self.addCleanup(rmtree, objdir)
-
         srcdir = mozpath.join(test_data_path, name)
         config['substs']['top_srcdir'] = srcdir
+
+        # Create the objdir in the srcdir to ensure that they share the
+        # same drive on Windows.
+        objdir = mkdtemp(dir=srcdir)
+        self.addCleanup(rmtree, objdir)
+
         return ConfigEnvironment(srcdir, objdir, **config)
 
     def _emit(self, name, env=None):

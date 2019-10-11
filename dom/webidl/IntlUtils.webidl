@@ -21,7 +21,8 @@ dictionary LocaleInfo {
 /**
  * The IntlUtils interface provides helper functions for localization.
  */
-[NoInterfaceObject]
+[NoInterfaceObject,
+ Exposed=Window]
 interface IntlUtils {
   /**
    * Helper function to retrieve the localized values for a list of requested
@@ -51,7 +52,7 @@ interface IntlUtils {
    */
   [Throws]
   DisplayNameResult getDisplayNames(sequence<DOMString> locales,
-                                    optional DisplayNameOptions options);
+                                    optional DisplayNameOptions options = {});
 
   /**
    * Helper function to retrieve useful information about a locale.

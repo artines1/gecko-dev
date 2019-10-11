@@ -17,6 +17,10 @@ mod static_fns {
         pub fn pa_get_library_version() -> *const c_char;
         pub fn pa_channel_map_can_balance(map: *const pa_channel_map) -> c_int;
         pub fn pa_channel_map_init(m: *mut pa_channel_map) -> *mut pa_channel_map;
+        pub fn pa_channel_map_init_auto(m: *mut pa_channel_map,
+                                        ch: u32,
+                                        def: pa_channel_map_def_t)
+                                        -> *mut pa_channel_map;
         pub fn pa_context_connect(c: *mut pa_context,
                                   server: *const c_char,
                                   flags: pa_context_flags_t,
@@ -80,6 +84,7 @@ mod static_fns {
                                       new_balance: c_float)
                                       -> *mut pa_cvolume;
         pub fn pa_frame_size(spec: *const pa_sample_spec) -> usize;
+        pub fn pa_sample_size(spec: *const pa_sample_spec) -> usize;
         pub fn pa_mainloop_api_once(m: *mut pa_mainloop_api,
                                     callback: pa_mainloop_api_once_cb_t,
                                     userdata: *mut c_void);
@@ -202,6 +207,13 @@ mod dynamic_fns {
             };
             PA_CHANNEL_MAP_INIT = {
                 let fp = dlsym(h, cstr!("pa_channel_map_init"));
+                if fp.is_null() {
+                    return None;
+                }
+                fp
+            };
+            PA_CHANNEL_MAP_INIT_AUTO = {
+                let fp = dlsym(h, cstr!("pa_channel_map_init_auto"));
                 if fp.is_null() {
                     return None;
                 }
@@ -349,6 +361,13 @@ mod dynamic_fns {
             };
             PA_FRAME_SIZE = {
                 let fp = dlsym(h, cstr!("pa_frame_size"));
+                if fp.is_null() {
+                    return None;
+                }
+                fp
+            };
+            PA_SAMPLE_SIZE = {
+                let fp = dlsym(h, cstr!("pa_sample_size"));
                 if fp.is_null() {
                     return None;
                 }
@@ -745,6 +764,19 @@ mod dynamic_fns {
         (::std::mem::transmute::<_, extern "C" fn(*mut pa_channel_map) -> *mut pa_channel_map>(PA_CHANNEL_MAP_INIT))(m)
     }
 
+    static mut PA_CHANNEL_MAP_INIT_AUTO: *mut ::libc::c_void = 0 as *mut _;
+    #[inline]
+    pub unsafe fn pa_channel_map_init_auto(m: *mut pa_channel_map,
+                                           ch: u32,
+                                           def: pa_channel_map_def_t)
+                                           -> *mut pa_channel_map {
+        (::std::mem::transmute::<_,
+                                 extern "C" fn(*mut pa_channel_map,
+                                               u32,
+                                               pa_channel_map_def_t)
+                                               -> *mut pa_channel_map>(PA_CHANNEL_MAP_INIT_AUTO))(m, ch, def)
+    }
+
     static mut PA_CONTEXT_CONNECT: *mut ::libc::c_void = 0 as *mut _;
     #[inline]
     pub unsafe fn pa_context_connect(c: *mut pa_context,
@@ -973,6 +1005,12 @@ mod dynamic_fns {
     #[inline]
     pub unsafe fn pa_frame_size(spec: *const pa_sample_spec) -> usize {
         (::std::mem::transmute::<_, extern "C" fn(*const pa_sample_spec) -> usize>(PA_FRAME_SIZE))(spec)
+    }
+
+    static mut PA_SAMPLE_SIZE: *mut ::libc::c_void = 0 as *mut _;
+    #[inline]
+    pub unsafe fn pa_sample_size(spec: *const pa_sample_spec) -> usize {
+        (::std::mem::transmute::<_, extern "C" fn(*const pa_sample_spec) -> usize>(PA_SAMPLE_SIZE))(spec)
     }
 
     static mut PA_MAINLOOP_API_ONCE: *mut ::libc::c_void = 0 as *mut _;

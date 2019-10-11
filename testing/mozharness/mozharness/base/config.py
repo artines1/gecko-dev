@@ -24,6 +24,8 @@ TODO:
   these settings are set.
 """
 
+from __future__ import print_function
+
 from copy import deepcopy
 from optparse import OptionParser, Option, OptionGroup
 import os
@@ -78,6 +80,7 @@ def make_immutable(item):
 class LockedTuple(tuple):
     def __new__(cls, items):
         return tuple.__new__(cls, (make_immutable(x) for x in items))
+
     def __deepcopy__(self, memo):
         return [deepcopy(elem, memo) for elem in self]
 
@@ -135,7 +138,12 @@ class ReadOnlyDict(dict):
             result[k] = deepcopy(v, memo)
         return result
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "configs")
+
+DEFAULT_CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "configs",
+)
+
 
 # parse_config_file {{{1
 def parse_config_file(file_name, quiet=False, search_path=None,
@@ -166,7 +174,8 @@ def parse_config_file(file_name, quiet=False, search_path=None,
         config = dict(json_config)
         fh.close()
     else:
-        raise RuntimeError("Unknown config file type %s! (config files must end in .json or .py)" % file_name)
+        raise RuntimeError(
+            "Unknown config file type %s! (config files must end in .json or .py)" % file_name)
     # TODO return file_path
     return config
 
@@ -178,18 +187,18 @@ def download_config_file(url, file_name):
     max_sleeptime = 5 * 60
     while True:
         if n >= attempts:
-            print "Failed to download from url %s after %d attempts, quiting..." % (url, attempts)
+            print("Failed to download from url %s after %d attempts, quiting..." % (url, attempts))
             raise SystemError(-1)
         try:
             contents = urllib2.urlopen(url, timeout=30).read()
             break
-        except urllib2.URLError, e:
-            print "Error downloading from url %s: %s" % (url, str(e))
-        except socket.timeout, e:
-            print "Time out accessing %s: %s" % (url, str(e))
-        except socket.error, e:
-            print "Socket error when accessing %s: %s" % (url, str(e))
-        print "Sleeping %d seconds before retrying" % sleeptime
+        except urllib2.URLError as e:
+            print("Error downloading from url %s: %s" % (url, str(e)))
+        except socket.timeout as e:
+            print("Time out accessing %s: %s" % (url, str(e)))
+        except socket.error as e:
+            print("Socket error when accessing %s: %s" % (url, str(e)))
+        print("Sleeping %d seconds before retrying" % sleeptime)
         time.sleep(sleeptime)
         sleeptime = sleeptime * 2
         if sleeptime > max_sleeptime:
@@ -200,8 +209,8 @@ def download_config_file(url, file_name):
         f = open(file_name, 'w')
         f.write(contents)
         f.close()
-    except IOError, e:
-        print "Error writing downloaded contents to file %s: %s" % (file_name, str(e))
+    except IOError as e:
+        print("Error writing downloaded contents to file %s: %s" % (file_name, str(e)))
         raise SystemError(-1)
 
 
@@ -258,7 +267,7 @@ class BaseConfig(object):
             # not add anything from the test invocation command line
             # arguments to the mozharness options.
             if option_args is None:
-                option_args=['dummy_mozharness_script_with_no_command_line_options.py']
+                option_args = ['dummy_mozharness_script_with_no_command_line_options.py']
         if config_options is None:
             config_options = []
         self._create_config_parser(config_options, usage)
@@ -408,7 +417,7 @@ class BaseConfig(object):
 
     def verify_actions_order(self, action_list):
         try:
-            indexes = [ self.all_actions.index(elt) for elt in action_list ]
+            indexes = [self.all_actions.index(elt) for elt in action_list]
             sorted_indexes = sorted(indexes)
             for i in range(len(indexes)):
                 if indexes[i] != sorted_indexes[i]:
@@ -420,9 +429,9 @@ class BaseConfig(object):
             raise SystemExit(-1)
 
     def list_actions(self):
-        print "Actions available:"
+        print("Actions available:")
         for a in self.all_actions:
-            print "    " + ("*" if a in self.default_actions else " "), a
+            print("    " + ("*" if a in self.default_actions else " "), a)
         raise SystemExit(0)
 
     def get_cfgs_from_files(self, all_config_files, options):
@@ -456,7 +465,10 @@ class BaseConfig(object):
                     )
                 else:
                     all_cfg_files_and_dicts.append(
-                        (cf, parse_config_file(cf, search_path=config_paths + [DEFAULT_CONFIG_PATH]))
+                        (cf, parse_config_file(
+                            cf,
+                            search_path=config_paths + [DEFAULT_CONFIG_PATH]
+                        ))
                     )
             except Exception:
                 if cf in options.opt_config_files:

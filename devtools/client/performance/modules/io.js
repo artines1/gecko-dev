@@ -69,18 +69,20 @@ function saveRecordingToFile(recordingData, file) {
 function loadRecordingFromFile(file) {
   const channel = NetUtil.newChannel({
     uri: NetUtil.newURI(file),
-    loadUsingSystemPrincipal: true
+    loadUsingSystemPrincipal: true,
   });
 
   channel.contentType = "text/plain";
 
   return new Promise((resolve, reject) => {
-    NetUtil.asyncFetch(channel, (inputStream) => {
+    NetUtil.asyncFetch(channel, inputStream => {
       let recordingData;
 
       try {
-        const string = NetUtil.readInputStreamToString(inputStream,
-                                                     inputStream.available());
+        const string = NetUtil.readInputStreamToString(
+          inputStream,
+          inputStream.available()
+        );
         recordingData = JSON.parse(string);
       } catch (e) {
         reject(new Error("Could not read recording data file."));
@@ -126,7 +128,7 @@ function loadRecordingFromFile(file) {
 function isValidSerializerVersion(version) {
   return !!~[
     PERF_TOOL_SERIALIZER_LEGACY_VERSION,
-    PERF_TOOL_SERIALIZER_CURRENT_VERSION
+    PERF_TOOL_SERIALIZER_CURRENT_VERSION,
   ].indexOf(version);
 }
 
@@ -158,7 +160,7 @@ function convertLegacyData(legacyData) {
       withTicks: !!ticksData.length,
       withMarkers: false,
       withMemory: false,
-      withAllocations: false
+      withAllocations: false,
     },
     systemHost: {},
     systemClient: {},

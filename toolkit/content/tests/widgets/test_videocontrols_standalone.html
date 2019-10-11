@@ -2,8 +2,8 @@
 <html>
 <head>
   <title>Video controls test</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -24,9 +24,12 @@ function getMediaElement(aWindow) {
 var popup = window.open("seek_with_sound.ogg");
 popup.addEventListener("load", function() {
   var video = getMediaElement(popup);
-  if (!video.paused)
+
+  is(popup.document.activeElement, video, "Document should load with focus moved to the video element.");
+
+  if (!video.paused) {
     runTestVideo(video);
-  else {
+  } else {
     video.addEventListener("play", function() {
       runTestVideo(video);
     }, {once: true});
@@ -52,9 +55,12 @@ function runTestAudioPre() {
   popup = window.open("audio.ogg");
   popup.addEventListener("load", function() {
     var audio = getMediaElement(popup);
-    if (!audio.paused)
+
+    is(popup.document.activeElement, audio, "Document should load with focus moved to the video element.");
+
+    if (!audio.paused) {
       runTestAudio(audio);
-    else {
+    } else {
       audio.addEventListener("play", function() {
         runTestAudio(audio);
       }, {once: true});

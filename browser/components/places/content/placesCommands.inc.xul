@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 <commandset id="placesCommands"
             commandupdater="true"
             events="focus,sort,places"
@@ -27,8 +31,6 @@
   <command id="placesCmd_rename"
            oncommand="PlacesUIUtils.doCommand(window, 'placesCmd_show:info');"
            observes="placesCmd_show:info"/>
-  <command id="placesCmd_reload"
-           oncommand="PlacesUIUtils.doCommand(window, 'placesCmd_reload');"/>
   <command id="placesCmd_sortBy:name"
            oncommand="PlacesUIUtils.doCommand(window, 'placesCmd_sortBy:name');"/>
   <command id="placesCmd_deleteDataHost"

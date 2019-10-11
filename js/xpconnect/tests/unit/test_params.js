@@ -124,7 +124,6 @@ function test_component(contractid) {
   doTest("testString", "someString", "another string");
   doTest("testWstring", "Why wasnt this", "turned on before? ಠ_ಠ");
   doTest("testWchar", "z", "ア");
-  doTestWorkaround("testDOMString", "Beware: ☠ s");
   doTestWorkaround("testAString", "Frosty the ☃ ;-)");
   doTestWorkaround("testAUTF8String", "We deliver 〠!");
   doTestWorkaround("testACString", "Just a regular C string.");
@@ -217,4 +216,16 @@ function test_component(contractid) {
   doIsTest("testInterfaceIsSequence", [makeA(), makeA(), makeA(), makeA(), makeA()], Ci['nsIXPCTestInterfaceA'],
                                       [makeB(), makeB(), makeB()], Ci['nsIXPCTestInterfaceB'],
                                       arrayComparator(interfaceComparator), dotEqualsComparator);
+
+  var ret = o.testOptionalSequence();
+  Assert.ok(Array.isArray(ret));
+  Assert.equal(ret.length, 0);
+
+  ret = o.testOptionalSequence([]);
+  Assert.ok(Array.isArray(ret));
+  Assert.equal(ret.length, 0);
+
+  ret = o.testOptionalSequence([1, 2, 3]);
+  Assert.ok(Array.isArray(ret));
+  Assert.equal(ret.length, 3);
 }

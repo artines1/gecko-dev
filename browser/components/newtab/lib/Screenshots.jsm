@@ -7,16 +7,26 @@ const EXPORTED_SYMBOLS = ["Screenshots"];
 
 Cu.importGlobalProperties(["fetch"]);
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-ChromeUtils.defineModuleGetter(this, "BackgroundPageThumbs",
-  "resource://gre/modules/BackgroundPageThumbs.jsm");
-ChromeUtils.defineModuleGetter(this, "PageThumbs",
-  "resource://gre/modules/PageThumbs.jsm");
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "Services",
-  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "BackgroundPageThumbs",
+  "resource://gre/modules/BackgroundPageThumbs.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PageThumbs",
+  "resource://gre/modules/PageThumbs.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Services",
+  "resource://gre/modules/Services.jsm"
+);
 
 const GREY_10 = "#F9F9FA";
 
@@ -30,7 +40,9 @@ this.Screenshots = {
    */
   async getScreenshotForURL(url) {
     try {
-      await BackgroundPageThumbs.captureIfMissing(url, {backgroundColor: GREY_10});
+      await BackgroundPageThumbs.captureIfMissing(url, {
+        backgroundColor: GREY_10,
+      });
       const imgPath = PageThumbs.getThumbnailPath(url);
 
       const filePathResponse = await fetch(`file://${imgPath}`);
@@ -42,7 +54,7 @@ this.Screenshots = {
         return null;
       }
 
-      return {path: imgPath, data: fileContents};
+      return { path: imgPath, data: fileContents };
     } catch (err) {
       Cu.reportError(`getScreenshot(${url}) failed: ${err}`);
     }
@@ -66,9 +78,8 @@ this.Screenshots = {
    * we are ok to collect screenshots.
    */
   _shouldGetScreenshots() {
-    const windows = Services.wm.getEnumerator("navigator:browser");
-    while (windows.hasMoreElements()) {
-      if (!PrivateBrowsingUtils.isWindowPrivate(windows.getNext())) {
+    for (let win of Services.wm.getEnumerator("navigator:browser")) {
+      if (!PrivateBrowsingUtils.isWindowPrivate(win)) {
         // As soon as we encounter 1 non-private window, screenshots are fair game.
         return true;
       }
@@ -107,5 +118,5 @@ this.Screenshots = {
     // Update the cache for future links and call back for existing content
     cache.updateLink(property, screenshot);
     onScreenshot(screenshot);
-  }
+  },
 };

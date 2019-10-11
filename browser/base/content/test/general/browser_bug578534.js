@@ -2,22 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+const { PermissionTestUtils } = ChromeUtils.import(
+  "resource://testing-common/PermissionTestUtils.jsm"
+);
+
 add_task(async function test() {
   let uriString = "http://example.com/";
   let cookieBehavior = "network.cookie.cookieBehavior";
-  let uriObj = Services.io.newURI(uriString);
-  let cp = Cc["@mozilla.org/cookie/permission;1"]
-             .getService(Ci.nsICookiePermission);
 
-  await SpecialPowers.pushPrefEnv({ set: [[ cookieBehavior, 2 ]] });
-  cp.setAccess(uriObj, cp.ACCESS_ALLOW);
+  await SpecialPowers.pushPrefEnv({ set: [[cookieBehavior, 2]] });
+  PermissionTestUtils.add(uriString, "cookie", Services.perms.ALLOW_ACTION);
 
-  await BrowserTestUtils.withNewTab({ gBrowser, url: uriString }, async function(browser) {
-    await ContentTask.spawn(browser, null, function() {
-      is(content.navigator.cookieEnabled, true,
-         "navigator.cookieEnabled should be true");
-    });
-  });
+  await BrowserTestUtils.withNewTab(
+    { gBrowser, url: uriString },
+    async function(browser) {
+      await ContentTask.spawn(browser, null, function() {
+        is(
+          content.navigator.cookieEnabled,
+          true,
+          "navigator.cookieEnabled should be true"
+        );
+      });
+    }
+  );
 
-  cp.setAccess(uriObj, cp.ACCESS_DEFAULT);
+  PermissionTestUtils.add(uriString, "cookie", Services.perms.UNKNOWN_ACTION);
 });

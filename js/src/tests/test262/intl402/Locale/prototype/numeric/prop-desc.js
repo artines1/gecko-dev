@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,14 +16,12 @@ features: [Intl.Locale]
 ---*/
 
 const propdesc = Object.getOwnPropertyDescriptor(Intl.Locale.prototype, "numeric");
-if (propdesc) {
-  assert.sameValue(propdesc.set, undefined);
-  assert.sameValue(typeof propdesc.get, "function");
+assert.sameValue(propdesc.set, undefined);
+assert.sameValue(typeof propdesc.get, "function");
 
-  verifyProperty(Intl.Locale.prototype, "numeric", {
-    enumerable: false,
-    configurable: true,
-  });
-}
+verifyProperty(Intl.Locale.prototype, "numeric", {
+  enumerable: false,
+  configurable: true,
+});
 
 reportCompare(0, 0);

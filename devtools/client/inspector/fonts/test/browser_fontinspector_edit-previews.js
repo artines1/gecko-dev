@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -10,11 +9,10 @@
 const TEST_URI = URL_ROOT + "doc_browser_fontinspector.html";
 
 add_task(async function() {
-  await pushPref("devtools.inspector.fonteditor.enabled", true);
   const { view, inspector } = await openFontInspectorForURL(TEST_URI);
   const viewDoc = view.document;
   await selectNode("div", inspector);
-  await expandOtherFontsAccordion(viewDoc);
+  await expandFontsAccordion(viewDoc);
 
   const previews = viewDoc.querySelectorAll("#font-container .font-preview");
   const initialPreviews = [...previews].map(p => p.src);
@@ -48,16 +46,25 @@ function checkPreviewImages(viewDoc, originalURIs, assertIdentical) {
   const previews = viewDoc.querySelectorAll("#font-container .font-preview");
   const newURIs = [...previews].map(p => p.src);
 
-  is(newURIs.length, originalURIs.length,
-    "The number of previews has not changed.");
+  is(
+    newURIs.length,
+    originalURIs.length,
+    "The number of previews has not changed."
+  );
 
   for (let i = 0; i < newURIs.length; ++i) {
     if (assertIdentical) {
-      is(newURIs[i], originalURIs[i],
-        `The preview image at index ${i} has stayed the same.`);
+      is(
+        newURIs[i],
+        originalURIs[i],
+        `The preview image at index ${i} has stayed the same.`
+      );
     } else {
-      isnot(newURIs[i], originalURIs[i],
-        `The preview image at index ${i} has changed.`);
+      isnot(
+        newURIs[i],
+        originalURIs[i],
+        `The preview image at index ${i} has changed.`
+      );
     }
   }
 }

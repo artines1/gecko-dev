@@ -12,10 +12,15 @@ const { configureStore } = require("./create-store");
 const { EVENTS } = require("./constants");
 const Actions = require("./actions/index");
 
+// Telemetry
+const Telemetry = require("devtools/client/shared/telemetry");
+
 const {
   getDisplayedRequestById,
-  getSortedRequests
+  getSortedRequests,
 } = require("./selectors/index");
+
+loader.lazyRequireGetter(this, "flags", "devtools/shared/flags");
 
 /**
  * API object for NetMonitor panel (like a facade). This object can be
@@ -30,14 +35,17 @@ function NetMonitorAPI() {
   // Connector to the backend.
   this.connector = new Connector();
 
+  // Telemetry
+  this.telemetry = new Telemetry();
+
   // Configure store/state object.
-  this.store = configureStore(this.connector);
+  this.store = configureStore(this.connector, this.telemetry);
 
   // List of listeners for `devtools.network.onRequestFinished` WebExt API
   this._requestFinishedListeners = new Set();
 
   // Bind event handlers
-  this.onRequestAdded = this.onRequestAdded.bind(this);
+  this.onPayloadReady = this.onPayloadReady.bind(this);
   this.actions = bindActionCreators(Actions, this.store.dispatch);
 }
 
@@ -51,7 +59,7 @@ NetMonitorAPI.prototype = {
     this.toolbox = toolbox;
 
     // Register listener for new requests (utilized by WebExtension API).
-    this.on(EVENTS.REQUEST_ADDED, this.onRequestAdded);
+    this.on(EVENTS.PAYLOAD_READY, this.onPayloadReady);
 
     // Initialize connection to the backend. Pass `this` as the owner,
     // so this object can receive all emitted events.
@@ -63,20 +71,24 @@ NetMonitorAPI.prototype = {
       owner: this,
     };
 
-    await this.connectBackend(this.connector, connection, this.actions,
-      this.store.getState);
+    await this.connectBackend(
+      this.connector,
+      connection,
+      this.actions,
+      this.store.getState
+    );
   },
 
   /**
    * Clean up (unmount from DOM, remove listeners, disconnect).
    */
-  async destroy() {
-    this.off(EVENTS.REQUEST_ADDED, this.onRequestAdded);
+  destroy() {
+    this.off(EVENTS.PAYLOAD_READY, this.onPayloadReady);
 
-    await this.connector.disconnect();
+    this.connector.disconnect();
 
     if (this.harExportConnector) {
-      await this.harExportConnector.disconnect();
+      this.harExportConnector.disconnect();
     }
   },
 
@@ -89,7 +101,7 @@ NetMonitorAPI.prototype = {
   async connectBackend(connector, connection, actions, getState) {
     // The connection might happen during Toolbox initialization
     // so make sure the target is ready.
-    await connection.tabConnection.tabTarget.makeRemote();
+    await connection.tabConnection.tabTarget.attach();
     return connector.connectFirefox(connection, actions, getState);
   },
 
@@ -99,7 +111,9 @@ NetMonitorAPI.prototype = {
    * Support for `devtools.network.getHAR` (get collected data as HAR)
    */
   async getHar() {
-    const { HarExporter } = require("devtools/client/netmonitor/src/har/har-exporter");
+    const {
+      HarExporter,
+    } = require("devtools/client/netmonitor/src/har/har-exporter");
     const state = this.store.getState();
 
     const options = {
@@ -114,12 +128,14 @@ NetMonitorAPI.prototype = {
    * Support for `devtools.network.onRequestFinished`. A hook for
    * every finished HTTP request used by WebExtensions API.
    */
-  async onRequestAdded(requestId) {
+  async onPayloadReady(requestId) {
     if (!this._requestFinishedListeners.size) {
       return;
     }
 
-    const { HarExporter } = require("devtools/client/netmonitor/src/har/har-exporter");
+    const {
+      HarExporter,
+    } = require("devtools/client/netmonitor/src/har/har-exporter");
 
     const connector = await this.getHarExportConnector();
     const request = getDisplayedRequestById(this.store.getState(), requestId);
@@ -140,10 +156,12 @@ NetMonitorAPI.prototype = {
     const harEntry = har.log.entries[0];
     delete harEntry.pageref;
 
-    this._requestFinishedListeners.forEach(listener => listener({
-      harEntry,
-      requestId,
-    }));
+    this._requestFinishedListeners.forEach(listener =>
+      listener({
+        harEntry,
+        requestId,
+      })
+    );
   },
 
   /**
@@ -192,10 +210,35 @@ NetMonitorAPI.prototype = {
     };
 
     this.harExportConnector = new Connector();
-    this.harExportConnectorReady =
-      this.connectBackend(this.harExportConnector, connection);
+    this.harExportConnectorReady = this.connectBackend(
+      this.harExportConnector,
+      connection
+    );
     await this.harExportConnectorReady;
     return this.harExportConnector;
+  },
+
+  /**
+   * Resends a given network request
+   * @param {String} requestId
+   *        Id of the network request
+   */
+  resendRequest(requestId) {
+    // Flush queued requests.
+    this.store.dispatch(Actions.batchFlush());
+    // Send custom request with same url, headers and body as the request
+    // with the given requestId.
+    this.store.dispatch(Actions.sendCustomRequest(this.connector, requestId));
+  },
+
+  /**
+   * Fire events for the owner object. These events are only
+   * used in tests so, don't fire them in production release.
+   */
+  emitForTests(type, data) {
+    if (flags.testing) {
+      this.emit(type, data);
+    }
   },
 };
 

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Code related to the style sharing cache, an optimization that allows similar
 //! nodes to share style without having to run selector matching twice.
@@ -64,26 +64,27 @@
 //! selectors are effectively stripped off, so that matching them all against
 //! elements makes sense.
 
-use Atom;
-use applicable_declarations::ApplicableDeclarationBlock;
+use crate::applicable_declarations::ApplicableDeclarationBlock;
+use crate::bloom::StyleBloom;
+use crate::context::{SelectorFlagsMap, SharedStyleContext, StyleContext};
+use crate::dom::{SendElement, TElement};
+use crate::matching::MatchMethods;
+use crate::properties::ComputedValues;
+use crate::rule_tree::StrongRuleNode;
+use crate::style_resolver::{PrimaryStyle, ResolvedElementStyles};
+use crate::stylist::Stylist;
+use crate::Atom;
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
-use bloom::StyleBloom;
-use context::{SelectorFlagsMap, SharedStyleContext, StyleContext};
-use dom::{SendElement, TElement};
-use matching::MatchMethods;
 use owning_ref::OwningHandle;
-use properties::ComputedValues;
-use rule_tree::StrongRuleNode;
-use selectors::NthIndexCache;
 use selectors::matching::{ElementSelectorFlags, VisitedHandlingMode};
-use servo_arc::{Arc, NonZeroPtrMut};
+use selectors::NthIndexCache;
+use servo_arc::Arc;
 use smallbitvec::SmallBitVec;
 use smallvec::SmallVec;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ops::Deref;
-use style_resolver::{PrimaryStyle, ResolvedElementStyles};
-use stylist::Stylist;
+use std::ptr::NonNull;
 use uluru::{Entry, LRUCache};
 
 mod checks;
@@ -101,21 +102,17 @@ mod checks;
 pub const SHARING_CACHE_SIZE: usize = 31;
 const SHARING_CACHE_BACKING_STORE_SIZE: usize = SHARING_CACHE_SIZE + 1;
 
-/// Controls whether the style sharing cache is used.
-#[derive(Clone, Copy, PartialEq)]
-pub enum StyleSharingBehavior {
-    /// Style sharing allowed.
-    Allow,
-    /// Style sharing disallowed.
-    Disallow,
-}
-
 /// Opaque pointer type to compare ComputedValues identities.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OpaqueComputedValues(NonZeroPtrMut<()>);
+pub struct OpaqueComputedValues(NonNull<()>);
+
+unsafe impl Send for OpaqueComputedValues {}
+unsafe impl Sync for OpaqueComputedValues {}
+
 impl OpaqueComputedValues {
     fn from(cv: &ComputedValues) -> Self {
-        let p = NonZeroPtrMut::new(cv as *const ComputedValues as *const () as *mut ());
+        let p =
+            unsafe { NonNull::new_unchecked(cv as *const ComputedValues as *const () as *mut ()) };
         OpaqueComputedValues(p)
     }
 
@@ -479,8 +476,11 @@ type SharingCache<E> = SharingCacheBase<StyleSharingCandidate<E>>;
 type TypelessSharingCache = SharingCacheBase<FakeCandidate>;
 type StoredSharingCache = Arc<AtomicRefCell<TypelessSharingCache>>;
 
-thread_local!(static SHARING_CACHE_KEY: StoredSharingCache =
-              Arc::new(AtomicRefCell::new(TypelessSharingCache::default())));
+thread_local! {
+    // See the comment on bloom.rs about why do we leak this.
+    static SHARING_CACHE_KEY: ManuallyDrop<StoredSharingCache> =
+        ManuallyDrop::new(Arc::new_leaked(Default::default()));
+}
 
 /// An LRU cache of the last few nodes seen, so that we can aggressively try to
 /// reuse their styles.
@@ -532,7 +532,7 @@ impl<E: TElement> StyleSharingCache<E> {
             mem::align_of::<SharingCache<E>>(),
             mem::align_of::<TypelessSharingCache>()
         );
-        let cache_arc = SHARING_CACHE_KEY.with(|c| c.clone());
+        let cache_arc = SHARING_CACHE_KEY.with(|c| Arc::clone(&*c));
         let cache =
             OwningHandle::new_with_fn(cache_arc, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
         debug_assert!(cache.is_empty());
@@ -721,27 +721,6 @@ impl<E: TElement> StyleSharingCache<E> {
             return None;
         }
 
-        // Note that in theory we shouldn't need this XBL check. However, XBL is
-        // absolutely broken in all sorts of ways.
-        //
-        // A style change that changes which XBL binding applies to an element
-        // arrives there, with the element still having the old prototype
-        // binding attached. And thus we try to match revalidation selectors
-        // with the old XBL binding, because we can't look at the new ones of
-        // course. And that causes us to revalidate with the wrong selectors and
-        // hit assertions.
-        //
-        // Other than this, we don't need anything else like the containing XBL
-        // binding parent or what not, since two elements with different XBL
-        // bindings will necessarily end up with different style.
-        if !target
-            .element
-            .has_same_xbl_proto_binding_as(candidate.element)
-        {
-            trace!("Miss: Different proto bindings");
-            return None;
-        }
-
         // If the elements are not assigned to the same slot they could match
         // different ::slotted() rules in the slot scope.
         //
@@ -757,6 +736,11 @@ impl<E: TElement> StyleSharingCache<E> {
 
         if target.element.shadow_root().is_some() {
             trace!("Miss: Shadow host");
+            return None;
+        }
+
+        if target.element.has_animations() {
+            trace!("Miss: Has Animations");
             return None;
         }
 

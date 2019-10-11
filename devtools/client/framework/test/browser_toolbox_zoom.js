@@ -3,9 +3,11 @@
 
 "use strict";
 
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const {Toolbox} = require("devtools/client/framework/toolbox");
-const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const { Toolbox } = require("devtools/client/framework/toolbox");
+const L10N = new LocalizationHelper(
+  "devtools/client/locales/toolbox.properties"
+);
 
 add_task(async function() {
   registerCleanupFunction(function() {
@@ -15,10 +17,12 @@ add_task(async function() {
   // This test assume that zoom value will be default value. i.e. x1.0.
   Services.prefs.setCharPref("devtools.toolbox.zoomValue", "1.0");
   await addTab("about:blank");
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
-  const toolbox = await gDevTools.showToolbox(target,
-                                            "styleeditor",
-                                            Toolbox.HostType.BOTTOM);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
+  const toolbox = await gDevTools.showToolbox(
+    target,
+    "styleeditor",
+    Toolbox.HostType.BOTTOM
+  );
 
   info("testing zoom keys");
 
@@ -36,10 +40,14 @@ function testZoomLevel(type, times, expected, toolbox) {
   const zoom = getCurrentZoom(toolbox);
   is(zoom.toFixed(1), expected, "zoom level correct after zoom " + type);
 
-  const savedZoom = parseFloat(Services.prefs.getCharPref(
-    "devtools.toolbox.zoomValue"));
-  is(savedZoom.toFixed(1), expected,
-     "saved zoom level is correct after zoom " + type);
+  const savedZoom = parseFloat(
+    Services.prefs.getCharPref("devtools.toolbox.zoomValue")
+  );
+  is(
+    savedZoom.toFixed(1),
+    expected,
+    "saved zoom level is correct after zoom " + type
+  );
 }
 
 function sendZoomKey(shortcut, times) {

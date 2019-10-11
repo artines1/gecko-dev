@@ -5,8 +5,6 @@
 MOZ_APP_BASENAME=Fennec
 MOZ_APP_VENDOR=Mozilla
 
-MOZ_APP_VERSION=$FIREFOX_VERSION
-MOZ_APP_VERSION_DISPLAY=$FIREFOX_VERSION_DISPLAY
 MOZ_APP_UA_NAME=Firefox
 
 BROWSER_CHROME_URL=chrome://browser/content/browser.xul
@@ -32,9 +30,6 @@ MOZ_ANDROID_BROWSER_INTENT_CLASS=org.mozilla.gecko.BrowserApp
 
 MOZ_NO_SMART_CARDS=1
 
-MOZ_XULRUNNER=
-
-MOZ_CAPTURE=1
 MOZ_RAW=1
 
 # use custom widget for html:select

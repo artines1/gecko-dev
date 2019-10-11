@@ -6,7 +6,7 @@
 
 #include "File.h"
 
-#include "ipc/ChildIPC.h"
+#include "ipc/ChildInternal.h"
 #include "mozilla/Compression.h"
 #include "mozilla/Sprintf.h"
 #include "ProcessRewind.h"
@@ -21,9 +21,7 @@ namespace recordreplay {
 // Stream
 ///////////////////////////////////////////////////////////////////////////////
 
-void
-Stream::ReadBytes(void* aData, size_t aSize)
-{
+void Stream::ReadBytes(void* aData, size_t aSize) {
   MOZ_RELEASE_ASSERT(mFile->OpenForReading());
 
   size_t totalRead = 0;
@@ -47,18 +45,13 @@ Stream::ReadBytes(void* aData, size_t aSize)
     }
 
     MOZ_RELEASE_ASSERT(mBufferPos == mBufferLength);
-
-    // If we try to read off the end of a stream then we must have hit the end
-    // of the replay for this thread.
-    while (mChunkIndex == mChunks.length()) {
-      MOZ_RELEASE_ASSERT(mName == StreamName::Event || mName == StreamName::Assert);
-      HitEndOfRecording();
-    }
+    MOZ_RELEASE_ASSERT(mChunkIndex < mChunks.length());
 
     const StreamChunkLocation& chunk = mChunks[mChunkIndex++];
+    MOZ_RELEASE_ASSERT(chunk.mStreamPos == mStreamPos);
 
-    EnsureMemory(&mBallast, &mBallastSize, chunk.mCompressedSize, BallastMaxSize(),
-                 DontCopyExistingData);
+    EnsureMemory(&mBallast, &mBallastSize, chunk.mCompressedSize,
+                 BallastMaxSize(), DontCopyExistingData);
     mFile->ReadChunk(mBallast.get(), chunk);
 
     EnsureMemory(&mBuffer, &mBufferSize, chunk.mDecompressedSize, BUFFER_MAX,
@@ -66,9 +59,9 @@ Stream::ReadBytes(void* aData, size_t aSize)
 
     size_t bytesWritten;
     if (!Compression::LZ4::decompress(mBallast.get(), chunk.mCompressedSize,
-                                      mBuffer.get(), chunk.mDecompressedSize, &bytesWritten) ||
-        bytesWritten != chunk.mDecompressedSize)
-    {
+                                      mBuffer.get(), chunk.mDecompressedSize,
+                                      &bytesWritten) ||
+        bytesWritten != chunk.mDecompressedSize) {
       MOZ_CRASH();
     }
 
@@ -77,18 +70,15 @@ Stream::ReadBytes(void* aData, size_t aSize)
   }
 }
 
-bool
-Stream::AtEnd()
-{
+bool Stream::AtEnd() {
   MOZ_RELEASE_ASSERT(mFile->OpenForReading());
 
   return mBufferPos == mBufferLength && mChunkIndex == mChunks.length();
 }
 
-void
-Stream::WriteBytes(const void* aData, size_t aSize)
-{
+void Stream::WriteBytes(const void* aData, size_t aSize) {
   MOZ_RELEASE_ASSERT(mFile->OpenForWriting());
+  MOZ_RELEASE_ASSERT(mName != StreamName::Event || mInRecordingEventSection);
 
   // Prevent the entire file from being flushed while we write this data.
   AutoReadSpinLock streamLock(mFile->mStreamLock);
@@ -109,7 +99,8 @@ Stream::WriteBytes(const void* aData, size_t aSize)
 
     // Grow the file's buffer if it is not at its maximum size.
     if (mBufferSize < BUFFER_MAX) {
-      EnsureMemory(&mBuffer, &mBufferSize, mBufferSize + 1, BUFFER_MAX, CopyExistingData);
+      EnsureMemory(&mBuffer, &mBufferSize, mBufferSize + 1, BUFFER_MAX,
+                   CopyExistingData);
       continue;
     }
 
@@ -117,9 +108,7 @@ Stream::WriteBytes(const void* aData, size_t aSize)
   }
 }
 
-size_t
-Stream::ReadScalar()
-{
+size_t Stream::ReadScalar() {
   // Read back a pointer sized value using the same encoding as WriteScalar.
   size_t value = 0, shift = 0;
   while (true) {
@@ -134,9 +123,7 @@ Stream::ReadScalar()
   return value;
 }
 
-void
-Stream::WriteScalar(size_t aValue)
-{
+void Stream::WriteScalar(size_t aValue) {
   // Pointer sized values are written out as unsigned values with an encoding
   // optimized for small values. Each written byte successively captures 7 bits
   // of data from the value, starting at the low end, with the high bit in the
@@ -155,21 +142,97 @@ Stream::WriteScalar(size_t aValue)
   } while (aValue);
 }
 
-void
-Stream::CheckInput(size_t aValue)
-{
-  size_t oldValue = aValue;
-  RecordOrReplayScalar(&oldValue);
-  if (oldValue != aValue) {
-    child::ReportFatalError("Input Mismatch: Recorded: %zu Replayed %zu\n", oldValue, aValue);
-    Unreachable();
+void Stream::RecordOrReplayThreadEvent(ThreadEvent aEvent) {
+  if (IsRecording()) {
+    WriteScalar((size_t)aEvent);
+  } else {
+    ThreadEvent oldEvent = (ThreadEvent)ReadScalar();
+    if (oldEvent != aEvent) {
+      const char* extra = "";
+      if (oldEvent == ThreadEvent::Assert) {
+        // Include the asserted string in the error. This must match up with
+        // the writes in RecordReplayAssert.
+        if (mNameIndex == MainThreadId) {
+          (void)ReadScalar();  // For the ExecutionProgressCounter write below.
+        }
+        extra = ReadInputString();
+      }
+      child::ReportFatalError(
+          Nothing(), "Event Mismatch: Recorded %s %s Replayed %s",
+          ThreadEventName(oldEvent), extra, ThreadEventName(aEvent));
+    }
+    mLastEvent = aEvent;
+  }
+
+  // Check the execution progress counter for events executing on the main
+  // thread.
+  if (mNameIndex == MainThreadId) {
+    CheckInput(*ExecutionProgressCounter());
   }
 }
 
-void
-Stream::EnsureMemory(UniquePtr<char[]>* aBuf, size_t* aSize,
-                     size_t aNeededSize, size_t aMaxSize, ShouldCopy aCopy)
-{
+ThreadEvent Stream::ReplayThreadEvent() {
+  ThreadEvent event = (ThreadEvent)ReadScalar();
+  if (mNameIndex == MainThreadId) {
+    CheckInput(*ExecutionProgressCounter());
+  }
+  return event;
+}
+
+void Stream::CheckInput(size_t aValue) {
+  if (IsRecording()) {
+    WriteScalar(aValue);
+  } else {
+    size_t oldValue = ReadScalar();
+    if (oldValue != aValue) {
+      child::ReportFatalError(Nothing(),
+                              "Input Mismatch: %s Recorded %llu Replayed %llu",
+                              ThreadEventName(mLastEvent), oldValue, aValue);
+    }
+  }
+}
+
+const char* Stream::ReadInputString() {
+  size_t len = ReadScalar();
+  EnsureInputBallast(len + 1);
+  ReadBytes(mInputBallast.get(), len);
+  mInputBallast[len] = 0;
+  return mInputBallast.get();
+}
+
+void Stream::CheckInput(const char* aValue) {
+  size_t len = strlen(aValue);
+  if (IsRecording()) {
+    WriteScalar(len);
+    WriteBytes(aValue, len);
+  } else {
+    const char* oldInput = ReadInputString();
+    if (strcmp(oldInput, aValue) != 0) {
+      child::ReportFatalError(Nothing(),
+                              "Input Mismatch: %s Recorded %s Replayed %s",
+                              ThreadEventName(mLastEvent), oldInput, aValue);
+    }
+  }
+}
+
+void Stream::CheckInput(const void* aData, size_t aSize) {
+  CheckInput(aSize);
+  if (IsRecording()) {
+    WriteBytes(aData, aSize);
+  } else {
+    EnsureInputBallast(aSize);
+    ReadBytes(mInputBallast.get(), aSize);
+
+    if (memcmp(aData, mInputBallast.get(), aSize) != 0) {
+      child::ReportFatalError(Nothing(), "Input Buffer Mismatch: %s",
+                              ThreadEventName(mLastEvent));
+    }
+  }
+}
+
+void Stream::EnsureMemory(UniquePtr<char[]>* aBuf, size_t* aSize,
+                          size_t aNeededSize, size_t aMaxSize,
+                          ShouldCopy aCopy) {
   // Once a stream buffer grows, it never shrinks again. Buffers start out
   // small because most streams are very small.
   MOZ_RELEASE_ASSERT(!!*aBuf == !!*aSize);
@@ -185,9 +248,12 @@ Stream::EnsureMemory(UniquePtr<char[]>* aBuf, size_t* aSize,
   }
 }
 
-void
-Stream::Flush(bool aTakeLock)
-{
+void Stream::EnsureInputBallast(size_t aSize) {
+  EnsureMemory(&mInputBallast, &mInputBallastSize, aSize, (size_t)-1,
+               DontCopyExistingData);
+}
+
+void Stream::Flush(bool aTakeLock) {
   MOZ_RELEASE_ASSERT(mFile && mFile->OpenForWriting());
 
   if (!mBufferPos) {
@@ -198,21 +264,22 @@ Stream::Flush(bool aTakeLock)
   EnsureMemory(&mBallast, &mBallastSize, bound, BallastMaxSize(),
                DontCopyExistingData);
 
-  size_t compressedSize = Compression::LZ4::compress(mBuffer.get(), mBufferPos, mBallast.get());
+  size_t compressedSize =
+      Compression::LZ4::compress(mBuffer.get(), mBufferPos, mBallast.get());
   MOZ_RELEASE_ASSERT(compressedSize != 0);
   MOZ_RELEASE_ASSERT((size_t)compressedSize <= bound);
 
   StreamChunkLocation chunk =
-    mFile->WriteChunk(mBallast.get(), compressedSize, mBufferPos, aTakeLock);
+      mFile->WriteChunk(mBallast.get(), compressedSize, mBufferPos,
+                        mStreamPos - mBufferPos, aTakeLock);
   mChunks.append(chunk);
   MOZ_ALWAYS_TRUE(++mChunkIndex == mChunks.length());
 
   mBufferPos = 0;
 }
 
-/* static */ size_t
-Stream::BallastMaxSize()
-{
+/* static */
+size_t Stream::BallastMaxSize() {
   return Compression::LZ4::maxCompressedSize(BUFFER_MAX);
 }
 
@@ -221,20 +288,16 @@ Stream::BallastMaxSize()
 ///////////////////////////////////////////////////////////////////////////////
 
 // Information in a file index about a chunk.
-struct FileIndexChunk
-{
+struct FileIndexChunk {
   uint32_t /* StreamName */ mName;
   uint32_t mNameIndex;
   StreamChunkLocation mChunk;
 
-  FileIndexChunk()
-  {
-    PodZero(this);
-  }
+  FileIndexChunk() { PodZero(this); }
 
-  FileIndexChunk(StreamName aName, uint32_t aNameIndex, const StreamChunkLocation& aChunk)
-    : mName((uint32_t) aName), mNameIndex(aNameIndex), mChunk(aChunk)
-  {}
+  FileIndexChunk(StreamName aName, uint32_t aNameIndex,
+                 const StreamChunkLocation& aChunk)
+      : mName((uint32_t)aName), mNameIndex(aNameIndex), mChunk(aChunk) {}
 };
 
 // We expect to find this at every index in a file.
@@ -242,8 +305,7 @@ static const uint64_t MagicValue = 0xd3e7f5fae445b3ac;
 
 // Index of chunks in a file. There is an index at the start of the file
 // (which is always empty) and at various places within the file itself.
-struct FileIndex
-{
+struct FileIndex {
   // This should match MagicValue.
   uint64_t mMagic;
 
@@ -254,13 +316,10 @@ struct FileIndex
   uint64_t mNextIndexOffset;
 
   explicit FileIndex(uint32_t aNumChunks)
-    : mMagic(MagicValue), mNumChunks(aNumChunks), mNextIndexOffset(0)
-  {}
+      : mMagic(MagicValue), mNumChunks(aNumChunks), mNextIndexOffset(0) {}
 };
 
-bool
-File::Open(const char* aName, Mode aMode)
-{
+bool File::Open(const char* aName, Mode aMode) {
   MOZ_RELEASE_ASSERT(!mFd);
   MOZ_RELEASE_ASSERT(aName);
 
@@ -287,9 +346,7 @@ File::Open(const char* aName, Mode aMode)
   return true;
 }
 
-void
-File::Close()
-{
+void File::Close() {
   if (!mFd) {
     return;
   }
@@ -301,9 +358,8 @@ File::Close()
   Clear();
 }
 
-File::ReadIndexResult
-File::ReadNextIndex(InfallibleVector<Stream*>* aUpdatedStreams)
-{
+File::ReadIndexResult File::ReadNextIndex(
+    InfallibleVector<Stream*>* aUpdatedStreams) {
   // Unlike in the Flush() case, we don't have to worry about other threads
   // attempting to read data from streams in this file while we are reading
   // the new index.
@@ -312,7 +368,8 @@ File::ReadNextIndex(InfallibleVector<Stream*>* aUpdatedStreams)
   // Read in the last index to see if there is another one.
   DirectSeekFile(mFd, mLastIndexOffset + offsetof(FileIndex, mNextIndexOffset));
   uint64_t nextIndexOffset;
-  if (DirectRead(mFd, &nextIndexOffset, sizeof(nextIndexOffset)) != sizeof(nextIndexOffset)) {
+  if (DirectRead(mFd, &nextIndexOffset, sizeof(nextIndexOffset)) !=
+      sizeof(nextIndexOffset)) {
     return ReadIndexResult::InvalidFile;
   }
   if (!nextIndexOffset) {
@@ -339,7 +396,8 @@ File::ReadNextIndex(InfallibleVector<Stream*>* aUpdatedStreams)
   }
   for (size_t i = 0; i < index.mNumChunks; i++) {
     const FileIndexChunk& indexChunk = chunks[i];
-    Stream* stream = OpenStream((StreamName) indexChunk.mName, indexChunk.mNameIndex);
+    Stream* stream =
+        OpenStream((StreamName)indexChunk.mName, indexChunk.mNameIndex);
     stream->mChunks.append(indexChunk.mChunk);
     if (aUpdatedStreams) {
       aUpdatedStreams->append(stream);
@@ -350,9 +408,7 @@ File::ReadNextIndex(InfallibleVector<Stream*>* aUpdatedStreams)
   return ReadIndexResult::FoundIndex;
 }
 
-bool
-File::Flush()
-{
+bool File::Flush() {
   MOZ_ASSERT(OpenForWriting());
   AutoSpinLock lock(mLock);
 
@@ -362,7 +418,8 @@ File::Flush()
       if (stream) {
         stream->Flush(/* aTakeLock = */ false);
         for (size_t i = stream->mFlushedChunks; i < stream->mChunkIndex; i++) {
-          newChunks.emplaceBack(stream->mName, stream->mNameIndex, stream->mChunks[i]);
+          newChunks.emplaceBack(stream->mName, stream->mNameIndex,
+                                stream->mChunks[i]);
         }
         stream->mFlushedChunks = stream->mChunkIndex;
       }
@@ -392,11 +449,9 @@ File::Flush()
   return true;
 }
 
-StreamChunkLocation
-File::WriteChunk(const char* aStart,
-                 size_t aCompressedSize, size_t aDecompressedSize,
-                 bool aTakeLock)
-{
+StreamChunkLocation File::WriteChunk(const char* aStart, size_t aCompressedSize,
+                                     size_t aDecompressedSize,
+                                     uint64_t aStreamPos, bool aTakeLock) {
   Maybe<AutoSpinLock> lock;
   if (aTakeLock) {
     lock.emplace(mLock);
@@ -406,6 +461,8 @@ File::WriteChunk(const char* aStart,
   chunk.mOffset = mWriteOffset;
   chunk.mCompressedSize = aCompressedSize;
   chunk.mDecompressedSize = aDecompressedSize;
+  chunk.mHash = HashBytes(aStart, aCompressedSize);
+  chunk.mStreamPos = aStreamPos;
 
   DirectWrite(mFd, aStart, aCompressedSize);
   mWriteOffset += aCompressedSize;
@@ -413,20 +470,15 @@ File::WriteChunk(const char* aStart,
   return chunk;
 }
 
-void
-File::ReadChunk(char* aDest, const StreamChunkLocation& aChunk)
-{
+void File::ReadChunk(char* aDest, const StreamChunkLocation& aChunk) {
   AutoSpinLock lock(mLock);
   DirectSeekFile(mFd, aChunk.mOffset);
   size_t res = DirectRead(mFd, aDest, aChunk.mCompressedSize);
-  if (res != aChunk.mCompressedSize) {
-    MOZ_CRASH();
-  }
+  MOZ_RELEASE_ASSERT(res == aChunk.mCompressedSize);
+  MOZ_RELEASE_ASSERT(HashBytes(aDest, aChunk.mCompressedSize) == aChunk.mHash);
 }
 
-Stream*
-File::OpenStream(StreamName aName, size_t aNameIndex)
-{
+Stream* File::OpenStream(StreamName aName, size_t aNameIndex) {
   AutoSpinLock lock(mLock);
 
   auto& vector = mStreams[(size_t)aName];
@@ -442,5 +494,5 @@ File::OpenStream(StreamName aName, size_t aNameIndex)
   return stream.get();
 }
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla

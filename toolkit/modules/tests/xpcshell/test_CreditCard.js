@@ -3,32 +3,62 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/CreditCard.jsm");
+const { CreditCard } = ChromeUtils.import(
+  "resource://gre/modules/CreditCard.jsm"
+);
 
 add_task(function isValidNumber() {
   function testValid(number, shouldPass) {
     if (shouldPass) {
-      ok(CreditCard.isValidNumber(number), `${number} should be considered valid`);
+      ok(
+        CreditCard.isValidNumber(number),
+        `${number} should be considered valid`
+      );
     } else {
-      ok(!CreditCard.isValidNumber(number), `${number} should not be considered valid`);
+      ok(
+        !CreditCard.isValidNumber(number),
+        `${number} should not be considered valid`
+      );
     }
   }
 
   testValid("0000000000000000", true);
+
+  testValid("41111111112", false); // passes Luhn but too short
+  testValid("4111-1111-112", false); // passes Luhn but too short
+  testValid("55555555555544440018", false); // passes Luhn but too long
+  testValid("5555 5555 5555 4444 0018", false); // passes Luhn but too long
+
   testValid("4929001587121045", true);
   testValid("5103059495477870", true);
   testValid("6011029476355493", true);
   testValid("3589993783099582", true);
   testValid("5415425865751454", true);
-  if (CreditCard.isValidNumber("30190729470495")) {
-    ok(false, "todo: 14-digit numbers (Diners Club) aren't supported by isValidNumber yet");
-  }
-  if (CreditCard.isValidNumber("36333851788250")) {
-    ok(false, "todo: 14-digit numbers (Diners Club) aren't supported by isValidNumber yet");
-  }
-  if (CreditCard.isValidNumber("3532596776688495393")) {
-    ok(false, "todo: 19-digit numbers (JCB, Discover, Maestro) could have 16-19 digits");
-  }
+
+  testValid("378282246310005", true); // American Express test number
+  testValid("371449635398431", true); // American Express test number
+  testValid("378734493671000", true); // American Express Corporate test number
+  testValid("5610591081018250", true); // Australian BankCard test number
+  testValid("6759649826438453", true); // Maestro test number
+  testValid("6799990100000000019", true); // 19 digit Maestro test number
+  testValid("6799-9901-0000-0000019", true); // 19 digit Maestro test number
+  testValid("30569309025904", true); // 14 digit Diners Club test number
+  testValid("38520000023237", true); // 14 digit Diners Club test number
+  testValid("6011111111111117", true); // Discover test number
+  testValid("6011000990139424", true); // Discover test number
+  testValid("3530111333300000", true); // JCB test number
+  testValid("3566002020360505", true); // JCB test number
+  testValid("3532596776688495393", true); // 19-digit JCB number. JCB, Discover, Maestro could have 16-19 digits
+  testValid("3532 5967 7668 8495393", true); // 19-digit JCB number. JCB, Discover, Maestro could have 16-19 digits
+  testValid("5555555555554444", true); // MasterCard test number
+  testValid("5105105105105100", true); // MasterCard test number
+  testValid("2221000000000009", true); // 2-series MasterCard test number
+  testValid("4111111111111111", true); // Visa test number
+  testValid("4012888888881881", true); // Visa test number
+  testValid("4222222222222", true); // 13 digit Visa test number
+  testValid("4222 2222 22222", true); // 13 digit Visa test number
+  testValid("4035 5010 0000 0008", true); // Visadebit/Cartebancaire test number
+
   testValid("5038146897157463", true);
   testValid("4026313395502338", true);
   testValid("6387060366272981", true);
@@ -55,7 +85,8 @@ add_task(function isValidNumber() {
   testValid("0000-0000-0080-4609", true);
   testValid("0000 0000 0222 331", true);
   testValid("344060747836806", true);
-  testValid("001064088", true);
+  testValid("001064088", false); // too short
+  testValid("00-10-64-088", false); // still too short
   testValid("4929001587121046", false);
   testValid("5103059495477876", false);
   testValid("6011029476355494", false);
@@ -94,8 +125,11 @@ add_task(function test_formatMaskedNumber() {
   function testFormat(number) {
     let format = CreditCard.formatMaskedNumber(number);
     Assert.equal(format.affix, "****", "Affix should always be four asterisks");
-    Assert.equal(format.label, number.substr(-4),
-       "The label should always be the last four digits of the card number");
+    Assert.equal(
+      format.label,
+      number.substr(-4),
+      "The label should always be the last four digits of the card number"
+    );
   }
   testFormat("************0000");
   testFormat("************1045");
@@ -106,9 +140,12 @@ add_task(function test_formatMaskedNumber() {
 
 add_task(function test_maskNumber() {
   function testMask(number, expected) {
-    let card = new CreditCard({number});
-    Assert.equal(card.maskedNumber, expected,
-       "Masked number should only show the last four digits");
+    let card = new CreditCard({ number });
+    Assert.equal(
+      card.maskedNumber,
+      expected,
+      "Masked number should only show the last four digits"
+    );
   }
   testMask("0000000000000000", "**** 0000");
   testMask("4929001587121045", "**** 1045");
@@ -117,16 +154,22 @@ add_task(function test_maskNumber() {
   testMask("3589993783099582", "**** 9582");
   testMask("5415425865751454", "**** 1454");
   testMask("344060747836806", "**** 6806");
-  Assert.throws(() => (new CreditCard({number: "1234"})).maskedNumber,
+  testMask("6799990100000000019", "**** 0019");
+  Assert.throws(
+    () => new CreditCard({ number: "1234" }).maskedNumber,
     /Invalid credit card number/,
-    "Four or less numbers should throw when retrieving the maskedNumber");
+    "Four or less numbers should throw when retrieving the maskedNumber"
+  );
 });
 
 add_task(function test_longMaskedNumber() {
   function testMask(number, expected) {
-    let card = new CreditCard({number});
-    Assert.equal(card.longMaskedNumber, expected,
-       "Long masked number should show asterisks for all digits but last four");
+    let card = new CreditCard({ number });
+    Assert.equal(
+      card.longMaskedNumber,
+      expected,
+      "Long masked number should show asterisks for all digits but last four"
+    );
   }
   testMask("0000000000000000", "************0000");
   testMask("4929001587121045", "************1045");
@@ -135,75 +178,153 @@ add_task(function test_longMaskedNumber() {
   testMask("3589993783099582", "************9582");
   testMask("5415425865751454", "************1454");
   testMask("344060747836806", "***********6806");
-  Assert.throws(() => (new CreditCard({number: "1234"})).longMaskedNumber,
+  testMask("6799990100000000019", "***************0019");
+  Assert.throws(
+    () => new CreditCard({ number: "1234" }).longMaskedNumber,
     /Invalid credit card number/,
-    "Four or less numbers should throw when retrieving the maskedNumber");
+    "Four or less numbers should throw when retrieving the longMaskedNumber"
+  );
 });
 
 add_task(function test_isValid() {
-  function testValid(number, expirationMonth, expirationYear, shouldPass, message) {
-    let card = new CreditCard({
-      number,
-      expirationMonth,
-      expirationYear,
-    });
+  function testValid(
+    number,
+    expirationMonth,
+    expirationYear,
+    shouldPass,
+    message
+  ) {
+    let isValid = false;
+    try {
+      let card = new CreditCard({
+        number,
+        expirationMonth,
+        expirationYear,
+      });
+      isValid = card.isValid();
+    } catch (ex) {
+      isValid = false;
+    }
     if (shouldPass) {
-      ok(card.isValid(), message);
+      ok(isValid, message);
     } else {
-      ok(!card.isValid(), message);
+      ok(!isValid, message);
     }
   }
-  let year = (new Date()).getFullYear();
-  let month = (new Date()).getMonth() + 1;
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth() + 1;
 
-  testValid("0000000000000000", month, year + 2, true,
-    "Valid number and future expiry date (two years) should pass");
-  testValid("0000000000000000", month + 2, year, true,
-    "Valid number and future expiry date (two months) should pass");
-  testValid("0000000000000000", month, year, true,
-    "Valid number and expiry date equal to this month should pass");
-  testValid("0000000000000000", month - 1, year, false,
-    "Valid number but overdue expiry date should fail");
-  testValid("0000000000000000", month, year - 1, false,
-    "Valid number but overdue expiry date (by a year) should fail");
-  testValid("0000000000000001", month, year + 2, false,
-    "Invalid number but future expiry date should fail");
+  testValid(
+    "0000000000000000",
+    month,
+    year + 2,
+    true,
+    "Valid number and future expiry date (two years) should pass"
+  );
+  testValid(
+    "0000000000000000",
+    month < 11 ? month + 2 : month % 10,
+    month < 11 ? year : year + 1,
+    true,
+    "Valid number and future expiry date (two months) should pass"
+  );
+  testValid(
+    "0000000000000000",
+    month,
+    year,
+    true,
+    "Valid number and expiry date equal to this month should pass"
+  );
+  testValid(
+    "0000000000000000",
+    month > 1 ? month - 1 : 12,
+    month > 1 ? year : year - 1,
+    false,
+    "Valid number but overdue expiry date should fail"
+  );
+  testValid(
+    "0000000000000000",
+    month,
+    year - 1,
+    false,
+    "Valid number but overdue expiry date (by a year) should fail"
+  );
+  testValid(
+    "0000000000000001",
+    month,
+    year + 2,
+    false,
+    "Invalid number but future expiry date should fail"
+  );
 });
 
 add_task(function test_normalize() {
-  Assert.equal((new CreditCard({number: "0000 0000 0000 0000"})).number, "0000000000000000",
-    "Spaces should be removed from card number after it is normalized");
-  Assert.equal((new CreditCard({number: "0000   0000\t 0000\t0000"})).number, "0000000000000000",
-    "Spaces should be removed from card number after it is normalized");
-  Assert.equal((new CreditCard({number: "0000-0000-0000-0000"})).number, "0000000000000000",
-    "Hyphens should be removed from card number after it is normalized");
-  Assert.equal((new CreditCard({number: "0000-0000 0000-0000"})).number, "0000000000000000",
-    "Spaces and hyphens should be removed from card number after it is normalized");
-  Assert.equal((new CreditCard({number: "0000000000000000"})).number, "0000000000000000",
-    "Normalized numbers should not get changed");
-  Assert.equal((new CreditCard({number: "0000"})).number, null,
-    "Card numbers that are too short get set to null");
+  Assert.equal(
+    new CreditCard({ number: "0000 0000 0000 0000" }).number,
+    "0000000000000000",
+    "Spaces should be removed from card number after it is normalized"
+  );
+  Assert.equal(
+    new CreditCard({ number: "0000   0000\t 0000\t0000" }).number,
+    "0000000000000000",
+    "Spaces should be removed from card number after it is normalized"
+  );
+  Assert.equal(
+    new CreditCard({ number: "0000-0000-0000-0000" }).number,
+    "0000000000000000",
+    "Hyphens should be removed from card number after it is normalized"
+  );
+  Assert.equal(
+    new CreditCard({ number: "0000-0000 0000-0000" }).number,
+    "0000000000000000",
+    "Spaces and hyphens should be removed from card number after it is normalized"
+  );
+  Assert.equal(
+    new CreditCard({ number: "0000000000000000" }).number,
+    "0000000000000000",
+    "Normalized numbers should not get changed"
+  );
 
-  let card = new CreditCard({number: "0000000000000000"});
+  let card = new CreditCard({ number: "0000000000000000" });
   card.expirationYear = "22";
   card.expirationMonth = "11";
-  Assert.equal(card.expirationYear, 2022, "Years less than four digits are in the third millenium");
+  Assert.equal(
+    card.expirationYear,
+    2022,
+    "Years less than four digits are in the third millenium"
+  );
   card.expirationYear = "-200";
   ok(isNaN(card.expirationYear), "Negative years are blocked");
   card.expirationYear = "1998";
-  Assert.equal(card.expirationYear, 1998, "Years with four digits are not changed");
+  Assert.equal(
+    card.expirationYear,
+    1998,
+    "Years with four digits are not changed"
+  );
   card.expirationYear = "test";
   ok(isNaN(card.expirationYear), "non-number years are returned as NaN");
   card.expirationMonth = "02";
-  Assert.equal(card.expirationMonth, 2, "Zero-leading months are converted properly (not octal)");
+  Assert.equal(
+    card.expirationMonth,
+    2,
+    "Zero-leading months are converted properly (not octal)"
+  );
   card.expirationMonth = "test";
   ok(isNaN(card.expirationMonth), "non-number months are returned as NaN");
   card.expirationMonth = "12";
-  Assert.equal(card.expirationMonth, 12, "Months formatted correctly are unchanged");
+  Assert.equal(
+    card.expirationMonth,
+    12,
+    "Months formatted correctly are unchanged"
+  );
   card.expirationMonth = "13";
   ok(isNaN(card.expirationMonth), "Months above 12 are blocked");
   card.expirationMonth = "7";
-  Assert.equal(card.expirationMonth, 7, "Changing back to a valid number passes");
+  Assert.equal(
+    card.expirationMonth,
+    7,
+    "Changing back to a valid number passes"
+  );
   card.expirationMonth = "0";
   ok(isNaN(card.expirationMonth), "Months below 1 are blocked");
 
@@ -227,8 +348,16 @@ add_task(function test_normalize() {
   Assert.equal(card.expirationMonth, 6, "Month should be parsed correctly");
   Assert.equal(card.expirationYear, 2027, "Year should be parsed correctly");
   card.expirationString = "07/11";
-  Assert.equal(card.expirationMonth, 7, "Ambiguous month should be parsed correctly");
-  Assert.equal(card.expirationYear, 2011, "Ambiguous year should be parsed correctly");
+  Assert.equal(
+    card.expirationMonth,
+    7,
+    "Ambiguous month should be parsed correctly"
+  );
+  Assert.equal(
+    card.expirationYear,
+    2011,
+    "Ambiguous year should be parsed correctly"
+  );
 
   card = new CreditCard({
     number: "0000000000000000",
@@ -236,39 +365,93 @@ add_task(function test_normalize() {
     expirationYear: "2112",
     expirationString: "06-2066",
   });
-  Assert.equal(card.expirationMonth, 2, "expirationString is takes lower precendence than explicit month");
-  Assert.equal(card.expirationYear, 2112, "expirationString is takes lower precendence than explicit year");
+  Assert.equal(
+    card.expirationMonth,
+    2,
+    "expirationString is takes lower precendence than explicit month"
+  );
+  Assert.equal(
+    card.expirationYear,
+    2112,
+    "expirationString is takes lower precendence than explicit year"
+  );
 });
 
 add_task(async function test_label() {
-  let testCases = [{
+  let testCases = [
+    {
       number: "0000000000000000",
       name: "Rudy Badoody",
-      expectedLabel: "0000000000000000, Rudy Badoody",
       expectedMaskedLabel: "**** 0000, Rudy Badoody",
-    }, {
+    },
+    {
       number: "3589993783099582",
       name: "Jimmy Babimmy",
-      expectedLabel: "3589993783099582, Jimmy Babimmy",
       expectedMaskedLabel: "**** 9582, Jimmy Babimmy",
-    }, {
-      number: "************9582",
-      name: "Jimmy Babimmy",
-      expectedLabel: "**** 9582, Jimmy Babimmy",
-      expectedMaskedLabel: "**** 9582, Jimmy Babimmy",
-    }, {
-      name: "Ricky Bobby",
-      expectedLabel: "Ricky Bobby",
-      expectedMaskedLabel: "Ricky Bobby",
-  }];
+    },
+  ];
 
   for (let testCase of testCases) {
-    let {number, name} = testCase;
-    let card = new CreditCard({number, name});
-
-    Assert.equal(await card.getLabel({showNumbers: true}), testCase.expectedLabel,
-       "The expectedLabel should be shown when showNumbers is true");
-    Assert.equal(await card.getLabel({showNumbers: false}), testCase.expectedMaskedLabel,
-       "The expectedMaskedLabel should be shown when showNumbers is false");
+    let { number, name } = testCase;
+    Assert.equal(
+      await CreditCard.getLabel({ number, name }),
+      testCase.expectedMaskedLabel,
+      "The expectedMaskedLabel should be shown when showNumbers is false"
+    );
   }
+});
+
+add_task(async function test_network() {
+  let supportedNetworks = CreditCard.SUPPORTED_NETWORKS;
+  Assert.ok(
+    supportedNetworks.length,
+    "There are > 0 supported credit card networks"
+  );
+
+  let ccNumber = "0000000000000000";
+  let testCases = supportedNetworks.map(network => {
+    return { number: ccNumber, network, expectedNetwork: network };
+  });
+  testCases.push({
+    number: ccNumber,
+    network: "gringotts",
+    expectedNetwork: "gringotts",
+  });
+  testCases.push({
+    number: ccNumber,
+    network: "",
+    expectedNetwork: undefined,
+  });
+
+  for (let testCase of testCases) {
+    let { number, network } = testCase;
+    let card = new CreditCard({ number, network });
+    Assert.equal(
+      await card.network,
+      testCase.expectedNetwork,
+      `The expectedNetwork ${card.network} should match the card network ${
+        testCase.expectedNetwork
+      }`
+    );
+  }
+});
+
+add_task(async function test_isValidNetwork() {
+  for (let network of CreditCard.SUPPORTED_NETWORKS) {
+    Assert.ok(CreditCard.isValidNetwork(network), "supported network is valid");
+  }
+  Assert.ok(!CreditCard.isValidNetwork(), "undefined is not a valid network");
+  Assert.ok(
+    !CreditCard.isValidNetwork(""),
+    "empty string is not a valid network"
+  );
+  Assert.ok(!CreditCard.isValidNetwork(null), "null is not a valid network");
+  Assert.ok(
+    !CreditCard.isValidNetwork("Visa"),
+    "network validity is case-sensitive"
+  );
+  Assert.ok(
+    !CreditCard.isValidNetwork("madeupnetwork"),
+    "unknown network is invalid"
+  );
 });

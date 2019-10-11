@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -53,9 +52,19 @@ var testData = [
     },
     {
         tag: "aar-x-private",
-    },
+        // "aar" should be canonicalized into "aa" because "aar" matches the type attribute of
+        // a languageAlias element in 
+        // https://www.unicode.org/repos/cldr/trunk/common/supplemental/supplementalMetadata.xml
+        canonical: "aa-x-private",
+        maximized: "aa-Latn-ET-x-private",
+   },
     {
         tag: "heb-x-private",
+        // "heb" should be canonicalized into "he" because "heb" matches the type attribute of
+        // a languageAlias element in 
+        // https://www.unicode.org/repos/cldr/trunk/common/supplemental/supplementalMetadata.xml
+        canonical: "he-x-private",
+        maximized: "he-Hebr-IL-x-private",
     },
     {
         tag: "de-u-kf",
@@ -63,25 +72,45 @@ var testData = [
     },
     {
         tag: "ces",
+        // "ces" should be canonicalized into "cs" because "ces" matches the type attribute of
+        // a languageAlias element in 
+        // https://www.unicode.org/repos/cldr/trunk/common/supplemental/supplementalMetadata.xml
+        canonical: "cs",
+        maximized: "cs-Latn-CZ",
     },
     {
+        // ECMA-402 currently requires that variant subtags are not canonicalized.
+        // https://github.com/tc39/ecma402/issues/330
         tag: "hy-arevela",
-        canonical: "hy",
-        maximized: "hy-Armn-AM",
+        canonical: "hy-arevela",
+        maximized: "hy-Armn-AM-arevela",
     },
     {
+        // ECMA-402 currently requires that variant subtags are not canonicalized.
+        // https://github.com/tc39/ecma402/issues/330
         tag: "hy-arevmda",
-        canonical: "hyw",
+        canonical: "hy-arevmda",
+        maximized: "hy-Armn-AM-arevmda",
     },
 ];
 
 for (const {tag, canonical = tag, maximized = canonical, minimized = canonical} of testData) {
-    assert.sameValue(Intl.getCanonicalLocales(tag)[0], canonical);
-
     const loc = new Intl.Locale(tag);
-    assert.sameValue(loc.toString(), canonical);
-    assert.sameValue(loc.maximize().toString(), maximized);
-    assert.sameValue(loc.minimize().toString(), minimized);
+    assert.sameValue(
+      new Intl.Locale(tag).toString(),
+      canonical,
+      `new Intl.Locale("${tag}").toString() returns "${canonical}"`
+    );
+    assert.sameValue(
+      new Intl.Locale(tag).maximize().toString(),
+      maximized,
+      `new Intl.Locale("${tag}").maximize().toString() returns "${maximized}"`
+    );
+    assert.sameValue(
+      new Intl.Locale(tag).minimize().toString(),
+      minimized,
+      `new Intl.Locale("${tag}").minimize().toString() returns "${minimized}"`
+    );
 }
 
 reportCompare(0, 0);

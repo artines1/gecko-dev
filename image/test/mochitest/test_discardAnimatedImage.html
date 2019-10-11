@@ -5,8 +5,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=686905
 -->
 <head>
   <title>Test that animated images can be discarded</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/WindowSnapshot.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/WindowSnapshot.js"></script>
   <script type="text/javascript" src="imgutils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -18,8 +18,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=686905
     <canvas id="canvas" width="100" height="100"></canvas>
     <img id="infinitepng" src="infinite-apng.png">
     <img id="infinitegif" src="animated1.gif">
+    <img id="infinitewebp" src="infinite.webp">
     <img id="finitepng" src="restore-previous.png">
     <img id="finitegif" src="animated-gif.gif">
+    <img id="finitewebp" src="keep.webp">
   </div>
 </div>
 <pre id="test">
@@ -35,24 +37,26 @@ var gNumDiscards = 0;
 window.onload = function() {
   // Enable discarding for the test.
   SpecialPowers.pushPrefEnv({
-    'set':[['image.mem.discardable',true]]
+    'set':[['image.mem.discardable',true],
+           ['image.webp.enabled',true]]
   }, runTest);
 }
 
-var gImgs = ['infinitepng', 'infinitegif', 'finitepng', 'finitegif'];
+var gImgs = ['infinitepng', 'infinitegif', 'infinitewebp',
+             'finitepng',   'finitegif',   'finitewebp'];
 // If we are currently counting frame updates.
 var gCountingFrameUpdates = false;
 // The number of frame update notifications for the images in gImgs that happen
 // after discarding. (The last two images are finite looping so we don't expect
 // them to get incremented but it's possible if they don't finish their
 // animation before we discard them.)
-var gNumFrameUpdates = [0, 0, 0, 0];
+var gNumFrameUpdates = [0, 0, 0, 0, 0, 0];
 // The last snapshot of the image. Used to check that the image actually changes.
-var gLastSnapShot = [null, null, null, null];
+var gLastSnapShot = [null, null, null, null, null, null];
 // Number of observed changes in the snapshot.
-var gNumSnapShotChanges = [0, 0, 0, 0];
+var gNumSnapShotChanges = [0, 0, 0, 0, 0, 0];
 // If we've removed the observer.
-var gRemovedObserver = [false, false, false, false];
+var gRemovedObserver = [false, false, false, false, false, false];
 
 // 2 would probably be a good enough test, we arbitrarily choose 4.
 var kNumFrameUpdatesToExpect = 4;
@@ -71,11 +75,11 @@ function runTest() {
 
 function step2() {
   // Draw the images to canvas to force them to be decoded.
-  for (var i = 0; i < gImgs.length; i++) {
+  for (let i = 0; i < gImgs.length; i++) {
     drawCanvas(document.getElementById(gImgs[i]));
   }
 
-  for (var i = 0; i < gImgs.length; i++) {
+  for (let i = 0; i < gImgs.length; i++) {
     addCallbacks(document.getElementById(gImgs[i]), i);
   }
 
@@ -110,8 +114,10 @@ function checkIfFinished() {
 
   if ((gNumFrameUpdates[0] >= kNumFrameUpdatesToExpect) &&
       (gNumFrameUpdates[1] >= kNumFrameUpdatesToExpect) &&
+      (gNumFrameUpdates[2] >= kNumFrameUpdatesToExpect) &&
       (gNumSnapShotChanges[0] >= kNumFrameUpdatesToExpect) &&
-      (gNumSnapShotChanges[1] >= kNumFrameUpdatesToExpect)) {
+      (gNumSnapShotChanges[1] >= kNumFrameUpdatesToExpect) &&
+      (gNumSnapShotChanges[2] >= kNumFrameUpdatesToExpect)) {
     ok(true, "got expected frame updates");
     gFinished = true;
     SimpleTest.finish();
@@ -125,7 +131,7 @@ function addCallbacks(anImage, arrayIndex) {
   observer.discard = function () {
     gNumDiscards++;
     ok(true, "got image discard");
-    if (arrayIndex >= 2) {
+    if (arrayIndex >= 3) {
       // The last two images are finite, so we don't expect any frame updates,
       // this image is done the test, so remove the observer.
       if (!gRemovedObserver[arrayIndex]) {

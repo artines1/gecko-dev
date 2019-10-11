@@ -14,9 +14,8 @@ class nsIFile;
 namespace mozilla {
 namespace dom {
 
-class FileBlobImpl : public BaseBlobImpl
-{
-public:
+class FileBlobImpl : public BaseBlobImpl {
+ public:
   NS_INLINE_DECL_REFCOUNTING_INHERITED(FileBlobImpl, BaseBlobImpl)
 
   // Create as a file
@@ -27,20 +26,19 @@ public:
                uint64_t aLength, nsIFile* aFile);
 
   FileBlobImpl(const nsAString& aName, const nsAString& aContentType,
-               uint64_t aLength, nsIFile* aFile,
-               int64_t aLastModificationDate);
+               uint64_t aLength, nsIFile* aFile, int64_t aLastModificationDate);
 
   // Create as a file with custom name
-  FileBlobImpl(nsIFile* aFile, const nsAString& aName,
-               const nsAString& aContentType);
+  FileBlobImpl(
+      nsIFile* aFile, const nsAString& aName, const nsAString& aContentType,
+      const nsAString& aBlobImplType = NS_LITERAL_STRING("FileBlobImpl"));
 
   // Overrides
   virtual uint64_t GetSize(ErrorResult& aRv) override;
   virtual void GetType(nsAString& aType) override;
   virtual int64_t GetLastModified(ErrorResult& aRv) override;
-  virtual void SetLastModified(int64_t aLastModified) override;
   virtual void GetMozFullPathInternal(nsAString& aFullPath,
-                                      ErrorResult& aRv) const override;
+                                      ErrorResult& aRv) override;
   virtual void CreateInputStream(nsIInputStream** aInputStream,
                                  ErrorResult& aRv) override;
 
@@ -50,43 +48,37 @@ public:
   virtual bool IsSizeUnknown() const override { return false; }
   virtual bool IsDateUnknown() const override { return false; }
 
-  void SetName(const nsAString& aName)
-  {
-    mName = aName;
-  }
+  void SetName(const nsAString& aName) { mName = aName; }
 
-  void SetType(const nsAString& aType)
-  {
-    mContentType = aType;
-  }
+  void SetType(const nsAString& aType) { mContentType = aType; }
 
-  int64_t GetFileId() override
-  {
-    return mFileId;
-  }
+  int64_t GetFileId() override { return mFileId; }
 
-  void SetFileId(int64_t aFileId)
-  {
-    mFileId = aFileId;
-  }
+  void SetFileId(int64_t aFileId) { mFileId = aFileId; }
 
-protected:
+  void SetEmptySize() { mLength = 0; }
+
+  void SetMozFullPath(const nsAString& aPath) { mMozFullPath = aPath; }
+
+ protected:
   virtual ~FileBlobImpl() = default;
 
   // Create slice
-  FileBlobImpl(const FileBlobImpl* aOther, uint64_t aStart,
-               uint64_t aLength, const nsAString& aContentType);
+  FileBlobImpl(const FileBlobImpl* aOther, uint64_t aStart, uint64_t aLength,
+               const nsAString& aContentType);
 
-  virtual already_AddRefed<BlobImpl>
-  CreateSlice(uint64_t aStart, uint64_t aLength,
-              const nsAString& aContentType, ErrorResult& aRv) override;
+  virtual already_AddRefed<BlobImpl> CreateSlice(uint64_t aStart,
+                                                 uint64_t aLength,
+                                                 const nsAString& aContentType,
+                                                 ErrorResult& aRv) override;
 
   nsCOMPtr<nsIFile> mFile;
-  bool mWholeFile;
+  nsString mMozFullPath;
   int64_t mFileId;
+  bool mWholeFile;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_FileBlobImpl_h
+#endif  // mozilla_dom_FileBlobImpl_h

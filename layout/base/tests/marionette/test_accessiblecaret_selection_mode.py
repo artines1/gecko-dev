@@ -4,24 +4,22 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import re
+import sys
+import os
 
+# Add this directory to the import path.
+sys.path.append(os.path.dirname(__file__))
+
+from selection import (
+    CaretActions,
+    SelectionManager,
+)
 from marionette_driver.by import By
-from marionette_driver.marionette import Actions
-from marionette_driver.selection import SelectionManager
 from marionette_harness.marionette_test import (
     MarionetteTestCase,
     SkipTest,
     parameterized
 )
-
-
-def skip_if_not_rotatable(target):
-    def wrapper(self, *args, **kwargs):
-        if not self.marionette.session_capabilities.get('rotatable'):
-            raise SkipTest('skipping due to device not rotatable')
-        return target(self, *args, **kwargs)
-    return wrapper
-
 
 class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
     '''Test cases for AccessibleCaret under selection mode.'''
@@ -57,7 +55,11 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
             self.carets_tested_pref: True,
         }
         self.marionette.set_prefs(self.prefs)
-        self.actions = Actions(self.marionette)
+        self.actions = CaretActions(self.marionette)
+
+    def tearDown(self):
+        self.marionette.actions.release()
+        super(AccessibleCaretSelectionModeTestCase, self).tearDown()
 
     def open_test_html(self, test_html):
         self.marionette.navigate(self.marionette.absolute_url(test_html))
@@ -135,12 +137,12 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
             let utils = window.windowUtils;
             utils.sendTouchEventToWindow('touchstart', [0],
                                          [arguments[0]], [arguments[1]],
-                                         [1], [1], [0], [1], 1, 0);
+                                         [1], [1], [0], [1], 0);
             utils.sendMouseEventToWindow('mouselongtap', arguments[0], arguments[1],
                                           0, 1, 0);
             utils.sendTouchEventToWindow('touchend', [0],
                                          [arguments[0]], [arguments[1]],
-                                         [1], [1], [0], [1], 1, 0);
+                                         [1], [1], [0], [1], 0);
             ''', script_args=[target_x, target_y], sandbox='system')
 
     def long_press_on_word(self, el, wordOrdinal):
@@ -495,33 +497,6 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
 
         self.assertEqual(self.to_unix_line_ending(sel.selected_content), 'select')
 
-    @skip_if_not_rotatable
-    def test_caret_position_after_changing_orientation_of_device(self):
-        '''Bug 1094072
-        If positions of carets are updated correctly, they should be draggable.
-        '''
-        self.open_test_html(self._longtext_html)
-        body = self.marionette.find_element(By.ID, 'bd')
-        longtext = self.marionette.find_element(By.ID, 'longtext')
-
-        # Select word in portrait mode, then change to landscape mode
-        self.marionette.set_orientation('portrait')
-        self.long_press_on_word(longtext, 12)
-        sel = SelectionManager(body)
-        (p_start_caret_x, p_start_caret_y), (p_end_caret_x, p_end_caret_y) = sel.carets_location()
-        self.marionette.set_orientation('landscape')
-        (l_start_caret_x, l_start_caret_y), (l_end_caret_x, l_end_caret_y) = sel.carets_location()
-
-        # Drag end caret to the start caret to change the selected content
-        self.actions.flick(body, l_end_caret_x, l_end_caret_y,
-                           l_start_caret_x, l_start_caret_y).perform()
-
-        # Change orientation back to portrait mode to prevent affecting
-        # other tests
-        self.marionette.set_orientation('portrait')
-
-        self.assertEqual(self.to_unix_line_ending(sel.selected_content), 'o')
-
     def test_select_word_inside_an_iframe(self):
         '''Bug 1088552
         The scroll offset in iframe should be taken into consideration properly.
@@ -612,8 +587,8 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
         self.long_press_on_word(el, 1)
         (caret1_x, caret1_y), (caret2_x, caret2_y) = sel.carets_location()
 
-        # Drag the first caret up by 50px.
-        self.actions.flick(el, caret1_x, caret1_y, caret1_x, caret1_y - 50).perform()
+        # Drag the first caret up by 40px.
+        self.actions.flick(el, caret1_x, caret1_y, caret1_x, caret1_y - 40).perform()
         self.assertEqual(target_content, sel.selected_content)
 
         # Drag the second caret down by 50px.

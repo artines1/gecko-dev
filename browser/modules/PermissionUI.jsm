@@ -4,9 +4,7 @@
 
 "use strict";
 
-var EXPORTED_SYMBOLS = [
-  "PermissionUI",
-];
+var EXPORTED_SYMBOLS = ["PermissionUI"];
 
 /**
  * PermissionUI is responsible for exposing both a prototype
@@ -59,19 +57,61 @@ var EXPORTED_SYMBOLS = [
  * imported, subclassed, and have prompt() called directly, without
  * the caller having called into createPermissionPrompt.
  */
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "Services",
-  "resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "SitePermissions",
-  "resource:///modules/SitePermissions.jsm");
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "Services",
+  "resource://gre/modules/Services.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "SitePermissions",
+  "resource:///modules/SitePermissions.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PermissionUITelemetry",
+  "resource:///modules/PermissionUITelemetry.jsm"
+);
+
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "IDNService",
+  "@mozilla.org/network/idn-service;1",
+  "nsIIDNService"
+);
+
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "ContentPrefService2",
+  "@mozilla.org/content-pref/service;1",
+  "nsIContentPrefService2"
+);
 
 XPCOMUtils.defineLazyGetter(this, "gBrowserBundle", function() {
-  return Services.strings
-                 .createBundle("chrome://browser/locale/browser.properties");
+  return Services.strings.createBundle(
+    "chrome://browser/locale/browser.properties"
+  );
 });
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "animationsEnabled",
+  "toolkit.cosmeticAnimations.enabled"
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "postPromptAnimationEnabled",
+  "permissions.postPrompt.animate"
+);
 
 var PermissionUI = {};
 
@@ -125,8 +165,8 @@ var PermissionPromptPrototype = {
   /**
    * If the nsIPermissionManager is being queried and written
    * to for this permission request, set this to the key to be
-   * used. If this is undefined, user permissions will not be
-   * read from or written to.
+   * used. If this is undefined, no integration with temporary
+   * permissions infrastructure will be provided.
    *
    * Note that if a permission is set, in any follow-up
    * prompting within the expiry window of that permission,
@@ -135,6 +175,27 @@ var PermissionPromptPrototype = {
    */
   get permissionKey() {
     return undefined;
+  },
+
+  /**
+   * A string that needs to be set to include this prompt in
+   * experimental event telemetry collection.
+   *
+   * This needs to conform to event telemetry string rules,
+   * i.e. it needs to be an alphabetic string under 20 characters.
+   */
+  get permissionTelemetryKey() {
+    return undefined;
+  },
+
+  /**
+   * If true, user permissions will be read from and written to.
+   * When this is false, we still provide integration with
+   * infrastructure such as temporary permissions. permissionKey should
+   * still return a valid name in those cases for that integration to work.
+   */
+  get usePermissionManager() {
+    return true;
   },
 
   /**
@@ -148,6 +209,27 @@ var PermissionPromptPrototype = {
    */
   get popupOptions() {
     return {};
+  },
+
+  /**
+   * If true, automatically denied permission requests will
+   * spawn a "post-prompt" that allows the user to correct the
+   * automatic denial by giving permanent permission access to
+   * the site.
+   *
+   * Note that if this function returns true, the permissionKey
+   * and postPromptActions attributes must be implemented.
+   */
+  get postPromptEnabled() {
+    return false;
+  },
+
+  /**
+   * If true, the prompt will be cancelled automatically unless
+   * request.isHandlingUserInput is true.
+   */
+  get requiresUserInput() {
+    return false;
   },
 
   /**
@@ -226,6 +308,8 @@ var PermissionPromptPrototype = {
    *  action (SitePermissions state)
    *    The action that will be associated with this choice.
    *    This should be either SitePermissions.ALLOW or SitePermissions.BLOCK.
+   *  scope (SitePermissions scope)
+   *    The scope of the associated action (e.g. SitePermissions.SCOPE_PERSISTENT)
    *
    *  callback (function, optional)
    *    A callback function that will fire if the user makes this choice, with
@@ -238,16 +322,50 @@ var PermissionPromptPrototype = {
   },
 
   /**
+   * The actions that will be displayed in the PopupNotification
+   * for post-prompt notifications via a dropdown menu.
+   * The first item in this array will be the default selection.
+   * Each action is an Object with the following properties:
+   *
+   *  label (string):
+   *    The label that will be displayed for this choice.
+   *  accessKey (string):
+   *    The access key character that will be used for this choice.
+   *  action (SitePermissions state)
+   *    The action that will be associated with this choice.
+   *    This should be either SitePermissions.ALLOW or SitePermissions.BLOCK.
+   *    Note that the scope of this action will always be persistent.
+   *
+   *  callback (function, optional)
+   *    A callback function that will fire if the user makes this choice.
+   */
+  get postPromptActions() {
+    return null;
+  },
+
+  /**
    * If the prompt will be shown to the user, this callback will
    * be called just before. Subclasses may want to override this
    * in order to, for example, bump a counter Telemetry probe for
    * how often a particular permission request is seen.
+   *
+   * If this returns false, it cancels the process of showing the prompt.  In
+   * that case, it is the responsibility of the onBeforeShow() implementation
+   * to ensure that allow() or cancel() are called on the object appropriately.
    */
-  onBeforeShow() {},
+  onBeforeShow() {
+    return true;
+  },
 
   /**
-   * If the prompt was be shown to the user, this callback will
-   * be called just after its been hidden.
+   * If the prompt was shown to the user, this callback will be called just
+   * after it's been shown.
+   */
+  onShown() {},
+
+  /**
+   * If the prompt was shown to the user, this callback will be called just
+   * after it's been hidden.
    */
   onAfterShow() {},
 
@@ -270,15 +388,27 @@ var PermissionPromptPrototype = {
       return;
     }
 
-    if (this.permissionKey) {
+    if (this.usePermissionManager && this.permissionKey) {
       // If we're reading and setting permissions, then we need
       // to check to see if we already have a permission setting
       // for this particular principal.
-      let {state} = SitePermissions.get(requestingURI,
-                                        this.permissionKey,
-                                        this.browser);
+      let { state } = SitePermissions.getForPrincipal(
+        this.principal,
+        this.permissionKey,
+        this.browser
+      );
 
       if (state == SitePermissions.BLOCK) {
+        // If this block was done based on a global user setting, we want to show
+        // a post prompt to give the user some more granular control without
+        // annoying them too much.
+        if (
+          this.postPromptEnabled &&
+          SitePermissions.getDefault(this.permissionKey) ==
+            SitePermissions.BLOCK
+        ) {
+          this.postPrompt();
+        }
         this.cancel();
         return;
       }
@@ -290,8 +420,30 @@ var PermissionPromptPrototype = {
 
       // Tell the browser to refresh the identity block display in case there
       // are expired permission states.
-      this.browser.dispatchEvent(new this.browser.ownerGlobal
-                                         .CustomEvent("PermissionStateChange"));
+      this.browser.dispatchEvent(
+        new this.browser.ownerGlobal.CustomEvent("PermissionStateChange")
+      );
+    } else if (this.permissionKey) {
+      // If we're reading a permission which already has a temporary value,
+      // see if we can use the temporary value.
+      let { state } = SitePermissions.getForPrincipal(
+        null,
+        this.permissionKey,
+        this.browser
+      );
+
+      if (state == SitePermissions.BLOCK) {
+        this.cancel();
+        return;
+      }
+    }
+
+    if (this.requiresUserInput && !this.request.isHandlingUserInput) {
+      if (this.postPromptEnabled) {
+        this.postPrompt();
+      }
+      this.cancel();
+      return;
     }
 
     let chromeWin = this.browser.ownerGlobal;
@@ -299,6 +451,8 @@ var PermissionPromptPrototype = {
       this.cancel();
       return;
     }
+
+    this._buttonAction = null;
 
     // Transform the PermissionPrompt actions into PopupNotification actions.
     let popupNotificationActions = [];
@@ -311,35 +465,62 @@ var PermissionPromptPrototype = {
             promptAction.callback();
           }
 
-          if (this.permissionKey) {
-            if ((state && state.checkboxChecked && state.source != "esc-press") ||
-                promptAction.scope == SitePermissions.SCOPE_PERSISTENT) {
+          if (this.usePermissionManager && this.permissionKey) {
+            if (
+              (state && state.checkboxChecked && state.source != "esc-press") ||
+              promptAction.scope == SitePermissions.SCOPE_PERSISTENT
+            ) {
               // Permanently store permission.
               let scope = SitePermissions.SCOPE_PERSISTENT;
               // Only remember permission for session if in PB mode.
               if (PrivateBrowsingUtils.isBrowserPrivate(this.browser)) {
                 scope = SitePermissions.SCOPE_SESSION;
               }
-              SitePermissions.set(this.principal.URI,
-                                  this.permissionKey,
-                                  promptAction.action,
-                                  scope);
+              SitePermissions.setForPrincipal(
+                this.principal,
+                this.permissionKey,
+                promptAction.action,
+                scope
+              );
             } else if (promptAction.action == SitePermissions.BLOCK) {
-              // Temporarily store BLOCK permissions only.
+              // Temporarily store BLOCK permissions only
               // SitePermissions does not consider subframes when storing temporary
               // permissions on a tab, thus storing ALLOW could be exploited.
-              SitePermissions.set(this.principal.URI,
-                                  this.permissionKey,
-                                  promptAction.action,
-                                  SitePermissions.SCOPE_TEMPORARY,
-                                  this.browser);
+              SitePermissions.setForPrincipal(
+                this.principal,
+                this.permissionKey,
+                promptAction.action,
+                SitePermissions.SCOPE_TEMPORARY,
+                this.browser
+              );
             }
 
             // Grant permission if action is ALLOW.
+            // Record buttonAction for telemetry.
             if (promptAction.action == SitePermissions.ALLOW) {
+              this._buttonAction = "accept";
               this.allow();
             } else {
+              if (promptAction.scope == SitePermissions.SCOPE_PERSISTENT) {
+                this._buttonAction = "never";
+              } else {
+                this._buttonAction = "deny";
+              }
               this.cancel();
+            }
+          } else if (this.permissionKey) {
+            // TODO: Add support for permitTemporaryAllow
+            if (promptAction.action == SitePermissions.BLOCK) {
+              // Temporarily store BLOCK permissions.
+              // We don't consider subframes when storing temporary
+              // permissions on a tab, thus storing ALLOW could be exploited.
+              SitePermissions.setForPrincipal(
+                null,
+                this.permissionKey,
+                promptAction.action,
+                SitePermissions.SCOPE_TEMPORARY,
+                this.browser
+              );
             }
           }
         },
@@ -351,40 +532,158 @@ var PermissionPromptPrototype = {
       popupNotificationActions.push(action);
     }
 
-    let mainAction = popupNotificationActions.length ?
-                     popupNotificationActions[0] : null;
-    let secondaryActions = popupNotificationActions.splice(1);
+    this._showNotification(popupNotificationActions);
+  },
+
+  postPrompt() {
+    let browser = this.browser;
+    let principal = this.principal;
+    let chromeWin = browser.ownerGlobal;
+    if (!chromeWin.PopupNotifications) {
+      return;
+    }
+
+    if (!this.permissionKey) {
+      throw new Error("permissionKey is required to show a post-prompt");
+    }
+
+    if (!this.postPromptActions) {
+      throw new Error("postPromptActions are required to show a post-prompt");
+    }
+
+    // Transform the PermissionPrompt actions into PopupNotification actions.
+    let popupNotificationActions = [];
+    for (let promptAction of this.postPromptActions) {
+      let action = {
+        label: promptAction.label,
+        accessKey: promptAction.accessKey,
+        callback: state => {
+          if (promptAction.callback) {
+            promptAction.callback();
+          }
+
+          // Post-prompt permissions are stored permanently by default.
+          // Since we can not reply to the original permission request anymore,
+          // the page will need to listen for permission changes which are triggered
+          // by permanent entries in the permission manager.
+          let scope = SitePermissions.SCOPE_PERSISTENT;
+          // Only remember permission for session if in PB mode.
+          if (PrivateBrowsingUtils.isBrowserPrivate(browser)) {
+            scope = SitePermissions.SCOPE_SESSION;
+          }
+          SitePermissions.setForPrincipal(
+            principal,
+            this.permissionKey,
+            promptAction.action,
+            scope
+          );
+        },
+      };
+      popupNotificationActions.push(action);
+    }
+
+    if (animationsEnabled && postPromptAnimationEnabled) {
+      let anchor = chromeWin.document.getElementById(this.anchorID);
+      // Only show the animation on the first request, not after e.g. tab switching.
+      anchor.addEventListener(
+        "animationend",
+        () => anchor.removeAttribute("animate"),
+        { once: true }
+      );
+      anchor.setAttribute("animate", "true");
+    }
+
+    this._showNotification(popupNotificationActions, true);
+  },
+
+  _showNotification(actions, postPrompt = false) {
+    let chromeWin = this.browser.ownerGlobal;
+    let mainAction = actions.length ? actions[0] : null;
+    let secondaryActions = actions.splice(1);
 
     let options = this.popupOptions;
+
+    let telemetryData = null;
+    if (this.request && this.permissionTelemetryKey) {
+      telemetryData = {
+        permissionTelemetryKey: this.permissionTelemetryKey,
+        permissionKey: this.permissionKey,
+        principal: this.principal,
+        documentDOMContentLoadedTimestamp: this.request
+          .documentDOMContentLoadedTimestamp,
+        isHandlingUserInput: this.request.isHandlingUserInput,
+        userHadInteractedWithDocument: this.request
+          .userHadInteractedWithDocument,
+      };
+    }
 
     if (!options.hasOwnProperty("displayURI") || options.displayURI) {
       options.displayURI = this.principal.URI;
     }
-    // Permission prompts are always persistent; the close button is controlled by a pref.
-    options.persistent = true;
-    options.hideClose = !Services.prefs.getBoolPref("privacy.permissionPrompts.showCloseButton");
-    options.eventCallback = (topic) => {
+
+    if (!postPrompt) {
+      // Permission prompts are always persistent; the close button is controlled by a pref.
+      options.persistent = true;
+      options.hideClose = true;
+    }
+
+    options.eventCallback = (topic, nextRemovalReason, isCancel) => {
       // When the docshell of the browser is aboout to be swapped to another one,
       // the "swapping" event is called. Returning true causes the notification
       // to be moved to the new browser.
       if (topic == "swapping") {
         return true;
       }
+      // The prompt has been shown, notify the PermissionUI.
+      // onShown() is currently not called for post-prompts,
+      // because there is no prompt that would make use of this.
+      // You can remove this restriction if you need it, but be
+      // mindful of other consumers.
+      if (topic == "shown" && !postPrompt) {
+        this.onShown();
+      }
       // The prompt has been removed, notify the PermissionUI.
-      if (topic == "removed") {
+      // onAfterShow() is currently not called for post-prompts,
+      // because there is no prompt that would make use of this.
+      // You can remove this restriction if you need it, but be
+      // mindful of other consumers.
+      if (topic == "removed" && !postPrompt) {
+        if (telemetryData) {
+          PermissionUITelemetry.onRemoved(
+            telemetryData,
+            this._buttonAction,
+            nextRemovalReason
+          );
+        }
+        if (isCancel) {
+          this.cancel();
+        }
         this.onAfterShow();
       }
       return false;
     };
 
-    this.onBeforeShow();
-    chromeWin.PopupNotifications.show(this.browser,
-                                      this.notificationID,
-                                      this.message,
-                                      this.anchorID,
-                                      mainAction,
-                                      secondaryActions,
-                                      options);
+    // Post-prompts show up as dismissed.
+    options.dismissed = postPrompt;
+
+    // onBeforeShow() is currently not called for post-prompts,
+    // because there is no prompt that would make use of this.
+    // You can remove this restriction if you need it, but be
+    // mindful of other consumers.
+    if (postPrompt || this.onBeforeShow() !== false) {
+      chromeWin.PopupNotifications.show(
+        this.browser,
+        this.notificationID,
+        this.message,
+        this.anchorID,
+        mainAction,
+        secondaryActions,
+        options
+      );
+      if (telemetryData) {
+        PermissionUITelemetry.onShow(telemetryData);
+      }
+    }
   },
 };
 
@@ -419,13 +718,12 @@ var PermissionPromptForRequestPrototype = {
     this.request.cancel();
   },
 
-  allow() {
-    this.request.allow();
+  allow(choices) {
+    this.request.allow(choices);
   },
 };
 
-PermissionUI.PermissionPromptForRequestPrototype =
-  PermissionPromptForRequestPrototype;
+PermissionUI.PermissionPromptForRequestPrototype = PermissionPromptForRequestPrototype;
 
 /**
  * Creates a PermissionPrompt for a nsIContentPermissionRequest for
@@ -445,6 +743,10 @@ GeolocationPermissionPrompt.prototype = {
     return "geo";
   },
 
+  get permissionTelemetryKey() {
+    return "geo";
+  },
+
   get popupOptions() {
     let pref = "browser.geolocation.warning.infoURL";
     let options = {
@@ -453,17 +755,19 @@ GeolocationPermissionPrompt.prototype = {
       name: this.principalName,
     };
 
-    if (this.principal.URI.schemeIs("file")) {
+    if (this.principal.schemeIs("file")) {
       options.checkbox = { show: false };
     } else {
       // Don't offer "always remember" action in PB mode
       options.checkbox = {
-        show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal)
+        show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal),
       };
     }
 
     if (options.checkbox.show) {
-      options.checkbox.label = gBrowserBundle.GetStringFromName("geolocation.remember");
+      options.checkbox.label = gBrowserBundle.GetStringFromName(
+        "geolocation.remember"
+      );
     }
 
     return options;
@@ -478,55 +782,76 @@ GeolocationPermissionPrompt.prototype = {
   },
 
   get message() {
-    if (this.principal.URI.schemeIs("file")) {
+    if (this.principal.schemeIs("file")) {
       return gBrowserBundle.GetStringFromName("geolocation.shareWithFile3");
     }
 
-    return gBrowserBundle.formatStringFromName("geolocation.shareWithSite3",
-                                               ["<>"], 1);
+    return gBrowserBundle.formatStringFromName("geolocation.shareWithSite3", [
+      "<>",
+    ]);
   },
 
   get promptActions() {
-    // We collect Telemetry data on Geolocation prompts and how users
-    // respond to them. The probe keys are a bit verbose, so let's alias them.
-    const SHARE_LOCATION =
-      Ci.nsISecurityUITelemetry.WARNING_GEOLOCATION_REQUEST_SHARE_LOCATION;
-    const ALWAYS_SHARE =
-      Ci.nsISecurityUITelemetry.WARNING_GEOLOCATION_REQUEST_ALWAYS_SHARE;
-    const NEVER_SHARE =
-      Ci.nsISecurityUITelemetry.WARNING_GEOLOCATION_REQUEST_NEVER_SHARE;
-
-    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
-
-    return [{
-      label: gBrowserBundle.GetStringFromName("geolocation.allowLocation"),
-      accessKey:
-        gBrowserBundle.GetStringFromName("geolocation.allowLocation.accesskey"),
-      action: SitePermissions.ALLOW,
-      callback(state) {
-        if (state && state.checkboxChecked) {
-          secHistogram.add(ALWAYS_SHARE);
-        } else {
-          secHistogram.add(SHARE_LOCATION);
-        }
+    return [
+      {
+        label: gBrowserBundle.GetStringFromName("geolocation.allowLocation"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "geolocation.allowLocation.accesskey"
+        ),
+        action: SitePermissions.ALLOW,
       },
-    }, {
-      label: gBrowserBundle.GetStringFromName("geolocation.dontAllowLocation"),
-      accessKey:
-        gBrowserBundle.GetStringFromName("geolocation.dontAllowLocation.accesskey"),
-      action: SitePermissions.BLOCK,
-      callback(state) {
-        if (state && state.checkboxChecked) {
-          secHistogram.add(NEVER_SHARE);
-        }
+      {
+        label: gBrowserBundle.GetStringFromName(
+          "geolocation.dontAllowLocation"
+        ),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "geolocation.dontAllowLocation.accesskey"
+        ),
+        action: SitePermissions.BLOCK,
       },
-    }];
+    ];
   },
 
-  onBeforeShow() {
-    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
-    const SHOW_REQUEST = Ci.nsISecurityUITelemetry.WARNING_GEOLOCATION_REQUEST;
-    secHistogram.add(SHOW_REQUEST);
+  _updateGeoSharing(state) {
+    let gBrowser = this.browser.ownerGlobal.gBrowser;
+    if (gBrowser == null) {
+      return;
+    }
+    gBrowser.updateBrowserSharing(this.browser, { geo: state });
+
+    let devicePermOrigins = this.browser.getDevicePermissionOrigins("geo");
+    if (!state) {
+      devicePermOrigins.delete(this.principal.origin);
+      return;
+    }
+    devicePermOrigins.add(this.principal.origin);
+
+    // Update last access timestamp
+    let host;
+    try {
+      host = this.browser.currentURI.host;
+    } catch (e) {
+      return;
+    }
+    if (host == null || host == "") {
+      return;
+    }
+    ContentPrefService2.set(
+      this.browser.currentURI.host,
+      "permissions.geoLocation.lastAccess",
+      new Date().toString(),
+      this.browser.loadContext
+    );
+  },
+
+  allow(...args) {
+    this._updateGeoSharing(true);
+    PermissionPromptForRequestPrototype.allow.apply(this, args);
+  },
+
+  cancel(...args) {
+    this._updateGeoSharing(false);
+    PermissionPromptForRequestPrototype.cancel.apply(this, args);
   },
 };
 
@@ -542,6 +867,22 @@ PermissionUI.GeolocationPermissionPrompt = GeolocationPermissionPrompt;
  */
 function DesktopNotificationPermissionPrompt(request) {
   this.request = request;
+
+  XPCOMUtils.defineLazyPreferenceGetter(
+    this,
+    "requiresUserInput",
+    "dom.webnotifications.requireuserinteraction"
+  );
+  XPCOMUtils.defineLazyPreferenceGetter(
+    this,
+    "postPromptEnabled",
+    "permissions.desktop-notification.postPrompt.enabled"
+  );
+  XPCOMUtils.defineLazyPreferenceGetter(
+    this,
+    "notNowEnabled",
+    "permissions.desktop-notification.notNow.enabled"
+  );
 }
 
 DesktopNotificationPermissionPrompt.prototype = {
@@ -549,6 +890,10 @@ DesktopNotificationPermissionPrompt.prototype = {
 
   get permissionKey() {
     return "desktop-notification";
+  },
+
+  get permissionTelemetryKey() {
+    return "notifications";
   },
 
   get popupOptions() {
@@ -571,41 +916,66 @@ DesktopNotificationPermissionPrompt.prototype = {
   },
 
   get message() {
-    return gBrowserBundle.formatStringFromName("webNotifications.receiveFromSite2",
-                                                    ["<>"], 1);
+    return gBrowserBundle.formatStringFromName(
+      "webNotifications.receiveFromSite2",
+      ["<>"]
+    );
   },
 
   get promptActions() {
     let actions = [
       {
         label: gBrowserBundle.GetStringFromName("webNotifications.allow"),
-        accessKey:
-          gBrowserBundle.GetStringFromName("webNotifications.allow.accesskey"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "webNotifications.allow.accesskey"
+        ),
         action: SitePermissions.ALLOW,
         scope: SitePermissions.SCOPE_PERSISTENT,
       },
-      {
+    ];
+    if (this.notNowEnabled) {
+      actions.push({
         label: gBrowserBundle.GetStringFromName("webNotifications.notNow"),
-        accessKey:
-          gBrowserBundle.GetStringFromName("webNotifications.notNow.accesskey"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "webNotifications.notNow.accesskey"
+        ),
+        action: SitePermissions.BLOCK,
+      });
+    }
+    actions.push({
+      label: gBrowserBundle.GetStringFromName("webNotifications.never"),
+      accessKey: gBrowserBundle.GetStringFromName(
+        "webNotifications.never.accesskey"
+      ),
+      action: SitePermissions.BLOCK,
+      scope: PrivateBrowsingUtils.isBrowserPrivate(this.browser)
+        ? SitePermissions.SCOPE_SESSION
+        : SitePermissions.SCOPE_PERSISTENT,
+    });
+    return actions;
+  },
+
+  get postPromptActions() {
+    return [
+      {
+        label: gBrowserBundle.GetStringFromName("webNotifications.allow"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "webNotifications.allow.accesskey"
+        ),
+        action: SitePermissions.ALLOW,
+      },
+      {
+        label: gBrowserBundle.GetStringFromName("webNotifications.never"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "webNotifications.never.accesskey"
+        ),
         action: SitePermissions.BLOCK,
       },
     ];
-    if (!PrivateBrowsingUtils.isBrowserPrivate(this.browser)) {
-      actions.push({
-        label: gBrowserBundle.GetStringFromName("webNotifications.never"),
-        accessKey:
-          gBrowserBundle.GetStringFromName("webNotifications.never.accesskey"),
-        action: SitePermissions.BLOCK,
-        scope: SitePermissions.SCOPE_PERSISTENT,
-      });
-    }
-    return actions;
   },
 };
 
-PermissionUI.DesktopNotificationPermissionPrompt =
-  DesktopNotificationPermissionPrompt;
+PermissionUI.DesktopNotificationPermissionPrompt = DesktopNotificationPermissionPrompt;
 
 /**
  * Creates a PermissionPrompt for a nsIContentPermissionRequest for
@@ -626,18 +996,10 @@ PersistentStoragePermissionPrompt.prototype = {
   },
 
   get popupOptions() {
-    let checkbox = {
-      // In PB mode, we don't want the "always remember" checkbox
-      show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal)
-    };
-    if (checkbox.show) {
-      checkbox.checked = true;
-      checkbox.label = gBrowserBundle.GetStringFromName("persistentStorage.remember");
-    }
     let learnMoreURL =
-      Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "storage-permissions";
     return {
-      checkbox,
       learnMoreURL,
       displayURI: false,
       name: this.principalName,
@@ -653,26 +1015,43 @@ PersistentStoragePermissionPrompt.prototype = {
   },
 
   get message() {
-    return gBrowserBundle.formatStringFromName("persistentStorage.allowWithSite",
-                                                    ["<>"], 1);
+    return gBrowserBundle.formatStringFromName(
+      "persistentStorage.allowWithSite",
+      ["<>"]
+    );
   },
 
   get promptActions() {
     return [
       {
         label: gBrowserBundle.GetStringFromName("persistentStorage.allow"),
-        accessKey:
-          gBrowserBundle.GetStringFromName("persistentStorage.allow.accesskey"),
-        action: Ci.nsIPermissionManager.ALLOW_ACTION
+        accessKey: gBrowserBundle.GetStringFromName(
+          "persistentStorage.allow.accesskey"
+        ),
+        action: Ci.nsIPermissionManager.ALLOW_ACTION,
+        scope: SitePermissions.SCOPE_PERSISTENT,
       },
       {
-        label: gBrowserBundle.GetStringFromName("persistentStorage.dontAllow"),
-        accessKey:
-          gBrowserBundle.GetStringFromName("persistentStorage.dontAllow.accesskey"),
-        action: Ci.nsIPermissionManager.DENY_ACTION
-      }
+        label: gBrowserBundle.GetStringFromName(
+          "persistentStorage.notNow.label"
+        ),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "persistentStorage.notNow.accesskey"
+        ),
+        action: Ci.nsIPermissionManager.DENY_ACTION,
+      },
+      {
+        label: gBrowserBundle.GetStringFromName(
+          "persistentStorage.neverAllow.label"
+        ),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "persistentStorage.neverAllow.accesskey"
+        ),
+        action: SitePermissions.BLOCK,
+        scope: SitePermissions.SCOPE_PERSISTENT,
+      },
     ];
-  }
+  },
 };
 
 PermissionUI.PersistentStoragePermissionPrompt = PersistentStoragePermissionPrompt;
@@ -688,8 +1067,9 @@ function MIDIPermissionPrompt(request) {
   this.request = request;
   let types = request.types.QueryInterface(Ci.nsIArray);
   let perm = types.queryElementAt(0, Ci.nsIContentPermissionType);
-  this.isSysexPerm = (perm.options.length > 0 &&
-                      perm.options.queryElementAt(0, Ci.nsISupportsString) == "sysex");
+  this.isSysexPerm =
+    !!perm.options.length &&
+    perm.options.queryElementAt(0, Ci.nsISupportsString) == "sysex";
   this.permName = "midi";
   if (this.isSysexPerm) {
     this.permName = "midi-sysex";
@@ -710,17 +1090,19 @@ MIDIPermissionPrompt.prototype = {
       name: this.principalName,
     };
 
-    if (this.principal.URI.schemeIs("file")) {
+    if (this.principal.schemeIs("file")) {
       options.checkbox = { show: false };
     } else {
       // Don't offer "always remember" action in PB mode
       options.checkbox = {
-        show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal)
+        show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal),
       };
     }
 
     if (options.checkbox.show) {
-      options.checkbox.label = gBrowserBundle.GetStringFromName("midi.remember");
+      options.checkbox.label = gBrowserBundle.GetStringFromName(
+        "midi.remember"
+      );
     }
 
     return options;
@@ -736,118 +1118,174 @@ MIDIPermissionPrompt.prototype = {
 
   get message() {
     let message;
-    if (this.principal.URI.schemeIs("file")) {
+    if (this.principal.schemeIs("file")) {
       if (this.isSysexPerm) {
-        message = gBrowserBundle.formatStringFromName("midi.shareSysexWithFile.message");
+        message = gBrowserBundle.formatStringFromName(
+          "midi.shareSysexWithFile.message"
+        );
       } else {
-        message = gBrowserBundle.formatStringFromName("midi.shareWithFile.message");
+        message = gBrowserBundle.formatStringFromName(
+          "midi.shareWithFile.message"
+        );
       }
     } else if (this.isSysexPerm) {
-      message = gBrowserBundle.formatStringFromName("midi.shareSysexWithSite.message",
-                                                    ["<>"], 1);
+      message = gBrowserBundle.formatStringFromName(
+        "midi.shareSysexWithSite.message",
+        ["<>"]
+      );
     } else {
-      message = gBrowserBundle.formatStringFromName("midi.shareWithSite.message",
-                                                    ["<>"], 1);
+      message = gBrowserBundle.formatStringFromName(
+        "midi.shareWithSite.message",
+        ["<>"]
+      );
     }
     return message;
   },
 
   get promptActions() {
-    return [{
+    return [
+      {
         label: gBrowserBundle.GetStringFromName("midi.Allow.label"),
         accessKey: gBrowserBundle.GetStringFromName("midi.Allow.accesskey"),
-        action: Ci.nsIPermissionManager.ALLOW_ACTION
+        action: Ci.nsIPermissionManager.ALLOW_ACTION,
       },
       {
         label: gBrowserBundle.GetStringFromName("midi.DontAllow.label"),
         accessKey: gBrowserBundle.GetStringFromName("midi.DontAllow.accesskey"),
-        action: Ci.nsIPermissionManager.DENY_ACTION
-    }];
-  },
-
-  onBeforeShow() {
+        action: Ci.nsIPermissionManager.DENY_ACTION,
+      },
+    ];
   },
 };
 
 PermissionUI.MIDIPermissionPrompt = MIDIPermissionPrompt;
 
-function AutoplayPermissionPrompt(request) {
+function StorageAccessPermissionPrompt(request) {
   this.request = request;
 }
 
-AutoplayPermissionPrompt.prototype = {
+StorageAccessPermissionPrompt.prototype = {
   __proto__: PermissionPromptForRequestPrototype,
 
+  get usePermissionManager() {
+    return false;
+  },
+
   get permissionKey() {
-    return "autoplay-media";
+    // Make sure this name is unique per each third-party tracker
+    return "storage-access-" + this.principal.origin;
+  },
+
+  prettifyHostPort(uri) {
+    try {
+      uri = Services.uriFixup.createExposableURI(uri);
+    } catch (e) {
+      // ignore, since we can't do anything better
+    }
+    let host = IDNService.convertToDisplayIDN(uri.host, {});
+    if (uri.port != -1) {
+      host += `:${uri.port}`;
+    }
+    return host;
   },
 
   get popupOptions() {
-    let checkbox = {
-      show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal) &&
-        !this.principal.URI.schemeIs("file")
-    };
-    if (checkbox.show) {
-      checkbox.checked = true;
-      checkbox.label = gBrowserBundle.GetStringFromName("autoplay.remember");
-    }
     return {
-      checkbox,
       displayURI: false,
-      name: this.principal.URI.hostPort,
+      name: this.prettifyHostPort(this.principal.URI),
+      secondName: this.prettifyHostPort(this.topLevelPrincipal.URI),
+      escAction: "buttoncommand",
     };
+  },
+
+  onShown() {
+    let document = this.browser.ownerDocument;
+    let label = gBrowserBundle.formatStringFromName(
+      "storageAccess.description.label",
+      [this.prettifyHostPort(this.request.principal.URI), "<>"]
+    );
+    let parts = label.split("<>");
+    if (parts.length == 1) {
+      parts.push("");
+    }
+    let map = {
+      "storage-access-perm-label": parts[0],
+      "storage-access-perm-learnmore": gBrowserBundle.GetStringFromName(
+        "storageAccess.description.learnmore"
+      ),
+      "storage-access-perm-endlabel": parts[1],
+    };
+    for (let id in map) {
+      let str = map[id];
+      document.getElementById(id).textContent = str;
+    }
+    let learnMoreURL =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "third-party-cookies";
+    document.getElementById(
+      "storage-access-perm-learnmore"
+    ).href = learnMoreURL;
   },
 
   get notificationID() {
-    return "autoplay-media";
+    return "storage-access";
   },
 
   get anchorID() {
-    return "autoplay-media-notification-icon";
+    return "storage-access-notification-icon";
   },
 
   get message() {
-    if (this.principal.URI.schemeIs("file")) {
-      return gBrowserBundle.GetStringFromName("autoplay.messageWithFile");
-    }
-    return gBrowserBundle.formatStringFromName("autoplay.message", ["<>"], 1);
+    return gBrowserBundle.formatStringFromName("storageAccess.message", [
+      "<>",
+      "{}",
+    ]);
   },
 
   get promptActions() {
-    return [{
-        label: gBrowserBundle.GetStringFromName("autoplay.Allow2.label"),
-        accessKey: gBrowserBundle.GetStringFromName("autoplay.Allow2.accesskey"),
-        action: Ci.nsIPermissionManager.ALLOW_ACTION,
+    let self = this;
+
+    return [
+      {
+        label: gBrowserBundle.GetStringFromName(
+          "storageAccess.DontAllow.label"
+        ),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "storageAccess.DontAllow.accesskey"
+        ),
+        action: Ci.nsIPermissionManager.DENY_ACTION,
+        callback(state) {
+          self.cancel();
+        },
       },
       {
-        label: gBrowserBundle.GetStringFromName("autoplay.DontAllow.label"),
-        accessKey: gBrowserBundle.GetStringFromName("autoplay.DontAllow.accesskey"),
-        action: Ci.nsIPermissionManager.DENY_ACTION,
-    }];
+        label: gBrowserBundle.GetStringFromName("storageAccess.Allow.label"),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "storageAccess.Allow.accesskey"
+        ),
+        action: Ci.nsIPermissionManager.ALLOW_ACTION,
+        callback(state) {
+          self.allow({ "storage-access": "allow" });
+        },
+      },
+      {
+        label: gBrowserBundle.GetStringFromName(
+          "storageAccess.AllowOnAnySite.label"
+        ),
+        accessKey: gBrowserBundle.GetStringFromName(
+          "storageAccess.AllowOnAnySite.accesskey"
+        ),
+        action: Ci.nsIPermissionManager.ALLOW_ACTION,
+        callback(state) {
+          self.allow({ "storage-access": "allow-on-any-site" });
+        },
+      },
+    ];
   },
 
-  onAfterShow() {
-    // Remove the event listener to prevent any leaks.
-    this.browser.removeEventListener(
-      "DOMAudioPlaybackStarted", this.handlePlaybackStart);
-  },
-
-  onBeforeShow() {
-    // Hide the prompt if the tab starts playing media.
-    this.handlePlaybackStart = () => {
-      let chromeWin = this.browser.ownerGlobal;
-      if (!chromeWin.PopupNotifications) {
-        return;
-      }
-      let notification = chromeWin.PopupNotifications.getNotification(
-        this.notificationID, this.browser);
-      if (notification) {
-        chromeWin.PopupNotifications.remove(notification);
-      }
-    };
-    this.browser.addEventListener(
-      "DOMAudioPlaybackStarted", this.handlePlaybackStart);
+  get topLevelPrincipal() {
+    return this.request.topLevelPrincipal;
   },
 };
 
-PermissionUI.AutoplayPermissionPrompt = AutoplayPermissionPrompt;
+PermissionUI.StorageAccessPermissionPrompt = StorageAccessPermissionPrompt;

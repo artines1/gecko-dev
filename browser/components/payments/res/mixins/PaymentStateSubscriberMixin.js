@@ -17,14 +17,18 @@ export let requestStore = new PaymentsStore({
   "basic-card-page": {
     guid: null,
     // preserveFieldValues: true,
+    selectedStateKey: "selectedPaymentCard",
   },
-  "address-page": {
+  "shipping-address-page": {
     guid: null,
-    selectedStateKey: null,
-    title: "",
   },
-  "payment-summary": {
+  "payer-address-page": {
+    guid: null,
   },
+  "billing-address-page": {
+    guid: null,
+  },
+  "payment-summary": {},
   page: {
     id: "payment-summary",
     previousId: null,
@@ -34,13 +38,15 @@ export let requestStore = new PaymentsStore({
   request: {
     completeStatus: "",
     tabId: null,
-    topLevelPrincipal: {URI: {displayHost: null}},
+    topLevelPrincipal: { URI: { displayHost: null } },
     requestId: null,
     paymentMethods: [],
     paymentDetails: {
       id: null,
-      totalItem: {label: null, amount: {currency: null, value: 0}},
+      totalItem: { label: null, amount: { currency: null, value: 0 } },
       displayItems: [],
+      payerErrors: {},
+      paymentMethodErrors: null,
       shippingAddressErrors: {},
       shippingOptions: [],
       modifiers: null,
@@ -65,7 +71,6 @@ export let requestStore = new PaymentsStore({
   tempAddresses: {},
   tempBasicCards: {},
 });
-
 
 /**
  * A mixin to render UI based upon the requestStore and get updated when that store changes.

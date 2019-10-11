@@ -9,8 +9,15 @@
 callback PromiseReturner = Promise<any>();
 
 [Pref="dom.expose_test_interfaces",
- Constructor]
+ Exposed=Window]
+interface WrapperCachedNonISupportsTestInterface {
+};
+
+[Pref="dom.expose_test_interfaces",
+ Exposed=Window]
 interface TestFunctions {
+  constructor();
+
   [Throws]
   static void throwUncatchableException();
 
@@ -56,4 +63,11 @@ interface TestFunctions {
 
   // Testing for how default toJSON behaves.
   [Default] object toJSON();
+
+  // This returns a wrappercached non-ISupports object. While this will always
+  // return the same object, no optimization attributes like [Pure] should be
+  // used here because the object should not be held alive from JS by the
+  // bindings. This is needed to test wrapper preservation for weak map keys.
+  // See bug 1351501.
+  readonly attribute WrapperCachedNonISupportsTestInterface wrapperCachedNonISupportsObject;
 };

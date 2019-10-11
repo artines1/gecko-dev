@@ -12,15 +12,33 @@
 #ifndef mozilla_Utf8_h
 #define mozilla_Utf8_h
 
-#include "mozilla/Casting.h" // for mozilla::AssertedCast
-#include "mozilla/Likely.h" // for MOZ_UNLIKELY
-#include "mozilla/Maybe.h" // for mozilla::Maybe
-#include "mozilla/TextUtils.h" // for mozilla::IsAscii
-#include "mozilla/Types.h" // for MFBT_API
+#include "mozilla/Casting.h"            // for mozilla::AssertedCast
+#include "mozilla/IntegerTypeTraits.h"  // for mozilla::MaxValue
+#include "mozilla/Likely.h"             // for MOZ_UNLIKELY
+#include "mozilla/Maybe.h"              // for mozilla::Maybe
+#include "mozilla/Span.h"               // for mozilla::Span
+#include "mozilla/TextUtils.h"  // for mozilla::IsAscii and via Latin1.h for
+                                // encoding_rs_mem.h and MOZ_HAS_JSRUST.
+#include "mozilla/Tuple.h"      // for mozilla::Tuple
+#include "mozilla/Types.h"      // for MFBT_API
 
-#include <limits.h> // for CHAR_BIT
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint8_t
+#include <limits.h>  // for CHAR_BIT
+#include <stddef.h>  // for size_t
+#include <stdint.h>  // for uint8_t
+
+#if MOZ_HAS_JSRUST()
+// Can't include mozilla/Encoding.h here.
+extern "C" {
+// Declared as uint8_t instead of char to match declaration in another header.
+size_t encoding_utf8_valid_up_to(uint8_t const* buffer, size_t buffer_len);
+}
+#else
+namespace mozilla {
+namespace detail {
+extern MFBT_API bool IsValidUtf8(const void* aCodeUnits, size_t aCount);
+};  // namespace detail
+};  // namespace mozilla
+#endif  // MOZ_HAS_JSRUST
 
 namespace mozilla {
 
@@ -37,9 +55,8 @@ static_assert(CHAR_BIT == 8,
  * This is *not* the same as a single code point: in UTF-8, non-ASCII code
  * points are constituted by multiple code units.
  */
-union Utf8Unit
-{
-private:
+union Utf8Unit {
+ private:
   // Utf8Unit is a union wrapping a raw |char|.  The C++ object model and C++
   // requirements as to how objects may be accessed with respect to their actual
   // types (almost?) uniquely compel this choice.
@@ -146,49 +163,43 @@ private:
   //    compilers we really care about have implemented it.  Maybe someday we
   //    can change our implementation to it without too much trouble, if we're
   //    lucky...
-  char mValue;
+  char mValue = '\0';
 
-public:
-  explicit constexpr Utf8Unit(char aUnit)
-    : mValue(aUnit)
-  {}
+ public:
+  Utf8Unit() = default;
+
+  explicit constexpr Utf8Unit(char aUnit) : mValue(aUnit) {}
 
   explicit constexpr Utf8Unit(unsigned char aUnit)
-    : mValue(static_cast<char>(aUnit))
-  {
+      : mValue(static_cast<char>(aUnit)) {
     // Per the above comment, the prior cast is integral conversion with
     // implementation-defined semantics, and we regretfully but unavoidably
     // assume the conversion does what we want it to.
   }
 
-  constexpr bool operator==(const Utf8Unit& aOther) const
-  {
+  constexpr bool operator==(const Utf8Unit& aOther) const {
     return mValue == aOther.mValue;
   }
 
-  constexpr bool operator!=(const Utf8Unit& aOther) const
-  {
+  constexpr bool operator!=(const Utf8Unit& aOther) const {
     return !(*this == aOther);
   }
 
   /** Convert a UTF-8 code unit to a raw char. */
-  constexpr char toChar() const
-  {
+  constexpr char toChar() const {
     // Only a |char| is ever permitted to be written into this location, so this
     // is both permissible and returns the desired value.
     return mValue;
   }
 
   /** Convert a UTF-8 code unit to a raw unsigned char. */
-  constexpr unsigned char toUnsignedChar() const
-  {
+  constexpr unsigned char toUnsignedChar() const {
     // Per the above comment, this is well-defined integral conversion.
     return static_cast<unsigned char>(mValue);
   }
 
   /** Convert a UTF-8 code unit to a uint8_t. */
-  constexpr uint8_t toUint8() const
-  {
+  constexpr uint8_t toUint8() const {
     // Per the above comment, this is well-defined integral conversion.
     return static_cast<uint8_t>(mValue);
   }
@@ -208,9 +219,7 @@ public:
  * Presently memory inside |Utf8Unit| is *only* stored as |char|, and we are
  * loath to offer a way to write non-|char| data until absolutely necessary.
  */
-inline const unsigned char*
-Utf8AsUnsignedChars(const Utf8Unit* aUnits)
-{
+inline const unsigned char* Utf8AsUnsignedChars(const Utf8Unit* aUnits) {
   static_assert(sizeof(Utf8Unit) == sizeof(unsigned char),
                 "sizes must match to permissibly reinterpret_cast<>");
   static_assert(alignof(Utf8Unit) == alignof(unsigned char),
@@ -233,37 +242,164 @@ Utf8AsUnsignedChars(const Utf8Unit* aUnits)
 }
 
 /** Returns true iff |aUnit| is an ASCII value. */
-inline bool
-IsAscii(Utf8Unit aUnit)
-{
-  return IsAscii(aUnit.toUint8());
+constexpr bool IsAscii(Utf8Unit aUnit) {
+  return IsAscii(aUnit.toUnsignedChar());
 }
 
 /**
- * Returns true if the given length-delimited memory consists of a valid UTF-8
- * string, false otherwise.
+ * Return true if the given span of memory consists of a valid UTF-8
+ * string and false otherwise.
  *
- * A valid UTF-8 string contains no overlong-encoded code points (as one would
- * expect) and contains no code unit sequence encoding a UTF-16 surrogate.  The
- * string *may* contain U+0000 NULL code points.
+ * The string *may* contain U+0000 NULL code points.
  */
-extern MFBT_API bool
-IsValidUtf8(const void* aCodeUnits, size_t aCount);
+inline bool IsUtf8(mozilla::Span<const char> aString) {
+#if MOZ_HAS_JSRUST()
+  size_t length = aString.Length();
+  const uint8_t* ptr = reinterpret_cast<const uint8_t*>(aString.Elements());
+  // For short strings, the function call is a pessimization, and the SIMD
+  // code won't have a chance to kick in anyway.
+  if (length < 16) {
+    for (size_t i = 0; i < length; i++) {
+      if (ptr[i] >= 0x80U) {
+        ptr += i;
+        length -= i;
+        goto end;
+      }
+    }
+    return true;
+  }
+end:
+  return length == encoding_utf8_valid_up_to(ptr, length);
+#else
+  return detail::IsValidUtf8(aString.Elements(), aString.Length());
+#endif
+}
+
+#if MOZ_HAS_JSRUST()
+
+// See Latin1.h for conversions between Latin1 and UTF-8.
+
+/**
+ * Returns the index of the start of the first malformed byte
+ * sequence or the length of the string if there are none.
+ */
+inline size_t Utf8ValidUpTo(mozilla::Span<const char> aString) {
+  return encoding_utf8_valid_up_to(
+      reinterpret_cast<const uint8_t*>(aString.Elements()), aString.Length());
+}
+
+/**
+ * Converts potentially-invalid UTF-16 to UTF-8 replacing lone surrogates
+ * with the REPLACEMENT CHARACTER.
+ *
+ * The length of aDest must be at least the length of aSource times three.
+ *
+ * Returns the number of code units written.
+ */
+inline size_t ConvertUtf16toUtf8(mozilla::Span<const char16_t> aSource,
+                                 mozilla::Span<char> aDest) {
+  return encoding_mem_convert_utf16_to_utf8(
+      aSource.Elements(), aSource.Length(), aDest.Elements(), aDest.Length());
+}
+
+/**
+ * Converts potentially-invalid UTF-8 to UTF-16 replacing malformed byte
+ * sequences with the REPLACEMENT CHARACTER with potentially insufficient
+ * output space.
+ *
+ * Returns the number of code units read and the number of bytes written.
+ *
+ * If the output isn't large enough, not all input is consumed.
+ *
+ * The conversion is guaranteed to be complete if the length of aDest is
+ * at least the length of aSource times three.
+ *
+ * The output is always valid UTF-8 ending on scalar value boundary
+ * even in the case of partial conversion.
+ *
+ * The semantics of this function match the semantics of
+ * TextEncoder.encodeInto.
+ * https://encoding.spec.whatwg.org/#dom-textencoder-encodeinto
+ */
+inline mozilla::Tuple<size_t, size_t> ConvertUtf16toUtf8Partial(
+    mozilla::Span<const char16_t> aSource, mozilla::Span<char> aDest) {
+  size_t srcLen = aSource.Length();
+  size_t dstLen = aDest.Length();
+  encoding_mem_convert_utf16_to_utf8_partial(aSource.Elements(), &srcLen,
+                                             aDest.Elements(), &dstLen);
+  return mozilla::MakeTuple(srcLen, dstLen);
+}
+
+/**
+ * Converts potentially-invalid UTF-8 to UTF-16 replacing malformed byte
+ * sequences with the REPLACEMENT CHARACTER.
+ *
+ * Returns the number of code units written.
+ *
+ * The length of aDest must be at least one greater than the length of aSource
+ * even though the last slot isn't written to.
+ *
+ * If you know that the input is valid for sure, use
+ * UnsafeConvertValidUtf8toUtf16() instead.
+ */
+inline size_t ConvertUtf8toUtf16(mozilla::Span<const char> aSource,
+                                 mozilla::Span<char16_t> aDest) {
+  return encoding_mem_convert_utf8_to_utf16(
+      aSource.Elements(), aSource.Length(), aDest.Elements(), aDest.Length());
+}
+
+/**
+ * Converts known-valid UTF-8 to UTF-16. If the input might be invalid,
+ * use ConvertUtf8toUtf16() or ConvertUtf8toUtf16WithoutReplacement() instead.
+ *
+ * Returns the number of code units written.
+ *
+ * The length of aDest must be at least the length of aSource.
+ */
+inline size_t UnsafeConvertValidUtf8toUtf16(mozilla::Span<const char> aSource,
+                                            mozilla::Span<char16_t> aDest) {
+  return encoding_mem_convert_utf8_to_utf16(
+      aSource.Elements(), aSource.Length(), aDest.Elements(), aDest.Length());
+}
+
+/**
+ * Converts potentially-invalid UTF-8 to valid UTF-16 signaling on error.
+ *
+ * Returns the number of code units written or `mozilla::Nothing` if the
+ * input was invalid.
+ *
+ * The length of the destination buffer must be at least the length of the
+ * source buffer.
+ *
+ * When the input was invalid, some output may have been written.
+ *
+ * If you know that the input is valid for sure, use
+ * UnsafeConvertValidUtf8toUtf16() instead.
+ */
+inline mozilla::Maybe<size_t> ConvertUtf8toUtf16WithoutReplacement(
+    mozilla::Span<const char> aSource, mozilla::Span<char16_t> aDest) {
+  size_t written = encoding_mem_convert_utf8_to_utf16_without_replacement(
+      aSource.Elements(), aSource.Length(), aDest.Elements(), aDest.Length());
+  if (MOZ_UNLIKELY(written == mozilla::MaxValue<size_t>::value)) {
+    return mozilla::Nothing();
+  }
+  return mozilla::Some(written);
+}
+
+#endif  // MOZ_HAS_JSRUST
 
 /**
  * Returns true iff |aUnit| is a UTF-8 trailing code unit matching the pattern
  * 0b10xx'xxxx.
  */
-inline bool
-IsTrailingUnit(Utf8Unit aUnit)
-{
+inline bool IsTrailingUnit(Utf8Unit aUnit) {
   return (aUnit.toUint8() & 0b1100'0000) == 0b1000'0000;
 }
 
 /**
  * Given |aLeadUnit| that is a non-ASCII code unit, a pointer to an |Iter aIter|
  * that (initially) itself points one unit past |aLeadUnit|, and
- * |const EndIter aEnd| that denotes the end of the UTF-8 data when compared
+ * |const EndIter& aEnd| that denotes the end of the UTF-8 data when compared
  * against |*aIter| using |aEnd - *aIter|:
  *
  * If |aLeadUnit| and subsequent code units computed using |*aIter| (up to
@@ -290,22 +426,14 @@ IsTrailingUnit(Utf8Unit aUnit)
  * This function is MOZ_ALWAYS_INLINE: if you don't need that, use the version
  * of this function without the "Inline" suffix on the name.
  */
-template<typename Iter,
-         typename EndIter,
-         class OnBadLeadUnit,
-         class OnNotEnoughUnits,
-         class OnBadTrailingUnit,
-         class OnBadCodePoint,
-         class OnNotShortestForm>
-MOZ_ALWAYS_INLINE Maybe<char32_t>
-DecodeOneUtf8CodePointInline(const Utf8Unit aLeadUnit,
-                             Iter* aIter, const EndIter aEnd,
-                             OnBadLeadUnit aOnBadLeadUnit,
-                             OnNotEnoughUnits aOnNotEnoughUnits,
-                             OnBadTrailingUnit aOnBadTrailingUnit,
-                             OnBadCodePoint aOnBadCodePoint,
-                             OnNotShortestForm aOnNotShortestForm)
-{
+template <typename Iter, typename EndIter, class OnBadLeadUnit,
+          class OnNotEnoughUnits, class OnBadTrailingUnit, class OnBadCodePoint,
+          class OnNotShortestForm>
+MOZ_ALWAYS_INLINE Maybe<char32_t> DecodeOneUtf8CodePointInline(
+    const Utf8Unit aLeadUnit, Iter* aIter, const EndIter& aEnd,
+    OnBadLeadUnit aOnBadLeadUnit, OnNotEnoughUnits aOnNotEnoughUnits,
+    OnBadTrailingUnit aOnBadTrailingUnit, OnBadCodePoint aOnBadCodePoint,
+    OnNotShortestForm aOnNotShortestForm) {
   MOZ_ASSERT(Utf8Unit((*aIter)[-1]) == aLeadUnit);
 
   char32_t n = aLeadUnit.toUint8();
@@ -382,26 +510,17 @@ DecodeOneUtf8CodePointInline(const Utf8Unit aLeadUnit,
  * Identical to the above function, but not forced to be instantiated inline --
  * the compiler is permitted to common up separate invocations if it chooses.
  */
-template<typename Iter,
-         typename EndIter,
-         class OnBadLeadUnit,
-         class OnNotEnoughUnits,
-         class OnBadTrailingUnit,
-         class OnBadCodePoint,
-         class OnNotShortestForm>
-inline Maybe<char32_t>
-DecodeOneUtf8CodePoint(const Utf8Unit aLeadUnit,
-                       Iter* aIter, const EndIter aEnd,
-                       OnBadLeadUnit aOnBadLeadUnit,
-                       OnNotEnoughUnits aOnNotEnoughUnits,
-                       OnBadTrailingUnit aOnBadTrailingUnit,
-                       OnBadCodePoint aOnBadCodePoint,
-                       OnNotShortestForm aOnNotShortestForm)
-{
-  return DecodeOneUtf8CodePointInline(aLeadUnit, aIter, aEnd,
-                                      aOnBadLeadUnit, aOnNotEnoughUnits,
-                                      aOnBadTrailingUnit, aOnBadCodePoint,
-                                      aOnNotShortestForm);
+template <typename Iter, typename EndIter, class OnBadLeadUnit,
+          class OnNotEnoughUnits, class OnBadTrailingUnit, class OnBadCodePoint,
+          class OnNotShortestForm>
+inline Maybe<char32_t> DecodeOneUtf8CodePoint(
+    const Utf8Unit aLeadUnit, Iter* aIter, const EndIter& aEnd,
+    OnBadLeadUnit aOnBadLeadUnit, OnNotEnoughUnits aOnNotEnoughUnits,
+    OnBadTrailingUnit aOnBadTrailingUnit, OnBadCodePoint aOnBadCodePoint,
+    OnNotShortestForm aOnNotShortestForm) {
+  return DecodeOneUtf8CodePointInline(aLeadUnit, aIter, aEnd, aOnBadLeadUnit,
+                                      aOnNotEnoughUnits, aOnBadTrailingUnit,
+                                      aOnBadCodePoint, aOnNotShortestForm);
 }
 
 /**
@@ -411,11 +530,9 @@ DecodeOneUtf8CodePoint(const Utf8Unit aLeadUnit,
  * This function is MOZ_ALWAYS_INLINE: if you don't need that, use the version
  * of this function without the "Inline" suffix on the name.
  */
-template<typename Iter, typename EndIter>
-MOZ_ALWAYS_INLINE Maybe<char32_t>
-DecodeOneUtf8CodePointInline(const Utf8Unit aLeadUnit,
-                             Iter* aIter, const EndIter aEnd)
-{
+template <typename Iter, typename EndIter>
+MOZ_ALWAYS_INLINE Maybe<char32_t> DecodeOneUtf8CodePointInline(
+    const Utf8Unit aLeadUnit, Iter* aIter, const EndIter& aEnd) {
   // aOnBadLeadUnit is called when |aLeadUnit| itself is an invalid lead unit in
   // a multi-unit code point.  It is passed no arguments: the caller already has
   // |aLeadUnit| on hand, so no need to provide it again.
@@ -451,26 +568,25 @@ DecodeOneUtf8CodePointInline(const Utf8Unit aLeadUnit,
   // mis-encoding U+0000 as 0b1100'0000 0b1000'0000 in two code units instead of
   // as 0b0000'0000).  It is passed the mis-encoded code point (which will be
   // valid and not a surrogate) and the count of code units that mis-encoded it.
-  auto onNotShortestForm = [](char32_t aBadCodePoint, uint8_t aUnitsObserved) {};
+  auto onNotShortestForm = [](char32_t aBadCodePoint, uint8_t aUnitsObserved) {
+  };
 
-  return DecodeOneUtf8CodePointInline(aLeadUnit, aIter, aEnd,
-                                      onBadLeadUnit, onNotEnoughUnits,
-                                      onBadTrailingUnit, onBadCodePoint,
-                                      onNotShortestForm);
+  return DecodeOneUtf8CodePointInline(aLeadUnit, aIter, aEnd, onBadLeadUnit,
+                                      onNotEnoughUnits, onBadTrailingUnit,
+                                      onBadCodePoint, onNotShortestForm);
 }
 
 /**
  * Identical to the above function, but not forced to be instantiated inline --
  * the compiler/linker are allowed to common up separate invocations.
  */
-template<typename Iter, typename EndIter>
-inline Maybe<char32_t>
-DecodeOneUtf8CodePoint(const Utf8Unit aLeadUnit,
-                       Iter* aIter, const EndIter aEnd)
-{
+template <typename Iter, typename EndIter>
+inline Maybe<char32_t> DecodeOneUtf8CodePoint(const Utf8Unit aLeadUnit,
+                                              Iter* aIter,
+                                              const EndIter& aEnd) {
   return DecodeOneUtf8CodePointInline(aLeadUnit, aIter, aEnd);
 }
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif /* mozilla_Utf8_h */

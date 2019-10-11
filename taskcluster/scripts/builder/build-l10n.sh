@@ -86,7 +86,6 @@ if [ -n "$MOZHARNESS_ACTIONS" ]; then
 fi
 
 # if MOZHARNESS_OPTIONS is given, append them to mozharness command line run
-# e.g. enable-pgo
 if [ -n "$MOZHARNESS_OPTIONS" ]; then
     options=""
     for option in $MOZHARNESS_OPTIONS; do
@@ -96,11 +95,10 @@ fi
 
 cd /builds/worker
 
-python2.7 $WORKSPACE/build/src/testing/${MOZHARNESS_SCRIPT} \
+$GECKO_PATH/mach python $GECKO_PATH/testing/${MOZHARNESS_SCRIPT} \
   $actions \
   $options \
   ${config_path_cmds} \
   ${config_cmds} \
   --log-level=debug \
-  --scm-level=$MOZ_SCM_LEVEL \
   --work-dir=$WORKSPACE/build \

@@ -7,7 +7,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1431900
   <meta charset="utf-8">
   <title>Test for Bug 1431900</title>
 
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
   <script type="application/javascript" src="inspector-helpers.js"></script>
   <script type="application/javascript">
@@ -20,16 +20,12 @@ window.onload = function() {
 
 var gWalker;
 
-addTest(function setup() {
+addTest(async function setup() {
   const url = document.getElementById("inspectorContent").href;
-  attachURL(url, function(err, client, tab, doc) {
-    const {InspectorFront} = require("devtools/shared/fronts/inspector");
-    const inspector = InspectorFront(client, tab);
-
-    promiseDone(inspector.getWalker().then(walker => {
-      gWalker = walker;
-    }).then(runNextTest));
-  });
+  const { target } = await attachURL(url);
+  const inspector = await target.getFront("inspector");
+  gWalker = inspector.walker;
+  runNextTest();
 });
 
 addAsyncTest(async function testInlineBlockDisplayType() {

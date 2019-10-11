@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -44,32 +43,31 @@ const validHourCycleOptions = [
   { toString() { return 'h24'; } },
 ];
 for (const hourCycle of validHourCycleOptions) {
-  const options = { hourCycle };
   const expected = String(hourCycle);
   let expect = 'en-u-hc-' + expected;
 
   assert.sameValue(
-    new Intl.Locale('en', options).toString(),
+    new Intl.Locale('en', {hourCycle}).toString(),
     expect,
-    `new Intl.Locale('en', options).toString() equals the value of ${expect}`
+    `new Intl.Locale("en", {hourCycle: "${hourCycle}"}).toString() returns "${expect}"`
   );
 
   assert.sameValue(
-    new Intl.Locale('en-u-hc-h00', options).toString(),
+    new Intl.Locale('en-u-hc-h00', {hourCycle}).toString(),
     expect,
-    `new Intl.Locale('en-u-hc-h00', options).toString() equals the value of ${expect}`
+    `new Intl.Locale("en-u-hc-h00", {hourCycle: "${hourCycle}"}).toString() returns "${expect}"`
   );
 
   assert.sameValue(
-    new Intl.Locale('en-u-hc-h12', options).toString(),
+    new Intl.Locale('en-u-hc-h12', {hourCycle}).toString(),
     expect,
-    `new Intl.Locale('en-u-hc-h12', options).toString() equals the value of ${expect}`
+    `new Intl.Locale("en-u-hc-h12", {hourCycle: "${hourCycle}"}).toString() returns "${expect}"`
   );
 
   assert.sameValue(
-    new Intl.Locale('en-u-hc-h00', options).hourCycle,
+    new Intl.Locale('en-u-hc-h00', {hourCycle}).hourCycle,
     expected,
-    `new Intl.Locale('en-u-hc-h00', options).hourCycle equals the value of ${expected}`
+    `new Intl.Locale("en-u-hc-h00", {hourCycle: "${hourCycle}"}).hourCycle equals "${expected}"`
   );
 }
 

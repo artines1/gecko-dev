@@ -4,58 +4,130 @@
 
 /* eslint-env mozilla/frame-script */
 
-const FAVICON_QUESTION = "chrome://global/skin/icons/question-32.png";
-const TP_ENABLED_PREF = "privacy.trackingprotection.enabled";
-const TP_PB_ENABLED_PREF = "privacy.trackingprotection.pbmode.enabled";
-
-function updateTPInfo() {
-  let tpButton = document.getElementById("tpButton");
-  let tpToggle = document.getElementById("tpToggle");
-  let title = document.getElementById("title");
-  let titleTracking = document.getElementById("titleTracking");
-  let tpSubHeader = document.getElementById("tpSubHeader");
-
-  let globalTrackingEnabled = RPMGetBoolPref(TP_ENABLED_PREF);
-  let trackingEnabled = globalTrackingEnabled || RPMGetBoolPref(TP_PB_ENABLED_PREF);
-
-  // if tracking protection is enabled globally we don't even give the user
-  // a choice here by hiding the toggle completely.
-  tpButton.classList.toggle("hide", globalTrackingEnabled);
-  tpToggle.checked = trackingEnabled;
-  title.classList.toggle("hide", trackingEnabled);
-  titleTracking.classList.toggle("hide", !trackingEnabled);
-  tpSubHeader.classList.toggle("tp-off", !trackingEnabled);
-}
-
 document.addEventListener("DOMContentLoaded", function() {
   if (!RPMIsWindowPrivate()) {
     document.documentElement.classList.remove("private");
     document.documentElement.classList.add("normal");
-    document.getElementById("favicon").setAttribute("href", FAVICON_QUESTION);
-    document.getElementById("startPrivateBrowsing").addEventListener("click", function() {
-      RPMSendAsyncMessage("OpenPrivateWindow");
-    });
+    document
+      .getElementById("startPrivateBrowsing")
+      .addEventListener("click", function() {
+        RPMSendAsyncMessage("OpenPrivateWindow");
+      });
     return;
   }
 
-  document.getElementById("startTour").addEventListener("click", function() {
-    RPMSendAsyncMessage("DontShowIntroPanelAgain");
-  });
-  document.getElementById("startTour").setAttribute("href",
-    RPMGetFormatURLPref("privacy.trackingprotection.introURL"));
+  // Setup the private browsing myths link.
+  document
+    .getElementById("private-browsing-myths")
+    .setAttribute(
+      "href",
+      RPMGetFormatURLPref("app.support.baseURL") + "private-browsing-myths"
+    );
 
-  document.getElementById("learnMore").setAttribute("href",
-    RPMGetFormatURLPref("app.support.baseURL") + "private-browsing");
+  // Set up the private search banner.
+  const privateSearchBanner = document.getElementById("search-banner");
 
-  let tpToggle = document.getElementById("tpToggle");
-  document.getElementById("tpButton").addEventListener("click", () => {
-    tpToggle.click();
+  RPMAddMessageListener("ShowSearchBanner", msg => {
+    if (msg.data.show) {
+      document.l10n.setAttributes(
+        document.getElementById("about-private-browsing-search-banner-title"),
+        "about-private-browsing-search-banner-title",
+        { engineName: msg.data.engineName }
+      );
+      privateSearchBanner.removeAttribute("hidden");
+      document.body.classList.add("showBanner");
+    }
+
+    // We set this attribute so that tests know when we are done.
+    document.documentElement.setAttribute("SearchBannerInitialized", true);
   });
-  tpToggle.addEventListener("change", function() {
-    RPMSetBoolPref(TP_PB_ENABLED_PREF, tpToggle.checked).then(function() {
-      updateTPInfo();
+  RPMSendAsyncMessage("ShouldShowSearchBanner");
+
+  function hideSearchBanner() {
+    privateSearchBanner.setAttribute("hidden", "true");
+    document.body.classList.remove("showBanner");
+    RPMSendAsyncMessage("SearchBannerDismissed");
+  }
+
+  document
+    .getElementById("search-banner-close-button")
+    .addEventListener("click", () => {
+      hideSearchBanner();
     });
+
+  let openSearchOptions = document.getElementById(
+    "about-private-browsing-search-banner-description"
+  );
+  let openSearchOptionsEvtHandler = evt => {
+    if (
+      evt.target.id == "open-search-options-link" &&
+      (evt.keyCode == evt.DOM_VK_RETURN || evt.type == "click")
+    ) {
+      RPMSendAsyncMessage("OpenSearchPreferences");
+      hideSearchBanner();
+    }
+  };
+  openSearchOptions.addEventListener("click", openSearchOptionsEvtHandler);
+  openSearchOptions.addEventListener("keypress", openSearchOptionsEvtHandler);
+
+  // Setup the search hand-off box.
+  let btn = document.getElementById("search-handoff-button");
+  let editable = document.getElementById("fake-editable");
+  let HIDE_SEARCH_TOPIC = "HideSearch";
+  let SHOW_SEARCH_TOPIC = "ShowSearch";
+  let SEARCH_HANDOFF_TOPIC = "SearchHandoff";
+
+  function showSearch() {
+    btn.classList.remove("focused");
+    btn.classList.remove("hidden");
+    RPMRemoveMessageListener(SHOW_SEARCH_TOPIC, showSearch);
+  }
+
+  function hideSearch() {
+    btn.classList.add("hidden");
+  }
+
+  function handoffSearch(text) {
+    RPMSendAsyncMessage(SEARCH_HANDOFF_TOPIC, { text });
+    RPMAddMessageListener(SHOW_SEARCH_TOPIC, showSearch);
+    if (text) {
+      hideSearch();
+    } else {
+      btn.classList.add("focused");
+      RPMAddMessageListener(HIDE_SEARCH_TOPIC, hideSearch);
+    }
+  }
+  btn.addEventListener("focus", function() {
+    handoffSearch();
+  });
+  btn.addEventListener("click", function() {
+    handoffSearch();
   });
 
-  updateTPInfo();
+  // Hand-off any text that gets dropped or pasted
+  editable.addEventListener("drop", function(ev) {
+    ev.preventDefault();
+    let text = ev.dataTransfer.getData("text");
+    if (text) {
+      handoffSearch(text);
+    }
+  });
+  editable.addEventListener("paste", function(ev) {
+    ev.preventDefault();
+    handoffSearch(ev.clipboardData.getData("Text"));
+  });
+
+  // Load contentSearchUI so it sets the search engine icon for us.
+  // TODO: FIXME. We should eventually refector contentSearchUI to do only what
+  // we need and have it do the common search handoff work for
+  // about:newtab and about:privatebrowsing.
+  let input = document.getElementById("dummy-input");
+  new window.ContentSearchUIController(
+    input,
+    input.parentNode,
+    "aboutprivatebrowsing",
+    "aboutprivatebrowsing",
+    // We know we're definitely in a PB window here.
+    true
+  );
 });

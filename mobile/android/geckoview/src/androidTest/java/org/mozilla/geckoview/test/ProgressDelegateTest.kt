@@ -4,9 +4,9 @@
 
 package org.mozilla.geckoview.test
 
-import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
 import org.mozilla.geckoview.test.util.Callbacks
 
 import android.support.test.filters.MediumTest
@@ -66,9 +66,6 @@ class ProgressDelegateTest : BaseSessionTest() {
                 assertThat("Security info should not be null", securityInfo, notNullValue())
 
                 assertThat("Should not be secure", securityInfo.isSecure, equalTo(false))
-                assertThat("Tracking mode should match",
-                           securityInfo.trackingMode,
-                           equalTo(GeckoSession.ProgressDelegate.SecurityInformation.CONTENT_UNKNOWN))
             }
 
             @AssertCalled(count = 1, order = [3])
@@ -79,8 +76,9 @@ class ProgressDelegateTest : BaseSessionTest() {
         })
     }
 
+    @Ignore
     @Test fun multipleLoads() {
-        sessionRule.session.loadUri(INVALID_URI)
+        sessionRule.session.loadUri(UNKNOWN_HOST_URI)
         sessionRule.session.loadTestPath(HELLO_HTML_PATH)
         sessionRule.waitForPageStops(2)
 
@@ -88,7 +86,7 @@ class ProgressDelegateTest : BaseSessionTest() {
             @AssertCalled(count = 2, order = [1, 3])
             override fun onPageStart(session: GeckoSession, url: String) {
                 assertThat("URL should match", url,
-                           endsWith(forEachCall(INVALID_URI, HELLO_HTML_PATH)))
+                           endsWith(forEachCall(UNKNOWN_HOST_URI, HELLO_HTML_PATH)))
             }
 
             @AssertCalled(count = 2, order = [2, 4])
@@ -214,9 +212,6 @@ class ProgressDelegateTest : BaseSessionTest() {
                 assertThat("Passive mixed mode should match",
                            securityInfo.mixedModePassive,
                            equalTo(GeckoSession.ProgressDelegate.SecurityInformation.CONTENT_UNKNOWN))
-                assertThat("Tracking mode should match",
-                           securityInfo.trackingMode,
-                           equalTo(GeckoSession.ProgressDelegate.SecurityInformation.CONTENT_UNKNOWN))
             }
         })
     }
@@ -263,9 +258,6 @@ class ProgressDelegateTest : BaseSessionTest() {
                 assertThat("Passive mixed mode should match",
                            securityInfo.mixedModePassive,
                            equalTo(GeckoSession.ProgressDelegate.SecurityInformation.CONTENT_UNKNOWN))
-                assertThat("Tracking mode should match",
-                           securityInfo.trackingMode,
-                           equalTo(GeckoSession.ProgressDelegate.SecurityInformation.CONTENT_UNKNOWN))
             }
         })
     }
@@ -287,6 +279,113 @@ class ProgressDelegateTest : BaseSessionTest() {
             @AssertCalled(false)
             override fun onSecurityChange(session: GeckoSession,
                                           securityInfo: GeckoSession.ProgressDelegate.SecurityInformation) {
+            }
+        })
+    }
+
+    val errorEpsilon = 0.1
+
+    private fun waitForScroll(offset: Double, timeout: Double, param: String) {
+        mainSession.evaluateJS("""
+           new Promise((resolve, reject) => {
+             const start = Date.now();
+             function step() {
+               if (window.visualViewport.$param >= ($offset - $errorEpsilon)) {
+                 resolve();
+               } else if ($timeout < (Date.now() - start)) {
+                 reject();
+               } else {
+                 window.requestAnimationFrame(step);
+               }
+             }
+             window.requestAnimationFrame(step);
+           });
+        """.trimIndent())
+    }
+
+    private fun waitForVerticalScroll(offset: Double, timeout: Double) {
+        waitForScroll(offset, timeout, "pageTop")
+    }
+
+    @Ignore // Bug 1547849
+    @WithDisplay(width = 400, height = 400)
+    @Test fun saveAndRestoreState() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("dom.visualviewport.enabled" to true))
+
+        val startUri = createTestUrl(SAVE_STATE_PATH)
+        mainSession.loadUri(startUri)
+        sessionRule.waitForPageStop()
+
+        mainSession.evaluateJS("document.querySelector('#name').value = 'the name';")
+        mainSession.evaluateJS("document.querySelector('#name').dispatchEvent(new Event('input'));")
+
+        mainSession.evaluateJS("window.scrollBy(0, 100);")
+        waitForVerticalScroll(100.0, sessionRule.env.defaultTimeoutMillis.toDouble())
+
+        var savedState : GeckoSession.SessionState? = null
+        sessionRule.waitUntilCalled(object : Callbacks.ProgressDelegate {
+            @AssertCalled(count=1)
+            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) {
+                savedState = state
+
+                val serialized = state.toString()
+                val deserialized = GeckoSession.SessionState.fromString(serialized)
+                assertThat("Deserialized session state should match", deserialized, equalTo(state))
+            }
+        })
+
+        assertThat("State should not be null", savedState, notNullValue())
+
+        mainSession.loadUri("about:blank")
+        sessionRule.waitForPageStop()
+
+        mainSession.restoreState(savedState!!)
+        sessionRule.waitForPageStop()
+
+        sessionRule.forCallbacksDuringWait(object : Callbacks.NavigationDelegate {
+            @AssertCalled
+            override fun onLocationChange(session: GeckoSession, url: String?) {
+                assertThat("URI should match", url, equalTo(startUri))
+            }
+        })
+
+        /* TODO: Reenable when we have a workaround for ContentSessionStore not
+                 saving in response to JS-driven formdata changes.
+        assertThat("'name' field should match",
+                mainSession.evaluateJS("$('#name').value").toString(),
+                equalTo("the name"))*/
+
+        assertThat("Scroll position should match",
+                mainSession.evaluateJS("window.visualViewport.pageTop") as Double,
+                closeTo(100.0, .5))
+
+    }
+
+    @WithDisplay(width = 400, height = 400)
+    @Test fun flushSessionState() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("dom.visualviewport.enabled" to true))
+
+        val startUri = createTestUrl(SAVE_STATE_PATH)
+        mainSession.loadUri(startUri)
+        sessionRule.waitForPageStop()
+
+        var oldState : GeckoSession.SessionState? = null
+
+        sessionRule.waitUntilCalled(object : Callbacks.ProgressDelegate {
+            @AssertCalled(count = 1)
+            override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
+                oldState = sessionState
+            }
+        })
+
+        assertThat("State should not be null", oldState, notNullValue())
+
+        mainSession.setActive(false)
+
+        sessionRule.waitUntilCalled(object : Callbacks.ProgressDelegate {
+            @AssertCalled(count = 1)
+            override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
+                assertThat("Old session state and new should match", sessionState, equalTo(oldState))
             }
         })
     }

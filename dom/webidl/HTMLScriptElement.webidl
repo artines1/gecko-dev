@@ -8,7 +8,8 @@
  * http://www.whatwg.org/specs/web-apps/current-work/#other-elements,-attributes-and-apis
  */
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLScriptElement : HTMLElement {
   [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
   attribute DOMString src;
@@ -24,6 +25,8 @@ interface HTMLScriptElement : HTMLElement {
   attribute boolean defer;
   [CEReactions, SetterThrows]
   attribute DOMString? crossOrigin;
+  [CEReactions, SetterThrows]
+  attribute DOMString referrerPolicy;
   [CEReactions, Throws]
   attribute DOMString text;
 };

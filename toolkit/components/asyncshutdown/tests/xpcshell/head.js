@@ -2,12 +2,14 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { AsyncShutdown } = ChromeUtils.import(
+  "resource://gre/modules/AsyncShutdown.jsm"
+);
 
-var asyncShutdownService = Cc["@mozilla.org/async-shutdown-service;1"].
-  getService(Ci.nsIAsyncShutdownService);
-
+var asyncShutdownService = Cc[
+  "@mozilla.org/async-shutdown-service;1"
+].getService(Ci.nsIAsyncShutdownService);
 
 Services.prefs.setBoolPref("toolkit.asyncshutdown.testing", true);
 
@@ -39,7 +41,7 @@ function makeLock(kind) {
       wait() {
         Services.obs.notifyObservers(null, topic);
         return Promise.resolve();
-      }
+      },
     };
   } else if (kind == "barrier") {
     let name = "test-Barrier-" + ++makeLock.counter;
@@ -49,7 +51,7 @@ function makeLock(kind) {
       removeBlocker: barrier.client.removeBlocker,
       wait() {
         return barrier.wait();
-      }
+      },
     };
   } else if (kind == "xpcom-barrier") {
     let name = "test-xpcom-Barrier-" + ++makeLock.counter;
@@ -84,7 +86,7 @@ function makeLock(kind) {
           };
           makeLock.xpcomMap.set(condition, blocker);
         }
-        let {fileName, lineNumber, stack} = (new Error());
+        let { fileName, lineNumber, stack } = new Error();
         return barrier.client.addBlocker(blocker, fileName, lineNumber, stack);
       },
       removeBlocker(condition) {
@@ -98,7 +100,7 @@ function makeLock(kind) {
         return new Promise(resolve => {
           barrier.wait(resolve);
         });
-      }
+      },
     };
   } else if ("unwrapped-xpcom-barrier") {
     let name = "unwrapped-xpcom-barrier-" + ++makeLock.counter;
@@ -111,7 +113,7 @@ function makeLock(kind) {
         return new Promise(resolve => {
           barrier.wait(resolve);
         });
-      }
+      },
     };
   }
   throw new TypeError("Unknown kind " + kind);

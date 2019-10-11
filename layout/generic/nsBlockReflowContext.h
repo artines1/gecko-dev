@@ -16,7 +16,7 @@ class nsLineBox;
 class nsPresContext;
 namespace mozilla {
 class BlockReflowInput;
-} // namespace mozilla
+}  // namespace mozilla
 
 /**
  * An encapsulation of the state and algorithm for reflowing block frames.
@@ -26,23 +26,18 @@ class nsBlockReflowContext {
   using ReflowInput = mozilla::ReflowInput;
   using ReflowOutput = mozilla::ReflowOutput;
 
-public:
+ public:
   nsBlockReflowContext(nsPresContext* aPresContext,
                        const ReflowInput& aParentRI);
-  ~nsBlockReflowContext() { }
+  ~nsBlockReflowContext() {}
 
-  void ReflowBlock(const mozilla::LogicalRect& aSpace,
-                   bool                        aApplyBStartMargin,
-                   nsCollapsingMargin&         aPrevMargin,
-                   nscoord                     aClearance,
-                   bool                        aIsAdjacentWithBStart,
-                   nsLineBox*                  aLine,
-                   ReflowInput&          aReflowInput,
-                   nsReflowStatus&             aReflowStatus,
-                   BlockReflowInput&         aState);
+  void ReflowBlock(const mozilla::LogicalRect& aSpace, bool aApplyBStartMargin,
+                   nsCollapsingMargin& aPrevMargin, nscoord aClearance,
+                   bool aIsAdjacentWithBStart, nsLineBox* aLine,
+                   ReflowInput& aReflowInput, nsReflowStatus& aReflowStatus,
+                   BlockReflowInput& aState);
 
-  bool PlaceBlock(const ReflowInput& aReflowInput,
-                  bool aForceFit,
+  bool PlaceBlock(const ReflowInput& aReflowInput, bool aForceFit,
                   nsLineBox* aLine,
                   nsCollapsingMargin& aBEndMarginResult /* out */,
                   nsOverflowAreas& aOverflowAreas,
@@ -52,13 +47,11 @@ public:
     return mMetrics.mCarriedOutBEndMargin;
   }
 
-  const ReflowOutput& GetMetrics() const {
-    return mMetrics;
-  }
+  const ReflowOutput& GetMetrics() const { return mMetrics; }
 
   /**
    * Computes the collapsed block-start margin (in the context's parent's
-   * writing mode) for a block whose reflow state is in aRI.
+   * writing mode) for a block whose reflow input is in aRI.
    * The computed margin is added into aMargin, whose writing mode is the
    * parent's mode as found in mMetrics.GetWritingMode(); note this may not be
    * the block's own writing mode as found in aRI.
@@ -81,7 +74,7 @@ public:
                                     bool* aMayNeedRetry,
                                     bool* aIsEmpty = nullptr);
 
-protected:
+ protected:
   nsPresContext* mPresContext;
   const ReflowInput& mOuterReflowInput;
 

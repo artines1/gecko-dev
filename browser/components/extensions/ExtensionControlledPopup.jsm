@@ -19,32 +19,54 @@
 
 var EXPORTED_SYMBOLS = ["ExtensionControlledPopup"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { ExtensionCommon } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionCommon.jsm"
+);
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "AddonManager",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "BrowserUtils",
-                               "resource://gre/modules/BrowserUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "CustomizableUI",
-                               "resource:///modules/CustomizableUI.jsm");
-ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
-                               "resource://gre/modules/ExtensionSettingsStore.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "BrowserUtils",
+  "resource://gre/modules/BrowserUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "CustomizableUI",
+  "resource:///modules/CustomizableUI.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionSettingsStore",
+  "resource://gre/modules/ExtensionSettingsStore.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
 
-let {
-  makeWidgetId,
-} = ExtensionCommon;
+let { makeWidgetId } = ExtensionCommon;
 
 XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
-  return Services.strings.createBundle("chrome://global/locale/extensions.properties");
+  return Services.strings.createBundle(
+    "chrome://global/locale/extensions.properties"
+  );
 });
 
 const PREF_BRANCH_INSTALLED_ADDON = "extensions.installedDistroAddon.";
 
 XPCOMUtils.defineLazyGetter(this, "distributionAddonsList", function() {
-  let addonList = Services.prefs.getChildList(PREF_BRANCH_INSTALLED_ADDON)
-                          .map(id => id.replace(PREF_BRANCH_INSTALLED_ADDON, ""));
+  let addonList = Services.prefs
+    .getChildList(PREF_BRANCH_INSTALLED_ADDON)
+    .map(id => id.replace(PREF_BRANCH_INSTALLED_ADDON, ""));
   return new Set(addonList);
 });
 
@@ -135,7 +157,12 @@ class ExtensionControlledPopup {
   async setConfirmation(id) {
     await ExtensionSettingsStore.initialize();
     return ExtensionSettingsStore.addSetting(
-      id, this.confirmedType, id, true, () => false);
+      id,
+      this.confirmedType,
+      id,
+      true,
+      () => false
+    );
   }
 
   async clearConfirmation(id) {
@@ -191,8 +218,20 @@ class ExtensionControlledPopup {
 
     if (!extensionId) {
       let item = ExtensionSettingsStore.getSetting(
-        this.settingType, this.settingKey);
+        this.settingType,
+        this.settingKey
+      );
       extensionId = item && item.id;
+    }
+
+    let win = targetWindow || this.topWindow;
+    let isPrivate = PrivateBrowsingUtils.isWindowPrivate(win);
+    if (
+      isPrivate &&
+      extensionId &&
+      !WebExtensionPolicy.getByID(extensionId).privateBrowsingAllowed
+    ) {
+      return;
     }
 
     // The item should have an extension and the user shouldn't have confirmed
@@ -203,24 +242,33 @@ class ExtensionControlledPopup {
       return;
     }
 
+    // If the window closes while waiting for focus, this might reject/throw,
+    // and we should stop trying to show the popup.
+    try {
+      await this._ensureWindowReady(win);
+    } catch (ex) {
+      return;
+    }
+
     // Find the elements we need.
-    let win = targetWindow || this.topWindow;
     let doc = win.document;
     let panel = doc.getElementById("extension-notification-panel");
     let popupnotification = doc.getElementById(this.popupnotificationId);
     let urlBarWasFocused = win.gURLBar.focused;
 
     if (!popupnotification) {
-      throw new Error(`No popupnotification found for id "${this.popupnotificationId}"`);
+      throw new Error(
+        `No popupnotification found for id "${this.popupnotificationId}"`
+      );
     }
 
     let addon = await AddonManager.getAddonByID(extensionId);
     this.populateDescription(doc, addon);
 
     // Setup the command handler.
-    let handleCommand = async (event) => {
+    let handleCommand = async event => {
       panel.hidePopup();
-      if (event.originalTarget.getAttribute("anonid") == "button") {
+      if (event.originalTarget == popupnotification.button) {
         // Main action is to keep changes.
         await this.setConfirmation(extensionId);
       } else {
@@ -240,10 +288,14 @@ class ExtensionControlledPopup {
       }
     };
     panel.addEventListener("command", handleCommand);
-    panel.addEventListener("popuphidden", () => {
-      popupnotification.hidden = true;
-      panel.removeEventListener("command", handleCommand);
-    }, {once: true});
+    panel.addEventListener(
+      "popuphidden",
+      () => {
+        popupnotification.hidden = true;
+        panel.removeEventListener("command", handleCommand);
+      },
+      { once: true }
+    );
 
     let anchorButton;
     if (this.anchorId) {
@@ -252,7 +304,8 @@ class ExtensionControlledPopup {
     } else {
       // Look for a browserAction on the toolbar.
       let action = CustomizableUI.getWidget(
-        `${makeWidgetId(extensionId)}-browser-action`);
+        `${makeWidgetId(extensionId)}-browser-action`
+      );
       if (action) {
         action = action.areaType == "toolbar" && action.forWindow(win).node;
       }
@@ -260,17 +313,16 @@ class ExtensionControlledPopup {
       // Anchor to a toolbar browserAction if found, otherwise use the menu button.
       anchorButton = action || doc.getElementById("PanelUI-menu-button");
     }
-    let anchor = doc.getAnonymousElementByAttribute(
-      anchorButton, "class", "toolbarbutton-icon");
+    let anchor = anchorButton.icon;
     panel.hidden = false;
-    popupnotification.hidden = false;
+    popupnotification.show();
     panel.openPopup(anchor);
   }
 
   getAddonDetails(doc, addon) {
     const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 
-    let image = doc.createElement("image");
+    let image = doc.createXULElement("image");
     image.setAttribute("src", addon.iconURL || defaultIcon);
     image.classList.add("extension-controlled-icon");
 
@@ -289,16 +341,80 @@ class ExtensionControlledPopup {
     let message = strBundle.GetStringFromName(this.descriptionMessageId);
     if (this.getLocalizedDescription) {
       description.appendChild(
-        this.getLocalizedDescription(doc, message, addonDetails));
+        this.getLocalizedDescription(doc, message, addonDetails)
+      );
     } else {
       description.appendChild(
-        BrowserUtils.getLocalizedFragment(doc, message, addonDetails));
+        BrowserUtils.getLocalizedFragment(doc, message, addonDetails)
+      );
     }
 
-    let link = doc.createElement("label");
-    link.setAttribute("class", "learnMore text-link");
-    link.href = Services.urlFormatter.formatURLPref("app.support.baseURL") + this.learnMoreLink;
+    let link = doc.createXULElement("label", { is: "text-link" });
+    link.setAttribute("class", "learnMore");
+    link.href =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      this.learnMoreLink;
     link.textContent = strBundle.GetStringFromName(this.learnMoreMessageId);
     description.appendChild(link);
+  }
+
+  async _ensureWindowReady(win) {
+    if (win.closed) {
+      throw new Error("window is closed");
+    }
+    let promises = [];
+    let listenersToRemove = [];
+    function promiseEvent(type) {
+      promises.push(
+        new Promise(resolve => {
+          let listener = () => {
+            win.removeEventListener(type, listener);
+            resolve();
+          };
+          win.addEventListener(type, listener);
+          listenersToRemove.push([type, listener]);
+        })
+      );
+    }
+    let { focusedWindow, activeWindow } = Services.focus;
+    if (activeWindow != win) {
+      promiseEvent("activate");
+    }
+    if (focusedWindow) {
+      // We may have focused a non-remote child window, find the browser window:
+      let { rootTreeItem } = focusedWindow.docShell;
+      rootTreeItem.QueryInterface(Ci.nsIDocShell);
+      focusedWindow = rootTreeItem.contentViewer.DOMDocument.defaultView;
+    }
+    if (focusedWindow != win) {
+      promiseEvent("focus");
+    }
+    let unloadListener;
+    // eslint-disable-next-line no-async-promise-executor
+    return new Promise(async (resolve, reject) => {
+      if (promises.length) {
+        unloadListener = () => {
+          for (let [type, listener] of listenersToRemove) {
+            win.removeEventListener(type, listener);
+          }
+          reject();
+        };
+        win.addEventListener("unload", unloadListener, { once: true });
+      }
+      let error;
+      try {
+        await Promise.all(promises);
+      } catch (ex) {
+        error = ex;
+      }
+      if (unloadListener) {
+        win.removeEventListener("unload", unloadListener);
+      }
+      if (error) {
+        reject(new Error("window unloaded"));
+      } else {
+        resolve();
+      }
+    });
   }
 }

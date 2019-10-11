@@ -42,6 +42,17 @@ interface nsIThreadPool : nsIEventTarget
   void shutdown();
 
   /**
+   * Shutdown the thread pool, but only wait for aTimeoutMs. After the timeout
+   * expires, any threads that have not shutdown yet are leaked and will not
+   * block shutdown.
+   *
+   * This method should only be used at during shutdown to cleanup threads that
+   * made blocking calls to code outside our control, and can't be safely
+   * terminated. We choose to leak them intentionally to avoid a shutdown hang.
+   */
+  [noscript] void shutdownWithTimeout(in long aTimeoutMs);
+
+  /**
    * Get/set the maximum number of threads allowed at one time in this pool.
    */
   attribute unsigned long threadLimit;
@@ -56,6 +67,14 @@ interface nsIThreadPool : nsIEventTarget
    * destroyed.
    */
   attribute unsigned long idleThreadTimeout;
+
+  /**
+   * If set to true the idle timeout will be calculated as idleThreadTimeout
+   * divideded by the number of idle threads at the moment.  This may help
+   * save memory allocations but still keep reasonable amount of idle threads.
+   * Default is false, use |idleThreadTimeout| for all threads.
+   */
+  attribute boolean idleThreadTimeoutRegressive;
 
   /**
    * Get/set the number of bytes reserved for the stack of all threads in

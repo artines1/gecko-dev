@@ -1,11 +1,3 @@
-// Copyright 2017 Serde Developers
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
 use lib::*;
 
 use ser::{Error, Serialize, SerializeTuple, Serializer};
@@ -66,6 +58,15 @@ impl Serialize for String {
         S: Serializer,
     {
         serializer.serialize_str(self)
+    }
+}
+
+impl<'a> Serialize for fmt::Arguments<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
     }
 }
 
@@ -218,8 +219,7 @@ seq_impl!(VecDeque<T>);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(feature = "std")]
-impl<Idx> Serialize for ops::Range<Idx>
+impl<Idx> Serialize for Range<Idx>
 where
     Idx: Serialize,
 {
@@ -232,6 +232,48 @@ where
         try!(state.serialize_field("start", &self.start));
         try!(state.serialize_field("end", &self.end));
         state.end()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(range_inclusive)]
+impl<Idx> Serialize for RangeInclusive<Idx>
+where
+    Idx: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use super::SerializeStruct;
+        let mut state = try!(serializer.serialize_struct("RangeInclusive", 2));
+        try!(state.serialize_field("start", &self.start()));
+        try!(state.serialize_field("end", &self.end()));
+        state.end()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(any(ops_bound, collections_bound))]
+impl<T> Serialize for Bound<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Bound::Unbounded => serializer.serialize_unit_variant("Bound", 0, "Unbounded"),
+            Bound::Included(ref value) => {
+                serializer.serialize_newtype_variant("Bound", 1, "Included", value)
+            }
+            Bound::Excluded(ref value) => {
+                serializer.serialize_newtype_variant("Bound", 2, "Excluded", value)
+            }
+        }
     }
 }
 
@@ -442,8 +484,15 @@ nonzero_integers! {
     NonZeroU16,
     NonZeroU32,
     NonZeroU64,
-    // FIXME: https://github.com/serde-rs/serde/issues/1136 NonZeroU128,
     NonZeroUsize,
+}
+
+// Currently 128-bit integers do not work on Emscripten targets so we need an
+// additional `#[cfg]`
+serde_if_integer128! {
+    nonzero_integers! {
+        NonZeroU128,
+    }
 }
 
 impl<T> Serialize for Cell<T>

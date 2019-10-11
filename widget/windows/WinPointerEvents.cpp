@@ -10,38 +10,24 @@
 #include "nscore.h"
 #include "WinPointerEvents.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/dom/MouseEventBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;
 
-const wchar_t WinPointerEvents::kPointerLibraryName[] =  L"user32.dll";
+const wchar_t WinPointerEvents::kPointerLibraryName[] = L"user32.dll";
 HMODULE WinPointerEvents::sLibraryHandle = nullptr;
 WinPointerEvents::GetPointerTypePtr WinPointerEvents::getPointerType = nullptr;
 WinPointerEvents::GetPointerInfoPtr WinPointerEvents::getPointerInfo = nullptr;
-WinPointerEvents::GetPointerPenInfoPtr WinPointerEvents::getPointerPenInfo = nullptr;
-bool WinPointerEvents::sPointerEventEnabled = true;
-bool WinPointerEvents::sFirePointerEventsByWinPointerMessages = false;
+WinPointerEvents::GetPointerPenInfoPtr WinPointerEvents::getPointerPenInfo =
+    nullptr;
 
-WinPointerEvents::WinPointerEvents()
-{
-  InitLibrary();
-  static bool addedPointerEventEnabled = false;
-  if (!addedPointerEventEnabled) {
-    Preferences::AddBoolVarCache(&sPointerEventEnabled,
-                                 "dom.w3c_pointer_events.enabled", true);
-    Preferences::AddBoolVarCache(
-      &sFirePointerEventsByWinPointerMessages,
-      "dom.w3c_pointer_events.dispatch_by_pointer_messages", false);
-    addedPointerEventEnabled = true;
-  }
-}
+WinPointerEvents::WinPointerEvents() { InitLibrary(); }
 
 /* Load and shutdown */
-void
-WinPointerEvents::InitLibrary()
-{
+void WinPointerEvents::InitLibrary() {
   MOZ_ASSERT(XRE_IsParentProcess());
   if (!IsWin8OrLater()) {
     // Only Win8 or later supports WM_POINTER*
@@ -55,11 +41,11 @@ WinPointerEvents::InitLibrary()
   MOZ_ASSERT(sLibraryHandle, "cannot load pointer library");
   if (sLibraryHandle) {
     getPointerType =
-      (GetPointerTypePtr)GetProcAddress(sLibraryHandle, "GetPointerType");
+        (GetPointerTypePtr)GetProcAddress(sLibraryHandle, "GetPointerType");
     getPointerInfo =
-      (GetPointerInfoPtr)GetProcAddress(sLibraryHandle, "GetPointerInfo");
-    getPointerPenInfo =
-      (GetPointerPenInfoPtr)GetProcAddress(sLibraryHandle, "GetPointerPenInfo");
+        (GetPointerInfoPtr)GetProcAddress(sLibraryHandle, "GetPointerInfo");
+    getPointerPenInfo = (GetPointerPenInfoPtr)GetProcAddress(
+        sLibraryHandle, "GetPointerPenInfo");
   }
 
   if (!getPointerType || !getPointerInfo || !getPointerPenInfo) {
@@ -71,12 +57,11 @@ WinPointerEvents::InitLibrary()
   }
 }
 
-bool
-WinPointerEvents::ShouldHandleWinPointerMessages(UINT aMsg, WPARAM aWParam)
-{
+bool WinPointerEvents::ShouldHandleWinPointerMessages(UINT aMsg,
+                                                      WPARAM aWParam) {
   MOZ_ASSERT(aMsg == WM_POINTERDOWN || aMsg == WM_POINTERUP ||
              aMsg == WM_POINTERUPDATE || aMsg == WM_POINTERLEAVE);
-  if (!sLibraryHandle || !sPointerEventEnabled) {
+  if (!sLibraryHandle || !StaticPrefs::dom_w3c_pointer_events_enabled()) {
     return false;
   }
 
@@ -92,10 +77,8 @@ WinPointerEvents::ShouldHandleWinPointerMessages(UINT aMsg, WPARAM aWParam)
   return (pointerType == PT_PEN);
 }
 
-bool
-WinPointerEvents::GetPointerType(uint32_t aPointerId,
-                                 POINTER_INPUT_TYPE *aPointerType)
-{
+bool WinPointerEvents::GetPointerType(uint32_t aPointerId,
+                                      POINTER_INPUT_TYPE* aPointerType) {
   if (!getPointerType) {
     return false;
   }
@@ -103,44 +86,35 @@ WinPointerEvents::GetPointerType(uint32_t aPointerId,
 }
 
 POINTER_INPUT_TYPE
-WinPointerEvents::GetPointerType(uint32_t aPointerId)
-{
+WinPointerEvents::GetPointerType(uint32_t aPointerId) {
   POINTER_INPUT_TYPE pointerType = PT_POINTER;
   Unused << GetPointerType(aPointerId, &pointerType);
   return pointerType;
 }
 
-bool
-WinPointerEvents::GetPointerInfo(uint32_t aPointerId,
-                                 POINTER_INFO *aPointerInfo)
-{
+bool WinPointerEvents::GetPointerInfo(uint32_t aPointerId,
+                                      POINTER_INFO* aPointerInfo) {
   if (!getPointerInfo) {
     return false;
   }
   return getPointerInfo(aPointerId, aPointerInfo);
 }
 
-bool
-WinPointerEvents::GetPointerPenInfo(uint32_t aPointerId,
-                                    POINTER_PEN_INFO *aPenInfo)
-{
+bool WinPointerEvents::GetPointerPenInfo(uint32_t aPointerId,
+                                         POINTER_PEN_INFO* aPenInfo) {
   if (!getPointerPenInfo) {
     return false;
   }
   return getPointerPenInfo(aPointerId, aPenInfo);
 }
 
-bool
-WinPointerEvents::ShouldEnableInkCollector()
-{
+bool WinPointerEvents::ShouldEnableInkCollector() {
   // We need InkCollector on Win7. For Win8 or later, we handle WM_POINTER* for
   // pen.
   return !IsWin8OrLater();
 }
 
-bool
-WinPointerEvents::ShouldRollupOnPointerEvent(UINT aMsg, WPARAM aWParam)
-{
+bool WinPointerEvents::ShouldRollupOnPointerEvent(UINT aMsg, WPARAM aWParam) {
   MOZ_ASSERT(aMsg == WM_POINTERDOWN);
   // Only roll up popups when we handling WM_POINTER* to fire Gecko
   // WidgetMouseEvent and suppress Windows WM_*BUTTONDOWN.
@@ -148,67 +122,62 @@ WinPointerEvents::ShouldRollupOnPointerEvent(UINT aMsg, WPARAM aWParam)
          ShouldFirePointerEventByWinPointerMessages();
 }
 
-bool
-WinPointerEvents::ShouldFirePointerEventByWinPointerMessages()
-{
-  MOZ_ASSERT(sLibraryHandle && sPointerEventEnabled);
-  return sFirePointerEventsByWinPointerMessages;
+bool WinPointerEvents::ShouldFirePointerEventByWinPointerMessages() {
+  MOZ_ASSERT(sLibraryHandle && StaticPrefs::dom_w3c_pointer_events_enabled());
+  return StaticPrefs::dom_w3c_pointer_events_dispatch_by_pointer_messages();
 }
 
-WinPointerInfo*
-WinPointerEvents::GetCachedPointerInfo(UINT aMsg, WPARAM aWParam)
-{
-  if (!sLibraryHandle || !sPointerEventEnabled ||
+WinPointerInfo* WinPointerEvents::GetCachedPointerInfo(UINT aMsg,
+                                                       WPARAM aWParam) {
+  if (!sLibraryHandle || !StaticPrefs::dom_w3c_pointer_events_enabled() ||
       MOUSE_INPUT_SOURCE() != dom::MouseEvent_Binding::MOZ_SOURCE_PEN ||
       ShouldFirePointerEventByWinPointerMessages()) {
     return nullptr;
   }
   switch (aMsg) {
-  case WM_LBUTTONDOWN:
-  case WM_MBUTTONDOWN:
-  case WM_RBUTTONDOWN:
-    return &mPenPointerDownInfo;
-  case WM_LBUTTONUP:
-  case WM_MBUTTONUP:
-  case WM_RBUTTONUP:
-    return &mPenPointerDownInfo;
-  case WM_MOUSEMOVE:
-    return &mPenPointerUpdateInfo;
-  default:
-    MOZ_ASSERT(false);
+    case WM_LBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+      return &mPenPointerDownInfo;
+    case WM_LBUTTONUP:
+    case WM_MBUTTONUP:
+    case WM_RBUTTONUP:
+      return &mPenPointerDownInfo;
+    case WM_MOUSEMOVE:
+      return &mPenPointerUpdateInfo;
+    default:
+      MOZ_ASSERT(false);
   }
   return nullptr;
 }
 
-void
-WinPointerEvents::ConvertAndCachePointerInfo(UINT aMsg, WPARAM aWParam)
-{
-  MOZ_ASSERT(!sFirePointerEventsByWinPointerMessages);
+void WinPointerEvents::ConvertAndCachePointerInfo(UINT aMsg, WPARAM aWParam) {
+  MOZ_ASSERT(
+      !StaticPrefs::dom_w3c_pointer_events_dispatch_by_pointer_messages());
   // Windows doesn't support chorded buttons for pen, so we can simply keep the
   // latest information from pen generated pointer messages and use them when
   // handling mouse messages. Used different pointer info for pointerdown,
   // pointerupdate, and pointerup because Windows doesn't always interleave
   // pointer messages and mouse messages.
   switch (aMsg) {
-  case WM_POINTERDOWN:
-    ConvertAndCachePointerInfo(aWParam, &mPenPointerDownInfo);
-    break;
-  case WM_POINTERUP:
-    ConvertAndCachePointerInfo(aWParam, &mPenPointerUpInfo);
-    break;
-  case WM_POINTERUPDATE:
-    ConvertAndCachePointerInfo(aWParam, &mPenPointerUpdateInfo);
-    break;
-  default:
-    break;
+    case WM_POINTERDOWN:
+      ConvertAndCachePointerInfo(aWParam, &mPenPointerDownInfo);
+      break;
+    case WM_POINTERUP:
+      ConvertAndCachePointerInfo(aWParam, &mPenPointerUpInfo);
+      break;
+    case WM_POINTERUPDATE:
+      ConvertAndCachePointerInfo(aWParam, &mPenPointerUpdateInfo);
+      break;
+    default:
+      break;
   }
 }
 
-void
-WinPointerEvents::ConvertAndCachePointerInfo(WPARAM aWParam,
-                                             WinPointerInfo* aInfo)
-{
-  MOZ_ASSERT(!sFirePointerEventsByWinPointerMessages);
+void WinPointerEvents::ConvertAndCachePointerInfo(WPARAM aWParam,
+                                                  WinPointerInfo* aInfo) {
+  MOZ_ASSERT(
+      !StaticPrefs::dom_w3c_pointer_events_dispatch_by_pointer_messages());
   aInfo->pointerId = GetPointerId(aWParam);
   MOZ_ASSERT(GetPointerType(aInfo->pointerId) == PT_PEN);
   POINTER_PEN_INFO penInfo;

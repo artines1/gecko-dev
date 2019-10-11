@@ -3,16 +3,14 @@
 
 "use strict";
 
-/* exported Cr, CC, NetUtil, defer, errorCount, initTestDebuggerServer,
+/* exported Cr, CC, NetUtil, errorCount, initTestDebuggerServer,
             writeTestTempFile, socket_transport, local_transport, really_long
 */
 
 var CC = Components.Constructor;
 
-const { require } =
-  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
-const promise = require("promise");
 const defer = require("devtools/shared/defer");
 
 const Services = require("Services");
@@ -26,8 +24,12 @@ const Services = require("Services");
 // Enable remote debugging for the relevant tests.
 Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
 
-const { DebuggerServer } = require("devtools/server/main");
+const {
+  ActorRegistry,
+} = require("devtools/server/actors/utils/actor-registry");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
+const { SocketListener } = require("devtools/shared/security/socket");
 
 // Convert an nsIScriptError 'flags' value into an appropriate string.
 function scriptErrorFlagsToKind(flags) {
@@ -59,9 +61,16 @@ var listener = {
       // If we've been given an nsIScriptError, then we can print out
       // something nicely formatted, for tools like Emacs to pick up.
       message.QueryInterface(Ci.nsIScriptError);
-      dump(message.sourceName + ":" + message.lineNumber + ": " +
-           scriptErrorFlagsToKind(message.flags) + ": " +
-           message.errorMessage + "\n");
+      dump(
+        message.sourceName +
+          ":" +
+          message.lineNumber +
+          ": " +
+          scriptErrorFlagsToKind(message.flags) +
+          ": " +
+          message.errorMessage +
+          "\n"
+      );
       string = message.errorMessage;
     } catch (x) {
       // Be a little paranoid with message, as the whole goal here is to lose
@@ -82,7 +91,7 @@ var listener = {
     if (!(message.flags & Ci.nsIScriptError.strictFlag)) {
       do_throw("head_dbg.js got console message: " + string + "\n");
     }
-  }
+  },
 };
 
 Services.console.registerListener(listener);
@@ -91,10 +100,10 @@ Services.console.registerListener(listener);
  * Initialize the testing debugger server.
  */
 function initTestDebuggerServer() {
-  DebuggerServer.registerModule("devtools/server/actors/thread", {
+  ActorRegistry.registerModule("devtools/server/actors/thread", {
     prefix: "script",
     constructor: "ScriptActor",
-    type: { global: true, target: true }
+    type: { global: true, target: true },
   });
   const { createRootActor } = require("xpcshell-test/testactors");
   DebuggerServer.setRootActor(createRootActor);
@@ -115,8 +124,9 @@ function getTestTempFile(fileName, allowMissing) {
 
 function writeTestTempFile(fileName, content) {
   const file = getTestTempFile(fileName, true);
-  const stream = Cc["@mozilla.org/network/file-output-stream;1"]
-    .createInstance(Ci.nsIFileOutputStream);
+  const stream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
+    Ci.nsIFileOutputStream
+  );
   stream.init(file, -1, -1, 0);
   try {
     do {
@@ -137,9 +147,11 @@ var socket_transport = async function() {
     authenticator.allowConnection = () => {
       return DebuggerServer.AuthenticationResult.ALLOW;
     };
-    const debuggerListener = DebuggerServer.createListener();
-    debuggerListener.portOrPath = -1;
-    debuggerListener.authenticator = authenticator;
+    const socketOptions = {
+      authenticator,
+      portOrPath: -1,
+    };
+    const debuggerListener = new SocketListener(DebuggerServer, socketOptions);
     await debuggerListener.open();
   }
   const port = DebuggerServer._listeners[0].port;
@@ -148,7 +160,7 @@ var socket_transport = async function() {
 };
 
 function local_transport() {
-  return promise.resolve(DebuggerServer.connectPipe());
+  return Promise.resolve(DebuggerServer.connectPipe());
 }
 
 /** * Sample Data ***/

@@ -2,51 +2,39 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "gDevTools",
-                               "resource://devtools/client/framework/gDevTools.jsm");
-ChromeUtils.defineModuleGetter(this, "devtools",
-                               "resource://devtools/shared/Loader.jsm");
+loadTestSubscript("head_devtools.js");
 
 add_task(async function test_devtools_panels_elements_onSelectionChanged() {
-  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://mochi.test:8888/");
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "http://mochi.test:8888/"
+  );
 
   function devtools_page() {
-    let isReloading = false;
-    let collectedEvalResults = [];
+    browser.devtools.panels.elements.onSelectionChanged.addListener(
+      async () => {
+        const [
+          evalResult,
+          exceptionInfo,
+        ] = await browser.devtools.inspectedWindow.eval("$0 && $0.tagName");
 
-    browser.devtools.panels.elements.onSelectionChanged.addListener(async () => {
-      const [
-        evalResult, exceptionInfo,
-      ] = await browser.devtools.inspectedWindow.eval("$0 && $0.tagName");
+        if (exceptionInfo) {
+          browser.test.fail(
+            "Unexpected exceptionInfo on inspectedWindow.eval: " +
+              JSON.stringify(exceptionInfo)
+          );
+        }
 
-      if (exceptionInfo) {
-        browser.test.fail("Unexpected exceptionInfo on inspectedWindow.eval: " +
-                          JSON.stringify(exceptionInfo));
-      }
-
-      collectedEvalResults.push(evalResult);
-
-      // The eval results that are happening during the reload are going to
-      // be retrieved all at once using the "collected_devttols_eval_results:request".
-      if (!isReloading) {
         browser.test.sendMessage("devtools_eval_result", evalResult);
       }
-    });
+    );
 
     browser.test.onMessage.addListener(msg => {
       switch (msg) {
         case "inspectedWindow_reload": {
           // Force a reload to test that the expected onSelectionChanged events are sent
           // while the page is navigating and once it has been fully reloaded.
-          isReloading = true;
-          collectedEvalResults = [];
           browser.devtools.inspectedWindow.eval("window.location.reload();");
-          break;
-        }
-
-        case "collected_devtools_eval_results:request": {
-          browser.test.sendMessage("collected_devtools_eval_results:reply",
-                                   collectedEvalResults);
           break;
         }
 
@@ -79,10 +67,7 @@ add_task(async function test_devtools_panels_elements_onSelectionChanged() {
 
   await extension.startup();
 
-  let target = devtools.TargetFactory.forTab(tab);
-
-  const toolbox = await gDevTools.showToolbox(target, "webconsole");
-  info("developer toolbox opened");
+  const { toolbox } = await openToolboxForTab(tab);
 
   await extension.awaitMessage("devtools_page_loaded");
 
@@ -90,9 +75,16 @@ add_task(async function test_devtools_panels_elements_onSelectionChanged() {
 
   const inspector = toolbox.getPanel("inspector");
 
-  const evalResult = await extension.awaitMessage("devtools_eval_result");
+  info(
+    "Waiting for the first onSelectionChanged event to be fired once the inspector is open"
+  );
 
-  is(evalResult, "BODY", "Got the expected onSelectionChanged once the inspector is selected");
+  const evalResult = await extension.awaitMessage("devtools_eval_result");
+  is(
+    evalResult,
+    "BODY",
+    "Got the expected onSelectionChanged once the inspector is selected"
+  );
 
   // Reload the inspected tab and wait for the inspector markup view to have been
   // fully reloaded.
@@ -100,23 +92,33 @@ add_task(async function test_devtools_panels_elements_onSelectionChanged() {
   extension.sendMessage("inspectedWindow_reload");
   await onceMarkupReloaded;
 
-  // Retrieve the first and last collected eval result (the first is related to the
-  // page navigating away, the last one is related to the updated inspector markup view
-  // fully reloaded and the selection updated).
-  extension.sendMessage("collected_devtools_eval_results:request");
-  const collectedEvalResults = await extension.awaitMessage("collected_devtools_eval_results:reply");
-  const evalResultNavigating = collectedEvalResults.shift();
-  const evalResultOnceMarkupReloaded = collectedEvalResults.pop();
+  info(
+    "Waiting for the two onSelectionChanged events fired before and after the navigation"
+  );
 
-  is(evalResultNavigating, undefined,
-     "Got the expected onSelectionChanged once the tab is navigating");
+  // Expect the eval result to be undefined on the first onSelectionChanged event
+  // (fired when the page is navigating away, and so the current selection is undefined).
+  const evalResultNavigating = await extension.awaitMessage(
+    "devtools_eval_result"
+  );
+  is(
+    evalResultNavigating,
+    undefined,
+    "Got the expected onSelectionChanged once the tab is navigating"
+  );
 
-  is(evalResultOnceMarkupReloaded, "BODY",
-     "Got the expected onSelectionChanged once the tab has been completely reloaded");
+  // Expect the eval result to be related to the body element on the second onSelectionChanged
+  // event (fired when the page have been navigated to the new page).
+  const evalResultOnceMarkupReloaded = await extension.awaitMessage(
+    "devtools_eval_result"
+  );
+  is(
+    evalResultOnceMarkupReloaded,
+    "BODY",
+    "Got the expected onSelectionChanged once the tab has been completely reloaded"
+  );
 
-  await gDevTools.closeToolbox(target);
-
-  await target.destroy();
+  await closeToolboxForTab(tab);
 
   await extension.unload();
 

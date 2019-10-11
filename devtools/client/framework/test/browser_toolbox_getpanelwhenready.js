@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -12,19 +10,25 @@ const URL = "data:text/html;charset=utf8,test for getPanelWhenReady";
 
 add_task(async function() {
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   toolbox = await gDevTools.showToolbox(target);
 
   const debuggerPanelPromise = toolbox.getPanelWhenReady("jsdebugger");
   await toolbox.selectTool("jsdebugger");
   const debuggerPanel = await debuggerPanelPromise;
 
-  is(debuggerPanel, toolbox.getPanel("jsdebugger"),
-      "The debugger panel from getPanelWhenReady before loading is the actual panel");
+  is(
+    debuggerPanel,
+    toolbox.getPanel("jsdebugger"),
+    "The debugger panel from getPanelWhenReady before loading is the actual panel"
+  );
 
   const debuggerPanel2 = await toolbox.getPanelWhenReady("jsdebugger");
-  is(debuggerPanel2, toolbox.getPanel("jsdebugger"),
-      "The debugger panel from getPanelWhenReady after loading is the actual panel");
+  is(
+    debuggerPanel2,
+    toolbox.getPanel("jsdebugger"),
+    "The debugger panel from getPanelWhenReady after loading is the actual panel"
+  );
 
   await cleanup();
 });

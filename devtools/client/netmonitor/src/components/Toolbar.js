@@ -5,10 +5,15 @@
 "use strict";
 
 const Services = require("Services");
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
+const {
+  connect,
+} = require("devtools/client/shared/redux/visibility-handler-connect");
 const Actions = require("../actions/index");
 const { FILTER_SEARCH_DELAY, FILTER_TAGS } = require("../constants");
 const {
@@ -16,53 +21,92 @@ const {
   getRecordingState,
   getTypeFilteredRequests,
 } = require("../selectors/index");
-const { autocompleteProvider } = require("../utils/filter-autocomplete-provider");
-const { LocalizationHelper } = require("devtools/shared/l10n");
+const {
+  autocompleteProvider,
+} = require("../utils/filter-autocomplete-provider");
 const { L10N } = require("../utils/l10n");
 const { fetchNetworkUpdatePacket } = require("../utils/request-utils");
 
+loader.lazyRequireGetter(
+  this,
+  "KeyShortcuts",
+  "devtools/client/shared/key-shortcuts"
+);
+
 // MDN
-const {
-  getFilterBoxURL,
-} = require("../utils/mdn-utils");
+const { getFilterBoxURL } = require("../utils/mdn-utils");
 const LEARN_MORE_URL = getFilterBoxURL();
 
 // Components
-const SearchBox = createFactory(require("devtools/client/shared/components/SearchBox"));
+const NetworkThrottlingMenu = createFactory(
+  require("devtools/client/shared/components/throttling/NetworkThrottlingMenu")
+);
+const SearchBox = createFactory(
+  require("devtools/client/shared/components/SearchBox")
+);
 
 const { button, div, input, label, span } = dom;
 
 // Localization
-const SEARCH_KEY_SHORTCUT = L10N.getStr("netmonitor.toolbar.filterFreetext.key");
-const SEARCH_PLACE_HOLDER = L10N.getStr("netmonitor.toolbar.filterFreetext.label");
+const FILTER_KEY_SHORTCUT = L10N.getStr(
+  "netmonitor.toolbar.filterFreetext.key"
+);
+const SEARCH_KEY_SHORTCUT = L10N.getStr("netmonitor.toolbar.search.key");
+const SEARCH_PLACE_HOLDER = L10N.getStr(
+  "netmonitor.toolbar.filterFreetext.label"
+);
 const TOOLBAR_CLEAR = L10N.getStr("netmonitor.toolbar.clear");
-const TOOLBAR_TOGGLE_RECORDING = L10N.getStr("netmonitor.toolbar.toggleRecording");
+const TOOLBAR_TOGGLE_RECORDING = L10N.getStr(
+  "netmonitor.toolbar.toggleRecording"
+);
+const TOOLBAR_SEARCH = L10N.getStr("netmonitor.toolbar.search");
 const TOOLBAR_HAR_BUTTON = L10N.getStr("netmonitor.label.har");
-const LEARN_MORE_TITLE = L10N.getStr("netmonitor.toolbar.filterFreetext.learnMore");
+const LEARN_MORE_TITLE = L10N.getStr(
+  "netmonitor.toolbar.filterFreetext.learnMore"
+);
 
 // Preferences
 const DEVTOOLS_DISABLE_CACHE_PREF = "devtools.cache.disabled";
 const DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF = "devtools.netmonitor.persistlog";
-const TOOLBAR_FILTER_LABELS = FILTER_TAGS.concat("all").reduce((o, tag) =>
-  Object.assign(o, { [tag]: L10N.getStr(`netmonitor.toolbar.filter.${tag}`) }), {});
-const ENABLE_PERSISTENT_LOGS_TOOLTIP =
-  L10N.getStr("netmonitor.toolbar.enablePersistentLogs.tooltip");
-const ENABLE_PERSISTENT_LOGS_LABEL =
-  L10N.getStr("netmonitor.toolbar.enablePersistentLogs.label");
-const DISABLE_CACHE_TOOLTIP = L10N.getStr("netmonitor.toolbar.disableCache.tooltip");
-const DISABLE_CACHE_LABEL = L10N.getStr("netmonitor.toolbar.disableCache.label");
-const NO_THROTTLING_LABEL = new LocalizationHelper(
-  "devtools/client/locales/network-throttling.properties"
-  ).getStr("responsive.noThrottling");
+const TOOLBAR_FILTER_LABELS = FILTER_TAGS.concat("all").reduce(
+  (o, tag) =>
+    Object.assign(o, {
+      [tag]: L10N.getStr(`netmonitor.toolbar.filter.${tag}`),
+    }),
+  {}
+);
+const ENABLE_PERSISTENT_LOGS_TOOLTIP = L10N.getStr(
+  "netmonitor.toolbar.enablePersistentLogs.tooltip"
+);
+const ENABLE_PERSISTENT_LOGS_LABEL = L10N.getStr(
+  "netmonitor.toolbar.enablePersistentLogs.label"
+);
+const DISABLE_CACHE_TOOLTIP = L10N.getStr(
+  "netmonitor.toolbar.disableCache.tooltip"
+);
+const DISABLE_CACHE_LABEL = L10N.getStr(
+  "netmonitor.toolbar.disableCache.label"
+);
 
 // Menu
-loader.lazyRequireGetter(this, "showMenu", "devtools/client/netmonitor/src/utils/menu", true);
-loader.lazyRequireGetter(this, "HarMenuUtils", "devtools/client/netmonitor/src/har/har-menu-utils", true);
+loader.lazyRequireGetter(
+  this,
+  "showMenu",
+  "devtools/client/shared/components/menu/utils",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "HarMenuUtils",
+  "devtools/client/netmonitor/src/har/har-menu-utils",
+  true
+);
 
 // Throttling
 const Types = require("devtools/client/shared/components/throttling/types");
-const throttlingProfiles = require("devtools/client/shared/components/throttling/profiles");
-const { changeNetworkThrottling } = require("devtools/client/shared/components/throttling/actions");
+const {
+  changeNetworkThrottling,
+} = require("devtools/client/shared/components/throttling/actions");
 
 /**
  * Network monitor toolbar component.
@@ -98,6 +142,8 @@ class Toolbar extends Component {
       networkThrottling: PropTypes.shape(Types.networkThrottling).isRequired,
       // Executed when throttling changes (through toolbar button).
       onChangeNetworkThrottling: PropTypes.func.isRequired,
+      toggleSearchPanel: PropTypes.func.isRequired,
+      searchPanelOpen: PropTypes.bool.isRequired,
     };
   }
 
@@ -107,34 +153,57 @@ class Toolbar extends Component {
     this.autocompleteProvider = this.autocompleteProvider.bind(this);
     this.onSearchBoxFocus = this.onSearchBoxFocus.bind(this);
     this.toggleRequestFilterType = this.toggleRequestFilterType.bind(this);
-    this.updatePersistentLogsEnabled = this.updatePersistentLogsEnabled.bind(this);
-    this.updateBrowserCacheDisabled = this.updateBrowserCacheDisabled.bind(this);
+    this.updatePersistentLogsEnabled = this.updatePersistentLogsEnabled.bind(
+      this
+    );
+    this.updateBrowserCacheDisabled = this.updateBrowserCacheDisabled.bind(
+      this
+    );
   }
 
   componentDidMount() {
-    Services.prefs.addObserver(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
-                               this.updatePersistentLogsEnabled);
-    Services.prefs.addObserver(DEVTOOLS_DISABLE_CACHE_PREF,
-                               this.updateBrowserCacheDisabled);
+    Services.prefs.addObserver(
+      DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
+      this.updatePersistentLogsEnabled
+    );
+    Services.prefs.addObserver(
+      DEVTOOLS_DISABLE_CACHE_PREF,
+      this.updateBrowserCacheDisabled
+    );
+
+    this.shortcuts = new KeyShortcuts({
+      window,
+    });
+
+    this.shortcuts.on(SEARCH_KEY_SHORTCUT, event => {
+      event.preventDefault();
+      this.props.toggleSearchPanel();
+    });
   }
 
   shouldComponentUpdate(nextProps) {
-    return this.props.persistentLogsEnabled !== nextProps.persistentLogsEnabled
-    || this.props.browserCacheDisabled !== nextProps.browserCacheDisabled
-    || this.props.recording !== nextProps.recording
-    || this.props.singleRow !== nextProps.singleRow
-    || !Object.is(this.props.requestFilterTypes, nextProps.requestFilterTypes)
-    || this.props.networkThrottling !== nextProps.networkThrottling
-
-    // Filtered requests are useful only when searchbox is focused
-    || !!(this.refs.searchbox && this.refs.searchbox.focused);
+    return (
+      this.props.persistentLogsEnabled !== nextProps.persistentLogsEnabled ||
+      this.props.browserCacheDisabled !== nextProps.browserCacheDisabled ||
+      this.props.recording !== nextProps.recording ||
+      this.props.searchPanelOpen !== nextProps.searchPanelOpen ||
+      this.props.singleRow !== nextProps.singleRow ||
+      !Object.is(this.props.requestFilterTypes, nextProps.requestFilterTypes) ||
+      this.props.networkThrottling !== nextProps.networkThrottling ||
+      // Filtered requests are useful only when searchbox is focused
+      !!(this.refs.searchbox && this.refs.searchbox.focused)
+    );
   }
 
   componentWillUnmount() {
-    Services.prefs.removeObserver(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
-                                  this.updatePersistentLogsEnabled);
-    Services.prefs.removeObserver(DEVTOOLS_DISABLE_CACHE_PREF,
-                                  this.updateBrowserCacheDisabled);
+    Services.prefs.removeObserver(
+      DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
+      this.updatePersistentLogsEnabled
+    );
+    Services.prefs.removeObserver(
+      DEVTOOLS_DISABLE_CACHE_PREF,
+      this.updateBrowserCacheDisabled
+    );
   }
 
   toggleRequestFilterType(evt) {
@@ -145,13 +214,20 @@ class Toolbar extends Component {
   }
 
   updatePersistentLogsEnabled() {
+    // Make sure the UI is updated when the pref changes.
+    // It might happen when the user changed it through about:config or
+    // through another Toolbox instance (opened in another browser tab).
+    // In such case, skip telemetry recordings.
     this.props.enablePersistentLogs(
-      Services.prefs.getBoolPref(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF));
+      Services.prefs.getBoolPref(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF),
+      true
+    );
   }
 
   updateBrowserCacheDisabled() {
     this.props.disableBrowserCache(
-      Services.prefs.getBoolPref(DEVTOOLS_DISABLE_CACHE_PREF));
+      Services.prefs.getBoolPref(DEVTOOLS_DISABLE_CACHE_PREF)
+    );
   }
 
   autocompleteProvider(filter) {
@@ -162,7 +238,7 @@ class Toolbar extends Component {
     const { connector, filteredRequests } = this.props;
 
     // Fetch responseCookies & responseHeaders for building autocomplete list
-    filteredRequests.forEach((request) => {
+    filteredRequests.forEach(request => {
       fetchNetworkUpdatePacket(connector.requestData, request, [
         "responseCookies",
         "responseHeaders",
@@ -181,13 +257,12 @@ class Toolbar extends Component {
    * Render a clear button.
    */
   renderClearButton(clearRequests) {
-    return (
-      button({
-        className: "devtools-button devtools-clear-icon requests-list-clear-button",
-        title: TOOLBAR_CLEAR,
-        onClick: clearRequests,
-      })
-    );
+    return button({
+      className:
+        "devtools-button devtools-clear-icon requests-list-clear-button",
+      title: TOOLBAR_CLEAR,
+      onClick: clearRequests,
+    });
   }
 
   /**
@@ -202,13 +277,45 @@ class Toolbar extends Component {
       recording ? "devtools-pause-icon" : "devtools-play-icon",
     ].join(" ");
 
-    return (
-      button({
-        className: toggleRecordingButtonClass,
-        title: TOOLBAR_TOGGLE_RECORDING,
-        onClick: toggleRecording,
-      })
-    );
+    return button({
+      className: toggleRecordingButtonClass,
+      title: TOOLBAR_TOGGLE_RECORDING,
+      onClick: toggleRecording,
+    });
+  }
+
+  /**
+   * Render a search button.
+   */
+  renderSearchButton(toggleSearchPanel) {
+    const { searchPanelOpen } = this.props;
+
+    // The search and request blocking features are available behind a pref.
+    if (
+      !Services.prefs.getBoolPref("devtools.netmonitor.features.search") &&
+      !Services.prefs.getBoolPref(
+        "devtools.netmonitor.features.requestBlocking"
+      )
+    ) {
+      return null;
+    }
+
+    const className = [
+      "devtools-button",
+      "devtools-search-icon",
+      "requests-list-search-button",
+    ];
+
+    if (searchPanelOpen) {
+      className.push("checked");
+    }
+
+    return button({
+      className: className.join(" "),
+      title: TOOLBAR_SEARCH,
+      "aria-pressed": searchPanelOpen,
+      onClick: toggleSearchPanel,
+    });
   }
 
   /**
@@ -216,24 +323,19 @@ class Toolbar extends Component {
    */
   renderFilterButtons(requestFilterTypes) {
     // Render list of filter-buttons.
-    const buttons = Object.entries(requestFilterTypes).map(([type, checked]) => {
-      const classList = ["devtools-button", `requests-list-filter-${type}-button`];
-      checked && classList.push("checked");
-
-      return (
-        button({
-          className: classList.join(" "),
+    const buttons = Object.entries(requestFilterTypes).map(([type, checked]) =>
+      button(
+        {
+          className: `devtools-togglebutton requests-list-filter-${type}-button`,
           key: type,
           onClick: this.toggleRequestFilterType,
           onKeyDown: this.toggleRequestFilterType,
           "aria-pressed": checked,
           "data-key": type,
         },
-          TOOLBAR_FILTER_LABELS[type]
-        )
-      );
-    });
-
+        TOOLBAR_FILTER_LABELS[type]
+      )
+    );
     return div({ className: "requests-list-filter-buttons" }, buttons);
   }
 
@@ -241,21 +343,19 @@ class Toolbar extends Component {
    * Render a Persistlog checkbox.
    */
   renderPersistlogCheckbox(persistentLogsEnabled, togglePersistentLogs) {
-    return (
-      label(
-        {
-          className: "devtools-checkbox-label devtools-persistlog-checkbox",
-          title: ENABLE_PERSISTENT_LOGS_TOOLTIP,
-        },
-        input({
-          id: "devtools-persistlog-checkbox",
-          className: "devtools-checkbox",
-          type: "checkbox",
-          checked: persistentLogsEnabled,
-          onChange: togglePersistentLogs,
-        }),
-        ENABLE_PERSISTENT_LOGS_LABEL,
-      )
+    return label(
+      {
+        className: "devtools-checkbox-label devtools-persistlog-checkbox",
+        title: ENABLE_PERSISTENT_LOGS_TOOLTIP,
+      },
+      input({
+        id: "devtools-persistlog-checkbox",
+        className: "devtools-checkbox",
+        type: "checkbox",
+        checked: persistentLogsEnabled,
+        onChange: togglePersistentLogs,
+      }),
+      ENABLE_PERSISTENT_LOGS_LABEL
     );
   }
 
@@ -263,89 +363,48 @@ class Toolbar extends Component {
    * Render a Cache checkbox.
    */
   renderCacheCheckbox(browserCacheDisabled, toggleBrowserCache) {
-    return (
-      label(
-        {
-          className: "devtools-checkbox-label devtools-cache-checkbox",
-          title: DISABLE_CACHE_TOOLTIP,
-        },
-        input({
-          id: "devtools-cache-checkbox",
-          className: "devtools-checkbox",
-          type: "checkbox",
-          checked: browserCacheDisabled,
-          onChange: toggleBrowserCache,
-        }),
-        DISABLE_CACHE_LABEL,
-      )
+    return label(
+      {
+        className: "devtools-checkbox-label devtools-cache-checkbox",
+        title: DISABLE_CACHE_TOOLTIP,
+      },
+      input({
+        id: "devtools-cache-checkbox",
+        className: "devtools-checkbox",
+        type: "checkbox",
+        checked: browserCacheDisabled,
+        onChange: toggleBrowserCache,
+      }),
+      DISABLE_CACHE_LABEL
     );
   }
 
   /**
-   * Render network throttling selector button.
+   * Render network throttling menu button.
    */
-  renderThrottlingSelector() {
-    const {
-      networkThrottling,
-    } = this.props;
+  renderThrottlingMenu() {
+    const { networkThrottling, onChangeNetworkThrottling } = this.props;
 
-    const selectedProfile = networkThrottling.enabled ?
-      networkThrottling.profile : NO_THROTTLING_LABEL;
-    return button({
-      id: "global-network-throttling-selector",
-      title: selectedProfile,
-      className: "devtools-button devtools-drop-down-button",
-      onClick: evt => {
-        this.showThrottlingSelector(evt.target);
-      },
-    },
-    dom.span({className: "title"},
-      selectedProfile)
-    );
-  }
-
-  showThrottlingSelector(menuButton) {
-    const {
+    return NetworkThrottlingMenu({
       networkThrottling,
       onChangeNetworkThrottling,
-    } = this.props;
-
-    const menuItems = throttlingProfiles.map(profile => {
-      return {
-        label: profile.id,
-        type: "checkbox",
-        checked: networkThrottling.enabled &&
-          (profile.id == networkThrottling.profile),
-        click: () => onChangeNetworkThrottling(true, profile.id),
-      };
     });
-
-    menuItems.unshift("-");
-
-    menuItems.unshift({
-      label: NO_THROTTLING_LABEL,
-      type: "checkbox",
-      checked: !networkThrottling.enabled,
-      click: () => onChangeNetworkThrottling(false, ""),
-    });
-
-    showMenu(menuItems, { button: menuButton });
   }
 
   /**
    * Render drop down button with HAR related actions.
    */
   renderHarButton() {
-    return button({
-      id: "devtools-har-button",
-      title: TOOLBAR_HAR_BUTTON,
-      className: "devtools-button devtools-har-button devtools-drop-down-button",
-      onClick: evt => {
-        this.showHarMenu(evt.target);
+    return button(
+      {
+        id: "devtools-har-button",
+        title: TOOLBAR_HAR_BUTTON,
+        className: "devtools-button devtools-dropdown-button",
+        onClick: evt => {
+          this.showHarMenu(evt.target);
+        },
       },
-    },
-    dom.span({className: "title"},
-      "HAR")
+      dom.span({ className: "title" }, "HAR")
     );
   }
 
@@ -391,21 +450,18 @@ class Toolbar extends Component {
    * Render filter Searchbox.
    */
   renderFilterBox(setRequestFilterText) {
-    return (
-      SearchBox({
-        delay: FILTER_SEARCH_DELAY,
-        keyShortcut: SEARCH_KEY_SHORTCUT,
-        placeholder: SEARCH_PLACE_HOLDER,
-        plainStyle: true,
-        type: "filter",
-        ref: "searchbox",
-        onChange: setRequestFilterText,
-        onFocus: this.onSearchBoxFocus,
-        autocompleteProvider: this.autocompleteProvider,
-        learnMoreUrl: LEARN_MORE_URL,
-        learnMoreTitle: LEARN_MORE_TITLE,
-      })
-    );
+    return SearchBox({
+      delay: FILTER_SEARCH_DELAY,
+      keyShortcut: FILTER_KEY_SHORTCUT,
+      placeholder: SEARCH_PLACE_HOLDER,
+      type: "filter",
+      ref: "searchbox",
+      onChange: setRequestFilterText,
+      onFocus: this.onSearchBoxFocus,
+      autocompleteProvider: this.autocompleteProvider,
+      learnMoreUrl: LEARN_MORE_URL,
+      learnMoreTitle: LEARN_MORE_TITLE,
+    });
   }
 
   render() {
@@ -420,53 +476,65 @@ class Toolbar extends Component {
       browserCacheDisabled,
       recording,
       singleRow,
+      toggleSearchPanel,
     } = this.props;
 
     // Render the entire toolbar.
     // dock at bottom or dock at side has different layout
-    return singleRow ? (
-      span({ className: "devtools-toolbar devtools-toolbar-container" },
-        span({ className: "devtools-toolbar-group devtools-toolbar-single-row" },
-          this.renderClearButton(clearRequests),
-          this.renderSeparator(),
-          this.renderFilterBox(setRequestFilterText),
-          this.renderSeparator(),
-          this.renderToggleRecordingButton(recording, toggleRecording),
-          this.renderSeparator(),
-          this.renderFilterButtons(requestFilterTypes),
-          this.renderSeparator(),
-          this.renderPersistlogCheckbox(persistentLogsEnabled, togglePersistentLogs),
-          this.renderCacheCheckbox(browserCacheDisabled, toggleBrowserCache),
-          this.renderSeparator(),
-          this.renderThrottlingSelector(),
-          this.renderHarButton(),
+    return singleRow
+      ? span(
+          { id: "netmonitor-toolbar-container" },
+          span(
+            { className: "devtools-toolbar devtools-input-toolbar" },
+            this.renderClearButton(clearRequests),
+            this.renderSeparator(),
+            this.renderFilterBox(setRequestFilterText),
+            this.renderSeparator(),
+            this.renderToggleRecordingButton(recording, toggleRecording),
+            this.renderSearchButton(toggleSearchPanel),
+            this.renderSeparator(),
+            this.renderFilterButtons(requestFilterTypes),
+            this.renderSeparator(),
+            this.renderPersistlogCheckbox(
+              persistentLogsEnabled,
+              togglePersistentLogs
+            ),
+            this.renderCacheCheckbox(browserCacheDisabled, toggleBrowserCache),
+            this.renderSeparator(),
+            this.renderThrottlingMenu(),
+            this.renderHarButton()
+          )
         )
-      )
-    ) : (
-      span({ className: "devtools-toolbar devtools-toolbar-container" },
-        span({ className: "devtools-toolbar-group devtools-toolbar-two-rows-1" },
-          this.renderClearButton(clearRequests),
-          this.renderSeparator(),
-          this.renderFilterBox(setRequestFilterText),
-          this.renderSeparator(),
-          this.renderToggleRecordingButton(recording, toggleRecording),
-          this.renderSeparator(),
-          this.renderPersistlogCheckbox(persistentLogsEnabled, togglePersistentLogs),
-          this.renderCacheCheckbox(browserCacheDisabled, toggleBrowserCache),
-          this.renderSeparator(),
-          this.renderThrottlingSelector(),
-          this.renderHarButton(),
-        ),
-        span({ className: "devtools-toolbar-group devtools-toolbar-two-rows-2" },
-          this.renderFilterButtons(requestFilterTypes)
-        )
-      )
-    );
+      : span(
+          { id: "netmonitor-toolbar-container" },
+          span(
+            { className: "devtools-toolbar devtools-input-toolbar" },
+            this.renderClearButton(clearRequests),
+            this.renderSeparator(),
+            this.renderFilterBox(setRequestFilterText),
+            this.renderSeparator(),
+            this.renderToggleRecordingButton(recording, toggleRecording),
+            this.renderSearchButton(toggleSearchPanel),
+            this.renderSeparator(),
+            this.renderPersistlogCheckbox(
+              persistentLogsEnabled,
+              togglePersistentLogs
+            ),
+            this.renderCacheCheckbox(browserCacheDisabled, toggleBrowserCache),
+            this.renderSeparator(),
+            this.renderThrottlingMenu(),
+            this.renderHarButton()
+          ),
+          span(
+            { className: "devtools-toolbar devtools-input-toolbar" },
+            this.renderFilterButtons(requestFilterTypes)
+          )
+        );
   }
 }
 
 module.exports = connect(
-  (state) => ({
+  state => ({
     browserCacheDisabled: state.ui.browserCacheDisabled,
     displayedRequests: getDisplayedRequests(state),
     filteredRequests: getTypeFilteredRequests(state),
@@ -474,17 +542,22 @@ module.exports = connect(
     recording: getRecordingState(state),
     requestFilterTypes: state.filters.requestFilterTypes,
     networkThrottling: state.networkThrottling,
+    searchPanelOpen: state.search.panelOpen,
   }),
-  (dispatch) => ({
+  dispatch => ({
     clearRequests: () => dispatch(Actions.clearRequests()),
-    disableBrowserCache: (disabled) => dispatch(Actions.disableBrowserCache(disabled)),
-    enablePersistentLogs: (enabled) => dispatch(Actions.enablePersistentLogs(enabled)),
-    setRequestFilterText: (text) => dispatch(Actions.setRequestFilterText(text)),
+    disableBrowserCache: disabled =>
+      dispatch(Actions.disableBrowserCache(disabled)),
+    enablePersistentLogs: (enabled, skipTelemetry) =>
+      dispatch(Actions.enablePersistentLogs(enabled, skipTelemetry)),
+    setRequestFilterText: text => dispatch(Actions.setRequestFilterText(text)),
     toggleBrowserCache: () => dispatch(Actions.toggleBrowserCache()),
     toggleRecording: () => dispatch(Actions.toggleRecording()),
     togglePersistentLogs: () => dispatch(Actions.togglePersistentLogs()),
-    toggleRequestFilterType: (type) => dispatch(Actions.toggleRequestFilterType(type)),
+    toggleRequestFilterType: type =>
+      dispatch(Actions.toggleRequestFilterType(type)),
     onChangeNetworkThrottling: (enabled, profile) =>
       dispatch(changeNetworkThrottling(enabled, profile)),
-  }),
+    toggleSearchPanel: () => dispatch(Actions.toggleSearchPanel()),
+  })
 )(Toolbar);

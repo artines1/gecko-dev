@@ -17,25 +17,27 @@
 
 class nsIScrollbarMediator;
 
-nsIFrame* NS_NewScrollbarFrame(nsIPresShell* aPresShell,
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
+
+nsIFrame* NS_NewScrollbarFrame(mozilla::PresShell* aPresShell,
                                mozilla::ComputedStyle* aStyle);
 
 class nsScrollbarFrame final : public nsBoxFrame,
-                               public nsIAnonymousContentCreator
-{
-public:
-  explicit nsScrollbarFrame(ComputedStyle* aStyle)
-    : nsBoxFrame(aStyle, kClassID)
-    , mIncrement(0)
-    , mSmoothScroll(false)
-    , mScrollbarMediator(nullptr)
-    , mUpTopButton(nullptr)
-    , mDownTopButton(nullptr)
-    , mSlider(nullptr)
-    , mThumb(nullptr)
-    , mUpBottomButton(nullptr)
-    , mDownBottomButton(nullptr)
-  {}
+                               public nsIAnonymousContentCreator {
+ public:
+  explicit nsScrollbarFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
+      : nsBoxFrame(aStyle, aPresContext, kClassID),
+        mIncrement(0),
+        mSmoothScroll(false),
+        mScrollbarMediator(nullptr),
+        mUpTopButton(nullptr),
+        mDownTopButton(nullptr),
+        mSlider(nullptr),
+        mThumb(nullptr),
+        mUpBottomButton(nullptr),
+        mDownBottomButton(nullptr) {}
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsScrollbarFrame)
@@ -47,8 +49,7 @@ public:
 #endif
 
   // nsIFrame overrides
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID,
-                                    nsAtom* aAttribute,
+  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                                     int32_t aModType) override;
 
   NS_IMETHOD HandlePress(nsPresContext* aPresContext,
@@ -60,6 +61,7 @@ public:
                                  nsEventStatus* aEventStatus,
                                  bool aControlHeld) override;
 
+  MOZ_CAN_RUN_SCRIPT
   NS_IMETHOD HandleDrag(nsPresContext* aPresContext,
                         mozilla::WidgetGUIEvent* aEvent,
                         nsEventStatus* aEventStatus) override;
@@ -68,16 +70,15 @@ public:
                            mozilla::WidgetGUIEvent* aEvent,
                            nsEventStatus* aEventStatus) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot,
+                           PostDestroyData& aPostDestroyData) override;
 
-  virtual void Init(nsIContent*       aContent,
-                    nsContainerFrame* aParent,
-                    nsIFrame*         aPrevInFlow) override;
+  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
+                    nsIFrame* aPrevInFlow) override;
 
-  virtual void Reflow(nsPresContext*           aPresContext,
-                      ReflowOutput&     aDesiredSize,
+  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
                       const ReflowInput& aReflowInput,
-                      nsReflowStatus&          aStatus) override;
+                      nsReflowStatus& aStatus) override;
 
   void SetScrollbarMediatorContent(nsIContent* aMediator);
   nsIScrollbarMediator* GetScrollbarMediator();
@@ -112,17 +113,18 @@ public:
   int32_t GetIncrement() { return mIncrement; }
 
   // nsIAnonymousContentCreator
-  virtual nsresult CreateAnonymousContent(nsTArray<ContentInfo>& aElements) override;
+  virtual nsresult CreateAnonymousContent(
+      nsTArray<ContentInfo>& aElements) override;
   virtual void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                         uint32_t aFilter) override;
 
   void UpdateChildrenAttributeValue(nsAtom* aAttribute, bool aNotify);
 
-protected:
-  int32_t mIncrement; // Amount to scroll, in CSSPixels
+ protected:
+  int32_t mIncrement;  // Amount to scroll, in CSSPixels
   bool mSmoothScroll;
 
-private:
+ private:
   nsCOMPtr<nsIContent> mScrollbarMediator;
 
   nsCOMPtr<Element> mUpTopButton;
@@ -131,6 +133,6 @@ private:
   nsCOMPtr<Element> mThumb;
   nsCOMPtr<Element> mUpBottomButton;
   nsCOMPtr<Element> mDownBottomButton;
-}; // class nsScrollbarFrame
+};  // class nsScrollbarFrame
 
 #endif

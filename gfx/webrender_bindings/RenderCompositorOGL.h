@@ -13,17 +13,18 @@ namespace mozilla {
 
 namespace wr {
 
-class RenderCompositorOGL : public RenderCompositor
-{
-public:
-  static UniquePtr<RenderCompositor> Create(RefPtr<widget::CompositorWidget>&& aWidget);
+class RenderCompositorOGL : public RenderCompositor {
+ public:
+  static UniquePtr<RenderCompositor> Create(
+      RefPtr<widget::CompositorWidget>&& aWidget);
 
   RenderCompositorOGL(RefPtr<gl::GLContext>&& aGL,
                       RefPtr<widget::CompositorWidget>&& aWidget);
   virtual ~RenderCompositorOGL();
 
-  bool BeginFrame() override;
+  bool BeginFrame(layers::NativeLayer* aNativeLayer) override;
   void EndFrame() override;
+  bool WaitForGPU() override;
   void Pause() override;
   bool Resume() override;
 
@@ -33,11 +34,22 @@ public:
 
   LayoutDeviceIntSize GetBufferSize() override;
 
-protected:
+ protected:
+  void InsertFrameDoneSync();
+
   RefPtr<gl::GLContext> mGL;
+
+  // The native layer that we're currently rendering to, if any.
+  // Non-null only between BeginFrame and EndFrame if BeginFrame has been called
+  // with a non-null aNativeLayer.
+  RefPtr<layers::NativeLayer> mCurrentNativeLayer;
+
+  // Used to apply back-pressure in WaitForGPU().
+  GLsync mPreviousFrameDoneSync;
+  GLsync mThisFrameDoneSync;
 };
 
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla
 
 #endif

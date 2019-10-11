@@ -37,6 +37,10 @@ function TypedArrayLengthMethod() {
     return TypedArrayLength(this);
 }
 
+function TypedArrayByteOffsetMethod() {
+    return TypedArrayByteOffset(this);
+}
+
 function GetAttachedArrayBuffer(tarray) {
     var buffer = ViewedArrayBufferIfReified(tarray);
     if (IsDetachedBuffer(buffer))
@@ -64,9 +68,45 @@ function IsTypedArrayEnsuringArrayBuffer(arg) {
     return false;
 }
 
+// ES2019 draft rev 85ce767c86a1a8ed719fe97e978028bff819d1f2
+// 7.3.20 SpeciesConstructor ( O, defaultConstructor )
+//
+// SpeciesConstructor function optimized for TypedArrays to avoid calling
+// _ConstructorForTypedArray, a non-inlineable runtime function, in the normal
+// case.
+function TypedArraySpeciesConstructor(obj) {
+    // Step 1.
+    assert(IsObject(obj), "not passed an object");
+
+    // Step 2.
+    var ctor = obj.constructor;
+
+    // Step 3.
+    if (ctor === undefined)
+        return _ConstructorForTypedArray(obj);
+
+    // Step 4.
+    if (!IsObject(ctor))
+        ThrowTypeError(JSMSG_OBJECT_REQUIRED, "object's 'constructor' property");
+
+    // Steps 5.
+    var s = ctor[std_species];
+
+    // Step 6.
+    if (s === undefined || s === null)
+        return _ConstructorForTypedArray(obj);
+
+    // Step 7.
+    if (IsConstructor(s))
+        return s;
+
+    // Step 8.
+    ThrowTypeError(JSMSG_NOT_CONSTRUCTOR, "@@species property of object's constructor");
+}
+
 // ES2017 draft rev 6859bb9ccaea9c6ede81d71e5320e3833b92cb3e
 // 22.2.3.5.1 Runtime Semantics: ValidateTypedArray ( O )
-function ValidateTypedArray(obj, error) {
+function ValidateTypedArray(obj) {
     if (IsObject(obj)) {
         /* Steps 3-5 (non-wrapped typed arrays). */
         if (IsTypedArray(obj)) {
@@ -84,7 +124,7 @@ function ValidateTypedArray(obj, error) {
     }
 
     /* Steps 1-2. */
-    ThrowTypeError(error);
+    ThrowTypeError(JSMSG_NON_TYPED_ARRAY_RETURNED);
 }
 
 // ES2017 draft rev 6859bb9ccaea9c6ede81d71e5320e3833b92cb3e
@@ -94,7 +134,7 @@ function TypedArrayCreateWithLength(constructor, length) {
     var newTypedArray = new constructor(length);
 
     // Step 2.
-    var isTypedArray = ValidateTypedArray(newTypedArray, JSMSG_NON_TYPED_ARRAY_RETURNED);
+    var isTypedArray = ValidateTypedArray(newTypedArray);
 
     // Step 3.
     var len;
@@ -119,7 +159,7 @@ function TypedArrayCreateWithBuffer(constructor, buffer, byteOffset, length) {
     var newTypedArray = new constructor(buffer, byteOffset, length);
 
     // Step 2.
-    ValidateTypedArray(newTypedArray, JSMSG_NON_TYPED_ARRAY_RETURNED);
+    ValidateTypedArray(newTypedArray);
 
     // Step 3 (not applicable).
 
@@ -132,11 +172,8 @@ function TypedArrayCreateWithBuffer(constructor, buffer, byteOffset, length) {
 function TypedArraySpeciesCreateWithLength(exemplar, length) {
     // Step 1 (omitted).
 
-    // Step 2.
-    var defaultConstructor = _ConstructorForTypedArray(exemplar);
-
-    // Step 3.
-    var C = SpeciesConstructor(exemplar, defaultConstructor);
+    // Steps 2-3.
+    var C = TypedArraySpeciesConstructor(exemplar);
 
     // Step 4.
     return TypedArrayCreateWithLength(C, length);
@@ -147,11 +184,8 @@ function TypedArraySpeciesCreateWithLength(exemplar, length) {
 function TypedArraySpeciesCreateWithBuffer(exemplar, buffer, byteOffset, length) {
     // Step 1 (omitted).
 
-    // Step 2.
-    var defaultConstructor = _ConstructorForTypedArray(exemplar);
-
-    // Step 3.
-    var C = SpeciesConstructor(exemplar, defaultConstructor);
+    // Steps 2-3.
+    var C = TypedArraySpeciesConstructor(exemplar);
 
     // Step 4.
     return TypedArrayCreateWithBuffer(C, buffer, byteOffset, length);
@@ -317,7 +351,12 @@ function TypedArrayFill(value, start = 0, end = undefined) {
     var len = TypedArrayLength(O);
 
     // Step 4.
-    value = ToNumber(value);
+    var kind = GetTypedArrayKind(O);
+    if (kind === TYPEDARRAY_KIND_BIGINT64 || kind === TYPEDARRAY_KIND_BIGUINT64) {
+        value = ToBigInt(value);
+    } else {
+        value = ToNumber(value);
+    }
 
     // Step 5.
     var relativeStart = ToInteger(start);
@@ -867,126 +906,6 @@ function TypedArrayReverse() {
     return O;
 }
 
-// ES6 draft 20150220 22.2.3.22.1 %TypedArray%.prototype.set(array [, offset])
-function SetFromNonTypedArray(target, array, targetOffset, targetLength, targetBuffer) {
-    assert(!IsPossiblyWrappedTypedArray(array),
-           "typed arrays must be passed to SetFromTypedArray");
-
-    // Steps 1-11 provided by caller.
-
-    // Steps 16-17.
-    var src = ToObject(array);
-
-    // Steps 18-19.
-    var srcLength = ToLength(src.length);
-
-    // Step 20.
-    var limitOffset = targetOffset + srcLength;
-    if (limitOffset > targetLength)
-        ThrowRangeError(JSMSG_BAD_INDEX);
-
-    // Step 22.
-    var k = 0;
-
-    // Optimization: if the buffer is shared then it is not detachable
-    // and also not inline, so avoid checking overhead inside the loop in
-    // that case.
-    var isShared = targetBuffer !== null
-                   && (targetBuffer = GuardToSharedArrayBuffer(targetBuffer)) !== null;
-
-    // Steps 12-15, 21, 23-24.
-    while (targetOffset < limitOffset) {
-        // Steps 24a-c.
-        var kNumber = ToNumber(src[k]);
-
-        // Step 24d.  This explicit check will be unnecessary when we implement
-        // throw-on-getting/setting-element-in-detached-buffer semantics.
-        if (!isShared) {
-            if (targetBuffer === null) {
-                // A typed array previously using inline storage may acquire a
-                // buffer, so we must check with the source.
-                targetBuffer = ViewedArrayBufferIfReified(target);
-            }
-            if (IsDetachedBuffer(targetBuffer))
-                ThrowTypeError(JSMSG_TYPED_ARRAY_DETACHED);
-        }
-
-        // Step 24e.
-        target[targetOffset] = kNumber;
-
-        // Steps 24f-g.
-        k++;
-        targetOffset++;
-    }
-
-    // Step 25.
-    return undefined;
-}
-
-// ES6 draft 20150220 22.2.3.22.2 %TypedArray%.prototype.set(typedArray [, offset])
-function SetFromTypedArray(target, typedArray, targetOffset, targetLength) {
-    assert(IsPossiblyWrappedTypedArray(typedArray),
-           "only typed arrays may be passed to this method");
-
-    // Steps 1-11 provided by caller.
-
-    // Steps 12-24.
-    var res = SetFromTypedArrayApproach(target, typedArray, targetOffset,
-                                        targetLength | 0);
-    assert(res === JS_SETTYPEDARRAY_SAME_TYPE ||
-           res === JS_SETTYPEDARRAY_OVERLAPPING ||
-           res === JS_SETTYPEDARRAY_DISJOINT,
-           "intrinsic didn't return one of its enumerated return values");
-
-    // If the elements had the same type, then SetFromTypedArrayApproach also
-    // performed step 29.
-    if (res == JS_SETTYPEDARRAY_SAME_TYPE)
-        return undefined; // Step 25: done.
-
-    // Otherwise, all checks and side effects except the actual element-writing
-    // happened.  Either we're assigning from one range to a non-overlapping
-    // second range, or we're not.
-
-    if (res === JS_SETTYPEDARRAY_DISJOINT) {
-        SetDisjointTypedElements(target, targetOffset | 0, typedArray);
-        return undefined; // Step 25: done.
-    }
-
-    // Now the hard case: overlapping memory ranges.  Delegate to yet another
-    // intrinsic.
-    SetOverlappingTypedElements(target, targetOffset | 0, typedArray);
-
-    // Step 25.
-    return undefined;
-}
-
-// ES6 draft 20150304 %TypedArray%.prototype.set
-function TypedArraySet(overloaded, offset = 0) {
-    // Steps 2-5, either algorithm.
-    var target = this;
-    if (!IsObject(target) || !IsTypedArray(target)) {
-        return callFunction(CallTypedArrayMethodIfWrapped,
-                            target, overloaded, offset, "TypedArraySet");
-    }
-
-    // Steps 6-8, either algorithm.
-    var targetOffset = ToInteger(offset);
-    if (targetOffset < 0)
-        ThrowRangeError(JSMSG_TYPED_ARRAY_NEGATIVE_ARG, "2");
-
-    // Steps 9-10.
-    var targetBuffer = GetAttachedArrayBuffer(target);
-
-    // Step 11.
-    var targetLength = TypedArrayLength(target);
-
-    // Steps 12 et seq.
-    if (IsPossiblyWrappedTypedArray(overloaded))
-        return SetFromTypedArray(target, overloaded, targetOffset, targetLength);
-
-    return SetFromNonTypedArray(target, overloaded, targetOffset, targetLength, targetBuffer);
-}
-
 // ES2017 draft rev 6859bb9ccaea9c6ede81d71e5320e3833b92cb3e
 // 22.2.3.24 %TypedArray%.prototype.slice ( start, end )
 function TypedArraySlice(start, end) {
@@ -1154,7 +1073,30 @@ function TypedArrayCompareInt(x, y) {
     return 0;
 }
 
-// ES2018 draft rev 3bbc87cd1b9d3bf64c3e68ca2fe9c5a3f2c304c0
+// https://tc39.github.io/proposal-bigint/#sec-%typedarray%.prototype.sort
+// TypedArray SortCompare specialization for BigInt values.
+function TypedArrayCompareBigInt(x, y) {
+    // Step 1.
+    assert(typeof x === "bigint" && typeof y === "bigint",
+           "x and y are not BigInts.");
+
+    // Step 2 (Implemented in TypedArraySort).
+
+    // Step 6.
+    if (x < y)
+        return -1;
+
+    // Step 7.
+    if (x > y)
+        return 1;
+
+    // Steps 3-5, 8-9 (Not applicable when sorting BigInt values).
+
+    // Step 10.
+    return 0;
+}
+
+// ES2019 draft rev 8a16cb8d18660a1106faae693f0f39b9f1a30748
 // 22.2.3.26 %TypedArray%.prototype.sort ( comparefn )
 function TypedArraySort(comparefn) {
     // This function is not generic.
@@ -1191,29 +1133,50 @@ function TypedArraySort(comparefn) {
         return obj;
 
     if (comparefn === undefined) {
-        if (IsUint8TypedArray(obj)) {
+        var kind = GetTypedArrayKind(obj);
+        switch (kind) {
+          case TYPEDARRAY_KIND_UINT8:
+          case TYPEDARRAY_KIND_UINT8CLAMPED:
             return CountingSort(obj, len, false /* signed */, TypedArrayCompareInt);
-        } else if (IsInt8TypedArray(obj)) {
+          case TYPEDARRAY_KIND_INT8:
             return CountingSort(obj, len, true /* signed */, TypedArrayCompareInt);
-        } else if (IsUint16TypedArray(obj)) {
-            return RadixSort(obj, len, buffer, 2 /* nbytes */, false /* signed */, false /* floating */, TypedArrayCompareInt);
-        } else if (IsInt16TypedArray(obj)) {
-            return RadixSort(obj, len, buffer, 2 /* nbytes */, true /* signed */, false /* floating */, TypedArrayCompareInt);
-        } else if (IsUint32TypedArray(obj)) {
-            return RadixSort(obj, len, buffer, 4 /* nbytes */, false /* signed */, false /* floating */, TypedArrayCompareInt);
-        } else if (IsInt32TypedArray(obj)) {
-            return RadixSort(obj, len, buffer, 4 /* nbytes */, true /* signed */, false /* floating */, TypedArrayCompareInt);
-        } else if (IsFloat32TypedArray(obj)) {
-            return RadixSort(obj, len, buffer, 4 /* nbytes */, true /* signed */, true /* floating */, TypedArrayCompare);
+          case TYPEDARRAY_KIND_UINT16:
+            return RadixSort(obj, len, buffer,
+                             2 /* nbytes */, false /* signed */, false /* floating */,
+                             TypedArrayCompareInt);
+          case TYPEDARRAY_KIND_INT16:
+            return RadixSort(obj, len, buffer,
+                             2 /* nbytes */, true /* signed */, false /* floating */,
+                             TypedArrayCompareInt);
+          case TYPEDARRAY_KIND_UINT32:
+            return RadixSort(obj, len, buffer,
+                             4 /* nbytes */, false /* signed */, false /* floating */,
+                             TypedArrayCompareInt);
+          case TYPEDARRAY_KIND_INT32:
+            return RadixSort(obj, len, buffer,
+                             4 /* nbytes */, true /* signed */, false /* floating */,
+                             TypedArrayCompareInt);
+          case TYPEDARRAY_KIND_BIGINT64:
+          case TYPEDARRAY_KIND_BIGUINT64:
+            return QuickSort(obj, len, TypedArrayCompareBigInt);
+          case TYPEDARRAY_KIND_FLOAT32:
+            return RadixSort(obj, len, buffer,
+                             4 /* nbytes */, true /* signed */, true /* floating */,
+                             TypedArrayCompare);
+          case TYPEDARRAY_KIND_FLOAT64:
+          default:
+            // Include |default| to ensure Ion marks this call as the
+            // last instruction in the if-statement.
+            assert(kind === TYPEDARRAY_KIND_FLOAT64, "unexpected typed array kind");
+            return QuickSort(obj, len, TypedArrayCompare);
         }
-        return QuickSort(obj, len, TypedArrayCompare);
     }
 
     // To satisfy step 2 from TypedArray SortCompare described in 22.2.3.26
     // the user supplied comparefn is wrapped.
     var wrappedCompareFn = function(x, y) {
         // Step a.
-        var v = comparefn(x, y);
+        var v = +comparefn(x, y);
 
         // Step b.
         var length;
@@ -1231,13 +1194,15 @@ function TypedArraySort(comparefn) {
             ThrowTypeError(JSMSG_TYPED_ARRAY_DETACHED);
         }
 
-        // Step c. is redundant, see:
-        // https://bugzilla.mozilla.org/show_bug.cgi?id=1121937#c36
+        // Step c.
+        if (v !== v)
+            return 0;
+
         // Step d.
         return v;
     };
 
-    return QuickSort(obj, len, wrappedCompareFn);
+    return MergeSortTypedArray(obj, len, wrappedCompareFn);
 }
 
 // ES2017 draft rev f8a9be8ea4bd97237d176907a1e3080dce20c68f
@@ -1271,7 +1236,7 @@ function TypedArrayToLocaleString(locales = undefined, options = undefined) {
     // Steps 6-7.
     // Omit the 'if' clause in step 6, since typed arrays can't have undefined
     // or null elements.
-#if EXPOSE_INTL_API
+#if ENABLE_INTL_API
     var R = ToString(callContentFunction(firstElement.toLocaleString, firstElement, locales, options));
 #else
     var R = ToString(callContentFunction(firstElement.toLocaleString, firstElement));
@@ -1297,7 +1262,7 @@ function TypedArrayToLocaleString(locales = undefined, options = undefined) {
         // the error message. So despite bug 1079853, we can skip step 9.c.
 
         // Step 9.d.
-#if EXPOSE_INTL_API
+#if ENABLE_INTL_API
         R = ToString(callContentFunction(nextElement.toLocaleString, nextElement, locales, options));
 #else
         R = ToString(callContentFunction(nextElement.toLocaleString, nextElement));
@@ -1325,7 +1290,10 @@ function TypedArraySubarray(begin, end) {
     }
 
     // Steps 4-6.
-    var buffer = TypedArrayBuffer(obj);
+    var buffer = ViewedArrayBufferIfReified(obj);
+    if (buffer === null) {
+        buffer = TypedArrayBuffer(obj);
+    }
     var srcLength = TypedArrayLength(obj);
 
     // Step 14 (Reordered because otherwise it'd be observable that we reset
@@ -1356,7 +1324,10 @@ function TypedArraySubarray(begin, end) {
 }
 
 // ES6 draft rev30 (2014/12/24) 22.2.3.30 %TypedArray%.prototype.values()
-function TypedArrayValues() {
+//
+// Uncloned functions with `$` prefix are allocated as extended function
+// to store the original name in `_SetCanonicalName`.
+function $TypedArrayValues() {
     // Step 1.
     var O = this;
 
@@ -1366,7 +1337,7 @@ function TypedArrayValues() {
     // Step 7.
     return CreateArrayIterator(O, ITEM_KIND_VALUE);
 }
-_SetCanonicalName(TypedArrayValues, "values");
+_SetCanonicalName($TypedArrayValues, "values");
 
 // Proposed for ES7:
 // https://github.com/tc39/Array.prototype.includes/blob/7c023c19a0/spec.md
@@ -1458,6 +1429,47 @@ function TypedArrayStaticFrom(source, mapfn = undefined, thisArg = undefined) {
         if (!IsCallable(usingIterator))
             ThrowTypeError(JSMSG_NOT_ITERABLE, DecompileArg(0, source));
 
+        // Try to take a fast path when there's no mapper function and the
+        // constructor is a built-in TypedArray constructor.
+        if (!mapping && IsTypedArrayConstructor(C) && IsObject(source)) {
+            // The source is a TypedArray using the default iterator.
+            if (usingIterator === $TypedArrayValues && IsTypedArray(source) &&
+                ArrayIteratorPrototypeOptimizable())
+            {
+                // Step 7.a.
+                // Omitted but we still need to throw if |source| was detached.
+                GetAttachedArrayBuffer(source);
+
+                // Step 7.b.
+                var len = TypedArrayLength(source);
+
+                // Step 7.c.
+                var targetObj = new C(len);
+
+                // Steps 7.d-f.
+                for (var k = 0; k < len; k++) {
+                    targetObj[k] = source[k];
+                }
+
+                // Step 7.g.
+                return targetObj;
+            }
+
+            // The source is a packed array using the default iterator.
+            if (usingIterator === $ArrayValues && IsPackedArray(source) &&
+                ArrayIteratorPrototypeOptimizable())
+            {
+                // Steps 7.b-c.
+                var targetObj = new C(source.length);
+
+                // Steps 7.a, 7.d-f.
+                TypedArrayInitFromPackedArray(targetObj, source);
+
+                // Step 7.g.
+                return targetObj;
+            }
+        }
+
         // Step 7.a.
         var values = IterableToList(source, usingIterator);
 
@@ -1544,26 +1556,11 @@ function TypedArrayStaticOf(/*...items*/) {
 }
 
 // ES 2016 draft Mar 25, 2016 22.2.2.4.
-function TypedArraySpecies() {
+function $TypedArraySpecies() {
     // Step 1.
     return this;
 }
-_SetCanonicalName(TypedArraySpecies, "get [Symbol.species]");
-
-// ES 2017 draft June 2, 2016 22.2.3.32
-function TypedArrayToStringTag() {
-    // Step 1.
-    var O = this;
-
-    // Steps 2-3.
-    if (!IsObject(O) || !IsTypedArray(O))
-        return undefined;
-
-    // Steps 4-6.
-    // Modified to retrieve the [[TypedArrayName]] from the constructor.
-    return _NameForTypedArray(O);
-}
-_SetCanonicalName(TypedArrayToStringTag, "get [Symbol.toStringTag]");
+_SetCanonicalName($TypedArraySpecies, "get [Symbol.species]");
 
 // ES2018 draft rev 0525bb33861c7f4e9850f8a222c89642947c4b9c
 // 22.2.2.1.1 Runtime Semantics: IterableToList( items, method )
@@ -1691,18 +1688,18 @@ function IsDetachedBufferThis() {
 }
 
 // ES 2016 draft Mar 25, 2016 24.1.3.3.
-function ArrayBufferSpecies() {
+function $ArrayBufferSpecies() {
     // Step 1.
     return this;
 }
-_SetCanonicalName(ArrayBufferSpecies, "get [Symbol.species]");
+_SetCanonicalName($ArrayBufferSpecies, "get [Symbol.species]");
 
 // Shared memory and atomics proposal (30 Oct 2016)
-function SharedArrayBufferSpecies() {
+function $SharedArrayBufferSpecies() {
     // Step 1.
     return this;
 }
-_SetCanonicalName(SharedArrayBufferSpecies, "get [Symbol.species]");
+_SetCanonicalName($SharedArrayBufferSpecies, "get [Symbol.species]");
 
 // Shared memory and atomics proposal 6.2.1.5.3 (30 Oct 2016)
 // http://tc39.github.io/ecmascript_sharedmem/shmem.html

@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -19,14 +18,14 @@ const contents = {
     "",
     "span {",
     "  background-color: #EEE;",
-    "}"
+    "}",
   ].join("\n"),
   "contained.scss": [
     "$pink: #f06;",
     "",
     "#header {",
     "  color: $pink;",
-    "}"
+    "}",
   ].join("\n"),
   "sourcemaps.css": [
     "div {",
@@ -35,16 +34,16 @@ const contents = {
     "span {",
     "  background-color: #EEE; }",
     "",
-    "/*# sourceMappingURL=sourcemaps.css.map */"
+    "/*# sourceMappingURL=sourcemaps.css.map */",
   ].join("\n"),
   "contained.css": [
     "#header {",
     "  color: #f06; }",
     "",
     "/*# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJma" +
-    "WxlIjoiIiwic291cmNlcyI6WyJzYXNzL2NvbnRhaW5lZC5zY3NzIl0sIm5hbWVzIjpbXSwi" +
-    "bWFwcGluZ3MiOiJBQUVBO0VBQ0UsT0FISyIsInNvdXJjZXNDb250ZW50IjpbIiRwaW5rOiA" +
-    "jZjA2O1xuXG4jaGVhZGVyIHtcbiAgY29sb3I6ICRwaW5rO1xufSJdfQ==*/"
+      "WxlIjoiIiwic291cmNlcyI6WyJzYXNzL2NvbnRhaW5lZC5zY3NzIl0sIm5hbWVzIjpbXSwi" +
+      "bWFwcGluZ3MiOiJBQUVBO0VBQ0UsT0FISyIsInNvdXJjZXNDb250ZW50IjpbIiRwaW5rOiA" +
+      "jZjA2O1xuXG4jaGVhZGVyIHtcbiAgY29sb3I6ICRwaW5rO1xufSJdfQ==*/",
   ].join("\n"),
   "test-stylus.styl": [
     "paulrougetpink = #f06;",
@@ -54,7 +53,7 @@ const contents = {
     "",
     "span",
     "  background-color: #EEE",
-    ""
+    "",
   ].join("\n"),
   "test-stylus.css": [
     "div {",
@@ -64,12 +63,12 @@ const contents = {
     "  background-color: #eee;",
     "}",
     "/*# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb" +
-    "3VyY2VzIjpbInRlc3Qtc3R5bHVzLnN0eWwiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkFB" +
-    "RUE7RUFDRSxPQUFPLEtBQVA7O0FBRUY7RUFDRSxrQkFBa0IsS0FBbEIiLCJmaWxlIjoidGV" +
-    "zdC1zdHlsdXMuY3NzIiwic291cmNlc0NvbnRlbnQiOlsicGF1bHJvdWdldHBpbmsgPSAjZj" +
-    "A2O1xuXG5kaXZcbiAgY29sb3I6IHBhdWxyb3VnZXRwaW5rXG5cbnNwYW5cbiAgYmFja2dyb" +
-    "3VuZC1jb2xvcjogI0VFRVxuIl19 */"
-  ].join("\n")
+      "3VyY2VzIjpbInRlc3Qtc3R5bHVzLnN0eWwiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkFB" +
+      "RUE7RUFDRSxPQUFPLEtBQVA7O0FBRUY7RUFDRSxrQkFBa0IsS0FBbEIiLCJmaWxlIjoidGV" +
+      "zdC1zdHlsdXMuY3NzIiwic291cmNlc0NvbnRlbnQiOlsicGF1bHJvdWdldHBpbmsgPSAjZj" +
+      "A2O1xuXG5kaXZcbiAgY29sb3I6IHBhdWxyb3VnZXRwaW5rXG5cbnNwYW5cbiAgYmFja2dyb" +
+      "3VuZC1jb2xvcjogI0VFRVxuIl19 */",
+  ].join("\n"),
 };
 
 const cssNames = ["sourcemaps.css", "contained.css", "test-stylus.css"];
@@ -78,10 +77,13 @@ const origNames = ["sourcemaps.scss", "contained.scss", "test-stylus.styl"];
 waitForExplicitFinish();
 
 add_task(async function() {
-  const {ui} = await openStyleEditorForURL(TESTCASE_URI);
+  const { ui } = await openStyleEditorForURL(TESTCASE_URI);
 
-  is(ui.editors.length, 4,
-    "correct number of editors with source maps enabled");
+  is(
+    ui.editors.length,
+    4,
+    "correct number of editors with source maps enabled"
+  );
 
   // Test first plain css editor
   testFirstEditor(ui.editors[0]);
@@ -144,6 +146,7 @@ function getLinkFor(editor) {
 }
 
 function getStylesheetNameFor(editor) {
-  return editor.summary.querySelector(".stylesheet-name > label")
+  return editor.summary
+    .querySelector(".stylesheet-name > label")
     .getAttribute("value");
 }

@@ -13,13 +13,13 @@
 
 #include "nsDeckFrame.h"
 #include "mozilla/ComputedStyle.h"
+#include "mozilla/PresShell.h"
 #include "nsPresContext.h"
 #include "nsIContent.h"
 #include "nsCOMPtr.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsHTMLParts.h"
-#include "nsIPresShell.h"
 #include "nsCSSRendering.h"
 #include "nsViewManager.h"
 #include "nsBoxLayoutState.h"
@@ -27,15 +27,18 @@
 #include "nsDisplayList.h"
 #include "nsContainerFrame.h"
 #include "nsContentUtils.h"
+#include "nsXULPopupManager.h"
+#include "nsImageBoxFrame.h"
+#include "nsImageFrame.h"
 
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
-nsIFrame*
-NS_NewDeckFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
-{
-  return new (aPresShell) nsDeckFrame(aStyle);
+using namespace mozilla;
+
+nsIFrame* NS_NewDeckFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
+  return new (aPresShell) nsDeckFrame(aStyle, aPresShell->GetPresContext());
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsDeckFrame)
@@ -44,25 +47,19 @@ NS_QUERYFRAME_HEAD(nsDeckFrame)
   NS_QUERYFRAME_ENTRY(nsDeckFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
-nsDeckFrame::nsDeckFrame(ComputedStyle* aStyle)
-  : nsBoxFrame(aStyle, kClassID)
-  , mIndex(0)
-{
+nsDeckFrame::nsDeckFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
+    : nsBoxFrame(aStyle, aPresContext, kClassID), mIndex(0) {
   nsCOMPtr<nsBoxLayout> layout;
   NS_NewStackLayout(layout);
   SetXULLayoutManager(layout);
 }
 
-nsresult
-nsDeckFrame::AttributeChanged(int32_t         aNameSpaceID,
-                              nsAtom*        aAttribute,
-                              int32_t         aModType)
-{
-  nsresult rv = nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
-                                             aModType);
+nsresult nsDeckFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                                       int32_t aModType) {
+  nsresult rv =
+      nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);
 
-
-   // if the index changed hide the old element and make the new element visible
+  // if the index changed hide the old element and make the new element visible
   if (aAttribute == nsGkAtoms::selectedIndex) {
     IndexChanged();
   }
@@ -70,39 +67,37 @@ nsDeckFrame::AttributeChanged(int32_t         aNameSpaceID,
   return rv;
 }
 
-void
-nsDeckFrame::Init(nsIContent*       aContent,
-                  nsContainerFrame* aParent,
-                  nsIFrame*         aPrevInFlow)
-{
+void nsDeckFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
+                       nsIFrame* aPrevInFlow) {
   nsBoxFrame::Init(aContent, aParent, aPrevInFlow);
 
   mIndex = GetSelectedIndex();
 }
 
-void
-nsDeckFrame::HideBox(nsIFrame* aBox)
-{
-  nsIPresShell::ClearMouseCapture(aBox);
+void nsDeckFrame::ShowBox(nsIFrame* aBox) { Animate(aBox, true); }
+
+void nsDeckFrame::HideBox(nsIFrame* aBox) {
+  mozilla::PresShell::ClearMouseCapture(aBox);
+  Animate(aBox, false);
 }
 
-void
-nsDeckFrame::IndexChanged()
-{
-  //did the index change?
+void nsDeckFrame::IndexChanged() {
+  // did the index change?
   int32_t index = GetSelectedIndex();
-  if (index == mIndex)
-    return;
+
+  if (index == mIndex) return;
 
   // redraw
   InvalidateFrame();
 
   // hide the currently showing box
   nsIFrame* currentBox = GetSelectedBox();
-  if (currentBox) // only hide if it exists
+  if (currentBox)  // only hide if it exists
     HideBox(currentBox);
 
   mIndex = index;
+
+  ShowBox(GetSelectedBox());
 
 #ifdef ACCESSIBILITY
   nsAccessibilityService* accService = GetAccService();
@@ -120,9 +115,7 @@ nsDeckFrame::IndexChanged()
   }
 }
 
-int32_t
-nsDeckFrame::GetSelectedIndex()
-{
+int32_t nsDeckFrame::GetSelectedIndex() {
   // default index is 0
   int32_t index = 0;
 
@@ -139,31 +132,21 @@ nsDeckFrame::GetSelectedIndex()
   return index;
 }
 
-nsIFrame*
-nsDeckFrame::GetSelectedBox()
-{
+nsIFrame* nsDeckFrame::GetSelectedBox() {
   return (mIndex >= 0) ? mFrames.FrameAt(mIndex) : nullptr;
 }
 
-void
-nsDeckFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                              const nsDisplayListSet& aLists)
-{
+void nsDeckFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                                   const nsDisplayListSet& aLists) {
   // if a tab is hidden all its children are too.
-  if (!StyleVisibility()->mVisible)
-    return;
+  if (!StyleVisibility()->mVisible) return;
 
   nsBoxFrame::BuildDisplayList(aBuilder, aLists);
 }
 
-void
-nsDeckFrame::RemoveFrame(ChildListID aListID,
-                         nsIFrame* aOldFrame)
-{
+void nsDeckFrame::RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) {
   nsIFrame* currentFrame = GetSelectedBox();
-  if (currentFrame &&
-      aOldFrame &&
-      currentFrame != aOldFrame) {
+  if (currentFrame && aOldFrame && currentFrame != aOldFrame) {
     // If the frame we're removing is at an index that's less
     // than mIndex, that means we're going to be shifting indexes
     // by 1.
@@ -178,20 +161,17 @@ nsDeckFrame::RemoveFrame(ChildListID aListID,
       // This is going to cause us to handle the index change in IndexedChanged,
       // but since the new index will match mIndex, it's essentially a noop.
       nsContentUtils::AddScriptRunner(new nsSetAttrRunnable(
-        mContent->AsElement(), nsGkAtoms::selectedIndex, mIndex));
+          mContent->AsElement(), nsGkAtoms::selectedIndex, mIndex));
     }
   }
   nsBoxFrame::RemoveFrame(aListID, aOldFrame);
 }
 
-void
-nsDeckFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                         const nsDisplayListSet& aLists)
-{
+void nsDeckFrame::BuildDisplayListForChildren(nsDisplayListBuilder* aBuilder,
+                                              const nsDisplayListSet& aLists) {
   // only paint the selected box
   nsIFrame* box = GetSelectedBox();
-  if (!box)
-    return;
+  if (!box) return;
 
   // Putting the child in the background list. This is a little weird but
   // it matches what we were doing before.
@@ -199,13 +179,41 @@ nsDeckFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
   BuildDisplayListForChild(aBuilder, box, set);
 }
 
+void nsDeckFrame::Animate(nsIFrame* aParentBox, bool start) {
+  if (!aParentBox) return;
+
+  nsImageBoxFrame* imgBoxFrame = do_QueryFrame(aParentBox);
+  nsImageFrame* imgFrame = do_QueryFrame(aParentBox);
+
+  if (imgBoxFrame) {
+    if (start)
+      imgBoxFrame->RestartAnimation();
+    else
+      imgBoxFrame->StopAnimation();
+  }
+
+  if (imgFrame) {
+    if (start)
+      imgFrame->RestartAnimation();
+    else
+      imgFrame->StopAnimation();
+  }
+
+  for (nsIFrame::ChildListIterator childLists(aParentBox); !childLists.IsDone();
+       childLists.Next()) {
+    for (nsIFrame* child : childLists.CurrentList()) {
+      Animate(child, start);
+    }
+  }
+}
+
 NS_IMETHODIMP
-nsDeckFrame::DoXULLayout(nsBoxLayoutState& aState)
-{
+nsDeckFrame::DoXULLayout(nsBoxLayoutState& aState) {
   // Make sure we tweak the state so it does not resize our children.
   // We will do that.
-  uint32_t oldFlags = aState.LayoutFlags();
-  aState.SetLayoutFlags(NS_FRAME_NO_SIZE_VIEW | NS_FRAME_NO_VISIBILITY);
+  ReflowChildFlags oldFlags = aState.LayoutFlags();
+  aState.SetLayoutFlags(ReflowChildFlags::NoSizeView |
+                        ReflowChildFlags::NoVisibility);
 
   // do a normal layout
   nsresult rv = nsBoxFrame::DoXULLayout(aState);
@@ -214,12 +222,13 @@ nsDeckFrame::DoXULLayout(nsBoxLayoutState& aState)
   nsIFrame* box = nsBox::GetChildXULBox(this);
 
   nscoord count = 0;
-  while (box)
-  {
+  while (box) {
     // make collapsed children not show up
-    if (count != mIndex)
+    if (count != mIndex) {
       HideBox(box);
-
+    } else {
+      ShowBox(box);
+    }
     box = GetNextXULBox(box);
     count++;
   }
@@ -228,4 +237,3 @@ nsDeckFrame::DoXULLayout(nsBoxLayoutState& aState)
 
   return rv;
 }
-

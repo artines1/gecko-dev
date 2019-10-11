@@ -1,26 +1,45 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsWaylandDisplay.h"
 #include "WindowSurfaceWayland.h"
 
-#include "base/message_loop.h"          // for MessageLoop
-#include "base/task.h"                  // for NewRunnableMethod, etc
 #include "nsPrintfCString.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Tools.h"
 #include "gfxPlatform.h"
 #include "mozcontainer.h"
-#include "nsCOMArray.h"
-#include "mozilla/StaticMutex.h"
+#include "nsTArray.h"
+#include "base/message_loop.h"  // for MessageLoop
+#include "base/task.h"          // for NewRunnableMethod, etc
 
-#include <gdk/gdkwayland.h>
 #include <sys/mman.h>
-#include <assert.h>
 #include <fcntl.h>
 #include <errno.h>
+
+#undef LOG
+#ifdef MOZ_LOGGING
+#  include "mozilla/Logging.h"
+#  include "nsTArray.h"
+#  include "Units.h"
+extern mozilla::LazyLogModule gWidgetWaylandLog;
+#  define LOGWAYLAND(args) \
+    MOZ_LOG(gWidgetWaylandLog, mozilla::LogLevel::Debug, args)
+#else
+#  define LOGWAYLAND(args)
+#endif /* MOZ_LOGGING */
+
+// Maximal compositing timeout it miliseconds
+#define COMPOSITING_TIMEOUT 200
+
+namespace mozilla {
+namespace widget {
+
+bool WindowSurfaceWayland::mUseDMABuf = false;
+bool WindowSurfaceWayland::mUseDMABufInitialized = false;
 
 /*
   Wayland multi-thread rendering scheme
@@ -46,7 +65,7 @@
         |       | WindowSurfaceWayland          |<------>| nsWindow       |
         |       |                               |        ------------------
         |       |  -----------------------      |
-        |       |  | WindowBackBuffer    |      |
+        |       |  | WindowBackBufferShm |      |
         |       |  |                     |      |
         |       |  | ------------------- |      |
         |       |  | |  WaylandShmPool | |      |
@@ -54,7 +73,7 @@
         |       |  -----------------------      |
         |       |                               |
         |       |  -----------------------      |
-        |       |  | WindowBackBuffer    |      |
+        |       |  | WindowBackBufferShm |      |
         |       |  |                     |      |
         |       |  | ------------------- |      |
         |       |  | |  WaylandShmPool | |      |
@@ -67,7 +86,7 @@
   | WindowSurfaceWayland          |<------>| nsWindow       |
   |                               |        ------------------
   |  -----------------------      |
-  |  | WindowBackBuffer    |      |
+  |  | WindowBackBufferShm |      |
   |  |                     |      |
   |  | ------------------- |      |
   |  | |  WaylandShmPool | |      |
@@ -75,13 +94,41 @@
   |  -----------------------      |
   |                               |
   |  -----------------------      |
-  |  | WindowBackBuffer    |      |
+  |  | WindowBackBufferShm |      |
   |  |                     |      |
   |  | ------------------- |      |
   |  | |  WaylandShmPool | |      |
   |  | ------------------- |      |
   |  -----------------------      |
   ---------------------------------
+
+----------------------------------------------------------------
+When WindowBackBufferDMABuf is used it's similar to
+WindowBackBufferShm scheme:
+
+    |
+    |
+    |
+  -----------------------------------         ------------------
+  | WindowSurfaceWayland             |<------>| nsWindow       |
+  |                                  |        ------------------
+  |  --------------------------      |
+  |  |WindowBackBufferDMABuf  |      |
+  |  |                        |      |
+  |  | ---------------------- |      |
+  |  | |WaylandDMABufSurface  |      |
+  |  | ---------------------- |      |
+  |  --------------------------      |
+  |                                  |
+  |  --------------------------      |
+  |  |WindowBackBufferDMABuf  |      |
+  |  |                        |      |
+  |  | ---------------------- |      |
+  |  | |WaylandDMABufSurface  |      |
+  |  | ---------------------- |      |
+  |  --------------------------      |
+  -----------------------------------
+
 
 nsWaylandDisplay
 
@@ -107,18 +154,26 @@ wl_surface and two wl_buffer objects (owned by WindowBackBuffer)
 as we use double buffering. When nsWindow drawing is finished to wl_buffer,
 the wl_buffer is attached to wl_surface and it's sent to Wayland compositor.
 
+When there's no wl_buffer available for drawing (all wl_buffers are locked in
+compositor for instance) we store the drawing to WindowImageSurface object
+and draw later when wl_buffer becomes availabe or discard the
+WindowImageSurface cache when whole screen is invalidated.
 
 WindowBackBuffer
 
-Manages one wl_buffer. It owns wl_buffer object, owns WaylandShmPool
-(which provides shared memory) and ties them together.
-
+Is an abstraction class which provides a wl_buffer for drawing.
 Wl_buffer is a main Wayland object with actual graphics data.
 Wl_buffer basically represent one complete window screen.
 When double buffering is involved every window (GdkWindow for instance)
 utilises two wl_buffers which are cycled. One is filed with data by application
 and one is rendered by compositor.
 
+
+WindowBackBufferShm
+
+It's WindowBackBuffer implementation by shared memory (shm).
+It owns wl_buffer object, owns WaylandShmPool
+(which provides the shared memory) and ties them together.
 
 WaylandShmPool
 
@@ -129,212 +184,28 @@ We allocate shared memory (shm) by mmap(..., MAP_SHARED,...) as an interface
 between us and wayland compositor. We draw our graphics data to the shm and
 handle to wayland compositor by WindowBackBuffer/WindowSurfaceWayland
 (wl_buffer/wl_surface).
+
+WindowBackBufferDMABuf
+
+It's WindowBackBuffer implementation based on DMA Buffer.
+It owns wl_buffer object, owns WaylandDMABufSurface
+(which provides the DMA Buffer) and ties them together.
+
+WindowBackBufferDMABuf backend is used only when WaylandDMABufSurface is
+available and widget.wayland_dmabuf_backend.enabled preference is set.
+
 */
 
-namespace mozilla {
-namespace widget {
+#define EVENT_LOOP_DELAY (1000 / 240)
 
 #define BUFFER_BPP 4
+gfx::SurfaceFormat WindowBackBuffer::mFormat = gfx::SurfaceFormat::B8G8R8A8;
 
-// TODO: How many rendering threads do we actualy handle?
-static nsCOMArray<nsWaylandDisplay> gWaylandDisplays;
-static StaticMutex gWaylandDisplaysMutex;
-
-// Each thread which is using wayland connection (wl_display) has to operate
-// its own wl_event_queue. Main Firefox thread wl_event_queue is handled
-// by Gtk main loop, other threads/wl_event_queue has to be handled by us.
-//
-// nsWaylandDisplay is our interface to wayland compositor. It provides wayland
-// global objects as we need (wl_display, wl_shm) and operates wl_event_queue on
-// compositor (not the main) thread.
-static nsWaylandDisplay* WaylandDisplayGet(wl_display *aDisplay);
-static void WaylandDisplayRelease(wl_display *aDisplay);
-static void WaylandDisplayLoop(wl_display *aDisplay);
-
-// TODO: Bug 1467125 - We need to integrate wl_display_dispatch_queue_pending() with
-// compositor event loop.
-#define EVENT_LOOP_DELAY (1000/240)
-
-// Get WaylandDisplay for given wl_display and actual calling thread.
-static nsWaylandDisplay*
-WaylandDisplayGetLocked(wl_display *aDisplay, const StaticMutexAutoLock&)
-{
-  nsWaylandDisplay* waylandDisplay = nullptr;
-
-  int len = gWaylandDisplays.Count();
-  for (int i = 0; i < len; i++) {
-    if (gWaylandDisplays[i]->Matches(aDisplay)) {
-      waylandDisplay = gWaylandDisplays[i];
-      break;
-    }
-  }
-
-  if (!waylandDisplay) {
-    waylandDisplay = new nsWaylandDisplay(aDisplay);
-    gWaylandDisplays.AppendObject(waylandDisplay);
-  }
-
-  NS_ADDREF(waylandDisplay);
-  return waylandDisplay;
+nsWaylandDisplay* WindowBackBuffer::GetWaylandDisplay() {
+  return mWindowSurfaceWayland->GetWaylandDisplay();
 }
 
-static nsWaylandDisplay*
-WaylandDisplayGet(wl_display *aDisplay)
-{
-  StaticMutexAutoLock lock(gWaylandDisplaysMutex);
-  return WaylandDisplayGetLocked(aDisplay, lock);
-}
-
-static bool
-WaylandDisplayReleaseLocked(wl_display *aDisplay,
-                            const StaticMutexAutoLock&)
-{
-  int len = gWaylandDisplays.Count();
-  for (int i = 0; i < len; i++) {
-    if (gWaylandDisplays[i]->Matches(aDisplay)) {
-      int rc = gWaylandDisplays[i]->Release();
-      // nsCOMArray::AppendObject()/RemoveObjectAt() also call AddRef()/Release()
-      // so remove WaylandDisplay when ref count is 1.
-      if (rc == 1) {
-        gWaylandDisplays.RemoveObjectAt(i);
-      }
-      return true;
-    }
-  }
-  MOZ_ASSERT(false, "Missing nsWaylandDisplay for this thread!");
-  return false;
-}
-
-static void
-WaylandDisplayRelease(wl_display *aDisplay)
-{
-  StaticMutexAutoLock lock(gWaylandDisplaysMutex);
-  WaylandDisplayReleaseLocked(aDisplay, lock);
-}
-
-static void
-WaylandDisplayLoopLocked(wl_display* aDisplay,
-                         const StaticMutexAutoLock&)
-{
-  int len = gWaylandDisplays.Count();
-  for (int i = 0; i < len; i++) {
-    if (gWaylandDisplays[i]->Matches(aDisplay)) {
-      if (gWaylandDisplays[i]->DisplayLoop()) {
-        MessageLoop::current()->PostDelayedTask(
-            NewRunnableFunction("WaylandDisplayLoop",
-                               &WaylandDisplayLoop,
-                               aDisplay),
-            EVENT_LOOP_DELAY);
-      }
-      break;
-    }
-  }
-}
-
-static void
-WaylandDisplayLoop(wl_display* aDisplay)
-{
-  MOZ_ASSERT(!NS_IsMainThread());
-  StaticMutexAutoLock lock(gWaylandDisplaysMutex);
-  WaylandDisplayLoopLocked(aDisplay, lock);
-}
-
-static void
-global_registry_handler(void *data, wl_registry *registry, uint32_t id,
-                        const char *interface, uint32_t version)
-{
-  if (strcmp(interface, "wl_shm") == 0) {
-    auto interface = reinterpret_cast<nsWaylandDisplay *>(data);
-    auto shm = static_cast<wl_shm*>(
-        wl_registry_bind(registry, id, &wl_shm_interface, 1));
-    wl_proxy_set_queue((struct wl_proxy *)shm, interface->GetEventQueue());
-    interface->SetShm(shm);
-  }
-}
-
-static void
-global_registry_remover(void *data, wl_registry *registry, uint32_t id)
-{
-}
-
-static const struct wl_registry_listener registry_listener = {
-  global_registry_handler,
-  global_registry_remover
-};
-
-wl_shm*
-nsWaylandDisplay::GetShm()
-{
-  MOZ_ASSERT(mThreadId == PR_GetCurrentThread());
-
-  if (!mShm) {
-    // wl_shm is not provided by Gtk so we need to query wayland directly
-    // See weston/simple-shm.c and create_display() for reference.
-    wl_registry* registry = wl_display_get_registry(mDisplay);
-    wl_registry_add_listener(registry, &registry_listener, this);
-
-    wl_proxy_set_queue((struct wl_proxy *)registry, mEventQueue);
-    if (mEventQueue) {
-      wl_display_roundtrip_queue(mDisplay, mEventQueue);
-    } else {
-      wl_display_roundtrip(mDisplay);
-    }
-
-    MOZ_RELEASE_ASSERT(mShm, "Wayland registry query failed!");
-  }
-
-  return(mShm);
-}
-
-bool
-nsWaylandDisplay::DisplayLoop()
-{
-  wl_display_dispatch_queue_pending(mDisplay, mEventQueue);
-  return true;
-}
-
-bool
-nsWaylandDisplay::Matches(wl_display *aDisplay)
-{
-  return mThreadId == PR_GetCurrentThread() && aDisplay == mDisplay;
-}
-
-NS_IMPL_ISUPPORTS(nsWaylandDisplay, nsISupports);
-
-nsWaylandDisplay::nsWaylandDisplay(wl_display *aDisplay)
-  : mThreadId(PR_GetCurrentThread())
-  // gfx::SurfaceFormat::B8G8R8A8 is a basic Wayland format
-  // and is always present.
-  // TODO: Provide also format without alpha (Bug 1470126).
-  , mFormat(gfx::SurfaceFormat::B8G8R8A8)
-  , mShm(nullptr)
-  , mDisplay(aDisplay)
-{
-  if (NS_IsMainThread()) {
-    // Use default event queue in main thread operated by Gtk+.
-    mEventQueue = nullptr;
-  } else {
-    mEventQueue = wl_display_create_queue(mDisplay);
-    MessageLoop::current()->PostTask(NewRunnableFunction(
-        "WaylandDisplayLoop", &WaylandDisplayLoop, mDisplay));
-  }
-}
-
-nsWaylandDisplay::~nsWaylandDisplay()
-{
-  MOZ_ASSERT(mThreadId == PR_GetCurrentThread());
-  // Owned by Gtk+, we don't need to release
-  mDisplay = nullptr;
-
-  if (mEventQueue) {
-    wl_event_queue_destroy(mEventQueue);
-    mEventQueue = nullptr;
-  }
-}
-
-int
-WaylandShmPool::CreateTemporaryFile(int aSize)
-{
+int WaylandShmPool::CreateTemporaryFile(int aSize) {
   const char* tmppath = getenv("XDG_RUNTIME_DIR");
   MOZ_RELEASE_ASSERT(tmppath, "Missing XDG_RUNTIME_DIR env variable.");
 
@@ -367,6 +238,9 @@ WaylandShmPool::CreateTemporaryFile(int aSize)
   } while (ret == EINTR);
   if (ret != 0) {
     close(fd);
+    MOZ_CRASH_UNSAFE_PRINTF(
+        "posix_fallocate() fails on %s size %d error code %d\n", filename,
+        aSize, ret);
   }
 #else
   do {
@@ -374,133 +248,126 @@ WaylandShmPool::CreateTemporaryFile(int aSize)
   } while (ret < 0 && errno == EINTR);
   if (ret < 0) {
     close(fd);
+    MOZ_CRASH_UNSAFE_PRINTF("ftruncate() fails on %s size %d error code %d\n",
+                            filename, aSize, ret);
   }
 #endif
-  MOZ_RELEASE_ASSERT(ret == 0, "Mapping file allocation failed.");
 
   return fd;
 }
 
 WaylandShmPool::WaylandShmPool(nsWaylandDisplay* aWaylandDisplay, int aSize)
-  : mAllocatedSize(aSize)
-{
+    : mAllocatedSize(aSize) {
   mShmPoolFd = CreateTemporaryFile(mAllocatedSize);
-  mImageData = mmap(nullptr, mAllocatedSize,
-                     PROT_READ | PROT_WRITE, MAP_SHARED, mShmPoolFd, 0);
+  mImageData = mmap(nullptr, mAllocatedSize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                    mShmPoolFd, 0);
   MOZ_RELEASE_ASSERT(mImageData != MAP_FAILED,
                      "Unable to map drawing surface!");
 
-  mShmPool = wl_shm_create_pool(aWaylandDisplay->GetShm(),
-                                mShmPoolFd, mAllocatedSize);
+  mShmPool =
+      wl_shm_create_pool(aWaylandDisplay->GetShm(), mShmPoolFd, mAllocatedSize);
 
   // We set our queue to get mShmPool events at compositor thread.
-  wl_proxy_set_queue((struct wl_proxy *)mShmPool,
+  wl_proxy_set_queue((struct wl_proxy*)mShmPool,
                      aWaylandDisplay->GetEventQueue());
 }
 
-bool
-WaylandShmPool::Resize(int aSize)
-{
+bool WaylandShmPool::Resize(int aSize) {
   // We do size increase only
-  if (aSize <= mAllocatedSize)
-    return true;
+  if (aSize <= mAllocatedSize) return true;
 
-  if (ftruncate(mShmPoolFd, aSize) < 0)
-    return false;
+  if (ftruncate(mShmPoolFd, aSize) < 0) return false;
 
 #ifdef HAVE_POSIX_FALLOCATE
   do {
     errno = posix_fallocate(mShmPoolFd, 0, aSize);
   } while (errno == EINTR);
-  if (errno != 0)
-    return false;
+  if (errno != 0) return false;
 #endif
 
   wl_shm_pool_resize(mShmPool, aSize);
 
   munmap(mImageData, mAllocatedSize);
 
-  mImageData = mmap(nullptr, aSize,
-                    PROT_READ | PROT_WRITE, MAP_SHARED, mShmPoolFd, 0);
-  if (mImageData == MAP_FAILED)
-    return false;
+  mImageData =
+      mmap(nullptr, aSize, PROT_READ | PROT_WRITE, MAP_SHARED, mShmPoolFd, 0);
+  if (mImageData == MAP_FAILED) return false;
 
   mAllocatedSize = aSize;
   return true;
 }
 
-void
-WaylandShmPool::SetImageDataFromPool(class WaylandShmPool* aSourcePool,
-                                     int aImageDataSize)
-{
+void WaylandShmPool::SetImageDataFromPool(class WaylandShmPool* aSourcePool,
+                                          int aImageDataSize) {
   MOZ_ASSERT(mAllocatedSize >= aImageDataSize, "WaylandShmPool overflows!");
   memcpy(mImageData, aSourcePool->GetImageData(), aImageDataSize);
 }
 
-WaylandShmPool::~WaylandShmPool()
-{
+WaylandShmPool::~WaylandShmPool() {
   munmap(mImageData, mAllocatedSize);
   wl_shm_pool_destroy(mShmPool);
   close(mShmPoolFd);
 }
 
-static void
-buffer_release(void *data, wl_buffer *buffer)
-{
+static void buffer_release(void* data, wl_buffer* buffer) {
   auto surface = reinterpret_cast<WindowBackBuffer*>(data);
-  surface->Detach();
+  surface->Detach(buffer);
 }
 
-static const struct wl_buffer_listener buffer_listener = {
-  buffer_release
-};
+static const struct wl_buffer_listener buffer_listener = {buffer_release};
 
-void WindowBackBuffer::Create(int aWidth, int aHeight)
-{
+void WindowBackBufferShm::Create(int aWidth, int aHeight) {
   MOZ_ASSERT(!IsAttached(), "We can't resize attached buffers.");
 
-  int newBufferSize = aWidth*aHeight*BUFFER_BPP;
+  int newBufferSize = aWidth * aHeight * BUFFER_BPP;
   mShmPool.Resize(newBufferSize);
 
-  mWaylandBuffer = wl_shm_pool_create_buffer(mShmPool.GetShmPool(), 0,
-                                            aWidth, aHeight, aWidth*BUFFER_BPP,
-                                            WL_SHM_FORMAT_ARGB8888);
-  wl_proxy_set_queue((struct wl_proxy *)mWaylandBuffer,
-                     mWaylandDisplay->GetEventQueue());
+  mWaylandBuffer =
+      wl_shm_pool_create_buffer(mShmPool.GetShmPool(), 0, aWidth, aHeight,
+                                aWidth * BUFFER_BPP, WL_SHM_FORMAT_ARGB8888);
+  wl_proxy_set_queue((struct wl_proxy*)mWaylandBuffer,
+                     GetWaylandDisplay()->GetEventQueue());
   wl_buffer_add_listener(mWaylandBuffer, &buffer_listener, this);
 
   mWidth = aWidth;
   mHeight = aHeight;
+
+  LOGWAYLAND((
+      "WindowBackBufferShm::Create [%p] wl_buffer %p ID %d\n", (void*)this,
+      (void*)mWaylandBuffer,
+      mWaylandBuffer ? wl_proxy_get_id((struct wl_proxy*)mWaylandBuffer) : -1));
 }
 
-void WindowBackBuffer::Release()
-{
+void WindowBackBufferShm::Release() {
+  LOGWAYLAND(("WindowBackBufferShm::Release [%p]\n", (void*)this));
+
   wl_buffer_destroy(mWaylandBuffer);
   mWidth = mHeight = 0;
 }
 
-WindowBackBuffer::WindowBackBuffer(nsWaylandDisplay* aWaylandDisplay,
-                                   int aWidth, int aHeight)
- : mShmPool(aWaylandDisplay, aWidth*aHeight*BUFFER_BPP)
-  ,mWaylandBuffer(nullptr)
-  ,mWidth(aWidth)
-  ,mHeight(aHeight)
-  ,mAttached(false)
-  ,mWaylandDisplay(aWaylandDisplay)
-{
+void WindowBackBufferShm::Clear() {
+  memset(mShmPool.GetImageData(), 0, mHeight * mWidth * BUFFER_BPP);
+}
+
+WindowBackBufferShm::WindowBackBufferShm(
+    WindowSurfaceWayland* aWindowSurfaceWayland, int aWidth, int aHeight)
+    : WindowBackBuffer(aWindowSurfaceWayland),
+      mShmPool(aWindowSurfaceWayland->GetWaylandDisplay(),
+               aWidth * aHeight * BUFFER_BPP),
+      mWaylandBuffer(nullptr),
+      mWidth(aWidth),
+      mHeight(aHeight),
+      mAttached(false) {
   Create(aWidth, aHeight);
 }
 
-WindowBackBuffer::~WindowBackBuffer()
-{
-  Release();
-}
+WindowBackBufferShm::~WindowBackBufferShm() { Release(); }
 
-bool
-WindowBackBuffer::Resize(int aWidth, int aHeight)
-{
-  if (aWidth == mWidth && aHeight == mHeight)
-    return true;
+bool WindowBackBufferShm::Resize(int aWidth, int aHeight) {
+  if (aWidth == mWidth && aHeight == mHeight) return true;
+
+  LOGWAYLAND(("WindowBackBufferShm::Resize [%p] %d %d\n", (void*)this, aWidth,
+              aHeight));
 
   Release();
   Create(aWidth, aHeight);
@@ -508,47 +375,125 @@ WindowBackBuffer::Resize(int aWidth, int aHeight)
   return (mWaylandBuffer != nullptr);
 }
 
-void
-WindowBackBuffer::Attach(wl_surface* aSurface)
-{
-  wl_surface_attach(aSurface, mWaylandBuffer, 0, 0);
+void WindowBackBuffer::Attach(wl_surface* aSurface) {
+  LOGWAYLAND(
+      ("WindowBackBuffer::Attach [%p] wl_surface %p ID %d wl_buffer %p ID %d\n",
+       (void*)this, (void*)aSurface,
+       aSurface ? wl_proxy_get_id((struct wl_proxy*)aSurface) : -1,
+       (void*)GetWlBuffer(),
+       GetWlBuffer() ? wl_proxy_get_id((struct wl_proxy*)GetWlBuffer()) : -1));
+
+  wl_surface_attach(aSurface, GetWlBuffer(), 0, 0);
   wl_surface_commit(aSurface);
-  wl_display_flush(mWaylandDisplay->GetDisplay());
-  mAttached = true;
+  wl_display_flush(WaylandDisplayGetWLDisplay());
+  SetAttached();
 }
 
-void
-WindowBackBuffer::Detach()
-{
+void WindowBackBufferShm::Detach(wl_buffer* aBuffer) {
+  LOGWAYLAND(("WindowBackBufferShm::Detach [%p] wl_buffer %p ID %d\n",
+              (void*)this, (void*)aBuffer,
+              aBuffer ? wl_proxy_get_id((struct wl_proxy*)aBuffer) : -1));
+
   mAttached = false;
+
+  // Commit any potential cached drawings from latest Lock()/Commit() cycle.
+  mWindowSurfaceWayland->CommitWaylandBuffer();
 }
 
-bool
-WindowBackBuffer::SetImageDataFromBackBuffer(
-  class WindowBackBuffer* aSourceBuffer)
-{
-  if (!IsMatchingSize(aSourceBuffer)) {
-    Resize(aSourceBuffer->mWidth, aSourceBuffer->mHeight);
+bool WindowBackBufferShm::SetImageDataFromBuffer(
+    class WindowBackBuffer* aSourceBuffer) {
+  auto sourceBuffer = static_cast<class WindowBackBufferShm*>(aSourceBuffer);
+  if (!IsMatchingSize(sourceBuffer)) {
+    Resize(sourceBuffer->mWidth, sourceBuffer->mHeight);
   }
 
-  mShmPool.SetImageDataFromPool(&aSourceBuffer->mShmPool,
-    aSourceBuffer->mWidth * aSourceBuffer->mHeight * BUFFER_BPP);
+  mShmPool.SetImageDataFromPool(
+      &sourceBuffer->mShmPool,
+      sourceBuffer->mWidth * sourceBuffer->mHeight * BUFFER_BPP);
   return true;
 }
 
-already_AddRefed<gfx::DrawTarget>
-WindowBackBuffer::Lock()
-{
+already_AddRefed<gfx::DrawTarget> WindowBackBufferShm::Lock() {
+  LOGWAYLAND((
+      "WindowBackBufferShm::Lock [%p] [%d x %d] wl_buffer %p ID %d\n",
+      (void*)this, mWidth, mHeight, (void*)mWaylandBuffer,
+      mWaylandBuffer ? wl_proxy_get_id((struct wl_proxy*)mWaylandBuffer) : -1));
+
   gfx::IntSize lockSize(mWidth, mHeight);
-  return gfxPlatform::CreateDrawTargetForData(static_cast<unsigned char*>(mShmPool.GetImageData()),
-                                              lockSize,
-                                              BUFFER_BPP * mWidth,
-                                              mWaylandDisplay->GetSurfaceFormat());
+  mIsLocked = true;
+  return gfxPlatform::CreateDrawTargetForData(
+      static_cast<unsigned char*>(mShmPool.GetImageData()), lockSize,
+      BUFFER_BPP * mWidth, GetSurfaceFormat());
 }
 
-static void
-frame_callback_handler(void *data, struct wl_callback *callback, uint32_t time)
-{
+WindowBackBufferDMABuf::WindowBackBufferDMABuf(
+    WindowSurfaceWayland* aWindowSurfaceWayland, int aWidth, int aHeight)
+    : WindowBackBuffer(aWindowSurfaceWayland) {
+  mDMAbufSurface = WaylandDMABufSurface::CreateDMABufSurface(
+      aWidth, aHeight, DMABUF_ALPHA | DMABUF_CREATE_WL_BUFFER);
+  LOGWAYLAND(
+      ("WindowBackBufferDMABuf::WindowBackBufferDMABuf [%p] Created DMABuf "
+       "buffer [%d x %d]\n",
+       (void*)this, aWidth, aHeight));
+}
+
+WindowBackBufferDMABuf::~WindowBackBufferDMABuf() {}
+
+already_AddRefed<gfx::DrawTarget> WindowBackBufferDMABuf::Lock() {
+  LOGWAYLAND(
+      ("WindowBackBufferDMABuf::Lock [%p] [%d x %d] wl_buffer %p ID %d\n",
+       (void*)this, GetWidth(), GetHeight(), (void*)GetWlBuffer(),
+       GetWlBuffer() ? wl_proxy_get_id((struct wl_proxy*)GetWlBuffer()) : -1));
+
+  uint32_t stride;
+  void* pixels = mDMAbufSurface->Map(&stride);
+  gfx::IntSize lockSize(GetWidth(), GetHeight());
+  return gfxPlatform::CreateDrawTargetForData(
+      static_cast<unsigned char*>(pixels), lockSize, stride,
+      GetSurfaceFormat());
+}
+
+void WindowBackBufferDMABuf::Unlock() { mDMAbufSurface->Unmap(); }
+
+bool WindowBackBufferDMABuf::IsAttached() {
+  return mDMAbufSurface->WLBufferIsAttached();
+}
+
+void WindowBackBufferDMABuf::SetAttached() {
+  return mDMAbufSurface->WLBufferSetAttached();
+}
+
+int WindowBackBufferDMABuf::GetWidth() { return mDMAbufSurface->GetWidth(); }
+
+int WindowBackBufferDMABuf::GetHeight() { return mDMAbufSurface->GetHeight(); }
+
+wl_buffer* WindowBackBufferDMABuf::GetWlBuffer() {
+  return mDMAbufSurface->GetWLBuffer();
+}
+
+bool WindowBackBufferDMABuf::IsLocked() { return mDMAbufSurface->IsMapped(); }
+
+bool WindowBackBufferDMABuf::Resize(int aWidth, int aHeight) {
+  return mDMAbufSurface->Resize(aWidth, aHeight);
+}
+
+bool WindowBackBufferDMABuf::SetImageDataFromBuffer(
+    class WindowBackBuffer* aSourceBuffer) {
+  NS_WARNING("WindowBackBufferDMABuf copy is not implemented!");
+  return true;
+}
+
+void WindowBackBufferDMABuf::Detach(wl_buffer* aBuffer) {
+  mDMAbufSurface->WLBufferDetach();
+
+  // Commit any potential cached drawings from latest Lock()/Commit() cycle.
+  mWindowSurfaceWayland->CommitWaylandBuffer();
+}
+
+void WindowBackBufferDMABuf::Clear() { mDMAbufSurface->Clear(); }
+
+static void frame_callback_handler(void* data, struct wl_callback* callback,
+                                   uint32_t time) {
   auto surface = reinterpret_cast<WindowSurfaceWayland*>(data);
   surface->FrameCallbackHandler();
 
@@ -556,310 +501,646 @@ frame_callback_handler(void *data, struct wl_callback *callback, uint32_t time)
 }
 
 static const struct wl_callback_listener frame_listener = {
-  frame_callback_handler
-};
+    frame_callback_handler};
 
-WindowSurfaceWayland::WindowSurfaceWayland(nsWindow *aWindow)
-  : mWindow(aWindow)
-  , mWaylandDisplay(WaylandDisplayGet(aWindow->GetWaylandDisplay()))
-  , mFrontBuffer(nullptr)
-  , mBackBuffer(nullptr)
-  , mFrameCallback(nullptr)
-  , mFrameCallbackSurface(nullptr)
-  , mDisplayThreadMessageLoop(MessageLoop::current())
-  , mDirectWlBufferDraw(true)
-  , mDelayedCommit(false)
-  , mFullScreenDamage(false)
-  , mIsMainThread(NS_IsMainThread())
-{
+WindowSurfaceWayland::WindowSurfaceWayland(nsWindow* aWindow)
+    : mWindow(aWindow),
+      mWaylandDisplay(WaylandDisplayGet()),
+      mWaylandBuffer(nullptr),
+      mFrameCallback(nullptr),
+      mLastCommittedSurface(nullptr),
+      mDelayedCommitHandle(nullptr),
+      mLastCommitTime(0),
+      mDrawToWaylandBufferDirectly(true),
+      mCanSwitchWaylandBuffer(true),
+      mBufferPendingCommit(false),
+      mBufferCommitAllowed(false),
+      mBufferNeedsClear(false),
+      mIsMainThread(NS_IsMainThread()),
+      mNeedScaleFactorUpdate(true) {
+  for (int i = 0; i < BACK_BUFFER_NUM; i++) mBackupBuffer[i] = nullptr;
+  mRenderingCacheMode = static_cast<RenderingCacheMode>(
+      mWaylandDisplay->GetRenderingCacheModePref());
 }
 
-WindowSurfaceWayland::~WindowSurfaceWayland()
-{
-  delete mFrontBuffer;
-  delete mBackBuffer;
+WindowSurfaceWayland::~WindowSurfaceWayland() {
+  if (mBufferPendingCommit) {
+    NS_WARNING("Deleted WindowSurfaceWayland with a pending commit!");
+  }
+
+  if (mDelayedCommitHandle) {
+    // Delete reference to this to prevent WaylandBufferDelayCommitHandler()
+    // operate on released this. mDelayedCommitHandle itself will
+    // be released at WaylandBufferDelayCommitHandler().
+    *mDelayedCommitHandle = nullptr;
+  }
 
   if (mFrameCallback) {
     wl_callback_destroy(mFrameCallback);
   }
 
-  if (!mIsMainThread) {
-    // We can be destroyed from main thread even though we was created/used
-    // in compositor thread. We have to unref/delete WaylandDisplay in compositor
-    // thread then and we can't use MessageLoop::current() here.
-    mDisplayThreadMessageLoop->PostTask(
-      NewRunnableFunction("WaylandDisplayRelease",
-                          &WaylandDisplayRelease,
-                          mWaylandDisplay->GetDisplay()));
-  } else {
-    WaylandDisplayRelease(mWaylandDisplay->GetDisplay());
-  }
-}
+  delete mWaylandBuffer;
 
-void
-WindowSurfaceWayland::UpdateScaleFactor()
-{
-  wl_surface* waylandSurface = mWindow->GetWaylandSurface();
-  if (waylandSurface) {
-    wl_surface_set_buffer_scale(waylandSurface, mWindow->GdkScaleFactor());
-  }
-}
-
-WindowBackBuffer*
-WindowSurfaceWayland::GetFrontBufferToDraw(int aWidth, int aHeight)
-{
-  if (!mFrontBuffer) {
-    mFrontBuffer = new WindowBackBuffer(mWaylandDisplay, aWidth, aHeight);
-    mBackBuffer = new WindowBackBuffer(mWaylandDisplay, aWidth, aHeight);
-    return mFrontBuffer;
-  }
-
-  if (!mFrontBuffer->IsAttached()) {
-    if (!mFrontBuffer->IsMatchingSize(aWidth, aHeight)) {
-      mFrontBuffer->Resize(aWidth, aHeight);
-      // There's a chance that scale factor has been changed
-      // when buffer size changed
-      UpdateScaleFactor();
+  for (int i = 0; i < BACK_BUFFER_NUM; i++) {
+    if (mBackupBuffer[i]) {
+      delete mBackupBuffer[i];
     }
-    return mFrontBuffer;
+  }
+}
+
+bool WindowSurfaceWayland::UseDMABufBackend() {
+  if (!mUseDMABufInitialized) {
+    mUseDMABuf = nsWaylandDisplay::IsDMABufEnabled();
+    LOGWAYLAND(("WindowSurfaceWayland::UseDMABufBackend DMABuf state %d\n",
+                mUseDMABuf));
+    mUseDMABufInitialized = true;
+  }
+  return mUseDMABuf;
+}
+
+WindowBackBuffer* WindowSurfaceWayland::CreateWaylandBuffer(int aWidth,
+                                                            int aHeight) {
+  if (UseDMABufBackend()) {
+    static bool sDMABufBufferCreated = false;
+    WindowBackBuffer* buffer =
+        new WindowBackBufferDMABuf(this, aWidth, aHeight);
+    if (buffer) {
+      sDMABufBufferCreated = true;
+      return buffer;
+    }
+    // If this is the first failure and there's no dmabuf already active
+    // we can safely fallback to Shm. Otherwise we can't mix DMAbuf and
+    // SHM buffers so just fails now.
+    if (sDMABufBufferCreated) {
+      NS_WARNING("Failed to allocate DMABuf buffer!");
+      return nullptr;
+    } else {
+      NS_WARNING("Wayland DMABuf failed, switched back to Shm backend!");
+      mUseDMABuf = false;
+    }
   }
 
-  // Front buffer is used by compositor, draw to back buffer
-  if (mBackBuffer->IsAttached()) {
+  return new WindowBackBufferShm(this, aWidth, aHeight);
+}
+
+WindowBackBuffer* WindowSurfaceWayland::GetWaylandBufferToDraw(
+    bool aCanSwitchBuffer) {
+  LOGWAYLAND(
+      ("WindowSurfaceWayland::GetWaylandBufferToDraw [%p] Requested buffer [%d "
+       "x %d]\n",
+       (void*)this, mBufferScreenRect.width, mBufferScreenRect.height));
+
+  // There's no buffer created yet, create a new one.
+  if (!mWaylandBuffer) {
+    LOGWAYLAND(("    Created new buffer [%d x %d]\n", mBufferScreenRect.width,
+                mBufferScreenRect.height));
+
+    mWaylandBuffer =
+        CreateWaylandBuffer(mBufferScreenRect.width, mBufferScreenRect.height);
+    mNeedScaleFactorUpdate = true;
+    return mWaylandBuffer;
+  }
+
+#ifdef DEBUG
+  if (mWaylandBuffer->IsAttached()) {
+    LOGWAYLAND(("    Buffer %p is attached, need to find a new one.\n",
+                mWaylandBuffer));
+  }
+#endif
+
+  // Reuse existing buffer
+  if (!mWaylandBuffer->IsAttached()) {
+    LOGWAYLAND(("    Use recent buffer.\n"));
+
+    if (mWaylandBuffer->IsMatchingSize(mBufferScreenRect.width,
+                                       mBufferScreenRect.height)) {
+      LOGWAYLAND(("    Size is ok, use the buffer [%d x %d]\n",
+                  mBufferScreenRect.width, mBufferScreenRect.height));
+      return mWaylandBuffer;
+    }
+
+    if (!aCanSwitchBuffer) {
+      NS_WARNING("We can't resize Wayland buffer for non-fullscreen updates!");
+      return nullptr;
+    }
+
+    LOGWAYLAND(("    Reuse buffer with resize [%d x %d]\n",
+                mBufferScreenRect.width, mBufferScreenRect.height));
+
+    mWaylandBuffer->Resize(mBufferScreenRect.width, mBufferScreenRect.height);
+    // There's a chance that scale factor has been changed
+    // when buffer size changed
+    mNeedScaleFactorUpdate = true;
+    return mWaylandBuffer;
+  }
+
+  if (!aCanSwitchBuffer) {
+    return nullptr;
+  }
+
+  // Front buffer is used by compositor, select or create a new back buffer
+  int availableBuffer;
+  for (availableBuffer = 0; availableBuffer < BACK_BUFFER_NUM;
+       availableBuffer++) {
+    if (!mBackupBuffer[availableBuffer]) {
+      LOGWAYLAND(("    Created new buffer [%d x %d]\n", mBufferScreenRect.width,
+                  mBufferScreenRect.height));
+      mBackupBuffer[availableBuffer] = CreateWaylandBuffer(
+          mBufferScreenRect.width, mBufferScreenRect.height);
+      break;
+    }
+
+    if (!mBackupBuffer[availableBuffer]->IsAttached()) {
+      break;
+    }
+  }
+
+  if (MOZ_UNLIKELY(availableBuffer == BACK_BUFFER_NUM)) {
+    LOGWAYLAND(("    No drawing buffer available!\n"));
     NS_WARNING("No drawing buffer available");
     return nullptr;
   }
 
-  MOZ_ASSERT(!mDelayedCommit,
-             "Uncommitted buffer switch, screen artifacts ahead.");
+  WindowBackBuffer* lastWaylandBuffer = mWaylandBuffer;
+  mWaylandBuffer = mBackupBuffer[availableBuffer];
+  mBackupBuffer[availableBuffer] = lastWaylandBuffer;
 
-  WindowBackBuffer *tmp = mFrontBuffer;
-  mFrontBuffer = mBackBuffer;
-  mBackBuffer = tmp;
+  LOGWAYLAND(("    Buffer flip new back %p new front %p \n",
+              (void*)lastWaylandBuffer, (void*)mWaylandBuffer));
 
-  if (mBackBuffer->IsMatchingSize(aWidth, aHeight)) {
-    // Former front buffer has the same size as a requested one.
-    // Gecko may expect a content already drawn on screen so copy
-    // existing data to the new buffer.
-    mFrontBuffer->SetImageDataFromBackBuffer(mBackBuffer);
-    // When buffer switches we need to damage whole screen
-    // (https://bugzilla.redhat.com/show_bug.cgi?id=1418260)
-    mFullScreenDamage = true;
-  } else {
-    // Former buffer has different size from the new request. Only resize
-    // the new buffer and leave gecko to render new whole content.
-    mFrontBuffer->Resize(aWidth, aHeight);
+  mNeedScaleFactorUpdate = true;
+
+  bool bufferNeedsResize = !mWaylandBuffer->IsMatchingSize(
+      mBufferScreenRect.width, mBufferScreenRect.height);
+  if (bufferNeedsResize) {
+    LOGWAYLAND(("    Resize buffer to [%d x %d]\n", mBufferScreenRect.width,
+                mBufferScreenRect.height));
+    mWaylandBuffer->Resize(mBufferScreenRect.width, mBufferScreenRect.height);
   }
 
-  return mFrontBuffer;
+  return mWaylandBuffer;
 }
 
-already_AddRefed<gfx::DrawTarget>
-WindowSurfaceWayland::LockFrontBuffer(int aWidth, int aHeight)
-{
-  WindowBackBuffer* buffer = GetFrontBufferToDraw(aWidth, aHeight);
-  if (buffer) {
-    return buffer->Lock();
+already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::LockWaylandBuffer() {
+  WindowBackBuffer* buffer = GetWaylandBufferToDraw(mCanSwitchWaylandBuffer);
+
+  LOGWAYLAND(("WindowSurfaceWayland::LockWaylandBuffer [%p] Got buffer %p\n",
+              (void*)this, (void*)buffer));
+
+  if (!buffer) {
+    if (mLastCommitTime && (g_get_monotonic_time() / 1000) - mLastCommitTime >
+                               COMPOSITING_TIMEOUT) {
+      NS_WARNING(
+          "Slow response from Wayland compositor, visual glitches ahead.");
+    }
+    return nullptr;
   }
 
-  NS_WARNING("WindowSurfaceWayland::LockFrontBuffer(): No buffer available");
-  return nullptr;
+  mCanSwitchWaylandBuffer = false;
+
+  if (mBufferNeedsClear) {
+    buffer->Clear();
+    mBufferNeedsClear = false;
+  }
+
+  return buffer->Lock();
 }
 
-already_AddRefed<gfx::DrawTarget>
-WindowSurfaceWayland::LockImageSurface(const gfx::IntSize& aLockSize)
-{
+void WindowSurfaceWayland::UnlockWaylandBuffer() {
+  LOGWAYLAND(("WindowSurfaceWayland::UnlockWaylandBuffer [%p]\n", (void*)this));
+  mWaylandBuffer->Unlock();
+}
+
+already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::LockImageSurface(
+    const gfx::IntSize& aLockSize) {
   if (!mImageSurface || mImageSurface->CairoStatus() ||
       !(aLockSize <= mImageSurface->GetSize())) {
-    mImageSurface = new gfxImageSurface(aLockSize,
-        SurfaceFormatToImageFormat(mWaylandDisplay->GetSurfaceFormat()));
+    mImageSurface = new gfxImageSurface(
+        aLockSize,
+        SurfaceFormatToImageFormat(WindowBackBuffer::GetSurfaceFormat()));
     if (mImageSurface->CairoStatus()) {
       return nullptr;
     }
   }
 
-  return gfxPlatform::CreateDrawTargetForData(mImageSurface->Data(),
-                                              mImageSurface->GetSize(),
-                                              mImageSurface->Stride(),
-                                              mWaylandDisplay->GetSurfaceFormat());
+  return gfxPlatform::CreateDrawTargetForData(
+      mImageSurface->Data(), mImageSurface->GetSize(), mImageSurface->Stride(),
+      WindowBackBuffer::GetSurfaceFormat());
 }
 
-/*
-  There are some situations which can happen here:
+static bool IsWindowFullScreenUpdate(
+    LayoutDeviceIntRect& aScreenRect,
+    const LayoutDeviceIntRegion& aUpdatedRegion) {
+  if (aUpdatedRegion.GetNumRects() > 1) return false;
 
-  A) Lock() is called to whole surface. In that case we don't need
-     to clip/buffer the drawing and we can return wl_buffer directly
-     for drawing.
-       - mFrontBuffer is available - that's an ideal situation.
-       - mFrontBuffer is locked by compositor - flip buffers and draw.
-          - if we can't flip buffers - go B)
+  IntRect rect = aUpdatedRegion.RectIter().Get().ToUnknownRect();
+  return (rect.x == 0 && rect.y == 0 && aScreenRect.width == rect.width &&
+          aScreenRect.height == rect.height);
+}
 
-  B) Lock() is requested for part(s) of screen. We need to provide temporary
-     surface to draw into and copy result (clipped) to target wl_surface.
- */
-already_AddRefed<gfx::DrawTarget>
-WindowSurfaceWayland::Lock(const LayoutDeviceIntRegion& aRegion)
-{
+static bool IsPopupFullScreenUpdate(
+    LayoutDeviceIntRect& aScreenRect,
+    const LayoutDeviceIntRegion& aUpdatedRegion) {
+  // We know that popups can be drawn from two parts; a panel and an arrow.
+  // Assume we redraw whole popups when we have two rects and bounding
+  // box is equal to window borders.
+  if (aUpdatedRegion.GetNumRects() > 2) return false;
+
+  gfx::IntRect lockSize = aUpdatedRegion.GetBounds().ToUnknownRect();
+  return (lockSize.x == 0 && lockSize.y == 0 &&
+          aScreenRect.width == lockSize.width &&
+          aScreenRect.height == lockSize.height);
+}
+
+already_AddRefed<gfx::DrawTarget> WindowSurfaceWayland::Lock(
+    const LayoutDeviceIntRegion& aRegion) {
   MOZ_ASSERT(mIsMainThread == NS_IsMainThread());
 
-  LayoutDeviceIntRect screenRect = mWindow->GetBounds();
-  gfx::IntRect bounds = aRegion.GetBounds().ToUnknownRect();
-  gfx::IntSize lockSize(bounds.XMost(), bounds.YMost());
+  // Wait until all pending events are processed. There may be queued
+  // wl_buffer release event which releases our wl_buffer for further rendering.
+  mWaylandDisplay->WaitForSyncEnd();
 
-  // Are we asked for entire nsWindow to draw?
-  mDirectWlBufferDraw = (aRegion.GetNumRects() == 1 &&
-                         bounds.x == 0 && bounds.y == 0 &&
-                         lockSize.width == screenRect.width &&
-                         lockSize.height == screenRect.height);
+  // Disable all commits (from potential frame callback/delayed handlers)
+  // until next WindowSurfaceWayland::Commit() call.
+  mBufferCommitAllowed = false;
 
-  if (mDirectWlBufferDraw) {
-    RefPtr<gfx::DrawTarget> dt = LockFrontBuffer(screenRect.width,
-                                                 screenRect.height);
+  LayoutDeviceIntRect lockedScreenRect = mWindow->GetBounds();
+  gfx::IntRect lockSize = aRegion.GetBounds().ToUnknownRect();
+
+  bool isTransparentPopup =
+      mWindow->IsWaylandPopup() &&
+      (eTransparencyTransparent == mWindow->GetTransparencyMode());
+
+  bool windowRedraw = isTransparentPopup
+                          ? IsPopupFullScreenUpdate(lockedScreenRect, aRegion)
+                          : IsWindowFullScreenUpdate(lockedScreenRect, aRegion);
+  if (windowRedraw) {
+    // Clear buffer when we (re)draw new transparent popup window,
+    // otherwise leave it as-is, mBufferNeedsClear can be set from previous
+    // (already pending) commits which are cached now.
+    mBufferNeedsClear =
+        mWindow->WaylandSurfaceNeedsClear() || isTransparentPopup;
+
+    // Store info that we can switch WaylandBuffer when we flush
+    // mImageSurface / mDelayedImageCommits. Don't clear it - it's cleared
+    // at LockWaylandBuffer() when we actualy switch the buffer.
+    mCanSwitchWaylandBuffer = true;
+
+    // We do full buffer repaint so clear our cached drawings.
+    mDelayedImageCommits.Clear();
+    mWaylandBufferDamage.SetEmpty();
+
+    // Also do scale factor update for whole window updates just to be sure.
+    mNeedScaleFactorUpdate = true;
+  }
+
+  LOGWAYLAND(
+      ("WindowSurfaceWayland::Lock [%p] [%d,%d] -> [%d x %d] rects %d "
+       "windowSize [%d x %d]\n",
+       (void*)this, lockSize.x, lockSize.y, lockSize.width, lockSize.height,
+       aRegion.GetNumRects(), lockedScreenRect.width, lockedScreenRect.height));
+  LOGWAYLAND(("   nsWindow = %p\n", mWindow));
+  LOGWAYLAND(("   isPopup = %d\n", mWindow->IsWaylandPopup()));
+  LOGWAYLAND(("   isTransparentPopup = %d\n", isTransparentPopup));
+  LOGWAYLAND(("   IsPopupFullScreenUpdate = %d\n",
+              IsPopupFullScreenUpdate(lockedScreenRect, aRegion)));
+  LOGWAYLAND(("   IsWindowFullScreenUpdate = %d\n",
+              IsWindowFullScreenUpdate(lockedScreenRect, aRegion)));
+  LOGWAYLAND(("   mBufferNeedsClear = %d\n", mBufferNeedsClear));
+  LOGWAYLAND(("   windowRedraw = %d\n", windowRedraw));
+
+#if MOZ_LOGGING
+  if (!(mBufferScreenRect == lockedScreenRect)) {
+    LOGWAYLAND(("   screen size changed\n"));
+  }
+#endif
+
+  if (!(mBufferScreenRect == lockedScreenRect)) {
+    // Screen (window) size changed and we still have some painting pending
+    // for the last window size. That can happen when window is resized.
+    // We can't commit them any more as they're for former window size, so
+    // scratch them.
+    mDelayedImageCommits.Clear();
+    mWaylandBufferDamage.SetEmpty();
+
+    if (!windowRedraw) {
+      NS_WARNING("Partial screen update when window is resized!");
+      // This should not happen. Screen size changed but we got only
+      // partal screen update instead of whole screen. Discard this painting
+      // as it produces artifacts.
+      return nullptr;
+    }
+    mBufferScreenRect = lockedScreenRect;
+  }
+
+  mDrawToWaylandBufferDirectly =
+      (windowRedraw || mRenderingCacheMode != CACHE_ALL);
+
+  if (mDrawToWaylandBufferDirectly) {
+    LOGWAYLAND(("   Direct drawing\n"));
+    RefPtr<gfx::DrawTarget> dt = LockWaylandBuffer();
     if (dt) {
+      if (!windowRedraw) {
+        DrawDelayedImageCommits(dt, mWaylandBufferDamage);
+      }
       return dt.forget();
     }
-
-    // We don't have any front buffer available. Try indirect drawing
-    // to mImageSurface which is mirrored to front buffer at commit.
-    mDirectWlBufferDraw = false;
   }
 
-  return LockImageSurface(lockSize);
+  // Any caching is disabled and we don't have any back buffer available.
+  if (mRenderingCacheMode == CACHE_NONE) {
+    return nullptr;
+  }
+
+  // We do indirect drawing because there isn't any front buffer available.
+  // Do indirect drawing to mImageSurface which is commited to wayland
+  // wl_buffer by DrawDelayedImageCommits() later.
+  mDrawToWaylandBufferDirectly = false;
+
+  LOGWAYLAND(("   Indirect drawing.\n"));
+  return LockImageSurface(gfx::IntSize(lockSize.XMost(), lockSize.YMost()));
 }
 
-bool
-WindowSurfaceWayland::CommitImageSurface(const LayoutDeviceIntRegion& aRegion)
-{
-  MOZ_ASSERT(!mDirectWlBufferDraw);
+bool WindowImageSurface::OverlapsSurface(
+    class WindowImageSurface& aBottomSurface) {
+  return mUpdateRegion.Contains(aBottomSurface.mUpdateRegion);
+}
 
-  LayoutDeviceIntRect screenRect = mWindow->GetBounds();
+void WindowImageSurface::Draw(gfx::SourceSurface* aSurface,
+                              gfx::DrawTarget* aDest,
+                              const LayoutDeviceIntRegion& aRegion) {
+#ifdef MOZ_LOGGING
   gfx::IntRect bounds = aRegion.GetBounds().ToUnknownRect();
+  LOGWAYLAND(("WindowImageSurface::Draw\n"));
+  LOGWAYLAND(("    rects num %d\n", aRegion.GetNumRects()));
+  LOGWAYLAND(("    bounds [ %d, %d] -> [%d x %d]\n", bounds.x, bounds.y,
+              bounds.width, bounds.height));
+#endif
 
-  gfx::Rect rect(bounds);
-  if (rect.IsEmpty()) {
-    return false;
+  for (auto iter = aRegion.RectIter(); !iter.Done(); iter.Next()) {
+    mozilla::LayoutDeviceIntRect r = iter.Get();
+    gfx::Rect rect(r.ToUnknownRect());
+    LOGWAYLAND(("    draw rect [%f,%f] -> [%f x %f]\n", rect.x, rect.y,
+                rect.width, rect.height));
+    aDest->DrawSurface(aSurface, rect, rect);
   }
+}
 
-  RefPtr<gfx::DrawTarget> dt = LockFrontBuffer(screenRect.width,
-                                               screenRect.height);
-  RefPtr<gfx::SourceSurface> surf =
-    gfx::Factory::CreateSourceSurfaceForCairoSurface(mImageSurface->CairoSurface(),
-                                                     mImageSurface->GetSize(),
-                                                     mImageSurface->Format());
-  if (!dt || !surf) {
-    return false;
+void WindowImageSurface::Draw(gfx::DrawTarget* aDest,
+                              LayoutDeviceIntRegion& aWaylandBufferDamage) {
+  Draw(mSurface.get(), aDest, mUpdateRegion);
+  aWaylandBufferDamage.OrWith(mUpdateRegion);
+}
+
+WindowImageSurface::WindowImageSurface(
+    gfxImageSurface* aImageSurface, const LayoutDeviceIntRegion& aUpdateRegion)
+    : mImageSurface(aImageSurface), mUpdateRegion(aUpdateRegion) {
+  mSurface = gfx::Factory::CreateSourceSurfaceForCairoSurface(
+      mImageSurface->CairoSurface(), mImageSurface->GetSize(),
+      mImageSurface->Format());
+}
+
+void WindowSurfaceWayland::DrawDelayedImageCommits(
+    gfx::DrawTarget* aDrawTarget, LayoutDeviceIntRegion& aWaylandBufferDamage) {
+  LOGWAYLAND(
+      ("WindowSurfaceWayland::DrawDelayedImageCommits [%p]\n", (void*)this));
+  MOZ_ASSERT(mDelayedImageCommits.Length() > 0, "Nothing to draw?");
+
+  for (unsigned int i = 0; i < mDelayedImageCommits.Length(); i++) {
+    mDelayedImageCommits[i].Draw(aDrawTarget, aWaylandBufferDamage);
   }
+  mDelayedImageCommits.Clear();
+}
 
-  uint32_t numRects = aRegion.GetNumRects();
-  if (numRects != 1) {
-    AutoTArray<IntRect, 32> rects;
-    rects.SetCapacity(numRects);
-    for (auto iter = aRegion.RectIter(); !iter.Done(); iter.Next()) {
-      rects.AppendElement(iter.Get().ToUnknownRect());
+void WindowSurfaceWayland::CacheImageSurface(
+    const LayoutDeviceIntRegion& aRegion) {
+#ifdef MOZ_LOGGING
+  gfx::IntRect bounds = aRegion.GetBounds().ToUnknownRect();
+  LOGWAYLAND(("WindowSurfaceWayland::CacheImageSurface [%p]\n", (void*)this));
+  LOGWAYLAND(("    rects num %d\n", aRegion.GetNumRects()));
+  LOGWAYLAND(("    bounds [ %d, %d] -> [%d x %d]\n", bounds.x, bounds.y,
+              bounds.width, bounds.height));
+#endif
+
+  WindowImageSurface surf = WindowImageSurface(mImageSurface, aRegion);
+
+  if (mDelayedImageCommits.Length()) {
+    int lastSurf = mDelayedImageCommits.Length() - 1;
+    if (surf.OverlapsSurface(mDelayedImageCommits[lastSurf])) {
+#ifdef MOZ_LOGGING
+      {
+        gfx::IntRect size = mDelayedImageCommits[lastSurf]
+                                .GetUpdateRegion()
+                                ->GetBounds()
+                                .ToUnknownRect();
+        LOGWAYLAND(("    removing [ %d, %d] -> [%d x %d]\n", size.x, size.y,
+                    size.width, size.height));
+      }
+#endif
+      mDelayedImageCommits.RemoveElementAt(lastSurf);
     }
-    dt->PushDeviceSpaceClipRects(rects.Elements(), rects.Length());
   }
 
-  dt->DrawSurface(surf, rect, rect);
+  mDelayedImageCommits.AppendElement(surf);
+  // mImageSurface is owned by mDelayedImageCommits
+  mImageSurface = nullptr;
 
-  if (numRects != 1) {
-    dt->PopClip();
+  LOGWAYLAND(
+      ("    There's %d cached images\n", int(mDelayedImageCommits.Length())));
+}
+
+bool WindowSurfaceWayland::CommitImageCacheToWaylandBuffer() {
+  if (!mDelayedImageCommits.Length()) {
+    return false;
   }
+
+  MOZ_ASSERT(!mDrawToWaylandBufferDirectly);
+
+  RefPtr<gfx::DrawTarget> dt = LockWaylandBuffer();
+  if (!dt) {
+    return false;
+  }
+
+  LOGWAYLAND(("   Flushing %ld cached WindowImageSurfaces to Wayland buffer\n",
+              long(mDelayedImageCommits.Length())));
+
+  DrawDelayedImageCommits(dt, mWaylandBufferDamage);
+  UnlockWaylandBuffer();
 
   return true;
 }
 
-void
-WindowSurfaceWayland::Commit(const LayoutDeviceIntRegion& aInvalidRegion)
-{
-  MOZ_ASSERT(mIsMainThread == NS_IsMainThread());
-
-  wl_surface* waylandSurface = mWindow->GetWaylandSurface();
-  if (!waylandSurface) {
-    // Target window is already destroyed - don't bother to render there.
-    NS_WARNING("WindowSurfaceWayland::Commit(): parent wl_surface is already hidden/deleted.");
-    return;
-  }
-  wl_proxy_set_queue((struct wl_proxy *)waylandSurface,
-                     mWaylandDisplay->GetEventQueue());
-
-  if (!mDirectWlBufferDraw) {
-    // We have new content at mImageSurface - copy data to mFrontBuffer first.
-    CommitImageSurface(aInvalidRegion);
-  }
-
-  if (mFullScreenDamage) {
-    LayoutDeviceIntRect rect = mWindow->GetBounds();
-    wl_surface_damage(waylandSurface, 0, 0, rect.width, rect.height);
-    mFullScreenDamage = false;
+static void WaylandBufferDelayCommitHandler(WindowSurfaceWayland** aSurface) {
+  if (*aSurface) {
+    (*aSurface)->DelayedCommitHandler();
   } else {
-    gint scaleFactor = mWindow->GdkScaleFactor();
-    for (auto iter = aInvalidRegion.RectIter(); !iter.Done(); iter.Next()) {
-      const mozilla::LayoutDeviceIntRect &r = iter.Get();
-      // We need to remove the scale factor because the wl_surface_damage
-      // also multiplies by current  scale factor.
-      wl_surface_damage(waylandSurface, r.x/scaleFactor, r.y/scaleFactor,
-                        r.width/scaleFactor, r.height/scaleFactor);
-    }
-  }
-
-  // Frame callback is always connected to actual wl_surface. When the surface
-  // is unmapped/deleted the frame callback is never called. Unfortunatelly
-  // we don't know if the frame callback is not going to be called.
-  // But our mozcontainer code deletes wl_surface when the GdkWindow is hidden
-  // creates a new one when is visible.
-  if (mFrameCallback && mFrameCallbackSurface == waylandSurface) {
-    // Do nothing here - we have a valid wl_surface and the buffer will be
-    // commited to compositor in next frame callback event.
-    mDelayedCommit = true;
-    return;
-  } else  {
-    if (mFrameCallback) {
-      // Delete frame callback connected to obsoleted wl_surface.
-      wl_callback_destroy(mFrameCallback);
-    }
-
-    mFrameCallback = wl_surface_frame(waylandSurface);
-    wl_callback_add_listener(mFrameCallback, &frame_listener, this);
-    mFrameCallbackSurface = waylandSurface;
-
-    // There's no pending frame callback so we can draw immediately
-    // and create frame callback for possible subsequent drawing.
-    mFrontBuffer->Attach(waylandSurface);
-    mDelayedCommit = false;
+    // Referenced WindowSurfaceWayland is already deleted.
+    // Do nothing but just release the mDelayedCommitHandle allocated at
+    // WindowSurfaceWayland::CommitWaylandBuffer().
+    free(aSurface);
   }
 }
 
-void
-WindowSurfaceWayland::FrameCallbackHandler()
-{
-  MOZ_ASSERT(mIsMainThread == NS_IsMainThread());
+void WindowSurfaceWayland::CommitWaylandBuffer() {
+  LOGWAYLAND(("WindowSurfaceWayland::CommitWaylandBuffer [%p]\n", (void*)this));
+  LOGWAYLAND(
+      ("   mDrawToWaylandBufferDirectly = %d\n", mDrawToWaylandBufferDirectly));
+  LOGWAYLAND(("   mCanSwitchWaylandBuffer = %d\n", mCanSwitchWaylandBuffer));
+  LOGWAYLAND(("   mDelayedCommitHandle = %p\n", mDelayedCommitHandle));
+  LOGWAYLAND(("   mFrameCallback = %p\n", mFrameCallback));
+  LOGWAYLAND(("   mLastCommittedSurface = %p\n", mLastCommittedSurface));
+  LOGWAYLAND(("   mBufferPendingCommit = %d\n", mBufferPendingCommit));
+  LOGWAYLAND(("   mBufferCommitAllowed = %d\n", mBufferCommitAllowed));
 
-  if (mFrameCallback) {
-    wl_callback_destroy(mFrameCallback);
-    mFrameCallback = nullptr;
-    mFrameCallbackSurface = nullptr;
+  if (!mBufferCommitAllowed) {
+    return;
   }
 
-  if (mDelayedCommit) {
-    wl_surface* waylandSurface = mWindow->GetWaylandSurface();
-    if (!waylandSurface) {
-      // Target window is already destroyed - don't bother to render there.
-      NS_WARNING("WindowSurfaceWayland::FrameCallbackHandler(): parent wl_surface is already hidden/deleted.");
+  if (CommitImageCacheToWaylandBuffer()) {
+    mBufferPendingCommit = true;
+  }
+
+  // There's nothing to do here
+  if (!mBufferPendingCommit) {
+    return;
+  }
+
+  MOZ_ASSERT(!mWaylandBuffer->IsAttached(),
+             "We can't draw to attached wayland buffer!");
+
+  wl_surface* waylandSurface = mWindow->GetWaylandSurface();
+  if (!waylandSurface) {
+    LOGWAYLAND(("    [%p] mWindow->GetWaylandSurface() failed, delay commit.\n",
+                (void*)this));
+
+    // Target window is not created yet - delay the commit. This can happen only
+    // when the window is newly created and there's no active
+    // frame callback pending.
+    MOZ_ASSERT(!mFrameCallback || waylandSurface != mLastCommittedSurface,
+               "Missing wayland surface at frame callback!");
+
+    // Do nothing if there's already mDelayedCommitHandle pending.
+    if (!mDelayedCommitHandle) {
+      mDelayedCommitHandle = static_cast<WindowSurfaceWayland**>(
+          moz_xmalloc(sizeof(*mDelayedCommitHandle)));
+      *mDelayedCommitHandle = this;
+
+      MessageLoop::current()->PostDelayedTask(
+          NewRunnableFunction("WaylandBackBufferCommit",
+                              &WaylandBufferDelayCommitHandler,
+                              mDelayedCommitHandle),
+          EVENT_LOOP_DELAY);
+    }
+    return;
+  }
+  wl_proxy_set_queue((struct wl_proxy*)waylandSurface,
+                     mWaylandDisplay->GetEventQueue());
+
+  // We have an active frame callback request so handle it.
+  if (mFrameCallback) {
+    if (waylandSurface == mLastCommittedSurface) {
+      LOGWAYLAND(("    [%p] wait for frame callback.\n", (void*)this));
+      // We have an active frame callback pending from our recent surface.
+      // It means we should defer the commit to FrameCallbackHandler().
       return;
     }
-    wl_proxy_set_queue((struct wl_proxy *)waylandSurface,
-                       mWaylandDisplay->GetEventQueue());
-
-    // Send pending surface to compositor and register frame callback
-    // for possible subsequent drawing.
-    mFrameCallback = wl_surface_frame(waylandSurface);
-    wl_callback_add_listener(mFrameCallback, &frame_listener, this);
-    mFrameCallbackSurface = waylandSurface;
-
-    mFrontBuffer->Attach(waylandSurface);
-    mDelayedCommit = false;
+    // If our stored wl_surface does not match the actual one it means the frame
+    // callback is no longer active and we should release it.
+    wl_callback_destroy(mFrameCallback);
+    mFrameCallback = nullptr;
+    mLastCommittedSurface = nullptr;
   }
+
+  for (auto iter = mWaylandBufferDamage.RectIter(); !iter.Done(); iter.Next()) {
+    mozilla::LayoutDeviceIntRect r = iter.Get();
+    LOGWAYLAND(("   wl_surface_damage_buffer [%d, %d] -> [%d, %d]\n", r.x, r.y,
+                r.width, r.height));
+    wl_surface_damage_buffer(waylandSurface, r.x, r.y, r.width, r.height);
+  }
+
+  // Clear all back buffer damage as we're committing
+  // all requested regions.
+  mWaylandBufferDamage.SetEmpty();
+
+  mFrameCallback = wl_surface_frame(waylandSurface);
+  wl_callback_add_listener(mFrameCallback, &frame_listener, this);
+
+  if (mNeedScaleFactorUpdate || mLastCommittedSurface != waylandSurface) {
+    wl_surface_set_buffer_scale(waylandSurface, mWindow->GdkScaleFactor());
+    mNeedScaleFactorUpdate = false;
+  }
+
+  mWaylandBuffer->Attach(waylandSurface);
+  mLastCommittedSurface = waylandSurface;
+  mLastCommitTime = g_get_monotonic_time() / 1000;
+
+  // Ask wl_display to start events synchronization. We're going to wait
+  // until all events are processed before next WindowSurfaceWayland::Lock()
+  // as we hope for free wl_buffer there.
+  mWaylandDisplay->SyncBegin();
+
+  // There's no pending commit, all changes are sent to compositor.
+  mBufferPendingCommit = false;
+}
+
+void WindowSurfaceWayland::Commit(const LayoutDeviceIntRegion& aInvalidRegion) {
+  MOZ_ASSERT(mIsMainThread == NS_IsMainThread());
+
+#ifdef MOZ_LOGGING
+  {
+    gfx::IntRect lockSize = aInvalidRegion.GetBounds().ToUnknownRect();
+    LOGWAYLAND(
+        ("WindowSurfaceWayland::Commit [%p] damage size [%d, %d] -> [%d x %d]"
+         "screenSize [%d x %d]\n",
+         (void*)this, lockSize.x, lockSize.y, lockSize.width, lockSize.height,
+         mBufferScreenRect.width, mBufferScreenRect.height));
+    LOGWAYLAND(("    mDrawToWaylandBufferDirectly = %d\n",
+                mDrawToWaylandBufferDirectly));
+  }
+#endif
+
+  if (mDrawToWaylandBufferDirectly) {
+    MOZ_ASSERT(mWaylandBuffer->IsLocked());
+    mWaylandBufferDamage.OrWith(aInvalidRegion);
+    UnlockWaylandBuffer();
+    mBufferPendingCommit = true;
+  } else {
+    MOZ_ASSERT(!mWaylandBuffer->IsLocked(),
+               "Drawing to already locked buffer?");
+    CacheImageSurface(aInvalidRegion);
+  }
+
+  mBufferCommitAllowed = true;
+  CommitWaylandBuffer();
+}
+
+void WindowSurfaceWayland::FrameCallbackHandler() {
+  MOZ_ASSERT(mIsMainThread == NS_IsMainThread());
+  MOZ_ASSERT(mFrameCallback != nullptr,
+             "FrameCallbackHandler() called without valid frame callback!");
+  MOZ_ASSERT(mLastCommittedSurface != nullptr,
+             "FrameCallbackHandler() called without valid wl_surface!");
+
+  LOGWAYLAND(
+      ("WindowSurfaceWayland::FrameCallbackHandler [%p]\n", (void*)this));
+
+  wl_callback_destroy(mFrameCallback);
+  mFrameCallback = nullptr;
+
+  CommitWaylandBuffer();
+}
+
+void WindowSurfaceWayland::DelayedCommitHandler() {
+  MOZ_ASSERT(mDelayedCommitHandle != nullptr, "Missing mDelayedCommitHandle!");
+
+  LOGWAYLAND(
+      ("WindowSurfaceWayland::DelayedCommitHandler [%p]\n", (void*)this));
+
+  *mDelayedCommitHandle = nullptr;
+  free(mDelayedCommitHandle);
+  mDelayedCommitHandle = nullptr;
+
+  CommitWaylandBuffer();
 }
 
 }  // namespace widget

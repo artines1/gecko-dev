@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -49,19 +47,19 @@
  *      If false, the menu item will be entirely hidden.
  */
 function MenuItem({
-    accelerator = null,
-    accesskey = null,
-    l10nID = null,
-    checked = false,
-    click = () => {},
-    disabled = false,
-    hover = () => {},
-    id = null,
-    label = "",
-    submenu = null,
-    type = "normal",
-    visible = true,
-} = { }) {
+  accelerator = null,
+  accesskey = null,
+  l10nID = null,
+  checked = false,
+  click = () => {},
+  disabled = false,
+  hover = () => {},
+  id = null,
+  label = "",
+  submenu = null,
+  type = "normal",
+  visible = true,
+} = {}) {
   this.accelerator = accelerator;
   this.accesskey = accesskey;
   this.l10nID = l10nID;

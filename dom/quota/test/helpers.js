@@ -3,25 +3,36 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-var testGenerator = testSteps();
+const NS_ERROR_STORAGE_BUSY = SpecialPowers.Cr.NS_ERROR_STORAGE_BUSY;
 
-function clearAllDatabases(callback)
-{
+var testGenerator;
+if (testSteps.constructor.name === "GeneratorFunction") {
+  testGenerator = testSteps();
+}
+
+function clearAllDatabases(callback) {
   let qms = SpecialPowers.Services.qms;
   let principal = SpecialPowers.wrap(document).nodePrincipal;
   let request = qms.clearStoragesForPrincipal(principal);
   let cb = SpecialPowers.wrapCallback(callback);
   request.callback = cb;
+  return request;
 }
 
 var testHarnessGenerator = testHarnessSteps();
 testHarnessGenerator.next();
 
-function* testHarnessSteps()
-{
-  function nextTestHarnessStep(val)
-  {
+function* testHarnessSteps() {
+  function nextTestHarnessStep(val) {
     testHarnessGenerator.next(val);
+  }
+
+  function* loadScript(src) {
+    let script = document.createElement("script");
+    script.src = src;
+    script.onload = nextTestHarnessStep;
+    document.head.appendChild(script);
+    yield undefined;
   }
 
   let testScriptPath;
@@ -44,10 +55,11 @@ function* testHarnessSteps()
 
   SpecialPowers.pushPrefEnv(
     {
-      "set": [
+      set: [
         ["dom.storageManager.enabled", true],
         ["dom.storageManager.prompt.testing", true],
-      ]
+        ["dom.simpleDB.enabled", true],
+      ],
     },
     nextTestHarnessStep
   );
@@ -58,15 +70,14 @@ function* testHarnessSteps()
   clearAllDatabases(nextTestHarnessStep);
   yield undefined;
 
-  info("Running" +
-       (testScriptFilename ? " '" + testScriptFilename + "'" : ""));
+  info("Running" + (testScriptFilename ? " '" + testScriptFilename + "'" : ""));
 
   if (testScriptFilename && !window.disableWorkerTest) {
     info("Running test in a worker");
 
-    let workerScriptBlob =
-      new Blob([ "(" + workerScript.toString() + ")();" ],
-               { type: "text/javascript" });
+    let workerScriptBlob = new Blob(["(" + workerScript.toString() + ")();"], {
+      type: "text/javascript",
+    });
     let workerScriptURL = URL.createObjectURL(workerScriptBlob);
 
     let worker = new Worker(workerScriptURL);
@@ -81,7 +92,7 @@ function* testHarnessSteps()
       let message = event.data;
       switch (message.op) {
         case "ok":
-          ok(message.condition, message.name, message.diag);
+          ok(message.condition, message.name + " - " + message.diag);
           break;
 
         case "todo":
@@ -93,7 +104,7 @@ function* testHarnessSteps()
           break;
 
         case "ready":
-          worker.postMessage({ op: "load", files: [ testScriptPath ] });
+          worker.postMessage({ op: "load", files: [testScriptPath] });
           break;
 
         case "loaded":
@@ -106,14 +117,16 @@ function* testHarnessSteps()
           break;
 
         case "clearAllDatabases":
-          clearAllDatabases(function(){
+          clearAllDatabases(function() {
             worker.postMessage({ op: "clearAllDatabasesDone" });
           });
           break;
 
         default:
-          ok(false,
-             "Received a bad message from worker: " + JSON.stringify(message));
+          ok(
+            false,
+            "Received a bad message from worker: " + JSON.stringify(message)
+          );
           nextTestHarnessStep();
       }
     };
@@ -128,60 +141,70 @@ function* testHarnessSteps()
     clearAllDatabases(nextTestHarnessStep);
     yield undefined;
   } else if (testScriptFilename) {
-    todo(false,
-         "Skipping test in a worker because it is explicitly disabled: " +
-         disableWorkerTest);
+    todo(
+      false,
+      "Skipping test in a worker because it is explicitly disabled: " +
+        disableWorkerTest
+    );
   } else {
-    todo(false,
-         "Skipping test in a worker because it's not structured properly");
+    todo(
+      false,
+      "Skipping test in a worker because it's not structured properly"
+    );
   }
 
   info("Running test in main thread");
 
+  yield* loadScript("head-shared.js");
+
   // Now run the test script in the main thread.
-  testGenerator.next();
+  if (testSteps.constructor.name === "AsyncFunction") {
+    SimpleTest.registerCleanupFunction(async function() {
+      await requestFinished(clearAllDatabases());
+    });
 
-  yield undefined;
-}
+    add_task(testSteps);
+  } else {
+    testGenerator.next();
 
-if (!window.runTest) {
-  window.runTest = function()
-  {
-    SimpleTest.waitForExplicitFinish();
-    testHarnessGenerator.next();
+    yield undefined;
   }
 }
 
-function finishTest()
-{
+if (!window.runTest) {
+  window.runTest = function() {
+    SimpleTest.waitForExplicitFinish();
+    testHarnessGenerator.next();
+  };
+}
+
+function finishTest() {
   SimpleTest.executeSoon(function() {
-    clearAllDatabases(function() { SimpleTest.finish(); });
+    clearAllDatabases(function() {
+      SimpleTest.finish();
+    });
   });
 }
 
-function grabArgAndContinueHandler(arg)
-{
+function grabArgAndContinueHandler(arg) {
   testGenerator.next(arg);
 }
 
-function continueToNextStep()
-{
+function continueToNextStep() {
   SimpleTest.executeSoon(function() {
     testGenerator.next();
   });
 }
 
-function continueToNextStepSync()
-{
+function continueToNextStepSync() {
   testGenerator.next();
 }
 
-function workerScript()
-{
+function workerScript() {
   "use strict";
 
   self.repr = function(_thing_) {
-    if (typeof(_thing_) == "undefined") {
+    if (typeof _thing_ == "undefined") {
       return "undefined";
     }
 
@@ -190,10 +213,10 @@ function workerScript()
     try {
       str = _thing_ + "";
     } catch (e) {
-      return "[" + typeof(_thing_) + "]";
+      return "[" + typeof _thing_ + "]";
     }
 
-    if (typeof(_thing_) == "function") {
+    if (typeof _thing_ == "function") {
       str = str.replace(/^\s+/, "");
       let idx = str.indexOf("{");
       if (idx != -1) {
@@ -205,29 +228,33 @@ function workerScript()
   };
 
   self.ok = function(_condition_, _name_, _diag_) {
-    self.postMessage({ op: "ok",
-                       condition: !!_condition_,
-                       name: _name_,
-                       diag: _diag_ });
+    self.postMessage({
+      op: "ok",
+      condition: !!_condition_,
+      name: _name_,
+      diag: _diag_,
+    });
   };
 
   self.is = function(_a_, _b_, _name_) {
-    let pass = (_a_ == _b_);
+    let pass = _a_ == _b_;
     let diag = pass ? "" : "got " + repr(_a_) + ", expected " + repr(_b_);
     ok(pass, _name_, diag);
   };
 
   self.isnot = function(_a_, _b_, _name_) {
-    let pass = (_a_ != _b_);
+    let pass = _a_ != _b_;
     let diag = pass ? "" : "didn't expect " + repr(_a_) + ", but got it";
     ok(pass, _name_, diag);
   };
 
   self.todo = function(_condition_, _name_, _diag_) {
-    self.postMessage({ op: "todo",
-                       condition: !!_condition_,
-                       name: _name_,
-                       diag: _diag_ });
+    self.postMessage({
+      op: "todo",
+      condition: !!_condition_,
+      name: _name_,
+      diag: _diag_,
+    });
   };
 
   self.info = function(_msg_) {
@@ -237,7 +264,9 @@ function workerScript()
   self.executeSoon = function(_fun_) {
     var channel = new MessageChannel();
     channel.port1.postMessage("");
-    channel.port2.onmessage = function(event) { _fun_(); };
+    channel.port2.onmessage = function(event) {
+      _fun_();
+    };
   };
 
   self.finishTest = function() {
@@ -262,12 +291,19 @@ function workerScript()
   self.clearAllDatabases = function(_callback_) {
     self._clearAllDatabasesCallback = _callback_;
     self.postMessage({ op: "clearAllDatabases" });
-  }
+  };
 
   self.onerror = function(_message_, _file_, _line_) {
-    ok(false,
-       "Worker: uncaught exception [" + _file_ + ":" + _line_ + "]: '" +
-         _message_ + "'");
+    ok(
+      false,
+      "Worker: uncaught exception [" +
+        _file_ +
+        ":" +
+        _line_ +
+        "]: '" +
+        _message_ +
+        "'"
+    );
     self.finishTest();
     self.close();
     return true;
@@ -297,10 +333,67 @@ function workerScript()
         break;
 
       default:
-        throw new Error("Received a bad message from parent: " +
-                        JSON.stringify(message));
+        throw new Error(
+          "Received a bad message from parent: " + JSON.stringify(message)
+        );
     }
   };
 
   self.postMessage({ op: "ready" });
+}
+
+// SimpleDB connections and SpecialPowers wrapping:
+//
+// SpecialPowers provides a SpecialPowersHandler Proxy mechanism that lets our
+// content-privileged code borrow its chrome-privileged principal to access
+// things we shouldn't be able to access.  The proxies wrap their returned
+// values, so once we have something wrapped we can rely on returned objects
+// being wrapped as well.  The proxy will also automatically unwrap wrapped
+// arguments we pass in.  However, we need to invoke wrapCallback on callback
+// functions so that the arguments they receive will be wrapped because the
+// proxy does not automatically wrap content-privileged functions.
+//
+// Our use of (wrapped) SpecialPowers.Cc results in getSimpleDatabase()
+// producing a wrapped nsISDBConnection instance.  The nsISDBResult instances
+// exposed on the (wrapped) nsISDBRequest are also wrapped, so our
+// requestFinished helper wraps the results in helper objects that behave the
+// same as the result, automatically unwrapping the wrapped array/arraybuffer
+// results.
+
+function getSimpleDatabase() {
+  let connection = SpecialPowers.Cc[
+    "@mozilla.org/dom/sdb-connection;1"
+  ].createInstance(SpecialPowers.Ci.nsISDBConnection);
+
+  let principal = SpecialPowers.wrap(document).nodePrincipal;
+
+  connection.init(principal);
+
+  return connection;
+}
+
+function requestFinished(request) {
+  return new Promise(function(resolve, reject) {
+    request.callback = SpecialPowers.wrapCallback(function(req) {
+      if (req.resultCode === SpecialPowers.Cr.NS_OK) {
+        let result = req.result;
+        if (
+          SpecialPowers.call_Instanceof(result, SpecialPowers.Ci.nsISDBResult)
+        ) {
+          let wrapper = {};
+          for (let i in result) {
+            if (typeof result[i] == "function") {
+              wrapper[i] = SpecialPowers.unwrap(result[i]);
+            } else {
+              wrapper[i] = result[i];
+            }
+          }
+          result = wrapper;
+        }
+        resolve(result);
+      } else {
+        reject(req.resultCode);
+      }
+    });
+  });
 }

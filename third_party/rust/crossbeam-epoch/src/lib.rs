@@ -36,8 +36,8 @@
 //! # Garbage
 //!
 //! Objects that get removed from concurrent collections must be stashed away until all currently
-//! pinned participants get unpinned. Such objects can be stored into a [`Garbage`], where they are
-//! kept until the right time for their destruction comes.
+//! pinned participants get unpinned. Such objects can be stored into a thread-local or global
+//! storage, where they are kept until the right time for their destruction comes.
 //!
 //! There is a global shared instance of garbage queue. You can [`defer`] the execution of an
 //! arbitrary function until the global epoch is advanced enough. Most notably, concurrent data
@@ -54,57 +54,58 @@
 //! [`pin`]: fn.pin.html
 //! [`defer`]: fn.defer.html
 
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(const_fn))]
-#![cfg_attr(feature = "nightly", feature(alloc))]
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-#[cfg(all(not(test), feature = "use_std"))]
 #[macro_use]
-extern crate std;
-#[cfg(test)]
+extern crate cfg_if;
+#[cfg(feature = "std")]
 extern crate core;
 
-// Use liballoc on nightly to avoid a dependency on libstd
-#[cfg(feature = "nightly")]
-extern crate alloc;
-#[cfg(not(feature = "nightly"))]
-mod alloc {
-    // Tweak the module layout to match the one in liballoc
-    extern crate std;
-    pub use self::std::boxed;
-    pub use self::std::sync as arc;
+cfg_if! {
+    if #[cfg(feature = "alloc")] {
+        extern crate alloc;
+    } else if #[cfg(feature = "std")] {
+        extern crate std as alloc;
+    }
 }
 
-#[cfg(feature = "manually_drop")]
-mod nodrop {
-    pub use std::mem::ManuallyDrop as NoDrop;
+#[cfg_attr(
+    feature = "nightly",
+    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
+)]
+cfg_if! {
+    if #[cfg(any(feature = "alloc", feature = "std"))] {
+        extern crate arrayvec;
+        extern crate crossbeam_utils;
+        #[macro_use]
+        extern crate memoffset;
+        #[macro_use]
+        extern crate scopeguard;
+
+        mod atomic;
+        mod collector;
+        mod deferred;
+        mod epoch;
+        mod guard;
+        mod internal;
+        mod sync;
+
+        pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+        pub use self::collector::{Collector, LocalHandle};
+        pub use self::guard::{unprotected, Guard};
+    }
 }
-#[cfg(not(feature = "manually_drop"))]
-extern crate nodrop;
 
-extern crate arrayvec;
-extern crate crossbeam_utils;
-#[cfg(feature = "use_std")]
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate memoffset;
-#[macro_use]
-extern crate scopeguard;
+cfg_if! {
+    if #[cfg(feature = "std")] {
+        #[macro_use]
+        extern crate lazy_static;
 
-mod atomic;
-mod collector;
-#[cfg(feature = "use_std")]
-mod default;
-mod deferred;
-mod epoch;
-mod garbage;
-mod guard;
-mod internal;
-mod sync;
-
-pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared};
-pub use self::guard::{unprotected, Guard};
-#[cfg(feature = "use_std")]
-pub use self::default::{default_handle, is_pinned, pin};
-pub use self::collector::{Collector, Handle};
+        mod default;
+        pub use self::default::{default_collector, is_pinned, pin};
+    }
+}

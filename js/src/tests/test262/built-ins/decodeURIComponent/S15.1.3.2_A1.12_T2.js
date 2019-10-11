@@ -7,8 +7,6 @@ info: |
     string.charAt(k + 5)) or (string.charAt(k + 7) and
     string.charAt(k + 8)) or (string.charAt(k + 10) and
     string.charAt(k + 11)) do not represent hexadecimal digits, throw URIError
-es5id: 15.1.3.2_A1.12_T2
-es6id: 18.2.6.3
 esid: sec-decodeuricomponent-encodeduricomponent
 description: >
     Complex tests, string.charAt(k + 7) and string.charAt(k + 7)  do
@@ -18,8 +16,8 @@ description: >
 //CHECK
 var result = true;
 var interval = [
-  [0x00, 0x29],
-  [0x40, 0x40],
+  [0x00, 0x2F],
+  [0x3A, 0x40],
   [0x47, 0x60],
   [0x67, 0xFFFF]
 ];

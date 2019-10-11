@@ -6,31 +6,22 @@
  * result for various combinations of .setPrivate() and nsILoadContexts
  */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-
-
-var URIs = [
-  "http://example.org",
-  "https://example.org",
-  "ftp://example.org"
-  ];
-
-let LoadContext = Components.Constructor("@mozilla.org/loadcontext;1");
-let PrivateLoadContext = Components.Constructor("@mozilla.org/privateloadcontext;1");
+var URIs = ["http://example.org", "https://example.org", "ftp://example.org"];
 
 function* getChannels() {
   for (let u of URIs) {
     yield NetUtil.newChannel({
       uri: u,
-      loadUsingSystemPrincipal: true
+      loadUsingSystemPrincipal: true,
     });
   }
 }
 
 function checkPrivate(channel, shouldBePrivate) {
-  Assert.equal(channel.QueryInterface(Ci.nsIPrivateBrowsingChannel).isChannelPrivate,
-               shouldBePrivate);
+  Assert.equal(
+    channel.QueryInterface(Ci.nsIPrivateBrowsingChannel).isChannelPrivate,
+    shouldBePrivate
+  );
 }
 
 /**
@@ -70,7 +61,7 @@ add_test(function test_setPrivate_regular() {
  * Load context mandates private mode
  */
 add_test(function test_LoadContextPrivate() {
-  let ctx = new PrivateLoadContext();
+  let ctx = Cu.createPrivateLoadContext();
   for (let c of getChannels()) {
     c.notificationCallbacks = ctx;
     checkPrivate(c, true);
@@ -82,7 +73,7 @@ add_test(function test_LoadContextPrivate() {
  * Load context mandates regular mode
  */
 add_test(function test_LoadContextRegular() {
-  let ctx = new LoadContext();
+  let ctx = Cu.createLoadContext();
   for (let c of getChannels()) {
     c.notificationCallbacks = ctx;
     checkPrivate(c, false);
@@ -90,12 +81,6 @@ add_test(function test_LoadContextRegular() {
   run_next_test();
 });
 
-
 // Do not test simultanous uses of .setPrivate and load context.
 // There is little merit in doing so, and combining both will assert in
 // Debug builds anyway.
-
-
-function run_test() {
-    run_next_test();
-}

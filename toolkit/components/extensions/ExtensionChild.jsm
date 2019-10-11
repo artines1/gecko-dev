@@ -7,38 +7,51 @@
 
 /* exported ExtensionChild */
 
-var EXPORTED_SYMBOLS = ["ExtensionChild"];
+var EXPORTED_SYMBOLS = ["ExtensionChild", "ExtensionActivityLogChild"];
 
-/*
- * This file handles addon logic that is independent of the chrome process.
- * When addons run out-of-process, this is the main entry point.
- * Its primary function is managing addon globals.
+/**
+ * This file handles addon logic that is independent of the chrome process and
+ * may run in all web content and extension processes.
  *
  * Don't put contentscript logic here, use ExtensionContent.jsm instead.
  */
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-XPCOMUtils.defineLazyServiceGetter(this, "finalizationService",
-                                   "@mozilla.org/toolkit/finalizationwitness;1",
-                                   "nsIFinalizationWitnessService");
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "finalizationService",
+  "@mozilla.org/toolkit/finalizationwitness;1",
+  "nsIFinalizationWitnessService"
+);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
   ExtensionContent: "resource://gre/modules/ExtensionContent.jsm",
   ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
+  ExtensionProcessScript: "resource://gre/modules/ExtensionProcessScript.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NativeApp: "resource://gre/modules/NativeMessaging.jsm",
+  PerformanceCounters: "resource://gre/modules/PerformanceCounters.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
 });
 
-XPCOMUtils.defineLazyGetter(
-  this, "processScript",
-  () => Cc["@mozilla.org/webextensions/extension-process-script;1"]
-          .getService().wrappedJSObject);
-
-ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
-ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
+// We're using the pref to avoid loading PerformanceCounters.jsm for nothing.
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gTimingEnabled",
+  "extensions.webextensions.enablePerformanceCounters",
+  false
+);
+const { ExtensionCommon } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionCommon.jsm"
+);
+const { ExtensionUtils } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionUtils.jsm"
+);
 
 const {
   DefaultMap,
@@ -58,9 +71,61 @@ const {
   withHandlingUserInput,
 } = ExtensionCommon;
 
-const {sharedData} = Services.cpmm;
+const { sharedData } = Services.cpmm;
 
-const isContentProcess = Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
+const isContentProcess =
+  Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
+
+const MSG_SET_ENABLED = "Extension:ActivityLog:SetEnabled";
+const MSG_LOG = "Extension:ActivityLog:DoLog";
+
+const ExtensionActivityLogChild = {
+  _initialized: false,
+  enabledExtensions: new Set(),
+
+  init() {
+    if (this._initialized) {
+      return;
+    }
+    this._initialized = true;
+
+    Services.cpmm.addMessageListener(MSG_SET_ENABLED, this);
+
+    this.enabledExtensions = new Set(
+      Services.cpmm.sharedData.get("extensions/logging")
+    );
+  },
+
+  receiveMessage({ name, data }) {
+    if (name === MSG_SET_ENABLED) {
+      if (data.value) {
+        this.enabledExtensions.add(data.id);
+      } else {
+        this.enabledExtensions.delete(data.id);
+      }
+    }
+  },
+
+  async log(context, type, name, data) {
+    this.init();
+    let { id } = context.extension;
+    if (this.enabledExtensions.has(id)) {
+      this._sendActivity({
+        timeStamp: Date.now(),
+        id,
+        viewType: context.viewType,
+        type,
+        name,
+        data,
+        browsingContextId: context.browsingContextId,
+      });
+    }
+  },
+
+  _sendActivity(data) {
+    Services.cpmm.sendAsyncMessage(MSG_LOG, data);
+  },
+};
 
 // Copy an API object from |source| into the scope |dest|.
 function injectAPI(source, dest) {
@@ -71,10 +136,10 @@ function injectAPI(source, dest) {
     }
 
     let desc = Object.getOwnPropertyDescriptor(source, prop);
-    if (typeof(desc.value) == "function") {
-      Cu.exportFunction(desc.value, dest, {defineAs: prop});
-    } else if (typeof(desc.value) == "object") {
-      let obj = Cu.createObjectIn(dest, {defineAs: prop});
+    if (typeof desc.value == "function") {
+      Cu.exportFunction(desc.value, dest, { defineAs: prop });
+    } else if (typeof desc.value == "object") {
+      let obj = Cu.createObjectIn(dest, { defineAs: prop });
       injectAPI(desc.value, obj);
     } else {
       Object.defineProperty(dest, prop, desc);
@@ -97,16 +162,22 @@ const StrongPromise = {
     return new Promise((resolve, reject) => {
       this.locations.set(channelId, location);
 
-      const witness = finalizationService.make("extensions-sendMessage-witness", channelId);
-      promise.then(value => {
-        this.locations.delete(channelId);
-        witness.forget();
-        resolve(value);
-      }, error => {
-        this.locations.delete(channelId);
-        witness.forget();
-        reject(error);
-      });
+      const witness = finalizationService.make(
+        "extensions-sendMessage-witness",
+        channelId
+      );
+      promise.then(
+        value => {
+          this.locations.delete(channelId);
+          witness.forget();
+          resolve(value);
+        },
+        error => {
+          this.locations.delete(channelId);
+          witness.forget();
+          reject(error);
+        }
+      );
     });
   },
   observe(subject, topic, channelId) {
@@ -149,18 +220,25 @@ class Port {
 
     // Common options for onMessage and onDisconnect.
     this.handlerBase = {
-      messageFilterStrict: {portId: id},
+      messageFilterStrict: { portId: id },
 
       filterMessage: (sender, recipient) => {
         return sender.contextId !== this.context.contextId;
       },
     };
 
-    this.disconnectHandler = Object.assign({
-      receiveMessage: ({data}) => this.disconnectByOtherEnd(data),
-    }, this.handlerBase);
+    this.disconnectHandler = Object.assign(
+      {
+        receiveMessage: ({ data }) => this.disconnectByOtherEnd(data),
+      },
+      this.handlerBase
+    );
 
-    MessageChannel.addListener(this.receiverMMs, "Extension:Port:Disconnect", this.disconnectHandler);
+    MessageChannel.addListener(
+      this.receiverMMs,
+      "Extension:Port:Disconnect",
+      this.disconnectHandler
+    );
 
     this.context.callOnClose(this);
   }
@@ -196,8 +274,11 @@ class Port {
         context: this.context,
         name: "Port.onMessage",
         register: fire => {
-          return this.registerOnMessage(holder => {
-            let msg = holder.deserialize(this.context.cloneScope);
+          return this.registerOnMessage((holder, isLastHandler) => {
+            let msg = holder.deserialize(
+              this.context.cloneScope,
+              !isLastHandler
+            );
             fire.asyncWithoutClone(msg, portObj);
           });
         },
@@ -218,7 +299,9 @@ class Port {
 
   postMessage(json) {
     if (this.disconnected) {
-      throw new this.context.cloneScope.Error("Attempt to postMessage on disconnected port");
+      throw new this.context.cloneScope.Error(
+        "Attempt to postMessage on disconnected port"
+      );
     }
 
     this._sendMessage("Extension:Port:PostMessage", json);
@@ -254,26 +337,37 @@ class Port {
    * @returns {function} Function to unregister the listener.
    */
   registerOnMessage(callback) {
-    let handler = Object.assign({
-      receiveMessage: ({data}) => {
-        if (this.context.active && !this.disconnected) {
-          callback(data);
-        }
+    let handler = Object.assign(
+      {
+        receiveMessage: ({ data }, isLastHandler) => {
+          if (this.context.active && !this.disconnected) {
+            callback(data, isLastHandler);
+          }
+        },
       },
-    }, this.handlerBase);
+      this.handlerBase
+    );
 
     let unregister = () => {
       this.unregisterMessageFuncs.delete(unregister);
-      MessageChannel.removeListener(this.receiverMMs, "Extension:Port:PostMessage", handler);
+      MessageChannel.removeListener(
+        this.receiverMMs,
+        "Extension:Port:PostMessage",
+        handler
+      );
     };
-    MessageChannel.addListener(this.receiverMMs, "Extension:Port:PostMessage", handler);
+    MessageChannel.addListener(
+      this.receiverMMs,
+      "Extension:Port:PostMessage",
+      handler
+    );
     this.unregisterMessageFuncs.add(unregister);
     return unregister;
   }
 
   _sendMessage(message, data) {
     let options = {
-      recipient: Object.assign({}, this.recipient, {portId: this.id}),
+      recipient: Object.assign({}, this.recipient, { portId: this.id }),
       responseType: MessageChannel.RESPONSE_NONE,
     };
 
@@ -283,7 +377,11 @@ class Port {
   }
 
   handleDisconnection() {
-    MessageChannel.removeListener(this.receiverMMs, "Extension:Port:Disconnect", this.disconnectHandler);
+    MessageChannel.removeListener(
+      this.receiverMMs,
+      "Extension:Port:Disconnect",
+      this.disconnectHandler
+    );
     for (let unregister of this.unregisterMessageFuncs) {
       unregister();
     }
@@ -323,7 +421,7 @@ class Port {
     }
     this.handleDisconnection();
     if (error) {
-      error = {message: this.context.normalizeError(error).message};
+      error = { message: this.context.normalizeError(error).message };
     }
     this._sendMessage("Extension:Port:Disconnect", error);
   }
@@ -377,7 +475,7 @@ class Messenger {
 
     // Exclude messages coming from content scripts for the devtools extension contexts
     // (See Bug 1383310).
-    this.excludeContentScriptSender = (this.context.envType === "devtools_child");
+    this.excludeContentScriptSender = this.context.envType === "devtools_child";
   }
 
   _sendMessage(messageManager, message, data, recipient) {
@@ -393,21 +491,33 @@ class Messenger {
   sendMessage(messageManager, msg, recipient, responseCallback) {
     let holder = new StructuredCloneHolder(msg);
 
-    let promise = this._sendMessage(messageManager, "Extension:Message", holder, recipient)
-      .catch(error => {
-        if (error.result == MessageChannel.RESULT_NO_HANDLER) {
-          return Promise.reject({message: "Could not establish connection. Receiving end does not exist."});
-        } else if (error.result != MessageChannel.RESULT_NO_RESPONSE) {
-          return Promise.reject(error);
-        }
-      });
+    let promise = this._sendMessage(
+      messageManager,
+      "Extension:Message",
+      holder,
+      recipient
+    ).catch(error => {
+      if (error.result == MessageChannel.RESULT_NO_HANDLER) {
+        return Promise.reject({
+          message:
+            "Could not establish connection. Receiving end does not exist.",
+        });
+      } else if (error.result != MessageChannel.RESULT_NO_RESPONSE) {
+        return Promise.reject(error);
+      }
+    });
     holder = null;
 
     return this.context.wrapPromise(promise, responseCallback);
   }
 
   sendNativeMessage(messageManager, msg, recipient, responseCallback) {
-    msg = NativeApp.encodeMessage(this.context, msg);
+    if (
+      AppConstants.platform !== "android" ||
+      !this.context.extension.hasPermission("geckoViewAddons")
+    ) {
+      msg = NativeApp.encodeMessage(this.context, msg);
+    }
     return this.sendMessage(messageManager, msg, recipient, responseCallback);
   }
 
@@ -425,16 +535,24 @@ class Messenger {
           filterMessage: (sender, recipient) => {
             // Exclude messages coming from content scripts for the devtools extension contexts
             // (See Bug 1383310).
-            if (this.excludeContentScriptSender && sender.envType === "content_child") {
+            if (
+              this.excludeContentScriptSender &&
+              sender.envType === "content_child"
+            ) {
               return false;
             }
 
             // Ignore the message if it was sent by this Messenger.
-            return (sender.contextId !== this.context.contextId &&
-                    filter(sender, recipient));
+            return (
+              sender.contextId !== this.context.contextId &&
+              filter(sender, recipient)
+            );
           },
 
-          receiveMessage: ({target, data: holder, sender, recipient, channelId}) => {
+          receiveMessage: (
+            { target, data: holder, sender, recipient, channelId },
+            isLastHandler
+          ) => {
             if (!this.context.active) {
               return;
             }
@@ -448,11 +566,17 @@ class Messenger {
               };
             });
 
-            let message = holder.deserialize(this.context.cloneScope);
+            let message = holder.deserialize(
+              this.context.cloneScope,
+              !isLastHandler
+            );
             holder = null;
 
             sender = Cu.cloneInto(sender, this.context.cloneScope);
-            sendResponse = Cu.exportFunction(sendResponse, this.context.cloneScope);
+            sendResponse = Cu.exportFunction(
+              sendResponse,
+              this.context.cloneScope
+            );
 
             // Note: We intentionally do not use runSafe here so that any
             // errors are propagated to the message sender.
@@ -468,17 +592,32 @@ class Messenger {
           },
         };
 
-        const childManager = this.context.viewType == "background" ? this.context.childManager : null;
-        MessageChannel.addListener(this.messageManagers, "Extension:Message", listener);
+        const childManager =
+          this.context.viewType == "background"
+            ? this.context.childManager
+            : null;
+        MessageChannel.addListener(
+          this.messageManagers,
+          "Extension:Message",
+          listener
+        );
         if (childManager) {
-          childManager.callParentFunctionNoReturn("runtime.addMessagingListener",
-                                                  ["onMessage"]);
+          childManager.callParentFunctionNoReturn(
+            "runtime.addMessagingListener",
+            ["onMessage"]
+          );
         }
         return () => {
-          MessageChannel.removeListener(this.messageManagers, "Extension:Message", listener);
+          MessageChannel.removeListener(
+            this.messageManagers,
+            "Extension:Message",
+            listener
+          );
           if (childManager) {
-            childManager.callParentFunctionNoReturn("runtime.removeMessagingListener",
-                                                    ["onMessage"]);
+            childManager.callParentFunctionNoReturn(
+              "runtime.removeMessagingListener",
+              ["onMessage"]
+            );
           }
         };
       },
@@ -499,9 +638,17 @@ class Messenger {
       portId: port.id,
     };
 
-    this._sendMessage(messageManager, "Extension:Connect", msg, recipient).catch(error => {
+    this._sendMessage(
+      messageManager,
+      "Extension:Connect",
+      msg,
+      recipient
+    ).catch(error => {
       if (error.result === MessageChannel.RESULT_NO_HANDLER) {
-        error = {message: "Could not establish connection. Receiving end does not exist."};
+        error = {
+          message:
+            "Could not establish connection. Receiving end does not exist.",
+        };
       } else if (error.result === MessageChannel.RESULT_DISCONNECTED) {
         error = null;
       }
@@ -514,7 +661,15 @@ class Messenger {
   connect(messageManager, name, recipient) {
     let portId = getUniqueId();
 
-    let port = new Port(this.context, messageManager, this.messageManagers, name, portId, null, recipient);
+    let port = new Port(
+      this.context,
+      messageManager,
+      this.messageManagers,
+      name,
+      portId,
+      null,
+      recipient
+    );
 
     return this._connect(messageManager, port, recipient);
   }
@@ -522,7 +677,31 @@ class Messenger {
   connectNative(messageManager, name, recipient) {
     let portId = getUniqueId();
 
-    let port = new NativePort(this.context, messageManager, this.messageManagers, name, portId, null, recipient);
+    let port;
+    if (
+      AppConstants.platform === "android" &&
+      this.context.extension.hasPermission("geckoViewAddons")
+    ) {
+      port = new Port(
+        this.context,
+        messageManager,
+        this.messageManagers,
+        name,
+        portId,
+        null,
+        recipient
+      );
+    } else {
+      port = new NativePort(
+        this.context,
+        messageManager,
+        this.messageManagers,
+        name,
+        portId,
+        null,
+        recipient
+      );
+    }
 
     return this._connect(messageManager, port, recipient);
   }
@@ -539,40 +718,68 @@ class Messenger {
           filterMessage: (sender, recipient) => {
             // Exclude messages coming from content scripts for the devtools extension contexts
             // (See Bug 1383310).
-            if (this.excludeContentScriptSender && sender.envType === "content_child") {
+            if (
+              this.excludeContentScriptSender &&
+              sender.envType === "content_child"
+            ) {
               return false;
             }
 
             // Ignore the port if it was created by this Messenger.
-            return (sender.contextId !== this.context.contextId &&
-                    filter(sender, recipient));
+            return (
+              sender.contextId !== this.context.contextId &&
+              filter(sender, recipient)
+            );
           },
 
-          receiveMessage: ({target, data: message, sender}) => {
-            let {name, portId} = message;
+          receiveMessage: ({ target, data: message, sender }) => {
+            let { name, portId } = message;
             let mm = getMessageManager(target);
             let recipient = Object.assign({}, sender);
             if (recipient.tab) {
               recipient.tabId = recipient.tab.id;
               delete recipient.tab;
             }
-            let port = new Port(this.context, mm, this.messageManagers, name, portId, sender, recipient);
+            let port = new Port(
+              this.context,
+              mm,
+              this.messageManagers,
+              name,
+              portId,
+              sender,
+              recipient
+            );
             fire.asyncWithoutClone(port.api());
             return true;
           },
         };
 
-        const childManager = this.context.viewType == "background" ? this.context.childManager : null;
-        MessageChannel.addListener(this.messageManagers, "Extension:Connect", listener);
+        const childManager =
+          this.context.viewType == "background"
+            ? this.context.childManager
+            : null;
+        MessageChannel.addListener(
+          this.messageManagers,
+          "Extension:Connect",
+          listener
+        );
         if (childManager) {
-          childManager.callParentFunctionNoReturn("runtime.addMessagingListener",
-                                                  ["onConnect"]);
+          childManager.callParentFunctionNoReturn(
+            "runtime.addMessagingListener",
+            ["onConnect"]
+          );
         }
         return () => {
-          MessageChannel.removeListener(this.messageManagers, "Extension:Connect", listener);
+          MessageChannel.removeListener(
+            this.messageManagers,
+            "Extension:Connect",
+            listener
+          );
           if (childManager) {
-            childManager.callParentFunctionNoReturn("runtime.removeMessagingListener",
-                                                    ["onConnect"]);
+            childManager.callParentFunctionNoReturn(
+              "runtime.removeMessagingListener",
+              ["onConnect"]
+            );
           }
         };
       },
@@ -595,13 +802,12 @@ var ExtensionManager = {
 
 // Represents a browser extension in the content process.
 class BrowserExtensionContent extends EventEmitter {
-  constructor(data) {
+  constructor(policy) {
     super();
 
-    this.data = data;
-    this.id = data.id;
-    this.uuid = data.uuid;
-    this.instanceId = data.instanceId;
+    this.policy = policy;
+    this.instanceId = policy.instanceId;
+    this.optionalPermissions = policy.optionalPermissions;
 
     if (WebExtensionPolicy.isExtensionProcess) {
       Object.assign(this, this.getSharedData("extendedData"));
@@ -610,13 +816,7 @@ class BrowserExtensionContent extends EventEmitter {
     this.MESSAGE_EMIT_EVENT = `Extension:EmitEvent:${this.instanceId}`;
     Services.cpmm.addMessageListener(this.MESSAGE_EMIT_EVENT, this);
 
-    this.webAccessibleResources = data.webAccessibleResources.map(res => new MatchGlob(res));
-    this.permissions = data.permissions;
-    this.optionalPermissions = data.optionalPermissions;
-
     let restrictSchemes = !this.hasPermission("mozillaAddons");
-
-    this.whiteListedHosts = new MatchPatternSet(data.whiteListedHosts, {restrictSchemes, ignorePath: true});
 
     this.apiManager = this.getAPIManager();
 
@@ -626,8 +826,10 @@ class BrowserExtensionContent extends EventEmitter {
     this.baseURI = Services.io.newURI(`moz-extension://${this.uuid}/`);
     this.baseURL = this.baseURI.spec;
 
-    this.principal = Services.scriptSecurityManager.createCodebasePrincipal(
-      this.baseURI, {});
+    this.principal = Services.scriptSecurityManager.createContentPrincipal(
+      this.baseURI,
+      {}
+    );
 
     // Only used in addon processes.
     this.views = new Set();
@@ -637,49 +839,68 @@ class BrowserExtensionContent extends EventEmitter {
 
     /* eslint-disable mozilla/balanced-listeners */
     this.on("add-permissions", (ignoreEvent, permissions) => {
-      if (permissions.permissions.length > 0) {
+      if (permissions.permissions.length) {
+        let perms = new Set(this.policy.permissions);
         for (let perm of permissions.permissions) {
-          this.permissions.add(perm);
+          perms.add(perm);
         }
+        this.policy.permissions = perms;
       }
 
-      if (permissions.origins.length > 0) {
+      if (permissions.origins.length) {
         let patterns = this.whiteListedHosts.patterns.map(host => host.pattern);
 
-        this.whiteListedHosts = new MatchPatternSet([...patterns, ...permissions.origins],
-                                                    {restrictSchemes, ignorePath: true});
-      }
-
-      if (this.policy) {
-        this.policy.permissions = Array.from(this.permissions);
-        this.policy.allowedOrigins = this.whiteListedHosts;
+        this.policy.allowedOrigins = new MatchPatternSet(
+          [...patterns, ...permissions.origins],
+          { restrictSchemes, ignorePath: true }
+        );
       }
     });
 
     this.on("remove-permissions", (ignoreEvent, permissions) => {
-      if (permissions.permissions.length > 0) {
+      if (permissions.permissions.length) {
+        let perms = new Set(this.policy.permissions);
         for (let perm of permissions.permissions) {
-          this.permissions.delete(perm);
+          perms.delete(perm);
         }
+        this.policy.permissions = perms;
       }
 
-      if (permissions.origins.length > 0) {
+      if (permissions.origins.length) {
         let origins = permissions.origins.map(
-          origin => new MatchPattern(origin, {ignorePath: true}).pattern);
+          origin => new MatchPattern(origin, { ignorePath: true }).pattern
+        );
 
-        this.whiteListedHosts = new MatchPatternSet(
-          this.whiteListedHosts.patterns
-              .filter(host => !origins.includes(host.pattern)));
-      }
-
-      if (this.policy) {
-        this.policy.permissions = Array.from(this.permissions);
-        this.policy.allowedOrigins = this.whiteListedHosts;
+        this.policy.allowedOrigins = new MatchPatternSet(
+          this.whiteListedHosts.patterns.filter(
+            host => !origins.includes(host.pattern)
+          )
+        );
       }
     });
     /* eslint-enable mozilla/balanced-listeners */
 
     ExtensionManager.extensions.set(this.id, this);
+  }
+
+  get id() {
+    return this.policy.id;
+  }
+
+  get uuid() {
+    return this.policy.mozExtensionHostname;
+  }
+
+  get permissions() {
+    return new Set(this.policy.permissions);
+  }
+
+  get whiteListedHosts() {
+    return this.policy.allowedOrigins;
+  }
+
+  get webAccessibleResources() {
+    return this.policy.webAccessibleResources;
   }
 
   getSharedData(key, value) {
@@ -700,12 +921,20 @@ class BrowserExtensionContent extends EventEmitter {
     return this._manifest;
   }
 
+  get privateBrowsingAllowed() {
+    return this.policy.privateBrowsingAllowed;
+  }
+
+  canAccessWindow(window) {
+    return this.policy.canAccessWindow(window);
+  }
+
   getAPIManager() {
     let apiManagers = [ExtensionPageChild.apiManager];
 
     if (this.dependencies) {
       for (let id of this.dependencies) {
-        let extension = processScript.getExtensionChild(id);
+        let extension = ExtensionProcessScript.getExtensionChild(id);
         if (extension) {
           apiManagers.push(extension.experimentAPIManager);
         }
@@ -713,8 +942,11 @@ class BrowserExtensionContent extends EventEmitter {
     }
 
     if (this.childModules) {
-      this.experimentAPIManager =
-        new ExtensionCommon.LazyAPIManager("addon", this.childModules, this.schemaURLs);
+      this.experimentAPIManager = new ExtensionCommon.LazyAPIManager(
+        "addon",
+        this.childModules,
+        this.schemaURLs
+      );
 
       apiManagers.push(this.experimentAPIManager);
     }
@@ -731,7 +963,7 @@ class BrowserExtensionContent extends EventEmitter {
     ExtensionContent.shutdownExtension(this);
     Services.cpmm.removeMessageListener(this.MESSAGE_EMIT_EVENT, this);
     if (isContentProcess) {
-      MessageChannel.abortResponses({extensionId: this.id});
+      MessageChannel.abortResponses({ extensionId: this.id });
     }
     this.emit("shutdown");
   }
@@ -741,12 +973,12 @@ class BrowserExtensionContent extends EventEmitter {
   }
 
   emit(event, ...args) {
-    Services.cpmm.sendAsyncMessage(this.MESSAGE_EMIT_EVENT, {event, args});
+    Services.cpmm.sendAsyncMessage(this.MESSAGE_EMIT_EVENT, { event, args });
 
     super.emit(event, ...args);
   }
 
-  receiveMessage({name, data}) {
+  receiveMessage({ name, data }) {
     if (name === this.MESSAGE_EMIT_EVENT) {
       super.emit(data.event, ...data.args);
     }
@@ -761,9 +993,20 @@ class BrowserExtensionContent extends EventEmitter {
   }
 
   hasPermission(perm) {
-    let match = /^manifest:(.*)/.exec(perm);
-    if (match) {
-      return this.manifest[match[1]] != null;
+    // If the permission is a "manifest property" permission, we check if the extension
+    // does have the required property in its manifest.
+    let manifest_ = "manifest:";
+    if (perm.startsWith(manifest_)) {
+      // Handle nested "manifest property" permission (e.g. as in "manifest:property.nested").
+      let value = this.manifest;
+      for (let prop of perm.substr(manifest_.length).split(".")) {
+        if (!value) {
+          break;
+        }
+        value = value[prop];
+      }
+
+      return value != null;
     }
     return this.permissions.has(perm);
   }
@@ -803,11 +1046,17 @@ class ProxyAPIImplementation extends SchemaAPIInterface {
     if (requireUserInput) {
       let context = this.childApiManager.context;
       if (!getWinUtils(context.contentWindow).isHandlingUserInput) {
-        let err = new context.cloneScope.Error(`${this.path} may only be called from a user input handler`);
+        let err = new context.cloneScope.Error(
+          `${this.path} may only be called from a user input handler`
+        );
         return context.wrapPromise(Promise.reject(err), callback);
       }
     }
-    return this.childApiManager.callParentAsyncFunction(this.path, args, callback);
+    return this.childApiManager.callParentAsyncFunction(
+      this.path,
+      args,
+      callback
+    );
   }
 
   addListener(listener, args) {
@@ -856,6 +1105,55 @@ class ProxyAPIImplementation extends SchemaAPIInterface {
   }
 }
 
+class ChildLocalAPIImplementation extends LocalAPIImplementation {
+  constructor(pathObj, namespace, name, childApiManager) {
+    super(pathObj, name, childApiManager.context);
+    this.childApiManagerId = childApiManager.id;
+    this.fullname = `${namespace}.${name}`;
+  }
+
+  /**
+   * Call the given function and also log the call as appropriate
+   * (i.e., with PerformanceCounters and/or activity logging)
+   *
+   * @param {function} callable The actual implementation to invoke.
+   * @param {array} args Arguments to the function call.
+   * @returns {any} The return result of callable.
+   */
+  callAndLog(callable, args) {
+    this.context.logActivity("api_call", this.fullname, { args });
+    let start = Cu.now() * 1000;
+    try {
+      return callable();
+    } finally {
+      if (gTimingEnabled) {
+        let end = Cu.now() * 1000;
+        PerformanceCounters.storeExecutionTime(
+          this.context.extension.id,
+          this.name,
+          end - start,
+          this.childApiManagerId
+        );
+      }
+    }
+  }
+
+  callFunction(args) {
+    return this.callAndLog(() => super.callFunction(args), args);
+  }
+
+  callFunctionNoReturn(args) {
+    return this.callAndLog(() => super.callFunctionNoReturn(args), args);
+  }
+
+  callAsyncFunction(args, callback, requireUserInput) {
+    return this.callAndLog(
+      () => super.callAsyncFunction(args, callback, requireUserInput),
+      args
+    );
+  }
+}
+
 // We create one instance of this class for every extension context that
 // needs to use remote APIs. It uses the message manager to communicate
 // with the ParentAPIManager singleton in ExtensionParent.jsm. It
@@ -878,7 +1176,7 @@ class ChildAPIManager {
     MessageChannel.addListener(messageManager, "API:RunListener", this);
     messageManager.addMessageListener("API:CallResult", this);
 
-    this.messageFilterStrict = {childId: this.id};
+    this.messageFilterStrict = { childId: this.id };
 
     this.listeners = new DefaultMap(() => ({
       ids: new Map(),
@@ -900,7 +1198,7 @@ class ChildAPIManager {
 
     this.permissionsChangedCallbacks = new Set();
     this.updatePermissions = null;
-    if (this.context.extension.optionalPermissions.length > 0) {
+    if (this.context.extension.optionalPermissions.length) {
       this.updatePermissions = () => {
         for (let callback of this.permissionsChangedCallbacks) {
           try {
@@ -919,7 +1217,7 @@ class ChildAPIManager {
     this.schema.inject(obj, this);
   }
 
-  receiveMessage({name, messageName, data}) {
+  receiveMessage({ name, messageName, data }) {
     if (data.childId != this.id) {
       return;
     }
@@ -933,18 +1231,22 @@ class ChildAPIManager {
           let args = data.args.deserialize(this.context.cloneScope);
           let fire = () => this.context.applySafeWithoutClone(listener, args);
           return Promise.resolve(
-            data.handlingUserInput ? withHandlingUserInput(this.context.contentWindow, fire)
-                                   : fire())
-            .then(result => {
-              if (result !== undefined) {
-                return new StructuredCloneHolder(result, this.context.cloneScope);
-              }
-              return result;
-            });
+            data.handlingUserInput
+              ? withHandlingUserInput(this.context.contentWindow, fire)
+              : fire()
+          ).then(result => {
+            if (result !== undefined) {
+              return new StructuredCloneHolder(result, this.context.cloneScope);
+            }
+            return result;
+          });
         }
         if (!map.removedIds.has(data.listenerId)) {
           Services.console.logStringMessage(
-            `Unknown listener at childId=${data.childId} path=${data.path} listenerId=${data.listenerId}\n`);
+            `Unknown listener at childId=${data.childId} path=${
+              data.path
+            } listenerId=${data.listenerId}\n`
+          );
         }
         break;
 
@@ -993,11 +1295,16 @@ class ChildAPIManager {
     let deferred = PromiseUtils.defer();
     this.callPromises.set(callId, deferred);
 
+    // Any child api that calls into a parent function will have already
+    // logged the api_call.  Flag it so the parent doesn't log again.
+    let { alreadyLogged = true } = options;
+
     this.messageManager.sendAsyncMessage("API:Call", {
       childId: this.id,
       callId,
       path,
       args,
+      options: { alreadyLogged },
     });
 
     return this.context.wrapPromise(deferred.promise, callback);
@@ -1022,13 +1329,15 @@ class ChildAPIManager {
     let impl = new ProxyAPIImplementation(namespace, name, this);
     return {
       addListener: (listener, ...args) => impl.addListener(listener, args),
-      removeListener: (listener) => impl.removeListener(listener),
-      hasListener: (listener) => impl.hasListener(listener),
+      removeListener: listener => impl.removeListener(listener),
+      hasListener: listener => impl.hasListener(listener),
     };
   }
 
   close() {
-    this.messageManager.sendAsyncMessage("API:CloseProxyContext", {childId: this.id});
+    this.messageManager.sendAsyncMessage("API:CloseProxyContext", {
+      childId: this.id,
+    });
     this.messageManager.removeMessageListener("API:CallResult", this);
     MessageChannel.removeListener(this.messageManager, "API:RunListener", this);
 
@@ -1048,23 +1357,34 @@ class ChildAPIManager {
 
   shouldInject(namespace, name, allowedContexts) {
     // Do not generate content script APIs, unless explicitly allowed.
-    if (this.context.envType === "content_child" &&
-        !allowedContexts.includes("content")) {
-      return false;
-    }
-    if (allowedContexts.includes("addon_parent_only")) {
-      return false;
-    }
-
-    // Do not generate devtools APIs, unless explicitly allowed.
-    if (this.context.envType === "devtools_child" &&
-        !allowedContexts.includes("devtools")) {
+    if (
+      this.context.envType === "content_child" &&
+      !allowedContexts.includes("content")
+    ) {
       return false;
     }
 
     // Do not generate devtools APIs, unless explicitly allowed.
-    if (this.context.envType !== "devtools_child" &&
-        allowedContexts.includes("devtools_only")) {
+    if (
+      this.context.envType === "devtools_child" &&
+      !allowedContexts.includes("devtools")
+    ) {
+      return false;
+    }
+
+    // Do not generate devtools APIs, unless explicitly allowed.
+    if (
+      this.context.envType !== "devtools_child" &&
+      allowedContexts.includes("devtools_only")
+    ) {
+      return false;
+    }
+
+    // Do not generate content_only APIs, unless explicitly allowed.
+    if (
+      this.context.envType !== "content_child" &&
+      allowedContexts.includes("content_only")
+    ) {
       return false;
     }
 
@@ -1076,7 +1396,7 @@ class ChildAPIManager {
     let obj = this.apiCan.findAPIPath(namespace);
 
     if (obj && name in obj) {
-      return new LocalAPIImplementation(obj, name, this.context);
+      return new ChildLocalAPIImplementation(obj, namespace, name, this);
     }
 
     return this.getFallbackImplementation(namespace, name);

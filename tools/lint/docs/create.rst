@@ -22,12 +22,11 @@ Here's a trivial example:
 
 no-eval.yml
 
-.. code-block::
+.. code-block:: yaml
 
     EvalLinter:
         description: Ensures the string eval doesn't show up.
-        include:
-            - "**/*.js"
+        extensions: ['js']
         type: string
         payload: eval
 
@@ -54,7 +53,7 @@ external.  External linters call an arbitrary python function which is
 responsible for not only running the linter, but ensuring the results
 are structured properly. For example, an external type could shell out
 to a 3rd party linter, collect the output and format it into a list of
-:class:`ResultContainer` objects. The signature for this python
+:class:`Issue` objects. The signature for this python
 function is ``lint(files, config, **kwargs)``, where ``files`` is a list of
 files to lint and ``config`` is the linter definition defined in the ``.yml``
 file.
@@ -75,8 +74,8 @@ Each ``.yml`` file must have at least one linter defined in it. Here are the sup
 * description - A brief description of the linter's purpose (required)
 * type - One of 'string', 'regex' or 'external' (required)
 * payload - The actual linting logic, depends on the type (required)
-* include - A list of glob patterns that must be matched (optional)
-* exclude - A list of glob patterns that must not be matched (optional)
+* include - A list of file paths that will be considered (optional)
+* exclude - A list of file paths or glob patterns that must not be matched (optional)
 * extensions - A list of file extensions to be considered (optional)
 * setup - A function that sets up external dependencies (optional)
 * support-files - A list of glob patterns matching configuration files (optional)
@@ -110,6 +109,11 @@ let's call the file ``flake8_lint.py``:
 
     from mozlint import result
 
+    try:
+        from shutil import which
+    except ImportError:
+        from shutil_which import which
+
 
     FLAKE8_NOT_FOUND = """
     Could not find flake8! Install flake8 and try again.
@@ -117,19 +121,16 @@ let's call the file ``flake8_lint.py``:
 
 
     def lint(files, config, **lintargs):
-        import which
-
         binary = os.environ.get('FLAKE8')
         if not binary:
-            try:
-                binary = which.which('flake8')
-            except which.WhichError:
+            binary = which('flake8')
+            if not binary:
                 print(FLAKE8_NOT_FOUND)
                 return 1
 
         # Flake8 allows passing in a custom format string. We use
         # this to help mold the default flake8 format into what
-        # mozlint's ResultContainer object expects.
+        # mozlint's Issue object expects.
         cmdargs = [
             binary,
             '--format',
@@ -153,7 +154,7 @@ let's call the file ``flake8_lint.py``:
                 res['level'] = 'warning'
 
             # result.from_linter is a convenience method that
-            # creates a ResultContainer using a LINTER definition
+            # creates a Issue using a LINTER definition
             # to populate some defaults.
             results.append(result.from_config(config, **res))
 
@@ -161,12 +162,12 @@ let's call the file ``flake8_lint.py``:
 
 Now here is the linter definition that would call it:
 
-.. code-block:: yml
+.. code-block:: yaml
 
     flake8:
         description: Python linter
-        include:
-            - '**/*.py'
+        include: ['.']
+        extensions: ['py']
         type: external
         payload: py.flake8:lint
         support-files:
@@ -196,12 +197,12 @@ automated bootstrapping of all their dependencies. To help with this,
 ``mozlint`` allows linters to define a ``setup`` config, which has the same
 path object format as an external payload. For example:
 
-.. code-block:: yml
+.. code-block:: yaml
 
     flake8:
         description: Python linter
-        include:
-            - '**/*.py'
+        include: ['.']
+        extensions: ['py']
         type: external
         payload: py.flake8:lint
         setup: py.flake8:setup
@@ -214,7 +215,7 @@ linted. In the case of ``flake8``, it might look like:
     import subprocess
     from distutils.spawn import find_executable
 
-    def setup(root):
+    def setup(root, **lintargs):
         if not find_executable('flake8'):
             subprocess.call(['pip', 'install', 'flake8'])
 

@@ -33,6 +33,8 @@ INCLUDE_VERSION_REGEXES = {
     "devedition_hack": r"'^((?!58\.0b1$)\d+\.\d+(b\d+)?)$'",
     # Same as nonbeta, except for the esr suffix
     "esr": r"'^\d+\.\d+(\.\d+)?esr$'",
+    # Previous esr versions, for update testing before we update users to esr68
+    "esr68-next": r"'^(52|60)+\.\d+(\.\d+)?esr$'",
 }
 
 MAR_CHANNEL_ID_OVERRIDE_REGEXES = {
@@ -47,6 +49,7 @@ def add_command(config, tasks):
         "archive-prefix",
         "previous-archive-prefix",
         "aus-server",
+        "override-certs",
         "include-version",
         "mar-channel-id-override",
         "last-watershed",
@@ -63,8 +66,7 @@ def add_command(config, tasks):
         )
 
         command = [
-            "cd", "/builds/worker/checkouts/gecko", "&&"
-            "./mach", "python",
+            "python",
             "testing/mozharness/scripts/release/update-verify-config-creator.py",
             "--product", task["extra"]["product"],
             "--stage-product", task["shipping-product"],
@@ -96,8 +98,11 @@ def add_command(config, tasks):
             resolve_keyed_by(
                 task, thing,
                 item_name=task['name'],
-                project=config.params['project'],
                 platform=task['attributes']['build_platform'],
+                **{
+                    'release-type': config.params['release_type'],
+                    'release-level': config.params.release_level(),
+                }
             )
             # ignore things that resolved to null
             if not task["extra"].get(arg):
@@ -110,6 +115,9 @@ def add_command(config, tasks):
             command.append("--{}".format(arg))
             command.append(task["extra"][arg])
 
-        task["run"]["command"] = " ".join(command)
+        task['run'].update({
+            'using': 'mach',
+            'mach': " ".join(command),
+        })
 
         yield task

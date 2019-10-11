@@ -5,8 +5,14 @@
  */
 
 // http://www.w3.org/TR/1999/WD-DOM-Level-2-19990923/events.html#Events-KeyEvent
+[Exposed=Window]
 interface KeyEvent
 {
+  // It's all mixed in.
+};
+KeyEvent includes KeyEventMixin;
+
+interface mixin KeyEventMixin {
   const unsigned long DOM_VK_CANCEL         = 0x03;
   const unsigned long DOM_VK_HELP           = 0x06;
   const unsigned long DOM_VK_BACK_SPACE     = 0x08;
@@ -230,6 +236,7 @@ interface KeyEvent
   // for compatibility with the other web browsers on Windows.
   const unsigned long DOM_VK_WIN_OEM_CLEAR  = 0xFE;
 
+  [BinaryName="initKeyEventJS"]
   void initKeyEvent(DOMString type,
                     optional boolean canBubble = false,
                     optional boolean cancelable = false,

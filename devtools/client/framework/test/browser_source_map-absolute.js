@@ -7,7 +7,9 @@
 
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
-const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+const { PromiseTestUtils } = ChromeUtils.import(
+  "resource://testing-common/PromiseTestUtils.jsm"
+);
 PromiseTestUtils.whitelistRejectionsGlobally(/this\.worker is null/);
 
 // Empty page
@@ -16,8 +18,6 @@ const JS_URL = `${URL_ROOT}code_binary_search_absolute.js`;
 const ORIGINAL_URL = `${URL_ROOT}code_binary_search.coffee`;
 
 add_task(async function() {
-  await pushPref("devtools.debugger.new-debugger-frontend", true);
-
   const toolbox = await openNewTabAndToolbox(PAGE_URL, "jsdebugger");
   const service = toolbox.sourceMapURLService;
 

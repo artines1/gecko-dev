@@ -4,9 +4,7 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'check-test',
         'valgrind-test',
-        #'update',
     ],
     'stage_platform': 'linux64-valgrind',
     #### 64 bit build specific #####
@@ -25,6 +23,4 @@ config = {
 /usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
     },
     'mozconfig_variant': 'valgrind',
-    #######################
-    'artifact_flag_build_variant_in_try': None,
 }

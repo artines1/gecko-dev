@@ -9,7 +9,7 @@
  */
 
 var protocol = require("devtools/shared/protocol");
-var {RetVal} = protocol;
+var { RetVal } = protocol;
 
 function simpleHello() {
   return {
@@ -24,9 +24,9 @@ const rootSpec = protocol.generateActorSpec({
 
   methods: {
     simpleReturn: {
-      response: { value: RetVal() }
-    }
-  }
+      response: { value: RetVal() },
+    },
+  },
 });
 
 var RootActor = protocol.ActorClassWithSpec(rootSpec, {
@@ -43,17 +43,17 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
 
   simpleReturn: function() {
     return this.sequence++;
-  }
+  },
 });
 
-var RootFront = protocol.FrontClassWithSpec(rootSpec, {
-  initialize: function(client) {
+class RootFront extends protocol.FrontClassWithSpec(rootSpec) {
+  constructor(client) {
+    super(client);
     this.actorID = "root";
-    protocol.Front.prototype.initialize.call(this, client);
     // Root owns itself.
     this.manage(this);
   }
-});
+}
 
 function run_test() {
   DebuggerServer.createRootActor = RootActor;
@@ -61,21 +61,27 @@ function run_test() {
 
   const trace = connectPipeTracing();
   const client = new DebuggerClient(trace);
-  let rootClient;
+  let rootFront;
 
   client.connect().then(([applicationType, traits]) => {
-    rootClient = RootFront(client);
+    rootFront = new RootFront(client);
 
-    rootClient.simpleReturn().then(() => {
-      ok(false, "Connection was aborted, request shouldn't resolve");
-      do_test_finished();
-    }, e => {
-      const error = e.toString();
-      ok(true, "Connection was aborted, request rejected correctly");
-      ok(error.includes("Request stack:"), "Error includes request stack");
-      ok(error.includes("test_protocol_abort.js"), "Stack includes this test");
-      do_test_finished();
-    });
+    rootFront.simpleReturn().then(
+      () => {
+        ok(false, "Connection was aborted, request shouldn't resolve");
+        do_test_finished();
+      },
+      e => {
+        const error = e.toString();
+        ok(true, "Connection was aborted, request rejected correctly");
+        ok(error.includes("Request stack:"), "Error includes request stack");
+        ok(
+          error.includes("test_protocol_abort.js"),
+          "Stack includes this test"
+        );
+        do_test_finished();
+      }
+    );
 
     trace.close();
   });

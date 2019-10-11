@@ -42,7 +42,7 @@ class DTDChecker(Checker):
     def known_entities(self, refValue):
         if self.__known_entities is None and self.reference is not None:
             self.__known_entities = set()
-            for ent in self.reference:
+            for ent in self.reference.values():
                 self.__known_entities.update(
                     self.entities_for_value(ent.raw_val))
         return self.__known_entities if self.__known_entities is not None \
@@ -80,6 +80,10 @@ class DTDChecker(Checker):
 
         Return a checker that offers just those entities.
         """
+        for encoding_trouble in super(
+            DTDChecker, self
+        ).check(refEnt, l10nEnt):
+            yield encoding_trouble
         refValue, l10nValue = refEnt.raw_val, l10nEnt.raw_val
         # find entities the refValue references,
         # reusing markup from DTDParser.
@@ -101,6 +105,7 @@ class DTDChecker(Checker):
                             ((refEnt.all + entities).encode('utf-8'),
                              b'&%s;' % refEnt.key.encode('utf-8'))))
         except sax.SAXParseException as e:
+            e  # noqa
             yield ('warning',
                    (0, 0),
                    "can't parse en-US value", 'xmlparse')

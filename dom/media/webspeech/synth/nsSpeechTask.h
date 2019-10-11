@@ -8,7 +8,7 @@
 #define mozilla_dom_nsSpeechTask_h
 
 #include "SpeechSynthesisUtterance.h"
-#include "nsIAudioChannelAgent.h"
+#include "AudioChannelAgent.h"
 #include "nsISpeechService.h"
 
 namespace mozilla {
@@ -19,15 +19,11 @@ namespace dom {
 
 class SpeechSynthesisUtterance;
 class SpeechSynthesis;
-class SynthStreamListener;
 
-class nsSpeechTask : public nsISpeechTask
-                   , public nsIAudioChannelAgentCallback
-                   , public nsSupportsWeakReference
-{
-  friend class SynthStreamListener;
-
-public:
+class nsSpeechTask : public nsISpeechTask,
+                     public nsIAudioChannelAgentCallback,
+                     public nsSupportsWeakReference {
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsSpeechTask, nsISpeechTask)
 
@@ -61,7 +57,15 @@ public:
 
   bool IsChrome() { return mIsChrome; }
 
-protected:
+  enum { STATE_PENDING, STATE_SPEAKING, STATE_ENDED };
+
+  uint32_t GetState() const { return mState; }
+
+  bool IsSpeaking() const { return mState == STATE_SPEAKING; }
+
+  bool IsPending() const { return mState == STATE_PENDING; }
+
+ protected:
   virtual ~nsSpeechTask();
 
   nsresult DispatchStartImpl();
@@ -77,13 +81,11 @@ protected:
   virtual nsresult DispatchErrorImpl(float aElapsedTime, uint32_t aCharIndex);
 
   virtual nsresult DispatchBoundaryImpl(const nsAString& aName,
-                                        float aElapsedTime,
-                                        uint32_t aCharIndex,
-                                        uint32_t aCharLength,
-                                        uint8_t argc);
+                                        float aElapsedTime, uint32_t aCharIndex,
+                                        uint32_t aCharLength, uint8_t argc);
 
-  virtual nsresult DispatchMarkImpl(const nsAString& aName,
-                                    float aElapsedTime, uint32_t aCharIndex);
+  virtual nsresult DispatchMarkImpl(const nsAString& aName, float aElapsedTime,
+                                    uint32_t aCharIndex);
 
   RefPtr<SpeechSynthesisUtterance> mUtterance;
 
@@ -97,7 +99,7 @@ protected:
 
   bool mPreCanceled;
 
-private:
+ private:
   void End();
 
   void CreateAudioChannelAgent();
@@ -106,16 +108,18 @@ private:
 
   nsCOMPtr<nsISpeechTaskCallback> mCallback;
 
-  nsCOMPtr<nsIAudioChannelAgent> mAudioChannelAgent;
+  RefPtr<mozilla::dom::AudioChannelAgent> mAudioChannelAgent;
 
   RefPtr<SpeechSynthesis> mSpeechSynthesis;
 
   nsString mChosenVoiceURI;
 
   bool mIsChrome;
+
+  uint32_t mState;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

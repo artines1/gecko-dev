@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,10 +29,10 @@ const invalidCalendarOptions = [
   "abcdefghi",
   "abc-abcdefghi",
 ];
-for (const invalidCalendarOption of invalidCalendarOptions) {
+for (const calendar of invalidCalendarOptions) {
   assert.throws(RangeError, function() {
-    new Intl.Locale("en", {calendar: invalidCalendarOption});
-  }, `${invalidCalendarOption} is an invalid calendar option value`);
+    new Intl.Locale("en", {calendar});
+  }, `new Intl.Locale("en", {calendar: "${calendar}"}) throws RangeError`);
 }
 
 reportCompare(0, 0);

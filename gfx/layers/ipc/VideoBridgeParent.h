@@ -17,10 +17,8 @@ class CompositorThreadHolder;
 
 class VideoBridgeParent final : public PVideoBridgeParent,
                                 public HostIPCAllocator,
-                                public ShmemAllocator
-{
-public:
-  VideoBridgeParent();
+                                public ShmemAllocator {
+ public:
   ~VideoBridgeParent();
 
   static VideoBridgeParent* GetSingleton();
@@ -32,16 +30,15 @@ public:
                                       const ReadLockDescriptor& aReadLock,
                                       const LayersBackend& aLayersBackend,
                                       const TextureFlags& aFlags,
-                                      const uint64_t& aSerial) override;
-  bool DeallocPTextureParent(PTextureParent* actor) override;
+                                      const uint64_t& aSerial);
+  bool DeallocPTextureParent(PTextureParent* actor);
 
   // HostIPCAllocator
-  base::ProcessId GetChildProcessId() override
-  {
-    return OtherPid();
-  }
-  void NotifyNotUsed(PTextureParent* aTexture, uint64_t aTransactionId) override;
-  void SendAsyncMessage(const InfallibleTArray<AsyncParentMessageData>& aMessage) override;
+  base::ProcessId GetChildProcessId() override { return OtherPid(); }
+  void NotifyNotUsed(PTextureParent* aTexture,
+                     uint64_t aTransactionId) override;
+  void SendAsyncMessage(
+      const nsTArray<AsyncParentMessageData>& aMessage) override;
 
   // ISurfaceAllocator
   ShmemAllocator* AsShmemAllocator() override { return this; }
@@ -49,18 +46,20 @@ public:
   bool IPCOpen() const override { return !mClosed; }
 
   // ShmemAllocator
-  bool AllocShmem(size_t aSize,
-                  ipc::SharedMemory::SharedMemoryType aType,
+  bool AllocShmem(size_t aSize, ipc::SharedMemory::SharedMemoryType aType,
                   ipc::Shmem* aShmem) override;
 
-  bool AllocUnsafeShmem(size_t aSize,
-                        ipc::SharedMemory::SharedMemoryType aType,
+  bool AllocUnsafeShmem(size_t aSize, ipc::SharedMemory::SharedMemoryType aType,
                         ipc::Shmem* aShmem) override;
 
   void DeallocShmem(ipc::Shmem& aShmem) override;
 
-private:
-  void DeallocPVideoBridgeParent() override;
+  static void Open(Endpoint<PVideoBridgeParent>&& aEndpoint);
+
+ private:
+  VideoBridgeParent();
+
+  void ActorDealloc() override;
 
   // This keeps us alive until ActorDestroy(), at which point we do a
   // deferred destruction of ourselves.
@@ -72,7 +71,7 @@ private:
   bool mClosed;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // gfx_layers_ipc_VideoBridgeParent_h_
+#endif  // gfx_layers_ipc_VideoBridgeParent_h_

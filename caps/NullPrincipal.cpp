@@ -24,40 +24,44 @@
 #include "nsScriptSecurityManager.h"
 #include "pratom.h"
 
+#include "json/json.h"
+
 using namespace mozilla;
 
 NS_IMPL_CLASSINFO(NullPrincipal, nullptr, nsIClassInfo::MAIN_THREAD_ONLY,
                   NS_NULLPRINCIPAL_CID)
-NS_IMPL_QUERY_INTERFACE_CI(NullPrincipal,
-                           nsIPrincipal,
-                           nsISerializable)
-NS_IMPL_CI_INTERFACE_GETTER(NullPrincipal,
-                            nsIPrincipal,
-                            nsISerializable)
+NS_IMPL_QUERY_INTERFACE_CI(NullPrincipal, nsIPrincipal, nsISerializable)
+NS_IMPL_CI_INTERFACE_GETTER(NullPrincipal, nsIPrincipal, nsISerializable)
 
-/* static */ already_AddRefed<NullPrincipal>
-NullPrincipal::CreateWithInheritedAttributes(nsIPrincipal* aInheritFrom)
-{
-  RefPtr<NullPrincipal> nullPrin = new NullPrincipal();
-  nsresult rv = nullPrin->Init(Cast(aInheritFrom)->OriginAttributesRef());
-  MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
-  return nullPrin.forget();
+/* static */
+already_AddRefed<NullPrincipal> NullPrincipal::CreateWithInheritedAttributes(
+    nsIPrincipal* aInheritFrom) {
+  MOZ_ASSERT(aInheritFrom);
+  return CreateWithInheritedAttributes(
+      Cast(aInheritFrom)->OriginAttributesRef(), false);
 }
 
-/* static */ already_AddRefed<NullPrincipal>
-NullPrincipal::CreateWithInheritedAttributes(nsIDocShell* aDocShell, bool aIsFirstParty)
-{
+/* static */
+already_AddRefed<NullPrincipal> NullPrincipal::CreateWithInheritedAttributes(
+    nsIDocShell* aDocShell, bool aIsFirstParty) {
+  MOZ_ASSERT(aDocShell);
+
   OriginAttributes attrs = nsDocShell::Cast(aDocShell)->GetOriginAttributes();
+  return CreateWithInheritedAttributes(attrs, aIsFirstParty);
+}
 
+/* static */
+already_AddRefed<NullPrincipal> NullPrincipal::CreateWithInheritedAttributes(
+    const OriginAttributes& aOriginAttributes, bool aIsFirstParty) {
   RefPtr<NullPrincipal> nullPrin = new NullPrincipal();
-  nsresult rv = nullPrin->Init(attrs, aIsFirstParty);
+  nsresult rv = nullPrin->Init(aOriginAttributes, aIsFirstParty);
   MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
   return nullPrin.forget();
 }
 
-/* static */ already_AddRefed<NullPrincipal>
-NullPrincipal::Create(const OriginAttributes& aOriginAttributes, nsIURI* aURI)
-{
+/* static */
+already_AddRefed<NullPrincipal> NullPrincipal::Create(
+    const OriginAttributes& aOriginAttributes, nsIURI* aURI) {
   RefPtr<NullPrincipal> nullPrin = new NullPrincipal();
   nsresult rv = nullPrin->Init(aOriginAttributes, aURI);
   MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
@@ -65,15 +69,13 @@ NullPrincipal::Create(const OriginAttributes& aOriginAttributes, nsIURI* aURI)
   return nullPrin.forget();
 }
 
-/* static */ already_AddRefed<NullPrincipal>
-NullPrincipal::CreateWithoutOriginAttributes()
-{
+/* static */
+already_AddRefed<NullPrincipal> NullPrincipal::CreateWithoutOriginAttributes() {
   return NullPrincipal::Create(OriginAttributes(), nullptr);
 }
 
-nsresult
-NullPrincipal::Init(const OriginAttributes& aOriginAttributes, nsIURI* aURI)
-{
+nsresult NullPrincipal::Init(const OriginAttributes& aOriginAttributes,
+                             nsIURI* aURI) {
   if (aURI) {
     nsAutoCString scheme;
     nsresult rv = aURI->GetScheme(scheme);
@@ -97,9 +99,8 @@ NullPrincipal::Init(const OriginAttributes& aOriginAttributes, nsIURI* aURI)
   return NS_OK;
 }
 
-nsresult
-NullPrincipal::Init(const OriginAttributes& aOriginAttributes, bool aIsFirstParty)
-{
+nsresult NullPrincipal::Init(const OriginAttributes& aOriginAttributes,
+                             bool aIsFirstParty) {
   mURI = NullPrincipalURI::Create();
   NS_ENSURE_TRUE(mURI, NS_ERROR_NOT_AVAILABLE);
 
@@ -124,9 +125,7 @@ NullPrincipal::Init(const OriginAttributes& aOriginAttributes, bool aIsFirstPart
   return NS_OK;
 }
 
-nsresult
-NullPrincipal::GetScriptLocation(nsACString &aStr)
-{
+nsresult NullPrincipal::GetScriptLocation(nsACString& aStr) {
   return mURI->GetSpec(aStr);
 }
 
@@ -134,75 +133,50 @@ NullPrincipal::GetScriptLocation(nsACString &aStr)
  * nsIPrincipal implementation
  */
 
-NS_IMETHODIMP
-NullPrincipal::GetHashValue(uint32_t *aResult)
-{
-  *aResult = (NS_PTR_TO_INT32(this) >> 2);
-  return NS_OK;
-}
+uint32_t NullPrincipal::GetHashValue() { return (NS_PTR_TO_INT32(this) >> 2); }
 
 NS_IMETHODIMP
-NullPrincipal::SetCsp(nsIContentSecurityPolicy* aCsp)
-{
-  // Never destroy an existing CSP on the principal.
-  // This method should only be called in rare cases.
-
-  MOZ_ASSERT(!mCSP, "do not destroy an existing CSP");
-  if (mCSP) {
-    return NS_ERROR_ALREADY_INITIALIZED;
-  }
-
-  mCSP = aCsp;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-NullPrincipal::GetURI(nsIURI** aURI)
-{
+NullPrincipal::GetURI(nsIURI** aURI) {
   nsCOMPtr<nsIURI> uri = mURI;
   uri.forget(aURI);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-NullPrincipal::GetDomain(nsIURI** aDomain)
-{
+NullPrincipal::GetDomain(nsIURI** aDomain) {
   nsCOMPtr<nsIURI> uri = mURI;
   uri.forget(aDomain);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-NullPrincipal::SetDomain(nsIURI* aDomain)
-{
+NullPrincipal::SetDomain(nsIURI* aDomain) {
   // I think the right thing to do here is to just throw...  Silently failing
   // seems counterproductive.
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-bool
-NullPrincipal::MayLoadInternal(nsIURI* aURI)
-{
+bool NullPrincipal::MayLoadInternal(nsIURI* aURI) {
   // Also allow the load if we are the principal of the URI being checked.
   nsCOMPtr<nsIPrincipal> blobPrincipal;
-  if (dom::BlobURLProtocolHandler::GetBlobURLPrincipal(aURI,
-                                                       getter_AddRefs(blobPrincipal))) {
-    return blobPrincipal == this;
+  if (dom::BlobURLProtocolHandler::GetBlobURLPrincipal(
+          aURI, getter_AddRefs(blobPrincipal))) {
+    MOZ_ASSERT(blobPrincipal);
+    return SubsumesInternal(blobPrincipal,
+                            BasePrincipal::ConsiderDocumentDomain);
   }
 
   return false;
 }
 
 NS_IMETHODIMP
-NullPrincipal::GetBaseDomain(nsACString& aBaseDomain)
-{
+NullPrincipal::GetBaseDomain(nsACString& aBaseDomain) {
   // For a null principal, we use our unique uuid as the base domain.
   return mURI->GetPathQueryRef(aBaseDomain);
 }
 
 NS_IMETHODIMP
-NullPrincipal::GetAddonId(nsAString& aAddonId)
-{
+NullPrincipal::GetAddonId(nsAString& aAddonId) {
   aAddonId.Truncate();
   return NS_OK;
 };
@@ -211,12 +185,12 @@ NullPrincipal::GetAddonId(nsAString& aAddonId)
  * nsISerializable implementation
  */
 NS_IMETHODIMP
-NullPrincipal::Read(nsIObjectInputStream* aStream)
-{
+NullPrincipal::Read(nsIObjectInputStream* aStream) {
   // Note - NullPrincipal use NS_GENERIC_FACTORY_CONSTRUCTOR_INIT, which means
   // that the Init() method has already been invoked by the time we deserialize.
-  // This is in contrast to ContentPrincipal, which uses NS_GENERIC_FACTORY_CONSTRUCTOR,
-  // in which case ::Read needs to invoke Init().
+  // This is in contrast to ContentPrincipal, which uses
+  // NS_GENERIC_FACTORY_CONSTRUCTOR, in which case ::Read needs to invoke
+  // Init().
 
   nsAutoCString spec;
   nsresult rv = aStream->ReadCString(spec);
@@ -238,22 +212,69 @@ NullPrincipal::Read(nsIObjectInputStream* aStream)
 }
 
 NS_IMETHODIMP
-NullPrincipal::Write(nsIObjectOutputStream* aStream)
-{
-  NS_ENSURE_STATE(mURI);
+NullPrincipal::Write(nsIObjectOutputStream* aStream) {
+  // Read is used still for legacy principals
+  MOZ_RELEASE_ASSERT(false, "Old style serialization is removed");
+  return NS_OK;
+}
 
-  nsAutoCString spec;
-  nsresult rv = mURI->GetSpec(spec);
+nsresult NullPrincipal::PopulateJSONObject(Json::Value& aObject) {
+  nsAutoCString principalURI;
+  nsresult rv = mURI->GetSpec(principalURI);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = aStream->WriteStringZ(spec.get());
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_ASSERT(principalURI.Length() ==
+                 NS_LITERAL_CSTRING(NS_NULLPRINCIPAL_SCHEME ":").Length() +
+                     NSID_LENGTH - 1,
+             "Length of the URI should be: (scheme, uuid, - nullptr)");
+  aObject[std::to_string(eSpec)] = principalURI.get();
 
   nsAutoCString suffix;
   OriginAttributesRef().CreateSuffix(suffix);
-
-  rv = aStream->WriteStringZ(suffix.get());
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (suffix.Length() > 0) {
+    aObject[std::to_string(eSuffix)] = suffix.get();
+  }
 
   return NS_OK;
+}
+
+already_AddRefed<BasePrincipal> NullPrincipal::FromProperties(
+    nsTArray<NullPrincipal::KeyVal>& aFields) {
+  MOZ_ASSERT(aFields.Length() == eMax + 1, "Must have all the keys");
+  nsresult rv;
+  nsCOMPtr<nsIURI> uri;
+  OriginAttributes attrs;
+
+  // The odd structure here is to make the code to not compile
+  // if all the switch enum cases haven't been codified
+  for (const auto& field : aFields) {
+    switch (field.key) {
+      case NullPrincipal::eSpec:
+        if (!field.valueWasSerialized) {
+          MOZ_ASSERT(false,
+                     "Null principals require a spec URI in serialized JSON");
+          return nullptr;
+        }
+        rv = NS_NewURI(getter_AddRefs(uri), field.value);
+        NS_ENSURE_SUCCESS(rv, nullptr);
+        break;
+      case NullPrincipal::eSuffix:
+        bool ok = attrs.PopulateFromSuffix(field.value);
+        if (!ok) {
+          return nullptr;
+        }
+        break;
+    }
+  }
+
+  if (!uri) {
+    MOZ_ASSERT(false, "No URI deserialized");
+    return nullptr;
+  }
+
+  RefPtr<NullPrincipal> nullPrincipal = new NullPrincipal();
+  rv = nullPrincipal->Init(attrs, uri);
+  if (NS_FAILED(rv)) {
+    return nullptr;
+  }
+  return nullPrincipal.forget();
 }

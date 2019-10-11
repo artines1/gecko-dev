@@ -5,8 +5,15 @@
 
 // Test clearSnapshots deletes snapshots with state ERROR
 
-const { takeSnapshotAndCensus, clearSnapshots } = require("devtools/client/memory/actions/snapshot");
-const { snapshotState: states, treeMapState, actions } = require("devtools/client/memory/constants");
+const {
+  takeSnapshotAndCensus,
+  clearSnapshots,
+} = require("devtools/client/memory/actions/snapshot");
+const {
+  snapshotState: states,
+  treeMapState,
+  actions,
+} = require("devtools/client/memory/constants");
 
 add_task(async function() {
   const front = new StubbedMemoryFront();
@@ -19,8 +26,9 @@ add_task(async function() {
   dispatch(takeSnapshotAndCensus(front, heapWorker));
   await waitUntilSnapshotState(store, [states.SAVED]);
   ok(true, "snapshot created with a SAVED state");
-  await waitUntilCensusState(store, snapshot => snapshot.treeMap,
-                             [treeMapState.SAVED]);
+  await waitUntilCensusState(store, snapshot => snapshot.treeMap, [
+    treeMapState.SAVED,
+  ]);
   ok(true, "treeMap created with a SAVED state");
 
   ok(true, "set snapshot state to error");
@@ -32,7 +40,7 @@ add_task(async function() {
   ok(true, "dispatch clearSnapshots action");
   const deleteEvents = Promise.all([
     waitUntilAction(store, actions.DELETE_SNAPSHOTS_START),
-    waitUntilAction(store, actions.DELETE_SNAPSHOTS_END)
+    waitUntilAction(store, actions.DELETE_SNAPSHOTS_END),
   ]);
   dispatch(clearSnapshots(heapWorker));
   await deleteEvents;

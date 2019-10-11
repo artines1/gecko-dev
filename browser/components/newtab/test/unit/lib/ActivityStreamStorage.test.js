@@ -1,5 +1,5 @@
-import {ActivityStreamStorage} from "lib/ActivityStreamStorage.jsm";
-import {GlobalOverrider} from "test/unit/utils";
+import { ActivityStreamStorage } from "lib/ActivityStreamStorage.jsm";
+import { GlobalOverrider } from "test/unit/utils";
 
 let overrider = new GlobalOverrider();
 
@@ -8,22 +8,22 @@ describe("ActivityStreamStorage", () => {
   let indexedDB;
   let storage;
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     indexedDB = {
       open: sandbox.stub().resolves({}),
-      deleteDatabase: sandbox.stub().resolves()
+      deleteDatabase: sandbox.stub().resolves(),
     };
-    overrider.set({IndexedDB: indexedDB});
+    overrider.set({ IndexedDB: indexedDB });
     storage = new ActivityStreamStorage({
       storeNames: ["storage_test"],
-      telemetry: {handleUndesiredEvent: sandbox.stub()}
+      telemetry: { handleUndesiredEvent: sandbox.stub() },
     });
   });
   afterEach(() => {
     sandbox.restore();
   });
   it("should throw if required arguments not provided", () => {
-    assert.throws(() => new ActivityStreamStorage({telemetry: true}));
+    assert.throws(() => new ActivityStreamStorage({ telemetry: true }));
   });
   describe(".db", () => {
     it("should not throw an error when accessing db", async () => {
@@ -48,7 +48,7 @@ describe("ActivityStreamStorage", () => {
       storeStub = {
         getAll: sandbox.stub().resolves(),
         get: sandbox.stub().resolves(),
-        put: sandbox.stub().resolves()
+        put: sandbox.stub().resolves(),
       };
       sandbox.stub(storage, "_getStore").resolves(storeStub);
       testStorage = storage.getDbTable("storage_test");
@@ -87,7 +87,7 @@ describe("ActivityStreamStorage", () => {
   });
   it("should get the correct objectStore when calling _getStore", async () => {
     const objectStoreStub = sandbox.stub();
-    indexedDB.open.resolves({objectStore: objectStoreStub});
+    indexedDB.open.resolves({ objectStore: objectStoreStub });
 
     await storage._getStore("foo");
 
@@ -95,7 +95,10 @@ describe("ActivityStreamStorage", () => {
     assert.calledWithExactly(objectStoreStub, "foo", "readwrite");
   });
   it("should create a db with the correct store name", async () => {
-    const dbStub = {createObjectStore: sandbox.stub(), objectStoreNames: {contains: sandbox.stub().returns(false)}};
+    const dbStub = {
+      createObjectStore: sandbox.stub(),
+      objectStoreNames: { contains: sandbox.stub().returns(false) },
+    };
     await storage.db;
 
     // call the cb with a stub
@@ -107,9 +110,12 @@ describe("ActivityStreamStorage", () => {
   it("should handle an array of object store names", async () => {
     storage = new ActivityStreamStorage({
       storeNames: ["store1", "store2"],
-      telemetry: {}
+      telemetry: {},
     });
-    const dbStub = {createObjectStore: sandbox.stub(), objectStoreNames: {contains: sandbox.stub().returns(false)}};
+    const dbStub = {
+      createObjectStore: sandbox.stub(),
+      objectStoreNames: { contains: sandbox.stub().returns(false) },
+    };
     await storage.db;
 
     // call the cb with a stub
@@ -122,9 +128,12 @@ describe("ActivityStreamStorage", () => {
   it("should skip creating existing stores", async () => {
     storage = new ActivityStreamStorage({
       storeNames: ["store1", "store2"],
-      telemetry: {}
+      telemetry: {},
     });
-    const dbStub = {createObjectStore: sandbox.stub(), objectStoreNames: {contains: sandbox.stub().returns(true)}};
+    const dbStub = {
+      createObjectStore: sandbox.stub(),
+      objectStoreNames: { contains: sandbox.stub().returns(true) },
+    };
     await storage.db;
 
     // call the cb with a stub
@@ -134,7 +143,9 @@ describe("ActivityStreamStorage", () => {
   });
   describe("#_requestWrapper", () => {
     it("should return a successful result", async () => {
-      const result = await storage._requestWrapper(() => Promise.resolve("foo"));
+      const result = await storage._requestWrapper(() =>
+        Promise.resolve("foo")
+      );
 
       assert.equal(result, "foo");
       assert.notCalled(storage.telemetry.handleUndesiredEvent);

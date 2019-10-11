@@ -26,14 +26,18 @@ public:
                        const SkDescriptor*);
     ~SkScalerContext_DW() override;
 
+    // The IDWriteFontFace4 interface is only available in DWrite 3,
+    // so checking if it was found is sufficient to detect DWrite 3.
+    bool isDWrite3() { return bool(getDWriteTypeface()->fDWriteFontFace4); }
+
 protected:
     unsigned generateGlyphCount() override;
     uint16_t generateCharToGlyph(SkUnichar uni) override;
-    void generateAdvance(SkGlyph* glyph) override;
+    bool generateAdvance(SkGlyph* glyph) override;
     void generateMetrics(SkGlyph* glyph) override;
     void generateImage(const SkGlyph& glyph) override;
-    void generatePath(SkGlyphID glyph, SkPath* path) override;
-    void generateFontMetrics(SkPaint::FontMetrics*) override;
+    bool generatePath(SkGlyphID glyph, SkPath* path) override;
+    void generateFontMetrics(SkFontMetrics*) override;
 
 private:
     const void* drawDWMask(const SkGlyph& glyph,
@@ -47,13 +51,22 @@ private:
 
     bool isColorGlyph(const SkGlyph& glyph);
 
+    bool isPngGlyph(const SkGlyph& glyph);
+
     DWriteFontTypeface* getDWriteTypeface() {
         return static_cast<DWriteFontTypeface*>(this->getTypeface());
     }
 
     bool getColorGlyphRun(const SkGlyph& glyph, IDWriteColorGlyphRunEnumerator** colorGlyph);
 
+    void generateColorMetrics(SkGlyph* glyph);
+
     void generateColorGlyphImage(const SkGlyph& glyph);
+
+    void generatePngMetrics(SkGlyph* glyph);
+
+    void generatePngGlyphImage(const SkGlyph& glyph);
+
 
     SkTDArray<uint8_t> fBits;
     /** The total matrix without the text height scale. */

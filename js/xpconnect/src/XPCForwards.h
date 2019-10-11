@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=4 et sw=4 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +9,7 @@
 #ifndef xpcforwards_h___
 #define xpcforwards_h___
 
-// forward declarations of interally used classes...
+// forward declarations of internally used classes...
 
 class nsXPConnect;
 class XPCJSContext;
@@ -20,7 +20,6 @@ class XPCCallContext;
 class XPCJSThrower;
 
 class nsXPCWrappedJS;
-class nsXPCWrappedJSClass;
 
 class XPCNativeMember;
 class XPCNativeInterface;
@@ -34,7 +33,6 @@ class XPCTraceableVariant;
 
 class JSObject2WrappedJSMap;
 class Native2WrappedNativeMap;
-class IID2WrappedJSClassMap;
 class IID2NativeInterfaceMap;
 class ClassInfo2NativeSetMap;
 class ClassInfo2WrappedNativeProtoMap;
@@ -44,18 +42,13 @@ class JSObject2JSObjectMap;
 
 class nsXPCComponents;
 class nsXPCComponents_Interfaces;
-class nsXPCComponents_InterfacesByID;
 class nsXPCComponents_Classes;
-class nsXPCComponents_ClassesByID;
 class nsXPCComponents_Results;
 class nsXPCComponents_ID;
 class nsXPCComponents_Exception;
 class nsXPCComponents_Constructor;
 class nsXPCComponents_Utils;
-class nsXPCConstructor;
 
 class AutoMarkingPtr;
-
-class xpcProperty;
 
 #endif /* xpcforwards_h___ */

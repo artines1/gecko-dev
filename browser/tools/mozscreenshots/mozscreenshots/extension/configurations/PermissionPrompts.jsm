@@ -6,12 +6,19 @@
 
 var EXPORTED_SYMBOLS = ["PermissionPrompts"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
-ChromeUtils.import("resource://testing-common/ContentTask.jsm");
-ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { E10SUtils } = ChromeUtils.import(
+  "resource://gre/modules/E10SUtils.jsm"
+);
+const { ContentTask } = ChromeUtils.import(
+  "resource://testing-common/ContentTask.jsm"
+);
+const { BrowserTestUtils } = ChromeUtils.import(
+  "resource://testing-common/BrowserTestUtils.jsm"
+);
 
-const URL = "https://test1.example.com/browser/browser/tools/mozscreenshots/mozscreenshots/extension/mozscreenshots/browser/chrome/mozscreenshots/lib/permissionPrompts.html";
+const URL =
+  "https://test1.example.com/browser/browser/tools/mozscreenshots/mozscreenshots/extension/mozscreenshots/browser/resources/lib/permissionPrompts.html";
 let lastTab = null;
 
 var PermissionPrompts = {
@@ -23,7 +30,7 @@ var PermissionPrompts = {
 
   configurations: {
     shareDevices: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#webRTC-shareDevices");
@@ -31,7 +38,7 @@ var PermissionPrompts = {
     },
 
     shareMicrophone: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#webRTC-shareMicrophone");
@@ -39,7 +46,7 @@ var PermissionPrompts = {
     },
 
     shareVideoAndMicrophone: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#webRTC-shareDevices2");
@@ -47,7 +54,7 @@ var PermissionPrompts = {
     },
 
     shareScreen: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#webRTC-shareScreen");
@@ -55,7 +62,7 @@ var PermissionPrompts = {
     },
 
     geo: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#geo");
@@ -63,7 +70,7 @@ var PermissionPrompts = {
     },
 
     persistentStorage: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#persistent-storage");
@@ -71,7 +78,7 @@ var PermissionPrompts = {
     },
 
     loginCapture: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#login-capture");
@@ -79,7 +86,7 @@ var PermissionPrompts = {
     },
 
     notifications: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         await closeLastTab();
         await clickOn("#web-notifications");
@@ -87,7 +94,7 @@ var PermissionPrompts = {
     },
 
     addons: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         Services.prefs.setBoolPref("xpinstall.whitelist.required", true);
 
@@ -97,22 +104,29 @@ var PermissionPrompts = {
     },
 
     addonsNoWhitelist: {
-      selectors: ["#notification-popup"],
+      selectors: ["#notification-popup", "#identity-box"],
       async applyConfig() {
         Services.prefs.setBoolPref("xpinstall.whitelist.required", false);
 
-        let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
-        let notification = browserWindow.document.getElementById("addon-install-confirmation-notification");
+        let browserWindow = Services.wm.getMostRecentWindow(
+          "navigator:browser"
+        );
+        let notification = browserWindow.document.getElementById(
+          "addon-install-confirmation-notification"
+        );
 
         await closeLastTab();
         await clickOn("#addons");
 
         // We want to skip the progress-notification, so we wait for
         // the install-confirmation screen to be "not hidden" = shown.
-        return BrowserTestUtils.waitForCondition(() => !notification.hasAttribute("hidden"),
-                                                "addon install confirmation did not show", 200).catch((msg) => {
-                                                  return Promise.resolve({todo: msg});
-                                                });
+        return BrowserTestUtils.waitForCondition(
+          () => !notification.hasAttribute("hidden"),
+          "addon install confirmation did not show",
+          200
+        ).catch(msg => {
+          return Promise.resolve({ todo: msg });
+        });
       },
     },
   },
@@ -130,7 +144,10 @@ async function clickOn(selector) {
   let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
 
   // Save the tab so we can close it later.
-  lastTab = await BrowserTestUtils.openNewForegroundTab(browserWindow.gBrowser, URL);
+  lastTab = await BrowserTestUtils.openNewForegroundTab(
+    browserWindow.gBrowser,
+    URL
+  );
 
   await ContentTask.spawn(lastTab.linkedBrowser, selector, async function(arg) {
     E10SUtils.wrapHandlingUserInput(content, true, function() {
@@ -140,5 +157,8 @@ async function clickOn(selector) {
   });
 
   // Wait for the popup to actually be shown before making the screenshot
-  await BrowserTestUtils.waitForEvent(browserWindow.PopupNotifications.panel, "popupshown");
+  await BrowserTestUtils.waitForEvent(
+    browserWindow.PopupNotifications.panel,
+    "popupshown"
+  );
 }

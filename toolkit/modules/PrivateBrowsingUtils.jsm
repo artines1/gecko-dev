@@ -4,12 +4,7 @@
 
 var EXPORTED_SYMBOLS = ["PrivateBrowsingUtils"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyServiceGetter(this, "gPBMTPWhitelist",
-                                   "@mozilla.org/pbm-tp-whitelist;1",
-                                   "nsIPrivateBrowsingTrackingProtectionWhitelist");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kAutoStartPref = "browser.privatebrowsing.autostart";
 
@@ -26,9 +21,11 @@ var PrivateBrowsingUtils = {
   // isBrowserPrivate since it works with e10s.
   isWindowPrivate: function pbu_isWindowPrivate(aWindow) {
     if (!aWindow.isChromeWindow) {
-      dump("WARNING: content window passed to PrivateBrowsingUtils.isWindowPrivate. " +
-           "Use isContentWindowPrivate instead (but only for frame scripts).\n"
-           + new Error().stack);
+      dump(
+        "WARNING: content window passed to PrivateBrowsingUtils.isWindowPrivate. " +
+          "Use isContentWindowPrivate instead (but only for frame scripts).\n" +
+          new Error().stack
+      );
     }
 
     return this.privacyContextFromWindow(aWindow).usePrivateBrowsing;
@@ -49,29 +46,19 @@ var PrivateBrowsingUtils = {
       // content window doesn't exist.
       return this.isWindowPrivate(chromeWin);
     }
-    return this.privacyContextFromWindow(aBrowser.contentWindow).usePrivateBrowsing;
+    return this.privacyContextFromWindow(aBrowser.contentWindow)
+      .usePrivateBrowsing;
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {
     return aWindow.docShell.QueryInterface(Ci.nsILoadContext);
   },
 
-  addToTrackingAllowlist(aURI) {
-    gPBMTPWhitelist.addToAllowList(aURI);
-  },
-
-  existsInTrackingAllowlist(aURI) {
-    return gPBMTPWhitelist.existsInAllowList(aURI);
-  },
-
-  removeFromTrackingAllowlist(aURI) {
-    gPBMTPWhitelist.removeFromAllowList(aURI);
-  },
-
   get permanentPrivateBrowsing() {
     try {
-      return gTemporaryAutoStartMode ||
-             Services.prefs.getBoolPref(kAutoStartPref);
+      return (
+        gTemporaryAutoStartMode || Services.prefs.getBoolPref(kAutoStartPref)
+      );
     } catch (e) {
       // The pref does not exist
       return false;
@@ -86,4 +73,3 @@ var PrivateBrowsingUtils = {
     return gTemporaryAutoStartMode;
   },
 };
-

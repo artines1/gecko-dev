@@ -4,7 +4,7 @@
 
 //! Rust wrappers around the raw JS apis
 
-use ac::AutoCompartment;
+use ar::AutoRealm;
 use libc::c_uint;
 use std::cell::{Cell, UnsafeCell};
 use std::char;
@@ -22,8 +22,8 @@ use std::sync::mpsc::{SyncSender, sync_channel};
 use std::thread;
 use jsapi::root::*;
 use jsval::{self, UndefinedValue};
-use glue::{CreateAutoObjectVector, CreateCallArgsFromVp, AppendToAutoObjectVector, DeleteAutoObjectVector, IsDebugBuild};
-use glue::{CreateAutoIdVector, SliceAutoIdVector, DestroyAutoIdVector};
+use glue::{CreateRootedObjectVector, CreateCallArgsFromVp, AppendToRootedObjectVector, DeleteRootedObjectVector, IsDebugBuild};
+use glue::{CreateRootedIdVector, SliceRootedIdVector, DestroyRootedIdVector, GetMutableHandleIdVector};
 use glue::{NewCompileOptions, DeleteCompileOptions};
 use panic;
 
@@ -137,7 +137,7 @@ impl Runtime {
                     }
 
                     let context = JS_NewContext(
-                        DEFAULT_HEAPSIZE, ChunkSize as u32, ptr::null_mut());
+                        DEFAULT_HEAPSIZE, ptr::null_mut());
                     assert!(!context.is_null());
                     JS::InitSelfHostedCode(context);
                     PARENT.set(context);
@@ -160,7 +160,6 @@ impl Runtime {
             assert_eq!(IsDebugBuild(), cfg!(feature = "debugmozjs"));
 
             let js_context = JS_NewContext(DEFAULT_HEAPSIZE,
-                                           ChunkSize as u32,
                                            JS_GetParentRuntime(PARENT.get()));
             assert!(!js_context.is_null());
 
@@ -178,11 +177,6 @@ impl Runtime {
                 STACK_QUOTA - SYSTEM_CODE_BUFFER,
                 STACK_QUOTA - SYSTEM_CODE_BUFFER - TRUSTED_SCRIPT_BUFFER);
 
-            let opts = JS::ContextOptionsRef(js_context);
-            (*opts).set_baseline_(true);
-            (*opts).set_ion_(true);
-            (*opts).set_nativeRegExp_(true);
-
             CONTEXT.with(|context| {
                 assert!(context.get().is_null());
                 context.set(js_context);
@@ -195,8 +189,6 @@ impl Runtime {
             JS::InitSelfHostedCode(js_context);
 
             JS::SetWarningReporter(js_context, Some(report_warning));
-
-            JS_BeginRequest(js_context);
 
             Ok(Runtime {
                 cx: js_context,
@@ -231,13 +223,14 @@ impl Runtime {
         };
         assert!(!ptr.is_null());
         unsafe {
-            let _ac = AutoCompartment::with_obj(self.cx(), glob.get());
+            let _ar = AutoRealm::with_obj(self.cx(), glob.get());
             let options = CompileOptionsWrapper::new(self.cx(), filename_cstr.as_ptr(), line_num);
 
-            let mut srcBuf = JS::SourceBufferHolder {
-                data_: ptr,
+            let mut srcBuf = JS::SourceText {
+                units_: ptr,
                 length_: len as _,
-                ownsChars_: false
+                ownsUnits_: false,
+                _phantom_0: marker::PhantomData
             };
             if !JS::Evaluate(self.cx(), options.ptr, &mut srcBuf, rval) {
                 debug!("...err!");
@@ -256,7 +249,6 @@ impl Runtime {
 impl Drop for Runtime {
     fn drop(&mut self) {
         unsafe {
-            JS_EndRequest(self.cx);
             JS_DestroyContext(self.cx);
 
             CONTEXT.with(|context| {
@@ -566,45 +558,45 @@ impl Default for JS::RealmOptions {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 
-const ChunkShift: usize = 20;
-const ChunkSize: usize = 1 << ChunkShift;
-
-#[cfg(target_pointer_width = "32")]
-const ChunkLocationOffset: usize = ChunkSize - 2 * 4 - 8;
-
 pub trait GCMethods {
     unsafe fn initial() -> Self;
-    unsafe fn post_barrier(v: *mut Self, prev: Self, next: Self);
+    unsafe fn write_barriers(v: *mut Self, prev: Self, next: Self);
 }
 
 impl GCMethods for jsid {
     unsafe fn initial() -> jsid { Default::default() }
-    unsafe fn post_barrier(_: *mut jsid, _: jsid, _: jsid) {}
+    unsafe fn write_barriers(_: *mut jsid, _: jsid, _: jsid) {}
 }
 
 impl GCMethods for *mut JSObject {
     unsafe fn initial() -> *mut JSObject { ptr::null_mut() }
-    unsafe fn post_barrier(v: *mut *mut JSObject,
+    unsafe fn write_barriers(v: *mut *mut JSObject,
                            prev: *mut JSObject, next: *mut JSObject) {
-        JS::HeapObjectPostBarrier(v, prev, next);
+        JS::HeapObjectWriteBarriers(v, prev, next);
     }
 }
 
 impl GCMethods for *mut JSString {
     unsafe fn initial() -> *mut JSString { ptr::null_mut() }
-    unsafe fn post_barrier(_: *mut *mut JSString, _: *mut JSString, _: *mut JSString) {}
+    unsafe fn write_barriers(v: *mut *mut JSString, prev: *mut JSString,
+                             next: *mut JSString) {
+        JS::HeapStringWriteBarriers(v, prev, next);
+    }
 }
 
 impl GCMethods for *mut JSScript {
     unsafe fn initial() -> *mut JSScript { ptr::null_mut() }
-    unsafe fn post_barrier(_: *mut *mut JSScript, _: *mut JSScript, _: *mut JSScript) { }
+    unsafe fn write_barriers(v: *mut *mut JSScript, prev: *mut JSScript,
+                             next: *mut JSScript) {
+        JS::HeapScriptWriteBarriers(v, prev, next);
+    }
 }
 
 impl GCMethods for *mut JSFunction {
     unsafe fn initial() -> *mut JSFunction { ptr::null_mut() }
-    unsafe fn post_barrier(v: *mut *mut JSFunction,
-                           prev: *mut JSFunction, next: *mut JSFunction) {
-        JS::HeapObjectPostBarrier(mem::transmute(v),
+    unsafe fn write_barriers(v: *mut *mut JSFunction,
+                             prev: *mut JSFunction, next: *mut JSFunction) {
+        JS::HeapObjectWriteBarriers(mem::transmute(v),
                                   mem::transmute(prev),
                                   mem::transmute(next));
     }
@@ -612,15 +604,15 @@ impl GCMethods for *mut JSFunction {
 
 impl GCMethods for JS::Value {
     unsafe fn initial() -> JS::Value { UndefinedValue() }
-    unsafe fn post_barrier(v: *mut JS::Value, prev: JS::Value, next: JS::Value) {
-        JS::HeapValuePostBarrier(v, &prev, &next);
+    unsafe fn write_barriers(v: *mut JS::Value, prev: JS::Value, next: JS::Value) {
+        JS::HeapValueWriteBarriers(v, &prev, &next);
     }
 }
 
 // ___________________________________________________________________________
 // Implementations for various things in jsapi.rs
 
-impl Drop for JSAutoRealmAllowCCW {
+impl Drop for JSAutoRealm {
     fn drop(&mut self) {
         unsafe { JS::LeaveRealm(self.cx_, self.oldRealm_); }
     }
@@ -751,29 +743,29 @@ impl JSJitSetterCallArgs {
 // ___________________________________________________________________________
 // Wrappers around things in jsglue.cpp
 
-pub struct AutoObjectVectorWrapper {
-    pub ptr: *mut JS::AutoObjectVector
+pub struct RootedObjectVectorWrapper {
+    pub ptr: *mut JS::PersistentRootedObjectVector
 }
 
-impl AutoObjectVectorWrapper {
-    pub fn new(cx: *mut JSContext) -> AutoObjectVectorWrapper {
-        AutoObjectVectorWrapper {
+impl RootedObjectVectorWrapper {
+    pub fn new(cx: *mut JSContext) -> RootedObjectVectorWrapper {
+        RootedObjectVectorWrapper {
             ptr: unsafe {
-                 CreateAutoObjectVector(cx)
+                 CreateRootedObjectVector(cx)
             }
         }
     }
 
     pub fn append(&self, obj: *mut JSObject) -> bool {
         unsafe {
-            AppendToAutoObjectVector(self.ptr, obj)
+            AppendToRootedObjectVector(self.ptr, obj)
         }
     }
 }
 
-impl Drop for AutoObjectVectorWrapper {
+impl Drop for RootedObjectVectorWrapper {
     fn drop(&mut self) {
-        unsafe { DeleteAutoObjectVector(self.ptr) }
+        unsafe { DeleteRootedObjectVector(self.ptr) }
     }
 }
 
@@ -930,35 +922,41 @@ impl JSNativeWrapper {
     }
 }
 
-pub struct IdVector(*mut JS::AutoIdVector);
-
-impl IdVector {
-    pub unsafe fn new(cx: *mut JSContext) -> IdVector {
-        let vector = CreateAutoIdVector(cx);
-        assert!(!vector.is_null());
-        IdVector(vector)
-    }
-
-    pub fn get(&self) -> *mut JS::AutoIdVector {
-        self.0
-    }
+pub struct RootedIdVectorWrapper {
+    pub ptr: *mut JS::PersistentRootedIdVector
 }
 
-impl Drop for IdVector {
-    fn drop(&mut self) {
+impl RootedIdVectorWrapper {
+    pub fn new(cx: *mut JSContext) -> RootedIdVectorWrapper {
+        RootedIdVectorWrapper {
+            ptr: unsafe {
+                CreateRootedIdVector(cx)
+            }
+        }
+    }
+
+    pub fn handle_mut(&self) -> JS::MutableHandleIdVector {
         unsafe {
-            DestroyAutoIdVector(self.0)
+            GetMutableHandleIdVector(self.ptr)
         }
     }
 }
 
-impl Deref for IdVector {
+impl Drop for RootedIdVectorWrapper {
+    fn drop(&mut self) {
+        unsafe {
+            DestroyRootedIdVector(self.ptr)
+        }
+    }
+}
+
+impl Deref for RootedIdVectorWrapper {
     type Target = [jsid];
 
     fn deref(&self) -> &[jsid] {
         unsafe {
             let mut length = 0;
-            let pointer = SliceAutoIdVector(self.0 as *const _, &mut length);
+            let pointer = SliceRootedIdVector(self.ptr as *const _, &mut length);
             slice::from_raw_parts(pointer, length)
         }
     }
@@ -984,7 +982,7 @@ pub unsafe fn define_methods(cx: *mut JSContext, obj: JS::HandleObject,
                              -> Result<(), ()> {
     assert!({
         match methods.last() {
-            Some(&JSFunctionSpec { name, call, nargs, flags, selfHostedName }) => {
+            Some(&JSFunctionSpec { name: JSFunctionSpec_Name { string_: name, }, call, nargs, flags, selfHostedName }) => {
                 name.is_null() && call.is_zeroed() && nargs == 0 && flags == 0 &&
                 selfHostedName.is_null()
             },
@@ -1043,7 +1041,9 @@ pub static SIMPLE_GLOBAL_CLASS: JSClass = JSClass {
     name: b"Global\0" as *const u8 as *const _,
     flags: (JSCLASS_IS_GLOBAL | ((JSCLASS_GLOBAL_SLOT_COUNT & JSCLASS_RESERVED_SLOTS_MASK) << JSCLASS_RESERVED_SLOTS_SHIFT)) as u32,
     cOps: &SIMPLE_GLOBAL_CLASS_OPS as *const JSClassOps,
-    reserved: [0 as *mut _; 3]
+    spec: 0 as *mut _,
+    ext: 0 as *mut _,
+    oOps: 0 as *mut _
 };
 
 #[inline]
@@ -1132,7 +1132,9 @@ impl JSFunctionSpec {
                  nargs: u16,
                  flags: u16) -> JSFunctionSpec {
         JSFunctionSpec {
-            name: name,
+            name: JSFunctionSpec_Name {
+                string_: name,
+            },
             call: JSNativeWrapper {
                 op: func,
                 info: ptr::null(),
@@ -1148,7 +1150,9 @@ impl JSFunctionSpec {
                  nargs: u16,
                  flags: u16) -> JSFunctionSpec {
         JSFunctionSpec {
-            name: name,
+            name: JSFunctionSpec_Name {
+                string_: name,
+            },
             call: JSNativeWrapper {
                 op: func,
                 info: ptr::null(),
@@ -1160,7 +1164,9 @@ impl JSFunctionSpec {
     }
 
     pub const NULL: JSFunctionSpec = JSFunctionSpec {
-        name: 0 as *const _,
+        name: JSFunctionSpec_Name {
+            string_: 0 as *const _,
+        },
         call: JSNativeWrapper {
             op: None,
             info: 0 as *const _,
@@ -1177,17 +1183,19 @@ impl JSPropertySpec {
                         -> JSPropertySpec {
         debug_assert_eq!(flags & !(JSPROP_ENUMERATE | JSPROP_PERMANENT), 0);
         JSPropertySpec {
-            name: name,
+            name: JSPropertySpec_Name {
+                string_: name,
+            },
             flags: flags,
-            __bindgen_anon_1: JSPropertySpec__bindgen_ty_1 {
-                accessors: JSPropertySpec__bindgen_ty_1__bindgen_ty_1 {
-                    getter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
+            u: JSPropertySpec_AccessorsOrValue {
+                accessors: JSPropertySpec_AccessorsOrValue_Accessors {
+                    getter: JSPropertySpec_Accessor {
                         native: JSNativeWrapper {
                             op: func,
                             info: ptr::null(),
                         },
                     },
-                    setter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2 {
+                    setter: JSPropertySpec_Accessor {
                         native: JSNativeWrapper {
                             op: None,
                             info: ptr::null(),
@@ -1205,17 +1213,19 @@ impl JSPropertySpec {
                          -> JSPropertySpec {
         debug_assert_eq!(flags & !(JSPROP_ENUMERATE | JSPROP_PERMANENT), 0);
         JSPropertySpec {
-            name: name,
+            name: JSPropertySpec_Name {
+                string_: name,
+            },
             flags: flags,
-            __bindgen_anon_1: JSPropertySpec__bindgen_ty_1 {
-                accessors: JSPropertySpec__bindgen_ty_1__bindgen_ty_1 {
-                    getter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
+            u: JSPropertySpec_AccessorsOrValue {
+                accessors: JSPropertySpec_AccessorsOrValue_Accessors {
+                    getter: JSPropertySpec_Accessor {
                         native: JSNativeWrapper {
                             op: g_f,
                             info: ptr::null(),
                         },
                     },
-                    setter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2 {
+                    setter: JSPropertySpec_Accessor {
                         native: JSNativeWrapper {
                             op: s_f,
                             info: ptr::null(),
@@ -1227,17 +1237,19 @@ impl JSPropertySpec {
     }
 
     pub const NULL: JSPropertySpec = JSPropertySpec {
-        name: 0 as *const _,
+        name: JSPropertySpec_Name {
+            string_: 0 as *const _,
+        },
         flags: 0,
-        __bindgen_anon_1: JSPropertySpec__bindgen_ty_1{
-            accessors: JSPropertySpec__bindgen_ty_1__bindgen_ty_1 {
-                getter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_1 {
+        u: JSPropertySpec_AccessorsOrValue{
+            accessors: JSPropertySpec_AccessorsOrValue_Accessors {
+                getter: JSPropertySpec_Accessor {
                     native: JSNativeWrapper {
                         op: None,
                         info: 0 as *const _,
                     },
                 },
-                setter: JSPropertySpec__bindgen_ty_1__bindgen_ty_1__bindgen_ty_2 {
+                setter: JSPropertySpec_Accessor {
                     native: JSNativeWrapper {
                         op: None,
                         info: 0 as *const _,

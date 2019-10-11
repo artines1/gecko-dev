@@ -10,7 +10,7 @@ collection is enabled and to submit Telemetry data.
 
 .. important::
 
-    Every new data collection in Firefox (including hybrid content) needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers. They try to reply within a business day.
+    Every new or changed data collection in Firefox (including hybrid content) needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection>`__ from a Data Steward.
 
 The recorded data will be sent to Mozilla servers by Firefox, if the collection is enabled, with the :doc:`main-ping <../data/main-ping>`.
 
@@ -25,7 +25,10 @@ Telemetry can be sent from web content by:
 
 Granting the privileges
 -----------------------
-For security/privacy reasons `Mozilla.ContentTelemetry` will only work on a list of allowed secure origins. The list of allowed origins can be found in `browser/app/permissions <https://dxr.mozilla.org/mozilla-central/source/browser/app/permissions>`_ . A host needs to be given the ``hc_telemetry`` permission in order to be whitelisted.
+For security/privacy reasons `Mozilla.ContentTelemetry` will only work on a list of allowed secure origins.
+The list of allowed origins can be found in
+`browser/app/permissions <https://dxr.mozilla.org/mozilla-central/source/browser/app/permissions>`_ .
+A host needs to be given the ``hc_telemetry`` permission in order to be allowed to use the API.
 
 Example:
 
@@ -41,14 +44,14 @@ granting permissions to a Mozilla page, it can do so by using the `permission ma
   function addonInit() {
     // The following code must be called before attempting to load a page that uses
     // hybrid content telemetry on https://example.mozilla.org.
-    let hostURI = Services.io.newURI("https://example.mozilla.org");
-    Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
+    let principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin("https://example.mozilla.org");
+    Services.perms.addFromPrincipal(principal, "hc_telemetry", Services.perms.ALLOW_ACTION);
   }
 
   function addonCleanup() {
     // The permission must be removed if no longer needed (e.g. the add-on is shut down).
-    let hostURI = Services.io.newURI("https://example.mozilla.org");
-    Services.perms.remove(hostURI, "hc_telemetry");
+    let principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin("https://example.mozilla.org");
+    Services.perms.removeFromPrincipal(principal, "hc_telemetry");
   }
 
 .. important::
@@ -257,13 +260,13 @@ Example:
   }
 
 ``Mozilla.ContentTelemetry.initPromise()``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: js
 
   Mozilla.ContentTelemetry.initPromise();
 
-This function returns a Promise that gets resolved as soon as Hybrid Content Telemetry is correctly initialized and the value from ``canUpload`` can be reliably read.
+This function returns a Promise that gets resolved as soon as Hybrid Content Telemetry is correctly initialized and the value from ``canUpload`` can be reliably read. The promise will reject if Hybrid Content Telemetry is disabled or the host doesn't have enough privileges to use the API.
 
 ``Mozilla.ContentTelemetry.registerEvents()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -319,7 +322,7 @@ Data Review
 ===========
 
 Adding the ``hc_telemetry`` permission for a new domain in `browser/app/permissions <https://dxr.mozilla.org/mozilla-central/source/browser/app/permissions>`_
-requires `Data Collection Review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ as we are enabling a new method of data collection.
+requires `Data Collection Review <https://wiki.mozilla.org/Firefox/Data_Collection>`_ as we are enabling a new method of data collection.
 
 Giving a domain permission to use Hybrid Content Telemetry also gives any Extensions running on this domain permission to use Hybrid Content Telemetry.
 If the domain is already on the `list of restricted domains <https://hg.mozilla.org/integration/mozilla-inbound/file/39e131181d44/modules/libpref/init/all.js#l5120>`_
@@ -332,7 +335,7 @@ Testing
 =======
 
 In order to test Hybrid Content Telemetry integrations, the permission API can be used to enable certain hosts.
-The ``Services.perms.add`` API is available in the Browser Console as well as in ``xpcshell`` and ``mochi`` tests with access to the ``Services.*`` APIs.
+The ``Services.perms.addFromPrincipal`` API is available in the Browser Console as well as in ``xpcshell`` and ``mochi`` tests with access to the ``Services.*`` APIs.
 
 The respective ``hc_telemetry`` permission needs to be set before any pages on that host load the ``HybridContentTelemetry-lib.js`` file.
 
@@ -344,8 +347,8 @@ To enable Hybrid Content Telemetry on ``https://example.mozilla.org``, execute t
 
 .. code-block:: js
 
-  let hostURI = Services.io.newURI("https://example.mozilla.org");
-  Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
+  let principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin("https://example.mozilla.org");
+  Services.perms.addFromPrincipal(principal, "hc_telemetry", Services.perms.ALLOW_ACTION);
 
 Afterwards load the page on ``https://example.mozilla.org`` and it will be able to record Telemetry data.
 
@@ -361,8 +364,8 @@ Add the code snippet in your ``head.js`` to enable Hybrid Content ContentTelemet
 
 .. code-block:: js
 
-  let hostURI = Services.io.newURI("https://example.mozilla.org");
-  Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
+  let principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin("https://example.mozilla.org");
+  Services.perms.addFromPrincipal(principal, "hc_telemetry", Services.perms.ALLOW_ACTION);
 
 Version History
 ===============

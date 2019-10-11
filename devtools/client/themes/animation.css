@@ -5,12 +5,10 @@
 /* Animation-inspector specific theme variables */
 
 :root {
-  --animation-item-hover-color: var(--grey-30-a40);
-  --animation-item-selected-color: var(--grey-30-a90);
-  --command-pick-image: url(chrome://devtools/skin/images/command-pick.svg);
+  --animation-item-hover-color: rgba(215, 215, 219, 0.4);
+  --animation-item-selected-color: rgba(215, 215, 219, 0.9);
   --cssanimation-color: var(--purple-50);
   --csstransition-color: var(--blue-55);
-  --devtools-toolbar-height: 24px;
   --fast-track-image: url("images/animation-fast-track.svg");
   --graph-height: 30px;
   --graph-right-offset: 10px;
@@ -26,7 +24,7 @@
 }
 
 :root.theme-dark {
-  --animation-item-hover-color: var(--grey-60-a50);
+  --animation-item-hover-color: rgba(74, 74, 79, 0.5);
   --animation-item-selected-color: var(--grey-60);
   --csstransition-color: var(--blue-50);
   --keyframe-marker-shadow-color: #818181;
@@ -93,31 +91,33 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 .animation-list-container {
   overflow: hidden;
   width: 100%;
-  -moz-user-select: none;
+  user-select: none;
 }
 
-.animation-list-container.active-scrubber {
+.animation-list-container.active-scrubber,
+.animation-list-container.active-scrubber .animation-summary-graph {
   cursor: col-resize;
 }
 
 /* Current Time Scrubber */
 .current-time-scrubber-area {
   grid-column: 2 / 3;
+  position: relative;
   z-index: 2;
 }
 
-.current-time-scrubber-area:dir(ltr)::before,
-.current-time-scrubber-area:dir(rtl)::after {
+.current-time-scrubber-area::before {
   content: "";
   cursor: col-resize;
-  height: var(--devtools-toolbar-height);
+  height: var(--theme-toolbar-height);
   pointer-events: auto;
   position: absolute;
   /* In order to click on edge of current-time-scrubber-controller element */
   width: calc(100% + 1px);
+  background: #f004;
 }
 
-.current-time-scrubber-area:dir(rtl)::after {
+.current-time-scrubber-area:dir(rtl)::before {
   /* In order to click on the start edge of current-time-scrubber-area element on RTL */
   margin-inline-start: -1px;
 }
@@ -125,22 +125,22 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 .indication-bar.current-time-scrubber {
   cursor: col-resize;
   pointer-events: auto;
-  width: 12px;
-  transform: translateX(-6px);
 }
 
-.indication-bar.current-time-scrubber:dir(rtl) {
+.indication-bar.current-time-scrubber:dir(rtl)::before {
   transform: translateX(6px);
+}
+
+.indication-bar.current-time-scrubber:dir(rtl)::after {
+  transform: translateX(1px);
 }
 
 .indication-bar.current-time-scrubber::before {
   border-top-color: var(--scrubber-color);
-  left: 0;
 }
 
 .indication-bar.current-time-scrubber::after {
-  border-inline-start-color: var(--scrubber-color);
-  left: 5px;
+  background-color: var(--scrubber-color);
 }
 
 /* Animation Item */
@@ -195,6 +195,10 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   white-space: nowrap;
 }
 
+.animation-target .objectBox .open-inspector {
+  flex: none;
+}
+
 .animation-target .objectBox:hover .open-inspector {
   background-color: var(--comment-node-color);
 }
@@ -219,7 +223,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   background-repeat: no-repeat;
   content: "";
   display: block;
-  fill: var(--theme-content-color3);
+  fill: var(--theme-icon-dimmed-color);
   height: 100%;
   position: absolute;
   right: 0;
@@ -395,7 +399,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 /* On OSX the cursor turns into a window-resizing cursor at the edges of the
  * window, so bring the end of the close button in. */
 :root[platform="mac"] .animation-detail-header {
-  padding-inline-end: 3px;
+  padding-inline-end: 2px;
 }
 
 .animation-detail-title {
@@ -410,7 +414,6 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 }
 
 .animation-detail-close-button::before {
-  fill: var(--theme-toolbar-photon-icon-color);
   background-image: url(chrome://devtools/skin/images/close.svg);
 }
 
@@ -418,7 +421,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 .animated-property-list-container {
   flex: 1;
   overflow: hidden;
-  -moz-user-select: none;
+  user-select: none;
 }
 
 /* Keyframes Progress Bar */
@@ -426,6 +429,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   background: none;
   grid-column: 2 / 3;
   pointer-events: none;
+  position: relative;
   z-index: 2;
 }
 
@@ -434,7 +438,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 }
 
 .indication-bar.keyframes-progress-bar::after {
-  border-inline-start-color: var(--progress-bar-color);
+  background-color: var(--progress-bar-color);
 }
 
 /* Animated Property Item */
@@ -663,7 +667,6 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 /* Indication Bar */
 .indication-bar {
-  height: 100%;
   position: absolute;
 }
 
@@ -672,19 +675,18 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   border-inline-end: 5px solid transparent;
   border-top: 5px solid;
   content: "";
-  left: -5px;
-  position: absolute;
-  top: 0;
-  width: 0;
+  height: 100vh;
+  position: fixed;
+  transform: translateX(-6px);
+  width: 1px;
 }
 
 .indication-bar::after {
-  border-inline-start: 1px solid;
   content: "";
-  height: 100%;
-  position: absolute;
-  top: 0;
-  width: 0;
+  height: 100vh;
+  position: fixed;
+  transform: translateX(-1px);
+  width: 1px;
 }
 
 /* No Animation Panel */
@@ -697,5 +699,5 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 }
 
 .animation-element-picker::before {
-  background-image: var(--command-pick-image);
+  background-image: url("chrome://devtools/skin/images/command-pick.svg");
 }

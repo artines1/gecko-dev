@@ -656,8 +656,12 @@ class MacroAssembler : public js::jit::Assembler {
              const Register& rm,
              Condition cond) {
     VIXL_ASSERT(!rd.IsZero());
-    VIXL_ASSERT(!rn.IsZero());
-    VIXL_ASSERT(!rm.IsZero());
+    // The VIXL source code contains these assertions, but the AArch64 ISR
+    // explicitly permits the use of zero registers. CSET itself is defined
+    // in terms of CSINC with WZR/XZR.
+    //
+    // VIXL_ASSERT(!rn.IsZero());
+    // VIXL_ASSERT(!rm.IsZero());
     VIXL_ASSERT((cond != al) && (cond != nv));
     SingleEmissionCheckScope guard(this);
     csinc(rd, rn, rm, cond);
@@ -812,6 +816,11 @@ class MacroAssembler : public js::jit::Assembler {
     VIXL_ASSERT(!rd.IsZero());
     SingleEmissionCheckScope guard(this);
     fcvtzs(rd, vn, fbits);
+  }
+  void Fjcvtzs(const Register& rd, const VRegister& vn) {
+    VIXL_ASSERT(!rd.IsZero());
+    SingleEmissionCheckScope guard(this);
+    fjcvtzs(rd, vn);
   }
   void Fcvtzu(const Register& rd, const VRegister& vn, int fbits = 0) {
     VIXL_ASSERT(!rd.IsZero());

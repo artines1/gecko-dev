@@ -10,8 +10,11 @@
  * liability, trademark and document use rules apply.
  */
 
-[Constructor(optional DOMString data = "")]
+[Exposed=Window]
 interface Text : CharacterData {
+  [Throws]
+  constructor(optional DOMString data = "");
+
   [Throws]
   Text splitText(unsigned long offset);
   [Throws]
@@ -19,11 +22,11 @@ interface Text : CharacterData {
 };
 
 partial interface Text {
-  [BinaryName="assignedSlotByMode", Func="nsTextNode::IsShadowDOMEnabled"]
+  [BinaryName="assignedSlotByMode"]
   readonly attribute HTMLSlotElement? assignedSlot;
 
-  [ChromeOnly, BinaryName="assignedSlot", Func="nsTextNode::IsShadowDOMEnabled"]
+  [ChromeOnly, BinaryName="assignedSlot"]
   readonly attribute HTMLSlotElement? openOrClosedAssignedSlot;
 };
 
-Text implements GeometryUtils;
+Text includes GeometryUtils;

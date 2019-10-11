@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -26,25 +25,25 @@ const TEST_URI = `
 const res1 = [
   {
     selector: ".boxmodel-position.boxmodel-top > span",
-    value: "auto"
+    value: "auto",
   },
   {
     selector: ".boxmodel-position.boxmodel-right > span",
-    value: "auto"
+    value: "auto",
   },
   {
     selector: ".boxmodel-position.boxmodel-bottom > span",
-    value: "auto"
+    value: "auto",
   },
   {
     selector: ".boxmodel-position.boxmodel-left > span",
-    value: 0
+    value: 0,
   },
 ];
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, boxmodel} = await openLayoutView();
+  const { inspector, boxmodel } = await openLayoutView();
   const node = await getNodeFront("div", inspector);
   const children = await inspector.markup.walker.children(node);
   const beforeElement = children.nodes[0];
@@ -59,7 +58,10 @@ function testPositionValues(inspector, boxmodel) {
 
   for (let i = 0; i < res1.length; i++) {
     const elt = doc.querySelector(res1[i].selector);
-    is(elt.textContent, res1[i].value,
-       res1[i].selector + " has the right value.");
+    is(
+      elt.textContent,
+      res1[i].value,
+      res1[i].selector + " has the right value."
+    );
   }
 }

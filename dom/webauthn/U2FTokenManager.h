@@ -27,9 +27,8 @@ namespace dom {
 class U2FSoftTokenManager;
 class WebAuthnTransactionParent;
 
-class U2FTokenManager final : public nsIU2FTokenManager
-{
-public:
+class U2FTokenManager final : public nsIU2FTokenManager {
+ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIU2FTOKENMANAGER
 
@@ -44,18 +43,21 @@ public:
               const uint64_t& aTransactionId);
   void MaybeClearTransaction(PWebAuthnTransactionParent* aParent);
   static void Initialize();
-private:
+
+ private:
   U2FTokenManager();
-  ~U2FTokenManager() { }
+  ~U2FTokenManager() {}
   RefPtr<U2FTokenTransport> GetTokenManagerImpl();
   void AbortTransaction(const uint64_t& aTransactionId, const nsresult& aError);
+  void AbortOngoingTransaction();
   void ClearTransaction();
   // Step two of "Register", kicking off the actual transaction.
   void DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
                   bool aForceNoneAttestation);
   void MaybeConfirmRegister(const uint64_t& aTransactionId,
                             const WebAuthnMakeCredentialResult& aResult);
-  void MaybeAbortRegister(const uint64_t& aTransactionId, const nsresult& aError);
+  void MaybeAbortRegister(const uint64_t& aTransactionId,
+                          const nsresult& aError);
   void MaybeConfirmSign(const uint64_t& aTransactionId,
                         const WebAuthnGetAssertionResult& aResult);
   void MaybeAbortSign(const uint64_t& aTransactionId, const nsresult& aError);
@@ -64,7 +66,7 @@ private:
   // The main thread runnable function for "nsIU2FTokenManager.Cancel".
   void RunCancel(uint64_t aTransactionId);
   // Sends a "webauthn-prompt" observer notification with the given data.
-  template<typename ...T>
+  template <typename... T>
   void SendPromptNotification(const char16_t* aFormat, T... aArgs);
   // The main thread runnable function for "SendPromptNotification".
   void RunSendPromptNotification(nsString aJSON);
@@ -83,7 +85,7 @@ private:
   Maybe<WebAuthnMakeCredentialInfo> mPendingRegisterInfo;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_U2FTokenManager_h
+#endif  // mozilla_dom_U2FTokenManager_h

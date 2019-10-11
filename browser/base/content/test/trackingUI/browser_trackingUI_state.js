@@ -14,260 +14,378 @@
  * See also Bugs 1175327, 1043801, 1178985
  */
 
-const PREF = "privacy.trackingprotection.enabled";
-const PB_PREF = "privacy.trackingprotection.pbmode.enabled";
-const BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/trackingUI/benignPage.html";
-const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
+const TP_PREF = "privacy.trackingprotection.enabled";
+const TP_PB_PREF = "privacy.trackingprotection.pbmode.enabled";
+const TPC_PREF = "network.cookie.cookieBehavior";
+const DTSCBN_PREF = "dom.testing.sync-content-blocking-notifications";
+const BENIGN_PAGE =
+  "http://tracking.example.org/browser/browser/base/content/test/trackingUI/benignPage.html";
+const TRACKING_PAGE =
+  "http://tracking.example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
+const COOKIE_PAGE =
+  "http://not-tracking.example.com/browser/browser/base/content/test/trackingUI/cookiePage.html";
+var gProtectionsHandler = null;
 var TrackingProtection = null;
+var ThirdPartyCookies = null;
 var tabbrowser = null;
+var gTrackingPageURL = TRACKING_PAGE;
+
+const sBrandBundle = Services.strings.createBundle(
+  "chrome://branding/locale/brand.properties"
+);
+const sNoTrackerIconTooltip = gNavigatorBundle.getFormattedString(
+  "trackingProtection.icon.noTrackersDetectedTooltip",
+  [sBrandBundle.GetStringFromName("brandShortName")]
+);
+const sActiveIconTooltip = gNavigatorBundle.getString(
+  "trackingProtection.icon.activeTooltip2"
+);
+const sDisabledIconTooltip = gNavigatorBundle.getString(
+  "trackingProtection.icon.disabledTooltip2"
+);
 
 registerCleanupFunction(function() {
-  TrackingProtection = tabbrowser = null;
+  TrackingProtection = gProtectionsHandler = ThirdPartyCookies = tabbrowser = null;
   UrlClassifierTestUtils.cleanupTestTrackers();
-  Services.prefs.clearUserPref(PREF);
-  Services.prefs.clearUserPref(PB_PREF);
-  while (gBrowser.tabs.length > 1) {
-    gBrowser.removeCurrentTab();
-  }
+  Services.prefs.clearUserPref(TP_PREF);
+  Services.prefs.clearUserPref(TP_PB_PREF);
+  Services.prefs.clearUserPref(TPC_PREF);
+  Services.prefs.clearUserPref(DTSCBN_PREF);
 });
 
-// This is a special version of "hidden" that doesn't check for item
-// visibility and just asserts the display and opacity attributes.
-// That way we can test elements even when their panel is hidden...
-function hidden(sel) {
-  let win = tabbrowser.ownerGlobal;
-  let el = win.document.querySelector(sel);
-  let display = win.getComputedStyle(el).getPropertyValue("display", null);
-  let opacity = win.getComputedStyle(el).getPropertyValue("opacity", null);
-  return display === "none" || opacity === "0";
-}
-
-function clickButton(sel) {
-  let win = tabbrowser.ownerGlobal;
-  let el = win.document.querySelector(sel);
-  el.doCommand();
+function notFound(id) {
+  let doc = tabbrowser.ownerGlobal.document;
+  return doc.getElementById(id).classList.contains("notFound");
 }
 
 function testBenignPage() {
   info("Non-tracking content must not be blocked");
-  ok(!TrackingProtection.container.hidden, "The container is visible");
-  ok(!TrackingProtection.content.hasAttribute("state"), "content: no state");
-  ok(!TrackingProtection.iconBox.hasAttribute("state"), "icon box: no state");
-  ok(!TrackingProtection.iconBox.hasAttribute("tooltiptext"), "icon box: no tooltip");
+  ok(
+    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "no trackers are detected"
+  );
+  ok(
+    !gProtectionsHandler._protectionsPopup.hasAttribute("hasException"),
+    "content shows no exception"
+  );
 
-  let doc = tabbrowser.ownerGlobal.document;
-  ok(BrowserTestUtils.is_hidden(doc.getElementById("tracking-protection-icon-box")), "icon box is hidden");
-  ok(hidden("#tracking-action-block"), "blockButton is hidden");
-  ok(hidden("#tracking-action-unblock"), "unblockButton is hidden");
-  ok(!hidden("#tracking-protection-preferences-button"), "preferences button is visible");
-
-  // Make sure that the no tracking elements message appears
-  ok(!hidden("#tracking-not-detected"), "labelNoTracking is visible");
-  ok(hidden("#tracking-loaded"), "labelTrackingLoaded is hidden");
-  ok(hidden("#tracking-blocked"), "labelTrackingBlocked is hidden");
+  ok(
+    !gProtectionsHandler.iconBox.hasAttribute("active"),
+    "shield is not active"
+  );
+  ok(
+    !gProtectionsHandler.iconBox.hasAttribute("hasException"),
+    "icon box shows no exception"
+  );
+  is(
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
+    sNoTrackerIconTooltip,
+    "correct tooltip"
+  );
+  ok(
+    BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
+    "icon box is visible"
+  );
+  ok(
+    notFound("protections-popup-category-cookies"),
+    "Cookie restrictions category is not found"
+  );
+  ok(
+    notFound("protections-popup-category-tracking-protection"),
+    "Trackers category is not found"
+  );
 }
 
 function testBenignPageWithException() {
   info("Non-tracking content must not be blocked");
-  ok(!TrackingProtection.container.hidden, "The container is visible");
-  ok(!TrackingProtection.content.hasAttribute("state"), "content: no state");
-  ok(TrackingProtection.content.hasAttribute("hasException"), "content has exception attribute");
-  ok(TrackingProtection.iconBox.hasAttribute("hasException"), "icon box has exception attribute");
-  ok(!TrackingProtection.iconBox.hasAttribute("state"), "icon box: no state");
-  ok(!TrackingProtection.iconBox.hasAttribute("tooltiptext"), "icon box: no tooltip");
+  ok(
+    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "no trackers are detected"
+  );
+  ok(
+    gProtectionsHandler._protectionsPopup.hasAttribute("hasException"),
+    "content shows exception"
+  );
 
-  let doc = tabbrowser.ownerGlobal.document;
-  ok(BrowserTestUtils.is_hidden(doc.getElementById("tracking-protection-icon-box")), "icon box is hidden");
-  is(!hidden("#tracking-action-block"), TrackingProtection.enabled,
-     "blockButton is visible if TP is on");
-  ok(hidden("#tracking-action-unblock"), "unblockButton is hidden");
-  ok(!hidden("#tracking-protection-preferences-button"), "preferences button is visible");
+  ok(
+    !gProtectionsHandler.iconBox.hasAttribute("active"),
+    "shield is not active"
+  );
+  ok(
+    gProtectionsHandler.iconBox.hasAttribute("hasException"),
+    "shield shows exception"
+  );
+  is(
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
+    sDisabledIconTooltip,
+    "correct tooltip"
+  );
 
-  is(!hidden("#tracking-not-detected-exception"), TrackingProtection.enabled,
-     "labelNoTrackingException is visible if TP is on");
-  is(hidden("#tracking-not-detected"), TrackingProtection.enabled,
-     "labelNoTracking is visible if TP is off");
-  ok(hidden("#tracking-loaded"), "labelTrackingLoaded is hidden");
-  ok(hidden("#tracking-blocked"), "labelTrackingBlocked is hidden");
+  ok(
+    !BrowserTestUtils.is_hidden(gProtectionsHandler.iconBox),
+    "icon box is not hidden"
+  );
+
+  ok(
+    notFound("protections-popup-category-cookies"),
+    "Cookie restrictions category is not found"
+  );
+  ok(
+    notFound("protections-popup-category-tracking-protection"),
+    "Trackers category is not found"
+  );
+}
+
+function areTrackersBlocked(isPrivateBrowsing) {
+  let blockedByTP = Services.prefs.getBoolPref(
+    isPrivateBrowsing ? TP_PB_PREF : TP_PREF
+  );
+  let blockedByTPC =
+    Services.prefs.getIntPref(TPC_PREF) ==
+    Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER;
+  return blockedByTP || blockedByTPC;
 }
 
 function testTrackingPage(window) {
   info("Tracking content must be blocked");
-  ok(!TrackingProtection.container.hidden, "The container is visible");
-  is(TrackingProtection.content.getAttribute("state"), "blocked-tracking-content",
-      'content: state="blocked-tracking-content"');
-  is(TrackingProtection.iconBox.getAttribute("state"), "blocked-tracking-content",
-      'icon box: state="blocked-tracking-content"');
-  is(TrackingProtection.iconBox.getAttribute("tooltiptext"),
-     gNavigatorBundle.getString("trackingProtection.icon.activeTooltip"), "correct tooltip");
-  ok(!TrackingProtection.content.hasAttribute("hasException"), "content has no exception attribute");
-  ok(!TrackingProtection.iconBox.hasAttribute("hasException"), "icon box has no exception attribute");
+  ok(
+    gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are detected"
+  );
+  ok(
+    !gProtectionsHandler._protectionsPopup.hasAttribute("hasException"),
+    "content shows no exception"
+  );
 
-  let doc = tabbrowser.ownerGlobal.document;
-  ok(BrowserTestUtils.is_visible(doc.getElementById("tracking-protection-icon-box")), "icon box is visible");
-  ok(hidden("#tracking-action-block"), "blockButton is hidden");
-  ok(!hidden("#tracking-protection-preferences-button"), "preferences button is visible");
+  let isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+  let blockedByTP = areTrackersBlocked(isWindowPrivate);
+  ok(
+    BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
+    "icon box is always visible"
+  );
+  is(
+    gProtectionsHandler.iconBox.hasAttribute("active"),
+    blockedByTP,
+    "shield is" + (blockedByTP ? "" : " not") + " active"
+  );
+  ok(
+    !gProtectionsHandler.iconBox.hasAttribute("hasException"),
+    "icon box shows no exception"
+  );
+  is(
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
+    blockedByTP ? sActiveIconTooltip : sNoTrackerIconTooltip,
+    "correct tooltip"
+  );
 
-
-  if (PrivateBrowsingUtils.isWindowPrivate(window)) {
-    ok(hidden("#tracking-action-unblock"), "unblockButton is hidden");
-    ok(!hidden("#tracking-action-unblock-private"), "unblockButtonPrivate is visible");
+  ok(
+    !notFound("protections-popup-category-tracking-protection"),
+    "Trackers category is detected"
+  );
+  if (gTrackingPageURL == COOKIE_PAGE) {
+    ok(
+      !notFound("protections-popup-category-cookies"),
+      "Cookie restrictions category is detected"
+    );
   } else {
-    ok(!hidden("#tracking-action-unblock"), "unblockButton is visible");
-    ok(hidden("#tracking-action-unblock-private"), "unblockButtonPrivate is hidden");
+    ok(
+      notFound("protections-popup-category-cookies"),
+      "Cookie restrictions category is not found"
+    );
   }
-
-  // Make sure that the blocked tracking elements message appears
-  ok(hidden("#tracking-not-detected"), "labelNoTracking is hidden");
-  ok(hidden("#tracking-loaded"), "labelTrackingLoaded is hidden");
-  ok(hidden("#tracking-loaded-exception"), "labelTrackingLoadedException is hidden");
-  ok(!hidden("#tracking-blocked"), "labelTrackingBlocked is visible");
 }
 
-function testTrackingPageUnblocked() {
+function testTrackingPageUnblocked(blockedByTP, window) {
   info("Tracking content must be white-listed and not blocked");
-  is(TrackingProtection.content.hasAttribute("hasException"), TrackingProtection.enabled,
-    "content has exception attribute if TP is on");
-  is(TrackingProtection.iconBox.hasAttribute("hasException"), TrackingProtection.enabled,
-    "icon box has exception attribute if TP is on");
-  ok(!TrackingProtection.container.hidden, "The container is visible");
-  is(TrackingProtection.content.getAttribute("state"), "loaded-tracking-content",
-      'content: state="loaded-tracking-content"');
-  if (TrackingProtection.enabled) {
-    is(TrackingProtection.iconBox.getAttribute("state"), "loaded-tracking-content",
-        'icon box: state="loaded-tracking-content"');
-    is(TrackingProtection.iconBox.getAttribute("tooltiptext"),
-       gNavigatorBundle.getString("trackingProtection.icon.disabledTooltip"), "correct tooltip");
+  ok(
+    gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are detected"
+  );
+  ok(
+    gProtectionsHandler._protectionsPopup.hasAttribute("hasException"),
+    "content shows exception"
+  );
+
+  ok(
+    !gProtectionsHandler.iconBox.hasAttribute("active"),
+    "shield is not active"
+  );
+  ok(
+    gProtectionsHandler.iconBox.hasAttribute("hasException"),
+    "shield shows exception"
+  );
+  is(
+    gProtectionsHandler._trackingProtectionIconTooltipLabel.textContent,
+    sDisabledIconTooltip,
+    "correct tooltip"
+  );
+
+  ok(
+    BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
+    "icon box is visible"
+  );
+
+  ok(
+    !notFound("protections-popup-category-tracking-protection"),
+    "Trackers category is detected"
+  );
+  if (gTrackingPageURL == COOKIE_PAGE) {
+    ok(
+      !notFound("protections-popup-category-cookies"),
+      "Cookie restrictions category is detected"
+    );
+  } else {
+    ok(
+      notFound("protections-popup-category-cookies"),
+      "Cookie restrictions category is not found"
+    );
   }
-
-  let doc = tabbrowser.ownerGlobal.document;
-  is(BrowserTestUtils.is_visible(doc.getElementById("tracking-protection-icon-box")), TrackingProtection.enabled, "icon box is visible if TP is on");
-  is(!hidden("#tracking-action-block"), TrackingProtection.enabled, "blockButton is visible if TP is on");
-  ok(hidden("#tracking-action-unblock"), "unblockButton is hidden");
-  ok(!hidden("#tracking-protection-preferences-button"), "preferences button is visible");
-
-  // Make sure that the blocked tracking elements message appears
-  ok(hidden("#tracking-not-detected"), "labelNoTracking is hidden");
-  is(hidden("#tracking-loaded"), TrackingProtection.enabled,
-     "labelTrackingLoaded is visible if TP is off");
-  is(!hidden("#tracking-loaded-exception"), TrackingProtection.enabled,
-     "labelTrackingLoadedException is visible if TP is on");
-  ok(hidden("#tracking-blocked"), "labelTrackingBlocked is hidden");
 }
 
-async function testTrackingProtectionEnabled(tab) {
+async function testContentBlocking(tab) {
   info("Testing with Tracking Protection ENABLED.");
 
   info("Load a test page not containing tracking elements");
   await promiseTabLoadEvent(tab, BENIGN_PAGE);
   testBenignPage();
 
-  info("Load a test page not containing tracking elements which has an exception.");
-  let isPrivateBrowsing = PrivateBrowsingUtils.isWindowPrivate(tab.ownerGlobal);
-  let uri = Services.io.newURI("https://example.org/");
-  if (isPrivateBrowsing) {
-    PrivateBrowsingUtils.addToTrackingAllowlist(uri);
-  } else {
-    Services.perms.add(uri, "trackingprotection", Services.perms.ALLOW_ACTION);
-  }
+  info(
+    "Load a test page not containing tracking elements which has an exception."
+  );
 
-  await promiseTabLoadEvent(tab, uri.spec);
+  await promiseTabLoadEvent(tab, "https://example.org/?round=1");
+
+  ContentBlockingAllowList.add(tab.linkedBrowser);
+  // Load another page from the same origin to ensure there is an onlocationchange
+  // notification which would trigger an oncontentblocking notification for us.
+  await promiseTabLoadEvent(tab, "https://example.org/?round=2");
+
   testBenignPageWithException();
 
-  if (isPrivateBrowsing) {
-    PrivateBrowsingUtils.removeFromTrackingAllowlist(uri);
-  } else {
-    Services.perms.remove(uri, "trackingprotection");
-  }
+  ContentBlockingAllowList.remove(tab.linkedBrowser);
 
   info("Load a test page containing tracking elements");
-  await promiseTabLoadEvent(tab, TRACKING_PAGE);
+  await promiseTabLoadEvent(tab, gTrackingPageURL);
   testTrackingPage(tab.ownerGlobal);
 
-  info("Disable TP for the page (which reloads the page)");
+  info("Disable CB for the page (which reloads the page)");
   let tabReloadPromise = promiseTabLoadEvent(tab);
-  clickButton("#tracking-action-unblock");
+  tab.ownerGlobal.gProtectionsHandler.disableForCurrentPage();
   await tabReloadPromise;
-  testTrackingPageUnblocked();
+  let isPrivateBrowsing = PrivateBrowsingUtils.isWindowPrivate(tab.ownerGlobal);
+  let blockedByTP = areTrackersBlocked(isPrivateBrowsing);
+  testTrackingPageUnblocked(blockedByTP, tab.ownerGlobal);
 
   info("Re-enable TP for the page (which reloads the page)");
   tabReloadPromise = promiseTabLoadEvent(tab);
-  clickButton("#tracking-action-block");
+  tab.ownerGlobal.gProtectionsHandler.enableForCurrentPage();
   await tabReloadPromise;
   testTrackingPage(tab.ownerGlobal);
-}
-
-async function testTrackingProtectionDisabled(tab) {
-  info("Testing with Tracking Protection DISABLED.");
-
-  info("Load a test page not containing tracking elements");
-  await promiseTabLoadEvent(tab, BENIGN_PAGE);
-  testBenignPage();
-
-  info("Load a test page not containing tracking elements which has an exception.");
-  let isPrivateBrowsing = PrivateBrowsingUtils.isWindowPrivate(tab.ownerGlobal);
-  let uri = Services.io.newURI("https://example.org/");
-  if (isPrivateBrowsing) {
-    PrivateBrowsingUtils.addToTrackingAllowlist(uri);
-  } else {
-    Services.perms.add(uri, "trackingprotection", Services.perms.ALLOW_ACTION);
-  }
-
-  await promiseTabLoadEvent(tab, uri.spec);
-  testBenignPageWithException();
-
-  if (isPrivateBrowsing) {
-    PrivateBrowsingUtils.removeFromTrackingAllowlist(uri);
-  } else {
-    Services.perms.remove(uri, "trackingprotection");
-  }
-
-  info("Load a test page containing tracking elements");
-  await promiseTabLoadEvent(tab, TRACKING_PAGE);
-  testTrackingPageUnblocked();
 }
 
 add_task(async function testNormalBrowsing() {
   await UrlClassifierTestUtils.addTestTrackers();
 
-  tabbrowser = gBrowser;
-  let tab = tabbrowser.selectedTab = tabbrowser.addTab();
+  Services.prefs.setBoolPref(DTSCBN_PREF, true);
 
+  tabbrowser = gBrowser;
+  let tab = (tabbrowser.selectedTab = BrowserTestUtils.addTab(tabbrowser));
+
+  gProtectionsHandler = gBrowser.ownerGlobal.gProtectionsHandler;
+  ok(
+    gProtectionsHandler,
+    "gProtectionsHandler is attached to the browser window"
+  );
   TrackingProtection = gBrowser.ownerGlobal.TrackingProtection;
   ok(TrackingProtection, "TP is attached to the browser window");
-  is(TrackingProtection.enabled, Services.prefs.getBoolPref(PREF),
-     "TP.enabled is based on the original pref value");
+  is(
+    TrackingProtection.enabled,
+    Services.prefs.getBoolPref(TP_PREF),
+    "TP.enabled is based on the original pref value"
+  );
 
-  Services.prefs.setBoolPref(PREF, true);
+  Services.prefs.setIntPref(TPC_PREF, Ci.nsICookieService.BEHAVIOR_ACCEPT);
+
+  await testContentBlocking(tab);
+
+  Services.prefs.setBoolPref(TP_PREF, true);
   ok(TrackingProtection.enabled, "TP is enabled after setting the pref");
 
-  await testTrackingProtectionEnabled(tab);
+  await testContentBlocking(tab);
 
-  Services.prefs.setBoolPref(PREF, false);
-  ok(!TrackingProtection.enabled, "TP is disabled after setting the pref");
+  gBrowser.removeCurrentTab();
 
-  await testTrackingProtectionDisabled(tab);
+  Services.prefs.clearUserPref(TPC_PREF);
 });
 
 add_task(async function testPrivateBrowsing() {
-  let privateWin = await BrowserTestUtils.openNewBrowserWindow({private: true});
+  let privateWin = await BrowserTestUtils.openNewBrowserWindow({
+    private: true,
+  });
   tabbrowser = privateWin.gBrowser;
-  let tab = tabbrowser.selectedTab = tabbrowser.addTab();
+  let tab = (tabbrowser.selectedTab = BrowserTestUtils.addTab(tabbrowser));
 
+  // Set the normal mode pref to false to check the pbmode pref.
+  Services.prefs.setBoolPref(TP_PREF, false);
+
+  Services.prefs.setIntPref(TPC_PREF, Ci.nsICookieService.BEHAVIOR_ACCEPT);
+
+  gProtectionsHandler = tabbrowser.ownerGlobal.gProtectionsHandler;
+  ok(
+    gProtectionsHandler,
+    "gProtectionsHandler is attached to the private window"
+  );
   TrackingProtection = tabbrowser.ownerGlobal.TrackingProtection;
   ok(TrackingProtection, "TP is attached to the private window");
-  is(TrackingProtection.enabled, Services.prefs.getBoolPref(PB_PREF),
-     "TP.enabled is based on the pb pref value");
+  is(
+    TrackingProtection.enabled,
+    Services.prefs.getBoolPref(TP_PB_PREF),
+    "TP.enabled is based on the pb pref value"
+  );
 
-  Services.prefs.setBoolPref(PB_PREF, true);
+  await testContentBlocking(tab);
+
+  Services.prefs.setBoolPref(TP_PB_PREF, true);
   ok(TrackingProtection.enabled, "TP is enabled after setting the pref");
 
-  await testTrackingProtectionEnabled(tab);
-
-  Services.prefs.setBoolPref(PB_PREF, false);
-  ok(!TrackingProtection.enabled, "TP is disabled after setting the pref");
-
-  await testTrackingProtectionDisabled(tab);
+  await testContentBlocking(tab);
 
   privateWin.close();
+
+  Services.prefs.clearUserPref(TPC_PREF);
+});
+
+add_task(async function testThirdPartyCookies() {
+  await UrlClassifierTestUtils.addTestTrackers();
+  gTrackingPageURL = COOKIE_PAGE;
+
+  tabbrowser = gBrowser;
+  let tab = (tabbrowser.selectedTab = BrowserTestUtils.addTab(tabbrowser));
+
+  gProtectionsHandler = gBrowser.ownerGlobal.gProtectionsHandler;
+  ok(
+    gProtectionsHandler,
+    "gProtectionsHandler is attached to the browser window"
+  );
+  ThirdPartyCookies = gBrowser.ownerGlobal.ThirdPartyCookies;
+  ok(ThirdPartyCookies, "TP is attached to the browser window");
+  is(
+    ThirdPartyCookies.enabled,
+    Services.prefs.getIntPref(TPC_PREF) ==
+      Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER,
+    "TPC.enabled is based on the original pref value"
+  );
+
+  await testContentBlocking(tab);
+
+  Services.prefs.setIntPref(
+    TPC_PREF,
+    Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER
+  );
+  ok(ThirdPartyCookies.enabled, "TPC is enabled after setting the pref");
+
+  await testContentBlocking(tab);
+
+  Services.prefs.clearUserPref(TPC_PREF);
+  gBrowser.removeCurrentTab();
 });

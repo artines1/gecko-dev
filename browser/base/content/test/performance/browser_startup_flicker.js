@@ -9,18 +9,20 @@
  */
 
 add_task(async function() {
-  let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService().wrappedJSObject;
+  let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService()
+    .wrappedJSObject;
   await startupRecorder.done;
 
   // Ensure all the frame data is in the test compartment to avoid traversing
   // a cross compartment wrapper for each pixel.
   let frames = Cu.cloneInto(startupRecorder.data.frames, {});
-  ok(frames.length > 0, "Should have captured some frames.");
+  ok(!!frames.length, "Should have captured some frames.");
 
   let unexpectedRects = 0;
   let alreadyFocused = false;
   for (let i = 1; i < frames.length; ++i) {
-    let frame = frames[i], previousFrame = frames[i - 1];
+    let frame = frames[i],
+      previousFrame = frames[i - 1];
     let rects = compareFrames(frame, previousFrame);
 
     // The first screenshot we get in OSX / Windows shows an unfocused browser
@@ -31,8 +33,11 @@ add_task(async function() {
     // will only ignore this once (hence the alreadyFocused variable).
     if (!alreadyFocused && rects.length > 5 && rects.every(r => r.y2 < 100)) {
       alreadyFocused = true;
-      todo(false,
-           "bug 1445161 - the window should be focused at first paint, " + rects.toSource());
+      todo(
+        false,
+        "bug 1445161 - the window should be focused at first paint, " +
+          rects.toSource()
+      );
       continue;
     }
 

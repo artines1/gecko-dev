@@ -5,7 +5,7 @@
 
 package org.mozilla.gecko;
 
-import android.content.ComponentName;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -14,10 +14,10 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Process;
-import android.support.v4.app.JobIntentService;
 import android.util.Log;
 
 import org.mozilla.geckoview.BuildConfig;
+import org.mozilla.geckoview.GeckoRuntime;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -46,17 +46,22 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     protected boolean crashing;
     protected boolean unregistered;
 
+    protected final Class<? extends Service> handlerService;
+
     /**
      * Get the root exception from the 'cause' chain of an exception.
      *
      * @param exc An exception
      * @return The root exception
      */
-    public static Throwable getRootException(Throwable exc) {
-        for (Throwable cause = exc; cause != null; cause = cause.getCause()) {
-            exc = cause;
+    public static Throwable getRootException(final Throwable exc) {
+        Throwable cause;
+        Throwable result = exc;
+        for (cause = exc; cause != null; cause = cause.getCause()) {
+            result = cause;
         }
-        return exc;
+
+        return result;
     }
 
     /**
@@ -83,8 +88,8 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     /**
      * Create and register a CrashHandler for all threads and thread groups.
      */
-    public CrashHandler() {
-        this((Context) null);
+    public CrashHandler(final Class<? extends Service> handlerService) {
+        this((Context) null, handlerService);
     }
 
     /**
@@ -92,9 +97,10 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      *
      * @param appContext A Context for retrieving application information.
      */
-    public CrashHandler(final Context appContext) {
+    public CrashHandler(final Context appContext, final Class<? extends Service> handlerService) {
         this.appContext = appContext;
         this.handlerThread = null;
+        this.handlerService = handlerService;
         this.systemUncaughtHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(this);
     }
@@ -104,8 +110,8 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      *
      * @param thread A thread to register the CrashHandler
      */
-    public CrashHandler(final Thread thread) {
-        this(thread, null);
+    public CrashHandler(final Thread thread, final Class<? extends Service> handlerService) {
+        this(thread, null, handlerService);
     }
 
     /**
@@ -114,9 +120,11 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * @param thread A thread to register the CrashHandler
      * @param appContext A Context for retrieving application information.
      */
-    public CrashHandler(final Thread thread, final Context appContext) {
+    public CrashHandler(final Thread thread, final Context appContext,
+                        final Class<? extends Service> handlerService) {
         this.appContext = appContext;
         this.handlerThread = thread;
+        this.handlerService = handlerService;
         this.systemUncaughtHandler = thread.getUncaughtExceptionHandler();
         thread.setUncaughtExceptionHandler(this);
     }
@@ -295,31 +303,38 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     protected boolean launchCrashReporter(final String dumpFile, final String extraFile) {
         try {
             final Context context = getAppContext();
-            final String javaPkg = getJavaPackageName();
-            final String pkg = getAppPackageName();
-            final String component = javaPkg + ".CrashReporterService";
-            final String action = javaPkg + ".reportCrash";
             final ProcessBuilder pb;
-            final int crashReporterJobId = GeckoThread.getCrashReporterJobId();
+
+            if (handlerService == null) {
+                Log.w(LOGTAG, "No crash handler service defined, unable to report crash");
+                return false;
+            }
 
             if (context != null) {
-                final Intent intent = new Intent(action);
-                intent.putExtra("jobId", crashReporterJobId);
-                intent.putExtra("minidumpPath", dumpFile);
-                JobIntentService.enqueueWork(
-                        context, new ComponentName(pkg, component), crashReporterJobId, intent);
+                final Intent intent = new Intent(GeckoRuntime.ACTION_CRASHED);
+                intent.putExtra(GeckoRuntime.EXTRA_MINIDUMP_PATH, dumpFile);
+                intent.putExtra(GeckoRuntime.EXTRA_EXTRAS_PATH, extraFile);
+                intent.putExtra(GeckoRuntime.EXTRA_CRASH_FATAL, true);
+                intent.setClass(context, handlerService);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent);
+                } else {
+                    context.startService(intent);
+                }
                 return true;
             }
 
             final int deviceSdkVersion = Build.VERSION.SDK_INT;
             if (deviceSdkVersion < 17) {
                 pb = new ProcessBuilder(
-                    "/system/bin/am",
-                    "startservice",
-                    "-a", action,
-                    "-n", pkg + '/' + component,
-                    "--es", "minidumpPath", dumpFile,
-                    "--ei", "jobId", String.valueOf(crashReporterJobId));
+                        "/system/bin/am",
+                        "startservice",
+                        "-a", GeckoRuntime.ACTION_CRASHED,
+                        "-n", getAppPackageName() + '/' + handlerService.getName(),
+                        "--es", GeckoRuntime.EXTRA_MINIDUMP_PATH, dumpFile,
+                        "--es", GeckoRuntime.EXTRA_EXTRAS_PATH, extraFile,
+                        "--ez", GeckoRuntime.EXTRA_CRASH_FATAL, "true");
             } else {
                 final String startServiceCommand;
                 if (deviceSdkVersion >= 26) {
@@ -329,13 +344,14 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
                 }
 
                 pb = new ProcessBuilder(
-                    "/system/bin/am",
-                    startServiceCommand,
-                    "--user", /* USER_CURRENT_OR_SELF */ "-3",
-                    "-a", action,
-                    "-n", pkg + '/' + component,
-                    "--es", "minidumpPath", dumpFile,
-                    "--ei", "jobId", String.valueOf(crashReporterJobId));
+                        "/system/bin/am",
+                        startServiceCommand,
+                        "--user", /* USER_CURRENT_OR_SELF */ "-3",
+                        "-a", GeckoRuntime.ACTION_CRASHED,
+                        "-n", getAppPackageName() + '/' + handlerService.getName(),
+                        "--es", GeckoRuntime.EXTRA_MINIDUMP_PATH, dumpFile,
+                        "--es", GeckoRuntime.EXTRA_EXTRAS_PATH, extraFile,
+                        "--ez", GeckoRuntime.EXTRA_CRASH_FATAL, "true");
             }
 
             pb.start().waitFor();
@@ -429,26 +445,28 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * @param exc An uncaught exception
      */
     @Override
-    public void uncaughtException(Thread thread, Throwable exc) {
+    public void uncaughtException(final Thread thread, final Throwable exc) {
         if (this.crashing) {
             // Prevent possible infinite recusions.
             return;
         }
 
-        if (thread == null) {
+        Thread resolvedThread = thread;
+        if (resolvedThread == null) {
             // Gecko may pass in null for thread to denote the current thread.
-            thread = Thread.currentThread();
+            resolvedThread = Thread.currentThread();
         }
 
         try {
+            Throwable rootException = exc;
             if (!this.unregistered) {
                 // Only process crash ourselves if we have not been unregistered.
 
                 this.crashing = true;
-                exc = getRootException(exc);
-                logException(thread, exc);
+                rootException = getRootException(exc);
+                logException(resolvedThread, rootException);
 
-                if (reportException(thread, exc)) {
+                if (reportException(resolvedThread, rootException)) {
                     // Reporting succeeded; we can terminate our process now.
                     return;
                 }
@@ -456,7 +474,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
             if (systemUncaughtHandler != null) {
                 // Follow the chain of uncaught handlers.
-                systemUncaughtHandler.uncaughtException(thread, exc);
+                systemUncaughtHandler.uncaughtException(resolvedThread, rootException);
             }
         } finally {
             terminateProcess();
@@ -464,7 +482,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     }
 
     public static CrashHandler createDefaultCrashHandler(final Context context) {
-        return new CrashHandler(context) {
+        return new CrashHandler(context, null) {
             @Override
             protected Bundle getCrashExtras(final Thread thread, final Throwable exc) {
                 final Bundle extras = super.getCrashExtras(thread, exc);

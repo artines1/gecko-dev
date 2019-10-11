@@ -7,13 +7,14 @@ config = {
     # note: overridden by MOZHARNESS_ACTIONS in TaskCluster tasks
     'default_actions': [
         'build',
-        'update',  # decided by query_is_nightly()
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
-    # decides whether we want to use moz_sign_cmd in env
     'secret_files': [
-        {'filename': '/builds/gapi.data',
-         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gapi.data',
+        {'filename': '/builds/gls-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gls-gapi.data',
+         'min_scm_level': 1},
+        {'filename': '/builds/sb-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/sb-gapi.data',
          'min_scm_level': 1},
         {'filename': '/builds/mozilla-desktop-geoloc-api.key',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/mozilla-desktop-geoloc-api.key',
@@ -26,7 +27,6 @@ config = {
 
     #########################################################################
     ###### 64 bit specific ######
-    'base_name': 'OS X 10.7 %(branch)s',
     'platform': 'macosx64',
     'stage_platform': 'macosx64',
     'env': {
@@ -49,6 +49,5 @@ config = {
     },
     'mozconfig_platform': 'macosx64',
     'mozconfig_variant': 'nightly',
-    'artifact_flag_build_variant_in_try': 'cross-artifact',
     #########################################################################
 }

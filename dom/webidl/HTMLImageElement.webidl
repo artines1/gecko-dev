@@ -17,7 +17,8 @@ interface URI;
 interface nsIStreamListener;
 
 [HTMLConstructor,
- NamedConstructor=Image(optional unsigned long width, optional unsigned long height)]
+ NamedConstructor=Image(optional unsigned long width, optional unsigned long height),
+ Exposed=Window]
 interface HTMLImageElement : HTMLElement {
            [CEReactions, SetterThrows]
            attribute DOMString alt;
@@ -42,6 +43,8 @@ interface HTMLImageElement : HTMLElement {
   readonly attribute unsigned long naturalWidth;
   readonly attribute unsigned long naturalHeight;
   readonly attribute boolean complete;
+           [NewObject]
+           Promise<void> decode();
 };
 
 // http://www.whatwg.org/specs/web-apps/current-work/#other-elements,-attributes-and-apis
@@ -57,7 +60,7 @@ partial interface HTMLImageElement {
            [CEReactions, SetterThrows]
            attribute DOMString longDesc;
 
-  [CEReactions, TreatNullAs=EmptyString,SetterThrows] attribute DOMString border;
+  [CEReactions, SetterThrows] attribute [TreatNullAs=EmptyString] DOMString border;
 };
 
 // [Update me: not in whatwg spec yet]
@@ -79,8 +82,7 @@ partial interface HTMLImageElement {
   readonly attribute long y;
 };
 
-[NoInterfaceObject]
-interface MozImageLoadingContent {
+interface mixin MozImageLoadingContent {
   // Mirrored chrome-only nsIImageLoadingContent methods.  Please make sure
   // to update this list if nsIImageLoadingContent changes.
   [ChromeOnly]
@@ -128,4 +130,4 @@ interface MozImageLoadingContent {
   void forceImageState(boolean aForce, unsigned long long aState);
 };
 
-HTMLImageElement implements MozImageLoadingContent;
+HTMLImageElement includes MozImageLoadingContent;

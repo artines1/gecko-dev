@@ -12,14 +12,10 @@ const TEST_DATA = [
   { delta: 1, values: [0.25, 0, 0.5] },
   { delta: 2, values: [0.5, 0.25, 0.1] },
   { delta: 3, values: [0, 0.75, 0] },
-  { delta: 4, values: [0.75, 0, 0.25] }
+  { delta: 4, values: [0.75, 0, 0.25] },
 ];
 
-const SECTIONS = [
-  { color: "red" },
-  { color: "green" },
-  { color: "blue" }
-];
+const SECTIONS = [{ color: "red" }, { color: "green" }, { color: "blue" }];
 
 add_task(async function() {
   await addTab("about:blank");
@@ -28,7 +24,7 @@ add_task(async function() {
 });
 
 async function performTest() {
-  const [host,, doc] = await createHost();
+  const [host, , doc] = await createHost();
   const graph = new MountainGraphWidget(doc.body);
   await graph.once("ready");
 

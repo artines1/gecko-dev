@@ -1,4 +1,4 @@
-// |reftest| skip error:SyntaxError -- numeric-separator-literal is not supported
+// |reftest| error:SyntaxError
 // Copyright (C) 2017 Valerie Young. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -45,6 +45,6 @@ negative:
   type: SyntaxError
 ---*/
 
-throw "Test262: This statement should not be evaluated.";
+$DONOTEVALUATE();
 
 "\u{1F_639}"

@@ -6,8 +6,7 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="Accessible XUL access keys and shortcut keys tests">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
   <script type="application/javascript"
           src="../common.js" />
@@ -66,7 +65,7 @@
 
   <hbox flex="1" style="overflow: auto;">
     <body xmlns="http://www.w3.org/1999/xhtml">
-      <a target="_blank"
+      <a target="_blank" rel="opener"
          href="https://bugzilla.mozilla.org/show_bug.cgi?id=672092"
          title="Reorganize access key and keyboard shortcut handling code">
         Mozilla Bug 672092

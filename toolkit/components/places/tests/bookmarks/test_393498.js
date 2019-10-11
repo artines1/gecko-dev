@@ -7,27 +7,37 @@
 var observer = {
   __proto__: NavBookmarkObserver.prototype,
 
-  onItemAdded(id, folder, index) {
-    this._itemAddedId = id;
-    this._itemAddedParent = folder;
-    this._itemAddedIndex = index;
+  handlePlacesEvents(events) {
+    Assert.equal(events.length, 1, "Should only be 1 event.");
+    this._itemAddedId = events[0].id;
+    this._itemAddedParent = events[0].parentId;
+    this._itemAddedIndex = events[0].index;
   },
   onItemChanged(id, property, isAnnotationProperty, value) {
     this._itemChangedId = id;
     this._itemChangedProperty = property;
     this._itemChanged_isAnnotationProperty = isAnnotationProperty;
     this._itemChangedValue = value;
-  }
+  },
 };
 PlacesUtils.bookmarks.addObserver(observer);
+observer.handlePlacesEvents = observer.handlePlacesEvents.bind(observer);
+PlacesUtils.observers.addListener(
+  ["bookmark-added"],
+  observer.handlePlacesEvents
+);
 
 registerCleanupFunction(function() {
   PlacesUtils.bookmarks.removeObserver(observer);
+  PlacesUtils.observers.removeListener(
+    ["bookmark-added"],
+    observer.handlePlacesEvents
+  );
 });
 
 // Returns do_check_eq with .getTime() added onto parameters
-function do_check_date_eq( t1, t2) {
-  return Assert.equal(t1.getTime(), t2.getTime()) ;
+function do_check_date_eq(t1, t2) {
+  return Assert.equal(t1.getTime(), t2.getTime());
 }
 
 add_task(async function test_bookmark_update_notifications() {
@@ -40,14 +50,14 @@ add_task(async function test_bookmark_update_notifications() {
   let testFolder = await PlacesUtils.bookmarks.insert({
     type: PlacesUtils.bookmarks.TYPE_FOLDER,
     title: "test Folder",
-    parentGuid: PlacesUtils.bookmarks.menuGuid
+    parentGuid: PlacesUtils.bookmarks.menuGuid,
   });
 
   let bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: testFolder.guid,
     type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
     url: "http://google.com/",
-    title: "a bookmark"
+    title: "a bookmark",
   });
 
   // Sanity check.
@@ -56,7 +66,7 @@ add_task(async function test_bookmark_update_notifications() {
   // Set dateAdded in the past and verify the changes.
   await PlacesUtils.bookmarks.update({
     guid: bookmark.guid,
-    dateAdded: PAST_DATE
+    dateAdded: PAST_DATE,
   });
 
   Assert.equal(observer._itemChangedProperty, "dateAdded");
@@ -66,7 +76,7 @@ add_task(async function test_bookmark_update_notifications() {
   do_check_date_eq(bookmark.lastModified, bookmark.dateAdded);
 
   let updatedBookmark = await PlacesUtils.bookmarks.fetch({
-    guid: bookmark.guid
+    guid: bookmark.guid,
   });
 
   do_check_date_eq(updatedBookmark.dateAdded, PAST_DATE);
@@ -74,7 +84,7 @@ add_task(async function test_bookmark_update_notifications() {
   // Set lastModified in the past and verify the changes.
   updatedBookmark = await PlacesUtils.bookmarks.update({
     guid: bookmark.guid,
-    lastModified: PAST_DATE
+    lastModified: PAST_DATE,
   });
 
   Assert.equal(observer._itemChangedProperty, "lastModified");
@@ -84,17 +94,19 @@ add_task(async function test_bookmark_update_notifications() {
   // Set bookmark title
   updatedBookmark = await PlacesUtils.bookmarks.update({
     guid: bookmark.guid,
-    title: "Google"
+    title: "Google",
   });
 
   // Test notifications.
-  Assert.equal(observer._itemChangedId, await PlacesUtils.promiseItemId(bookmark.guid));
+  Assert.equal(
+    observer._itemChangedId,
+    await PlacesUtils.promiseItemId(bookmark.guid)
+  );
   Assert.equal(observer._itemChangedProperty, "title");
   Assert.equal(observer._itemChangedValue, "Google");
 
   // Check lastModified has been updated.
-  Assert.ok(is_time_ordered(PAST_DATE,
-    updatedBookmark.lastModified.getTime()));
+  Assert.ok(is_time_ordered(PAST_DATE, updatedBookmark.lastModified.getTime()));
 
   // Check that node properties are updated.
   let root = PlacesUtils.getFolderContents(testFolder.guid).root;
@@ -102,28 +114,40 @@ add_task(async function test_bookmark_update_notifications() {
   let childNode = root.getChild(0);
 
   // confirm current dates match node properties
-  Assert.equal(PlacesUtils.toPRTime(updatedBookmark.dateAdded),
-   childNode.dateAdded);
-  Assert.equal(PlacesUtils.toPRTime(updatedBookmark.lastModified),
-   childNode.lastModified);
+  Assert.equal(
+    PlacesUtils.toPRTime(updatedBookmark.dateAdded),
+    childNode.dateAdded
+  );
+  Assert.equal(
+    PlacesUtils.toPRTime(updatedBookmark.lastModified),
+    childNode.lastModified
+  );
 
   // Test live update of lastModified when setting title.
   updatedBookmark = await PlacesUtils.bookmarks.update({
     guid: bookmark.guid,
     lastModified: PAST_DATE,
-    title: "Google"
+    title: "Google",
   });
 
   // Check lastModified has been updated.
   Assert.ok(is_time_ordered(PAST_DATE, childNode.lastModified));
   // Test that node value matches db value.
-  Assert.equal(PlacesUtils.toPRTime(updatedBookmark.lastModified),
-   childNode.lastModified);
+  Assert.equal(
+    PlacesUtils.toPRTime(updatedBookmark.lastModified),
+    childNode.lastModified
+  );
 
   // Test live update of the exposed date apis.
-  await PlacesUtils.bookmarks.update({guid: bookmark.guid, dateAdded: PAST_DATE});
+  await PlacesUtils.bookmarks.update({
+    guid: bookmark.guid,
+    dateAdded: PAST_DATE,
+  });
   Assert.equal(childNode.dateAdded, PlacesUtils.toPRTime(PAST_DATE));
-  await PlacesUtils.bookmarks.update({guid: bookmark.guid, lastModified: PAST_DATE});
+  await PlacesUtils.bookmarks.update({
+    guid: bookmark.guid,
+    lastModified: PAST_DATE,
+  });
   Assert.equal(childNode.lastModified, PlacesUtils.toPRTime(PAST_DATE));
 
   root.containerOpen = false;

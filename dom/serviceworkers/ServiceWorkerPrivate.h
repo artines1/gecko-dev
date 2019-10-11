@@ -9,6 +9,7 @@
 
 #include "nsCOMPtr.h"
 #include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/MozPromise.h"
 
 #define NOTIFICATION_CLICK_EVENT_NAME "notificationclick"
 #define NOTIFICATION_CLOSE_EVENT_NAME "notificationclose"
@@ -23,23 +24,36 @@ class JSObjectHolder;
 namespace dom {
 
 class ClientInfoAndState;
-class KeepAliveToken;
 class ServiceWorkerCloneData;
 class ServiceWorkerInfo;
+class ServiceWorkerPrivate;
+class ServiceWorkerPrivateImpl;
 class ServiceWorkerRegistrationInfo;
 
 namespace ipc {
 class StructuredCloneData;
-} // namespace ipc
+}  // namespace ipc
 
-class LifeCycleEventCallback : public Runnable
-{
-public:
+class LifeCycleEventCallback : public Runnable {
+ public:
   LifeCycleEventCallback() : Runnable("dom::LifeCycleEventCallback") {}
 
   // Called on the worker thread.
-  virtual void
-  SetResult(bool aResult) = 0;
+  virtual void SetResult(bool aResult) = 0;
+};
+
+// Used to keep track of pending waitUntil as well as in-flight extendable
+// events. When the last token is released, we attempt to terminate the worker.
+class KeepAliveToken final : public nsISupports {
+ public:
+  NS_DECL_ISUPPORTS
+
+  explicit KeepAliveToken(ServiceWorkerPrivate* aPrivate);
+
+ private:
+  ~KeepAliveToken();
+
+  RefPtr<ServiceWorkerPrivate> mPrivate;
 };
 
 // ServiceWorkerPrivate is a wrapper for managing the on-demand aspect of
@@ -62,8 +76,9 @@ public:
 //
 // There are 3 cases where we may ignore keep alive tokens:
 // 1. When ServiceWorkerPrivate's token expired, if there are still waitUntil
-// handlers holding tokens, we wait another |dom.serviceWorkers.idle_extended_timeout|
-// seconds before forcibly terminating the worker.
+// handlers holding tokens, we wait another
+// |dom.serviceWorkers.idle_extended_timeout| seconds before forcibly
+// terminating the worker.
 // 2. If the worker stopped controlling documents and it is not handling push
 // events.
 // 3. The content process is shutting down.
@@ -72,101 +87,126 @@ public:
 // with an appropriate reason before any runnable is dispatched to the worker.
 // If the event is extendable then the runnable should inherit
 // ExtendableEventWorkerRunnable.
-class ServiceWorkerPrivate final
-{
+class ServiceWorkerPrivate final {
   friend class KeepAliveToken;
+  friend class ServiceWorkerPrivateImpl;
 
-public:
+ public:
   NS_IMETHOD_(MozExternalRefCountType) AddRef();
   NS_IMETHOD_(MozExternalRefCountType) Release();
   NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(ServiceWorkerPrivate)
 
   typedef mozilla::FalseType HasThreadSafeRefCnt;
 
-protected:
+ protected:
   nsCycleCollectingAutoRefCnt mRefCnt;
   NS_DECL_OWNINGTHREAD
 
-public:
+ public:
+  class Inner {
+   public:
+    NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
+
+    virtual nsresult SendMessageEvent(
+        RefPtr<ServiceWorkerCloneData>&& aData,
+        const ClientInfoAndState& aClientInfoAndState) = 0;
+
+    virtual nsresult CheckScriptEvaluation(
+        RefPtr<LifeCycleEventCallback> aScriptEvaluationCallback) = 0;
+
+    virtual nsresult SendLifeCycleEvent(
+        const nsAString& aEventName,
+        RefPtr<LifeCycleEventCallback> aCallback) = 0;
+
+    virtual nsresult SendPushEvent(
+        RefPtr<ServiceWorkerRegistrationInfo> aRegistration,
+        const nsAString& aMessageId, const Maybe<nsTArray<uint8_t>>& aData) = 0;
+
+    virtual nsresult SendPushSubscriptionChangeEvent() = 0;
+
+    virtual nsresult SendNotificationEvent(
+        const nsAString& aEventName, const nsAString& aID,
+        const nsAString& aTitle, const nsAString& aDir, const nsAString& aLang,
+        const nsAString& aBody, const nsAString& aTag, const nsAString& aIcon,
+        const nsAString& aData, const nsAString& aBehavior,
+        const nsAString& aScope, uint32_t aDisableOpenClickDelay) = 0;
+
+    virtual nsresult SendFetchEvent(
+        RefPtr<ServiceWorkerRegistrationInfo> aRegistration,
+        nsCOMPtr<nsIInterceptedChannel> aChannel, const nsAString& aClientId,
+        const nsAString& aResultingClientId, bool aIsReload) = 0;
+
+    virtual nsresult SpawnWorkerIfNeeded() = 0;
+
+    virtual void TerminateWorker() = 0;
+
+    virtual void UpdateState(ServiceWorkerState aState) = 0;
+
+    virtual void NoteDeadOuter() = 0;
+
+    virtual bool WorkerIsDead() const = 0;
+  };
+
   explicit ServiceWorkerPrivate(ServiceWorkerInfo* aInfo);
 
-  nsresult
-  SendMessageEvent(RefPtr<ServiceWorkerCloneData>&& aData,
-                   const ClientInfoAndState& aClientInfoAndState);
+  nsresult SendMessageEvent(RefPtr<ServiceWorkerCloneData>&& aData,
+                            const ClientInfoAndState& aClientInfoAndState);
 
   // This is used to validate the worker script and continue the installation
   // process.
-  nsresult
-  CheckScriptEvaluation(LifeCycleEventCallback* aCallback);
+  nsresult CheckScriptEvaluation(LifeCycleEventCallback* aCallback);
 
-  nsresult
-  SendLifeCycleEvent(const nsAString& aEventType,
-                     LifeCycleEventCallback* aCallback);
+  nsresult SendLifeCycleEvent(const nsAString& aEventType,
+                              LifeCycleEventCallback* aCallback);
 
-  nsresult
-  SendPushEvent(const nsAString& aMessageId,
-                const Maybe<nsTArray<uint8_t>>& aData,
-                ServiceWorkerRegistrationInfo* aRegistration);
+  nsresult SendPushEvent(const nsAString& aMessageId,
+                         const Maybe<nsTArray<uint8_t>>& aData,
+                         ServiceWorkerRegistrationInfo* aRegistration);
 
-  nsresult
-  SendPushSubscriptionChangeEvent();
+  nsresult SendPushSubscriptionChangeEvent();
 
-  nsresult
-  SendNotificationEvent(const nsAString& aEventName,
-                        const nsAString& aID,
-                        const nsAString& aTitle,
-                        const nsAString& aDir,
-                        const nsAString& aLang,
-                        const nsAString& aBody,
-                        const nsAString& aTag,
-                        const nsAString& aIcon,
-                        const nsAString& aData,
-                        const nsAString& aBehavior,
-                        const nsAString& aScope);
+  nsresult SendNotificationEvent(const nsAString& aEventName,
+                                 const nsAString& aID, const nsAString& aTitle,
+                                 const nsAString& aDir, const nsAString& aLang,
+                                 const nsAString& aBody, const nsAString& aTag,
+                                 const nsAString& aIcon, const nsAString& aData,
+                                 const nsAString& aBehavior,
+                                 const nsAString& aScope);
 
-  nsresult
-  SendFetchEvent(nsIInterceptedChannel* aChannel, nsILoadGroup* aLoadGroup,
-                 const nsAString& aClientId, bool aIsReload);
+  nsresult SendFetchEvent(nsIInterceptedChannel* aChannel,
+                          nsILoadGroup* aLoadGroup, const nsAString& aClientId,
+                          const nsAString& aResultingClientId, bool aIsReload);
 
-  bool
-  MaybeStoreISupports(nsISupports* aSupports);
+  bool MaybeStoreISupports(nsISupports* aSupports);
 
-  void
-  RemoveISupports(nsISupports* aSupports);
+  void RemoveISupports(nsISupports* aSupports);
 
   // This will terminate the current running worker thread and drop the
   // workerPrivate reference.
   // Called by ServiceWorkerInfo when [[Clear Registration]] is invoked
   // or whenever the spec mandates that we terminate the worker.
   // This is a no-op if the worker has already been stopped.
-  void
-  TerminateWorker();
+  void TerminateWorker();
 
-  void
-  NoteDeadServiceWorkerInfo();
+  void NoteDeadServiceWorkerInfo();
 
-  void
-  NoteStoppedControllingDocuments();
+  void NoteStoppedControllingDocuments();
 
-  void
-  UpdateState(ServiceWorkerState aState);
+  void UpdateState(ServiceWorkerState aState);
 
-  nsresult
-  GetDebugger(nsIWorkerDebugger** aResult);
+  nsresult GetDebugger(nsIWorkerDebugger** aResult);
 
-  nsresult
-  AttachDebugger();
+  nsresult AttachDebugger();
 
-  nsresult
-  DetachDebugger();
+  nsresult DetachDebugger();
 
-  bool
-  IsIdle() const;
+  bool IsIdle() const;
 
-  void
-  SetHandlesFetch(bool aValue);
+  RefPtr<GenericPromise> GetIdlePromise();
 
-private:
+  void SetHandlesFetch(bool aValue);
+
+ private:
   enum WakeUpReason {
     FetchEvent = 0,
     PushEvent,
@@ -175,37 +215,30 @@ private:
     NotificationClickEvent,
     NotificationCloseEvent,
     LifeCycleEvent,
-    AttachEvent
+    AttachEvent,
+    Unknown
   };
 
   // Timer callbacks
-  void
-  NoteIdleWorkerCallback(nsITimer* aTimer);
+  void NoteIdleWorkerCallback(nsITimer* aTimer);
 
-  void
-  TerminateWorkerCallback(nsITimer* aTimer);
+  void TerminateWorkerCallback(nsITimer* aTimer);
 
-  void
-  RenewKeepAliveToken(WakeUpReason aWhy);
+  void RenewKeepAliveToken(WakeUpReason aWhy);
 
-  void
-  ResetIdleTimeout();
+  void ResetIdleTimeout();
 
-  void
-  AddToken();
+  void AddToken();
 
-  void
-  ReleaseToken();
+  void ReleaseToken();
 
-  nsresult
-  SpawnWorkerIfNeeded(WakeUpReason aWhy,
-                      bool* aNewWorkerCreated = nullptr,
-                      nsILoadGroup* aLoadGroup = nullptr);
+  nsresult SpawnWorkerIfNeeded(WakeUpReason aWhy,
+                               bool* aNewWorkerCreated = nullptr,
+                               nsILoadGroup* aLoadGroup = nullptr);
 
   ~ServiceWorkerPrivate();
 
-  already_AddRefed<KeepAliveToken>
-  CreateEventKeepAliveToken();
+  already_AddRefed<KeepAliveToken> CreateEventKeepAliveToken();
 
   // The info object owns us. It is possible to outlive it for a brief period
   // of time if there are pending waitUntil promises, in which case it
@@ -236,9 +269,23 @@ private:
   // Array of function event worker runnables that are pending due to
   // the worker activating.  Main thread only.
   nsTArray<RefPtr<WorkerRunnable>> mPendingFunctionalEvents;
+
+  RefPtr<Inner> mInner;
+
+  // Used by the owning `ServiceWorkerRegistrationInfo` when it wants to call
+  // `Clear` after being unregistered and isn't controlling any clients but this
+  // worker (i.e. the registration's active worker) isn't idle yet. Note that
+  // such an event should happen at most once in a
+  // `ServiceWorkerRegistrationInfo`s lifetime, so this promise should also only
+  // be obtained at most once.
+  MozPromiseHolder<GenericPromise> mIdlePromiseHolder;
+
+#ifdef DEBUG
+  bool mIdlePromiseObtained = false;
+#endif
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_serviceworkerprivate_h
+#endif  // mozilla_dom_serviceworkerprivate_h

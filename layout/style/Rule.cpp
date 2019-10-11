@@ -11,7 +11,7 @@
 #include "mozilla/css/GroupRule.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "nsCCUncollectableMarker.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsWrapperCacheInlines.h"
 
 using namespace mozilla;
@@ -30,15 +30,9 @@ NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_0(Rule)
 
-bool
-Rule::IsCCLeaf() const
-{
-  return !PreservingWrapper();
-}
+bool Rule::IsCCLeaf() const { return !PreservingWrapper(); }
 
-bool
-Rule::IsKnownLive() const
-{
+bool Rule::IsKnownLive() const {
   if (HasKnownLiveWrapper()) {
     return true;
   }
@@ -53,7 +47,26 @@ Rule::IsKnownLive() const
   }
 
   return nsCCUncollectableMarker::InGeneration(
-    GetComposedDoc()->GetMarkedCCGeneration());
+      GetComposedDoc()->GetMarkedCCGeneration());
+}
+
+void Rule::UnlinkDeclarationWrapper(nsWrapperCache& aDecl) {
+  // We have to be a bit careful here.  We have two separate nsWrapperCache
+  // instances, aDecl and this, that both correspond to the same CC participant:
+  // this.  If we just used ReleaseWrapper() on one of them, that would
+  // unpreserve that one wrapper, then trace us with a tracer that clears JS
+  // things, and we would clear the wrapper on the cache that has not
+  // unpreserved the wrapper yet.  That would violate the invariant that the
+  // cache keeps caching the wrapper until the wrapper dies.
+  //
+  // So we reimplement a modified version of nsWrapperCache::ReleaseWrapper here
+  // that unpreserves both wrappers before doing any clearing.
+  bool needDrop = PreservingWrapper() || aDecl.PreservingWrapper();
+  SetPreservingWrapper(false);
+  aDecl.SetPreservingWrapper(false);
+  if (needDrop) {
+    DropJSObjects(this);
+  }
 }
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(Rule)
@@ -64,32 +77,30 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(Rule)
   // Please see documentation for nsCycleCollectionParticipant::CanSkip* for why
   // we need to check HasNothingToTrace here but not in the other two CanSkip
   // methods.
-  return tmp->IsCCLeaf() ||
-    (tmp->IsKnownLive() && tmp->HasNothingToTrace(tmp));
+  return tmp->IsCCLeaf() || (tmp->IsKnownLive() && tmp->HasNothingToTrace(tmp));
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(Rule)
   return tmp->IsCCLeaf() || tmp->IsKnownLive();
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
-/* virtual */ void
-Rule::DropSheetReference()
-{
-  mSheet = nullptr;
-}
+/* virtual */
+void Rule::DropSheetReference() { mSheet = nullptr; }
 
-void
-Rule::SetCssText(const nsAString& aCssText)
-{
+void Rule::SetCssText(const nsAString& aCssText) {
   // We used to throw for some rule types, but not all.  Specifically, we did
   // not throw for StyleRule.  Let's just always not throw.
 }
 
-Rule*
-Rule::GetParentRule() const
-{
-  return mParentRule;
+Rule* Rule::GetParentRule() const { return mParentRule; }
+
+bool Rule::IsReadOnly() const {
+  MOZ_ASSERT(!mSheet || !mParentRule ||
+                 mSheet->IsReadOnly() == mParentRule->IsReadOnly(),
+             "a parent rule should be read only iff the owning sheet is "
+             "read only");
+  return mSheet && mSheet->IsReadOnly();
 }
 
-} // namespace css
-} // namespace mozilla
+}  // namespace css
+}  // namespace mozilla

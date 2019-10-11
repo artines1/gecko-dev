@@ -1,4 +1,4 @@
-use std::cmp;
+use std::fmt;
 use std::io::{Read, Write};
 use std::net::{self, SocketAddr};
 use std::os::unix::io::{RawFd, FromRawFd, IntoRawFd, AsRawFd};
@@ -7,27 +7,25 @@ use std::time::Duration;
 use libc;
 use net2::TcpStreamExt;
 use iovec::IoVec;
-use iovec::unix as iovec;
 
 use {io, Ready, Poll, PollOpt, Token};
 use event::Evented;
 
 use sys::unix::eventedfd::EventedFd;
 use sys::unix::io::set_nonblock;
+use sys::unix::uio::VecIo;
 
-#[derive(Debug)]
 pub struct TcpStream {
     inner: net::TcpStream,
 }
 
-#[derive(Debug)]
 pub struct TcpListener {
     inner: net::TcpListener,
 }
 
 impl TcpStream {
     pub fn connect(stream: net::TcpStream, addr: &SocketAddr) -> io::Result<TcpStream> {
-        try!(set_nonblock(stream.as_raw_fd()));
+        set_nonblock(stream.as_raw_fd())?;
 
         match stream.connect(addr) {
             Ok(..) => {}
@@ -126,34 +124,16 @@ impl TcpStream {
         self.inner.take_error()
     }
 
+    pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.peek(buf)
+    }
+
     pub fn readv(&self, bufs: &mut [&mut IoVec]) -> io::Result<usize> {
-        unsafe {
-            let slice = iovec::as_os_slice_mut(bufs);
-            let len = cmp::min(<libc::c_int>::max_value() as usize, slice.len());
-            let rc = libc::readv(self.inner.as_raw_fd(),
-                                 slice.as_ptr(),
-                                 len as libc::c_int);
-            if rc < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(rc as usize)
-            }
-        }
+        self.inner.readv(bufs)
     }
 
     pub fn writev(&self, bufs: &[&IoVec]) -> io::Result<usize> {
-        unsafe {
-            let slice = iovec::as_os_slice(bufs);
-            let len = cmp::min(<libc::c_int>::max_value() as usize, slice.len());
-            let rc = libc::writev(self.inner.as_raw_fd(),
-                                  slice.as_ptr(),
-                                  len as libc::c_int);
-            if rc < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(rc as usize)
-            }
-        }
+        self.inner.writev(bufs)
     }
 }
 
@@ -189,6 +169,12 @@ impl Evented for TcpStream {
     }
 }
 
+impl fmt::Debug for TcpStream {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.inner, f)
+    }
+}
+
 impl FromRawFd for TcpStream {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpStream {
         TcpStream {
@@ -210,10 +196,10 @@ impl AsRawFd for TcpStream {
 }
 
 impl TcpListener {
-    pub fn new(inner: net::TcpListener, _addr: &SocketAddr) -> io::Result<TcpListener> {
-        try!(set_nonblock(inner.as_raw_fd()));
+    pub fn new(inner: net::TcpListener) -> io::Result<TcpListener> {
+        set_nonblock(inner.as_raw_fd())?;
         Ok(TcpListener {
-            inner: inner,
+            inner,
         })
     }
 
@@ -229,13 +215,8 @@ impl TcpListener {
         })
     }
 
-    pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        self.inner.accept().and_then(|(s, a)| {
-            try!(set_nonblock(s.as_raw_fd()));
-            Ok((TcpStream {
-                inner: s,
-            }, a))
-        })
+    pub fn accept(&self) -> io::Result<(net::TcpStream, SocketAddr)> {
+        self.inner.accept()
     }
 
     #[allow(deprecated)]
@@ -274,6 +255,12 @@ impl Evented for TcpListener {
 
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         EventedFd(&self.as_raw_fd()).deregister(poll)
+    }
+}
+
+impl fmt::Debug for TcpListener {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.inner, f)
     }
 }
 

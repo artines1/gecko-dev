@@ -2,19 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global XPCNativeWrapper */
-
 "use strict";
 
-const { Cu } = require("chrome");
 const { Services } = require("resource://gre/modules/Services.jsm");
+
+loader.lazyRequireGetter(this, "InspectorUtils", "InspectorUtils");
 
 var systemAppOrigin = (function() {
   let systemOrigin = "_";
   try {
-    systemOrigin =
-      Services.io.newURI(Services.prefs.getCharPref("b2g.system_manifest_url"))
-                 .prePath;
+    systemOrigin = Services.io.newURI(
+      Services.prefs.getCharPref("b2g.system_manifest_url")
+    ).prePath;
   } catch (e) {
     // Fall back to default value
   }
@@ -22,7 +21,15 @@ var systemAppOrigin = (function() {
 })();
 
 var threshold = Services.prefs.getIntPref("ui.dragThresholdX", 25);
-var delay = Services.prefs.getIntPref("ui.click_hold_context_menus.delay", 500);
+var isClickHoldEnabled = Services.prefs.getBoolPref(
+  "ui.click_hold_context_menus"
+);
+var clickHoldDelay = Services.prefs.getIntPref(
+  "ui.click_hold_context_menus.delay",
+  500
+);
+
+const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
 
 function TouchSimulator(simulatorTarget) {
   this.simulatorTarget = simulatorTarget;
@@ -41,7 +48,7 @@ TouchSimulator.prototype = {
     "mouseenter",
     "mouseover",
     "mouseout",
-    "mouseleave"
+    "mouseleave",
   ],
 
   contextMenuTimeout: null,
@@ -74,7 +81,24 @@ TouchSimulator.prototype = {
     this.enabled = false;
   },
 
+  /**
+   * Set the current element picker state value.
+   * True means the element picker is currently active and we should not be emulating
+   * touch events.
+   * False means the element picker is not active and it is ok to emulate touch events.
+   * @param {Boolean} state
+   */
+  setElementPickerState(state) {
+    this._isPicking = state;
+  },
+
+  /* eslint-disable complexity */
   handleEvent(evt) {
+    // Bail out if devtools is in pick mode in the same tab.
+    if (this._isPicking) {
+      return;
+    }
+
     // The gaia system window use an hybrid system even on the device which is
     // a mix of mouse/touch events. So let's not cancel *all* mouse events
     // if it is the current target.
@@ -82,8 +106,9 @@ TouchSimulator.prototype = {
     if (!content) {
       return;
     }
-    const isSystemWindow = content.location.toString()
-                                .startsWith(systemAppOrigin);
+    const isSystemWindow = content.location
+      .toString()
+      .startsWith(systemAppOrigin);
 
     // App touchstart & touchend should also be dispatched on the system app
     // to match on-device behavior.
@@ -97,27 +122,50 @@ TouchSimulator.prototype = {
 
       const touchEvent = sysDocument.createEvent("touchevent");
       const touch = evt.touches[0] || evt.changedTouches[0];
-      const point = sysDocument.createTouch(sysWindow, sysFrame, 0,
-                                          touch.pageX, touch.pageY,
-                                          touch.screenX, touch.screenY,
-                                          touch.clientX, touch.clientY,
-                                          1, 1, 0, 0);
+      const point = sysDocument.createTouch(
+        sysWindow,
+        sysFrame,
+        0,
+        touch.pageX,
+        touch.pageY,
+        touch.screenX,
+        touch.screenY,
+        touch.clientX,
+        touch.clientY,
+        1,
+        1,
+        0,
+        0
+      );
 
       const touches = sysDocument.createTouchList(point);
       const targetTouches = touches;
       const changedTouches = touches;
-      touchEvent.initTouchEvent(evt.type, true, true, sysWindow, 0,
-                                false, false, false, false,
-                                touches, targetTouches, changedTouches);
+      touchEvent.initTouchEvent(
+        evt.type,
+        true,
+        true,
+        sysWindow,
+        0,
+        false,
+        false,
+        false,
+        false,
+        touches,
+        targetTouches,
+        changedTouches
+      );
       sysFrame.dispatchEvent(touchEvent);
       return;
     }
 
     // Ignore all but real mouse event coming from physical mouse
     // (especially ignore mouse event being dispatched from a touch event)
-    if (evt.button ||
-        evt.mozInputSource != evt.MOZ_SOURCE_MOUSE ||
-        evt.isSynthesized) {
+    if (
+      evt.button ||
+      evt.mozInputSource != evt.MOZ_SOURCE_MOUSE ||
+      evt.isSynthesized
+    ) {
       return;
     }
 
@@ -130,12 +178,23 @@ TouchSimulator.prototype = {
       case "mouseleave":
         // Don't propagate events which are not related to touch events
         evt.stopPropagation();
+        evt.preventDefault();
+
+        // We don't want to trigger any visual changes to elements whose content can
+        // be modified via hover states. We can avoid this by removing the element's
+        // content state.
+        InspectorUtils.removeContentState(evt.target, kStateHover);
         break;
 
       case "mousedown":
         this.target = evt.target;
 
-        this.contextMenuTimeout = this.sendContextMenu(evt);
+        // If the click-hold feature is enabled, start a timeout to convert long clicks
+        // into contextmenu events.
+        // Just don't do it if the event occurred on a scrollbar.
+        if (isClickHoldEnabled && !evt.originalTarget.closest("scrollbar")) {
+          this.contextMenuTimeout = this.sendContextMenu(evt);
+        }
 
         this.cancelClick = false;
         this.startX = evt.pageX;
@@ -156,8 +215,10 @@ TouchSimulator.prototype = {
         }
 
         if (!this.cancelClick) {
-          if (Math.abs(this.startX - evt.pageX) > threshold ||
-              Math.abs(this.startY - evt.pageY) > threshold) {
+          if (
+            Math.abs(this.startX - evt.pageX) > threshold ||
+            Math.abs(this.startY - evt.pageY) > threshold
+          ) {
             this.cancelClick = true;
             content.clearTimeout(this.contextMenuTimeout);
           }
@@ -195,15 +256,19 @@ TouchSimulator.prototype = {
           return;
         }
 
-        content.setTimeout(function dispatchMouseEvents(self) {
-          try {
-            self.fireMouseEvent("mousedown", evt);
-            self.fireMouseEvent("mousemove", evt);
-            self.fireMouseEvent("mouseup", evt);
-          } catch (e) {
-            console.error("Exception in touch event helper: " + e);
-          }
-        }, this.getDelayBeforeMouseEvent(evt), this);
+        content.setTimeout(
+          function dispatchMouseEvents(self) {
+            try {
+              self.fireMouseEvent("mousedown", evt);
+              self.fireMouseEvent("mousemove", evt);
+              self.fireMouseEvent("mouseup", evt);
+            } catch (e) {
+              console.error("Exception in touch event helper: " + e);
+            }
+          },
+          this.getDelayBeforeMouseEvent(evt),
+          this
+        );
         return;
     }
 
@@ -217,12 +282,22 @@ TouchSimulator.prototype = {
       evt.stopImmediatePropagation();
     }
   },
+  /* eslint-enable complexity */
 
   fireMouseEvent(type, evt) {
     const content = this.getContent(evt.target);
     const utils = content.windowUtils;
-    utils.sendMouseEvent(type, evt.clientX, evt.clientY, 0, 1, 0, true, 0,
-                         evt.MOZ_SOURCE_TOUCH);
+    utils.sendMouseEvent(
+      type,
+      evt.clientX,
+      evt.clientY,
+      0,
+      1,
+      0,
+      true,
+      0,
+      evt.MOZ_SOURCE_TOUCH
+    );
   },
 
   sendContextMenu({ target, clientX, clientY, screenX, screenY }) {
@@ -241,38 +316,12 @@ TouchSimulator.prototype = {
     const timeout = content.setTimeout(() => {
       target.dispatchEvent(evt);
       this.cancelClick = true;
-    }, delay);
+    }, clickHoldDelay);
 
     return timeout;
   },
 
   sendTouchEvent(evt, target, name) {
-    function clone(obj) {
-      return Cu.cloneInto(obj, target);
-    }
-    // When running OOP b2g desktop, we need to send the touch events
-    // using the mozbrowser api on the unwrapped frame.
-    if (target.localName == "iframe" && target.mozbrowser === true) {
-      if (name == "touchstart") {
-        this.touchstartTime = Date.now();
-      } else if (name == "touchend") {
-        // If we have a "fast" tap, don't send a click as both will be turned
-        // into a click and that breaks eg. checkboxes.
-        if (Date.now() - this.touchstartTime < delay) {
-          this.cancelClick = true;
-        }
-      }
-      const unwrapped = XPCNativeWrapper.unwrap(target);
-      /* eslint-disable no-multi-spaces */
-      unwrapped.sendTouchEvent(name, clone([0]),       // event type, id
-                               clone([evt.clientX]),   // x
-                               clone([evt.clientY]),   // y
-                               clone([1]), clone([1]), // rx, ry
-                               clone([0]), clone([0]), // rotation, force
-                               1);                     // count
-      /* eslint-enable no-multi-spaces */
-      return;
-    }
     const document = target.ownerDocument;
     const content = this.getContent(target);
     if (!content) {
@@ -280,11 +329,21 @@ TouchSimulator.prototype = {
     }
 
     const touchEvent = document.createEvent("touchevent");
-    const point = document.createTouch(content, target, 0,
-                                     evt.pageX, evt.pageY,
-                                     evt.screenX, evt.screenY,
-                                     evt.clientX, evt.clientY,
-                                     1, 1, 0, 0);
+    const point = document.createTouch(
+      content,
+      target,
+      0,
+      evt.pageX,
+      evt.pageY,
+      evt.screenX,
+      evt.screenY,
+      evt.clientX,
+      evt.clientY,
+      1,
+      1,
+      0,
+      0
+    );
 
     let touches = document.createTouchList(point);
     let targetTouches = touches;
@@ -295,16 +354,25 @@ TouchSimulator.prototype = {
       touches = targetTouches = document.createTouchList();
     }
 
-    touchEvent.initTouchEvent(name, true, true, content, 0,
-                              false, false, false, false,
-                              touches, targetTouches, changedTouches);
+    touchEvent.initTouchEvent(
+      name,
+      true,
+      true,
+      content,
+      0,
+      false,
+      false,
+      false,
+      false,
+      touches,
+      targetTouches,
+      changedTouches
+    );
     target.dispatchEvent(touchEvent);
   },
 
   getContent(target) {
-    const win = (target && target.ownerDocument)
-      ? target.ownerGlobal
-      : null;
+    const win = target && target.ownerDocument ? target.ownerGlobal : null;
     return win;
   },
 
@@ -318,8 +386,9 @@ TouchSimulator.prototype = {
     // we couldn't read viewport's information from getViewportInfo().
     // So we always simulate 300ms delay when the
     // dom.meta-viewport.enabled is false.
-    const savedMetaViewportEnabled =
-      Services.prefs.getBoolPref("dom.meta-viewport.enabled");
+    const savedMetaViewportEnabled = Services.prefs.getBoolPref(
+      "dom.meta-viewport.enabled"
+    );
     if (!savedMetaViewportEnabled) {
       return 300;
     }
@@ -336,22 +405,32 @@ TouchSimulator.prototype = {
     const maxZoom = {};
     const autoSize = {};
 
-    utils.getViewportInfo(content.innerWidth, content.innerHeight, {},
-                          allowZoom, minZoom, maxZoom, {}, {}, autoSize);
+    utils.getViewportInfo(
+      content.innerWidth,
+      content.innerHeight,
+      {},
+      allowZoom,
+      minZoom,
+      maxZoom,
+      {},
+      {},
+      autoSize
+    );
 
     // FIXME: On Safari and Chrome mobile platform, if the css property
     // touch-action set to none or manipulation would also suppress 300ms
     // delay. But Firefox didn't support this property now, we can't get
     // this value from utils.getVisitedDependentComputedStyle() to check
     // if we should suppress 300ms delay.
-    if (!allowZoom.value || // user-scalable = no
-        minZoom.value === maxZoom.value || // minimum-scale = maximum-scale
-        autoSize.value // width = device-width
+    if (
+      !allowZoom.value || // user-scalable = no
+      minZoom.value === maxZoom.value || // minimum-scale = maximum-scale
+      autoSize.value // width = device-width
     ) {
       return 0;
     }
     return 300;
-  }
+  },
 };
 
 exports.TouchSimulator = TouchSimulator;

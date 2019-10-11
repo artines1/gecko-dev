@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -21,6 +20,9 @@ function check_actor_for_list(nodelist) {
 
   // No exception occured as a exceptions abort the test.
   ok(true, "No exceptions occured.");
-  equal(form.length, nodelist ? nodelist.length : 0,
-    "NodeListActor reported correct length.");
+  equal(
+    form.length,
+    nodelist ? nodelist.length : 0,
+    "NodeListActor reported correct length."
+  );
 }

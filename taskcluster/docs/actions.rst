@@ -24,13 +24,9 @@ At a very high level, the process looks like this:
 Defining Action Tasks
 ---------------------
 
-There are two options for defining actions: creating a callback action, or
-creating a custom action task.  A callback action automatically defines an
-action task that will invoke a Python function of your devising.
-
-A custom action task is an arbitrary task definition that will be created
-directly.  In cases where the callback would simply call ``queue.createTask``,
-a custom action task can be more efficient.
+There is one options for defining actions: creating a callback action.
+A callback action automatically defines an action task that will invoke a
+Python function of your devising.
 
 Creating a Callback Action
 --------------------------
@@ -48,7 +44,9 @@ your python callback, enabling it to do pretty much anything it wants to.
 To create a new callback action you must create a file
 ``taskcluster/taskgraph/actions/my-action.py``, that at minimum contains::
 
-  from registry import register_callback_action
+  from __future__ import absolute_import, print_function, unicode_literals
+
+  from .registry import register_callback_action
 
   @register_callback_action(
       name='hello',
@@ -58,19 +56,25 @@ To create a new callback action you must create a file
       order=10000,  # Order in which it should appear relative to other actions
   )
   def hello_world_action(parameters, graph_config, input, task_group_id, task_id, task):
-      print "Hello was triggered from taskGroupId: " + taskGroupId
+      print("Hello was triggered from taskGroupId: {}".format(task_group_id))
 
 The arguments are:
+
 ``parameters``
   an instance of ``taskgraph.parameters.Parameters``, carrying decision task parameters from the original decision task.
+
 ``graph_config``
   an instance of ``taskgraph.config.GraphConfig``, carrying configuration for this tree
+
 ``input``
   the input from the user triggering the action (if any)
+
 ``task_group_id``
   the target task group on which this action should operate
+
 ``task_id``
   the target task on which this action should operate (or None if it is operating on the whole group)
+
 ``task``
   the definition of the target task (or None, as for ``task_id``)
 
@@ -79,6 +83,9 @@ the entire task-group (result-set or push in Treeherder terminology). To create
 an action that shows up in the context menu for a task we would specify the
 ``context`` parameter.
 
+The ``order`` value is the sort key defining the order of actions in the
+resulting ``actions.json`` file.  If multiple actions have the same name and
+match the same task, the action with the smallest ``order`` will be used.
 
 Setting the Action Context
 ..........................
@@ -200,6 +207,7 @@ to create one or more tasks or run a specific piece of code like a test.
 
 Conditional Availability
 ........................
+
 The decision parameters ``taskgraph.parameters.Parameters`` passed to
 the callback are also available when the decision task generates the list of
 actions to be displayed in the user interface. When registering an action
@@ -225,12 +233,18 @@ Properties of ``parameters``  are documented in the
 :doc:`parameters section <parameters>`. You can also examine the
 ``parameters.yml`` artifact created by decisions tasks.
 
+Context can be similarly conditionalized by passing a function which returns
+the appropriate context::
+
+    context=lambda params:
+        [{}] if int(params['level']) < 3 else [{'worker-implementation': 'docker-worker'}],
+
 Creating Tasks
 --------------
 
 The ``create_tasks`` utility function provides a full-featured way to create
 new tasks.  Its features include creating prerequisite tasks, operating in a
-"testing" mode with ``./mach taskgraph action-callback --test``, and generating
+"testing" mode with ``./mach taskgraph test-action-callback``, and generating
 artifacts that can be used by later action tasks to figure out what happened.
 See the source for more detailed docmentation.
 
@@ -253,5 +267,5 @@ For further details on actions in general, see `the actions.json spec`_.
 The hooks used for in-tree actions are set up by `ci-admin`_ based on configuration in `ci-configuration`_.
 
 .. _the actions.json spec: https://docs.taskcluster.net/manual/tasks/actions/spec
-.. _ci-admin: http://hg.mozilla.org/build/ci-admin/
-.. _ci-configuration: http://hg.mozilla.org/build/ci-configuration/
+.. _ci-admin: http://hg.mozilla.org/ci/ci-admin/
+.. _ci-configuration: http://hg.mozilla.org/ci/ci-configuration/

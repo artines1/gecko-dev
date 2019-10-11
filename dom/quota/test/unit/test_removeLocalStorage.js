@@ -5,11 +5,14 @@
 
 var testGenerator = testSteps();
 
-function* testSteps()
-{
+function* testSteps() {
   const lsArchiveFile = "storage/ls-archive.sqlite";
   const lsArchiveTmpFile = "storage/ls-archive-tmp.sqlite";
   const lsDir = "storage/default/http+++localhost/ls";
+
+  info("Setting pref");
+
+  SpecialPowers.setBoolPref("dom.storage.next_gen", false);
 
   // Profile 1
   info("Clearing");

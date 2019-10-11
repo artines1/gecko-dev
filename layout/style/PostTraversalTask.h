@@ -12,11 +12,15 @@
 /* a task to be performed immediately after a Servo traversal */
 
 namespace mozilla {
+class ServoStyleSet;
 namespace dom {
 class FontFace;
 class FontFaceSet;
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+namespace fontlist {
+struct Family;
+}  // namespace fontlist
+}  // namespace mozilla
 class gfxUserFontEntry;
 
 namespace mozilla {
@@ -29,19 +33,17 @@ namespace mozilla {
  * A PostTraversalTask is only safe to run immediately after the Servo
  * traversal, since it can hold raw pointers to DOM objects.
  */
-class PostTraversalTask
-{
-public:
-  static PostTraversalTask ResolveFontFaceLoadedPromise(dom::FontFace* aFontFace)
-  {
+class PostTraversalTask {
+ public:
+  static PostTraversalTask ResolveFontFaceLoadedPromise(
+      dom::FontFace* aFontFace) {
     auto task = PostTraversalTask(Type::ResolveFontFaceLoadedPromise);
     task.mTarget = aFontFace;
     return task;
   }
 
   static PostTraversalTask RejectFontFaceLoadedPromise(dom::FontFace* aFontFace,
-                                                       nsresult aResult)
-  {
+                                                       nsresult aResult) {
     auto task = PostTraversalTask(Type::ResolveFontFaceLoadedPromise);
     task.mTarget = aFontFace;
     task.mResult = aResult;
@@ -49,38 +51,46 @@ public:
   }
 
   static PostTraversalTask DispatchLoadingEventAndReplaceReadyPromise(
-    dom::FontFaceSet* aFontFaceSet)
-  {
+      dom::FontFaceSet* aFontFaceSet) {
     auto task =
-      PostTraversalTask(Type::DispatchLoadingEventAndReplaceReadyPromise);
+        PostTraversalTask(Type::DispatchLoadingEventAndReplaceReadyPromise);
     task.mTarget = aFontFaceSet;
     return task;
   }
 
   static PostTraversalTask DispatchFontFaceSetCheckLoadingFinishedAfterDelay(
-    dom::FontFaceSet* aFontFaceSet)
-  {
-    auto task =
-      PostTraversalTask(Type::DispatchFontFaceSetCheckLoadingFinishedAfterDelay);
+      dom::FontFaceSet* aFontFaceSet) {
+    auto task = PostTraversalTask(
+        Type::DispatchFontFaceSetCheckLoadingFinishedAfterDelay);
     task.mTarget = aFontFaceSet;
     return task;
   }
 
-  static PostTraversalTask LoadFontEntry(gfxUserFontEntry* aFontEntry)
-  {
+  static PostTraversalTask LoadFontEntry(gfxUserFontEntry* aFontEntry) {
     auto task = PostTraversalTask(Type::LoadFontEntry);
     task.mTarget = aFontEntry;
     return task;
   }
 
+  static PostTraversalTask InitializeFamily(fontlist::Family* aFamily) {
+    auto task = PostTraversalTask(Type::InitializeFamily);
+    task.mTarget = aFamily;
+    return task;
+  }
+
+  static PostTraversalTask FontInfoUpdate(ServoStyleSet* aSet) {
+    auto task = PostTraversalTask(Type::FontInfoUpdate);
+    task.mTarget = aSet;
+    return task;
+  }
+
   void Run();
 
-private:
+ private:
   // For any new raw pointer type that we need to store in a PostTraversalTask,
   // please add an assertion that class' destructor that we are not in a Servo
   // traversal, to protect against the possibility of having dangling pointers.
-  enum class Type
-  {
+  enum class Type {
     // mTarget (FontFace*)
     ResolveFontFaceLoadedPromise,
 
@@ -96,20 +106,22 @@ private:
 
     // mTarget (gfxUserFontEntry*)
     LoadFontEntry,
+
+    // mTarget (fontlist::Family*)
+    InitializeFamily,
+
+    // mTarget (ServoStyleSet*)
+    FontInfoUpdate,
   };
 
   explicit PostTraversalTask(Type aType)
-    : mType(aType)
-    , mTarget(nullptr)
-    , mResult(NS_OK)
-  {
-  }
+      : mType(aType), mTarget(nullptr), mResult(NS_OK) {}
 
   Type mType;
   void* mTarget;
   nsresult mResult;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_PostTraversalTask_h
+#endif  // mozilla_PostTraversalTask_h

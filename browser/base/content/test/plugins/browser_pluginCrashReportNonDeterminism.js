@@ -1,7 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+const { PromiseUtils } = ChromeUtils.import(
+  "resource://gre/modules/PromiseUtils.jsm"
+);
+
+const { PluginManager } = ChromeUtils.import(
+  "resource:///actors/PluginParent.jsm"
+);
 
 /**
  * With e10s, plugins must run in their own process. This means we have
@@ -20,8 +26,8 @@ ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
  * This test exercises the browser's reaction to both possibilities.
  */
 
-const CRASH_URL = "http://example.com/browser/browser/base/content/test/plugins/plugin_crashCommentAndURL.html";
-const CRASHED_MESSAGE = "BrowserPlugins:NPAPIPluginProcessCrashed";
+const CRASH_URL =
+  "http://example.com/browser/browser/base/content/test/plugins/plugin_crashCommentAndURL.html";
 
 /**
  * In order for our test to work, we need to be able to put a plugin
@@ -51,17 +57,17 @@ const CRASHED_MESSAGE = "BrowserPlugins:NPAPIPluginProcessCrashed";
  *        the crash reporter state.
  */
 function preparePlugin(browser, pluginFallbackState) {
-  return ContentTask.spawn(browser, pluginFallbackState, async function(contentPluginFallbackState) {
+  return ContentTask.spawn(browser, pluginFallbackState, async function(
+    contentPluginFallbackState
+  ) {
     let plugin = content.document.getElementById("plugin");
-    plugin.QueryInterface(Ci.nsIObjectLoadingContent);
     // CRASH_URL will load a plugin that crashes immediately. We
     // wait until the plugin has finished being put into the crash
     // state.
     let statusDiv;
     await ContentTaskUtils.waitForCondition(() => {
-      statusDiv = plugin.ownerDocument
-                        .getAnonymousElementByAttribute(plugin, "anonid",
-                                                        "submitStatus");
+      statusDiv = plugin.openOrClosedShadowRoot.getElementById("submitStatus");
+
       return statusDiv && statusDiv.getAttribute("status") == "please";
     }, "Timed out waiting for plugin to be in crash report state");
 
@@ -72,11 +78,14 @@ function preparePlugin(browser, pluginFallbackState) {
     Object.defineProperty(plugin, "pluginFallbackType", {
       get() {
         return contentPluginFallbackState;
-      }
+      },
     });
     return plugin.runID;
-  }).then((runID) => {
-    browser.messageManager.sendAsyncMessage("BrowserPlugins:Test:ClearCrashData");
+  }).then(runID => {
+    let { currentWindowGlobal } = browser.frameLoader.browsingContext;
+    currentWindowGlobal
+      .getActor("Plugin")
+      .sendAsyncMessage("PluginParent:Test:ClearCrashData");
     return runID;
   });
 }
@@ -117,7 +126,7 @@ let crashObserver = (subject, topic, data) => {
 };
 
 Services.obs.addObserver(crashObserver, "plugin-crashed");
-// plugins.testmode will make BrowserPlugins:Test:ClearCrashData work.
+// plugins.testmode will make PluginParent:Test:ClearCrashData work.
 Services.prefs.setBoolPref("plugins.testmode", true);
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("plugins.testmode");
@@ -133,41 +142,37 @@ add_task(async function testChromeHearsPluginCrashFirst() {
 
   // Open a remote window so that we can run this test even if e10s is not
   // enabled by default.
-  let win = await BrowserTestUtils.openNewBrowserWindow({remote: true});
+  let win = await BrowserTestUtils.openNewBrowserWindow({ remote: true });
   let browser = win.gBrowser.selectedBrowser;
 
-  browser.loadURI(CRASH_URL);
+  BrowserTestUtils.loadURI(browser, CRASH_URL);
   await BrowserTestUtils.browserLoaded(browser);
 
   // In this case, we want the <object> to match the -moz-handler-crashed
   // pseudoselector, but we want it to seem still active, because the
   // content process is not yet supposed to know that the plugin has
   // crashed.
-  let runID = await preparePlugin(browser,
-                                  Ci.nsIObjectLoadingContent.PLUGIN_ACTIVE);
+  await preparePlugin(browser, Ci.nsIObjectLoadingContent.PLUGIN_ACTIVE);
 
-  // Send the message down to PluginContent.jsm saying that the plugin has
-  // crashed, and that we have a crash report.
-  let mm = browser.messageManager;
-  mm.sendAsyncMessage(CRASHED_MESSAGE,
-                      { pluginName: "", runID, state: "please" });
-
+  // In this case, the parent responds immediately when the child asks
+  // for crash data. in `testContentHearsCrashFirst we will delay the
+  // response (simulating what happens if the parent doesn't know about
+  // the crash yet).
   await ContentTask.spawn(browser, null, async function() {
     // At this point, the content process should have heard the
     // plugin crash message from the parent, and we are OK to emit
     // the PluginCrashed event.
     let plugin = content.document.getElementById("plugin");
-    plugin.QueryInterface(Ci.nsIObjectLoadingContent);
-    let statusDiv = plugin.ownerDocument
-                          .getAnonymousElementByAttribute(plugin, "anonid",
-                                                          "submitStatus");
+    let statusDiv = plugin.openOrClosedShadowRoot.getElementById(
+      "submitStatus"
+    );
 
     if (statusDiv.getAttribute("status") == "please") {
       Assert.ok(false, "Did not expect plugin to be in crash report mode yet.");
       return;
     }
 
-    // Now we need the plugin to seem crashed to PluginContent.jsm, without
+    // Now we need the plugin to seem crashed to the child actor, without
     // actually crashing the plugin again. We hack around this by overriding
     // the pluginFallbackType again.
     Object.defineProperty(plugin, "pluginFallbackType", {
@@ -186,8 +191,16 @@ add_task(async function testChromeHearsPluginCrashFirst() {
     });
 
     plugin.dispatchEvent(event);
-    Assert.equal(statusDiv.getAttribute("status"), "please",
-      "Should have been showing crash report UI");
+    // The plugin child actor will go fetch crash info in the parent. Wait
+    // for it to come back:
+    await ContentTaskUtils.waitForCondition(
+      () => statusDiv.getAttribute("status") == "please"
+    );
+    Assert.equal(
+      statusDiv.getAttribute("status"),
+      "please",
+      "Should have been showing crash report UI"
+    );
   });
   await BrowserTestUtils.closeWindow(win);
   await crashDeferred.promise;
@@ -202,27 +215,43 @@ add_task(async function testContentHearsCrashFirst() {
 
   // Open a remote window so that we can run this test even if e10s is not
   // enabled by default.
-  let win = await BrowserTestUtils.openNewBrowserWindow({remote: true});
+  let win = await BrowserTestUtils.openNewBrowserWindow({ remote: true });
   let browser = win.gBrowser.selectedBrowser;
 
-  browser.loadURI(CRASH_URL);
+  BrowserTestUtils.loadURI(browser, CRASH_URL);
   await BrowserTestUtils.browserLoaded(browser);
 
   // In this case, we want the <object> to match the -moz-handler-crashed
   // pseudoselector, and we want the plugin to seem crashed, since the
   // content process in this case has heard about the crash first.
-  let runID = await preparePlugin(browser,
-                                  Ci.nsIObjectLoadingContent.PLUGIN_CRASHED);
+  let runID = await preparePlugin(
+    browser,
+    Ci.nsIObjectLoadingContent.PLUGIN_CRASHED
+  );
+
+  // We resolve this promise when we're ready to tell the child from the parent.
+  let allowParentToRespond = PromiseUtils.defer();
+  // This promise is resolved as soon as we're contacted by the child.
+  // It forces the parent not to respond until `allowParentToRespond` has been
+  // resolved.
+  let parentRequestPromise = new Promise(resolve => {
+    PluginManager.mockResponse(browser, function(data) {
+      resolve(data);
+
+      return allowParentToRespond.promise.then(() => {
+        return { pluginName: "", runID, state: "please" };
+      });
+    });
+  });
 
   await ContentTask.spawn(browser, null, async function() {
     // At this point, the content process has not yet heard from the
     // parent about the crash report. Let's ensure that by making sure
     // we're not showing the plugin crash report UI.
     let plugin = content.document.getElementById("plugin");
-    plugin.QueryInterface(Ci.nsIObjectLoadingContent);
-    let statusDiv = plugin.ownerDocument
-                          .getAnonymousElementByAttribute(plugin, "anonid",
-                                                          "submitStatus");
+    let statusDiv = plugin.openOrClosedShadowRoot.getElementById(
+      "submitStatus"
+    );
 
     if (statusDiv.getAttribute("status") == "please") {
       Assert.ok(false, "Did not expect plugin to be in crash report mode yet.");
@@ -238,29 +267,42 @@ add_task(async function testContentHearsCrashFirst() {
     });
 
     plugin.dispatchEvent(event);
+  });
+  let receivedData = await parentRequestPromise;
+  is(receivedData.runID, runID, "Should get a request for the same crash.");
 
-    Assert.notEqual(statusDiv.getAttribute("status"), "please",
-      "Should not yet be showing crash report UI");
+  await ContentTask.spawn(browser, null, function() {
+    let plugin = content.document.getElementById("plugin");
+    let statusDiv = plugin.openOrClosedShadowRoot.getElementById(
+      "submitStatus"
+    );
+    Assert.notEqual(
+      statusDiv.getAttribute("status"),
+      "please",
+      "Should not yet be showing crash report UI"
+    );
   });
 
-  // Now send the message down to PluginContent.jsm that the plugin has
-  // crashed...
-  let mm = browser.messageManager;
-  mm.sendAsyncMessage(CRASHED_MESSAGE,
-                      { pluginName: "", runID, state: "please"});
+  // Now allow the parent to respond to the child with crash info:
+  allowParentToRespond.resolve();
 
   await ContentTask.spawn(browser, null, async function() {
     // At this point, the content process will have heard the message
     // from the parent and reacted to it. We should be showing the plugin
     // crash report UI now.
     let plugin = content.document.getElementById("plugin");
-    plugin.QueryInterface(Ci.nsIObjectLoadingContent);
-    let statusDiv = plugin.ownerDocument
-                          .getAnonymousElementByAttribute(plugin, "anonid",
-                                                          "submitStatus");
+    let statusDiv = plugin.openOrClosedShadowRoot.getElementById(
+      "submitStatus"
+    );
+    await ContentTaskUtils.waitForCondition(() => {
+      return statusDiv && statusDiv.getAttribute("status") == "please";
+    });
 
-    Assert.equal(statusDiv.getAttribute("status"), "please",
-      "Should have been showing crash report UI");
+    Assert.equal(
+      statusDiv.getAttribute("status"),
+      "please",
+      "Should have been showing crash report UI"
+    );
   });
 
   await BrowserTestUtils.closeWindow(win);

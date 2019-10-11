@@ -2,26 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*jshint bitwise: true, camelcase: false, curly: false, eqeqeq: true,
-         es5: true, forin: true, immed: true, indent: 4, latedef: false,
-         newcap: false, noarg: true, noempty: true, nonew: true,
-         plusplus: false, quotmark: false, regexp: true, undef: true,
-         unused: false, strict: false, trailing: true,
-*/
-
-/*global ToObject: false, ToInteger: false, IsCallable: false,
-         ThrowRangeError: false, ThrowTypeError: false,
-         AssertionFailed: false,
-         MakeConstructible: false, DecompileArg: false,
-         RuntimeDefaultLocale: false,
-         NewDenseArray: false,
-         Dump: false,
-         callFunction: false,
-         TO_UINT32: false,
-         JSMSG_NOT_FUNCTION: false, JSMSG_MISSING_FUN_ARG: false,
-         JSMSG_EMPTY_ARRAY_REDUCE: false, JSMSG_CANT_CONVERT_TO: false,
-*/
-
 #include "SelfHostingDefines.h"
 #include "TypedObjectConstants.h"
 
@@ -111,15 +91,6 @@ function ToLength(v) {
 }
 
 // ES2017 draft rev aebf014403a3e641fb1622aec47c40f051943527
-// 7.2.9 SameValue ( x, y )
-function SameValue(x, y) {
-    if (x === y) {
-        return (x !== 0) || (1 / x === 1 / y);
-    }
-    return (x !== x && y !== y);
-}
-
-// ES2017 draft rev aebf014403a3e641fb1622aec47c40f051943527
 // 7.2.10 SameValueZero ( x, y )
 function SameValueZero(x, y) {
     return x === y || (x !== x && y !== y);
@@ -181,7 +152,7 @@ function SpeciesConstructor(obj, defaultConstructor) {
 
     // Step 4.
     if (!IsObject(ctor))
-        ThrowTypeError(JSMSG_NOT_NONNULL_OBJECT, "object's 'constructor' property");
+        ThrowTypeError(JSMSG_OBJECT_REQUIRED, "object's 'constructor' property");
 
     // Steps 5.
     var s = ctor[std_species];

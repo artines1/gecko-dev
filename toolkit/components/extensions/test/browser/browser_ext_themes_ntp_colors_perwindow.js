@@ -11,22 +11,39 @@
  */
 function test_ntp_theme(browser, theme, isBrightText) {
   Services.ppmm.sharedData.flush();
-  return ContentTask.spawn(browser, {
-    isBrightText,
-    background: hexToCSS(theme.colors.ntp_background),
-    color: hexToCSS(theme.colors.ntp_text),
-  }, function({isBrightText, background, color}) {
-    let doc = content.document;
-    ok(doc.body.hasAttribute("lwt-newtab"),
-       "New tab page should have lwt-newtab attribute");
-    is(doc.body.hasAttribute("lwt-newtab-brighttext"), isBrightText,
-       `New tab page should${!isBrightText ? " not" : ""} have lwt-newtab-brighttext attribute`);
+  return ContentTask.spawn(
+    browser,
+    {
+      isBrightText,
+      background: hexToCSS(theme.colors.ntp_background),
+      color: hexToCSS(theme.colors.ntp_text),
+    },
+    function({ isBrightText, background, color }) {
+      let doc = content.document;
+      ok(
+        doc.body.hasAttribute("lwt-newtab"),
+        "New tab page should have lwt-newtab attribute"
+      );
+      is(
+        doc.body.hasAttribute("lwt-newtab-brighttext"),
+        isBrightText,
+        `New tab page should${
+          !isBrightText ? " not" : ""
+        } have lwt-newtab-brighttext attribute`
+      );
 
-    is(content.getComputedStyle(doc.body).backgroundColor, background,
-       "New tab page background should be set.");
-    is(content.getComputedStyle(doc.querySelector(".outer-wrapper")).color, color,
-       "New tab page text color should be set.");
-  });
+      is(
+        content.getComputedStyle(doc.body).backgroundColor,
+        background,
+        "New tab page background should be set."
+      );
+      is(
+        content.getComputedStyle(doc.querySelector(".outer-wrapper")).color,
+        color,
+        "New tab page text color should be set."
+      );
+    }
+  );
 }
 
 /**
@@ -36,21 +53,35 @@ function test_ntp_theme(browser, theme, isBrightText) {
  */
 function test_ntp_default_theme(browser) {
   Services.ppmm.sharedData.flush();
-  return ContentTask.spawn(browser, {
-    background: hexToCSS("#F9F9FA"),
-    color: hexToCSS("#0C0C0D"),
-  }, function({background, color}) {
-    let doc = content.document;
-    ok(!doc.body.hasAttribute("lwt-newtab"),
-       "New tab page should not have lwt-newtab attribute");
-    ok(!doc.body.hasAttribute("lwt-newtab-brighttext"),
-       `New tab page should not have lwt-newtab-brighttext attribute`);
+  return ContentTask.spawn(
+    browser,
+    {
+      background: hexToCSS("#F9F9FA"),
+      color: hexToCSS("#0C0C0D"),
+    },
+    function({ background, color }) {
+      let doc = content.document;
+      ok(
+        !doc.body.hasAttribute("lwt-newtab"),
+        "New tab page should not have lwt-newtab attribute"
+      );
+      ok(
+        !doc.body.hasAttribute("lwt-newtab-brighttext"),
+        `New tab page should not have lwt-newtab-brighttext attribute`
+      );
 
-    is(content.getComputedStyle(doc.body).backgroundColor, background,
-       "New tab page background should be reset.");
-    is(content.getComputedStyle(doc.querySelector(".outer-wrapper")).color, color,
-       "New tab page text color should be reset.");
-  });
+      is(
+        content.getComputedStyle(doc.body).backgroundColor,
+        background,
+        "New tab page background should be reset."
+      );
+      is(
+        content.getComputedStyle(doc.querySelector(".outer-wrapper")).color,
+        color,
+        "New tab page text color should be reset."
+      );
+    }
+  );
 }
 
 add_task(async function test_per_window_ntp_theme() {
@@ -71,17 +102,6 @@ add_task(async function test_per_window_ntp_theme() {
         });
       }
 
-      function createWindow() {
-        return new Promise(resolve => {
-          let listener = win => {
-            browser.windows.onCreated.removeListener(listener);
-            resolve(win);
-          };
-          browser.windows.onCreated.addListener(listener);
-          browser.windows.create();
-        });
-      }
-
       function removeWindow(winId) {
         return new Promise(resolve => {
           let listener = removedWinId => {
@@ -97,14 +117,18 @@ add_task(async function test_per_window_ntp_theme() {
 
       async function checkWindow(theme, isBrightText, winId) {
         let windowChecked = promiseWindowChecked();
-        browser.test.sendMessage("check-window", {theme, isBrightText, winId});
+        browser.test.sendMessage("check-window", {
+          theme,
+          isBrightText,
+          winId,
+        });
         await windowChecked;
       }
 
       const darkTextTheme = {
         colors: {
-          accentcolor: "#add8e6",
-          textcolor: "#000",
+          frame: "#add8e6",
+          tab_background_text: "#000",
           ntp_background: "#add8e6",
           ntp_text: "#000",
         },
@@ -112,15 +136,15 @@ add_task(async function test_per_window_ntp_theme() {
 
       const brightTextTheme = {
         colors: {
-          accentcolor: "#00008b",
-          textcolor: "#add8e6",
+          frame: "#00008b",
+          tab_background_text: "#add8e6",
           ntp_background: "#00008b",
           ntp_text: "#add8e6",
         },
       };
 
-      let {id: winId} = await browser.windows.getCurrent();
-      let {id: secondWinId} = await createWindow();
+      let { id: winId } = await browser.windows.getCurrent();
+      let { id: secondWinId } = await browser.windows.create();
 
       browser.test.log("Test that single window update works");
       await browser.theme.update(winId, darkTextTheme);
@@ -143,21 +167,27 @@ add_task(async function test_per_window_ntp_theme() {
     },
   });
 
-  extension.onMessage("check-window", async ({theme, isBrightText, winId}) => {
-    let win = Services.wm.getOuterWindowWithId(winId);
-    win.gBrowser.removePreloadedBrowser();
-    for (let url of ["about:newtab", "about:home", "about:welcome"]) {
-      info("Opening url: " + url);
-      await BrowserTestUtils.withNewTab({gBrowser: win.gBrowser, url}, async browser => {
-        if (theme) {
-          await test_ntp_theme(browser, theme, isBrightText);
-        } else {
-          await test_ntp_default_theme(browser);
-        }
-      });
+  extension.onMessage(
+    "check-window",
+    async ({ theme, isBrightText, winId }) => {
+      let win = Services.wm.getOuterWindowWithId(winId);
+      win.NewTabPagePreloading.removePreloadedBrowser(win);
+      for (let url of ["about:newtab", "about:home", "about:welcome"]) {
+        info("Opening url: " + url);
+        await BrowserTestUtils.withNewTab(
+          { gBrowser: win.gBrowser, url },
+          async browser => {
+            if (theme) {
+              await test_ntp_theme(browser, theme, isBrightText);
+            } else {
+              await test_ntp_default_theme(browser);
+            }
+          }
+        );
+      }
+      extension.sendMessage("checked-window");
     }
-    extension.sendMessage("checked-window");
-  });
+  );
 
   // BrowserTestUtils.withNewTab waits for about:newtab to load
   // so we disable preloading before running the test.

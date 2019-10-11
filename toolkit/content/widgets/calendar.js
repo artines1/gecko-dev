@@ -30,18 +30,17 @@ function Calendar(options, context) {
     weekHeaders: [],
     setSelection: options.setSelection,
     getDayString: options.getDayString,
-    getWeekHeaderString: options.getWeekHeaderString
+    getWeekHeaderString: options.getWeekHeaderString,
   };
   this.elements = {
     weekHeaders: this._generateNodes(DAYS_IN_A_WEEK, context.weekHeader),
-    daysView: this._generateNodes(options.calViewSize, context.daysView)
+    daysView: this._generateNodes(options.calViewSize, context.daysView),
   };
 
   this._attachEventListeners();
 }
 
 Calendar.prototype = {
-
   /**
    * Set new properties and render them.
    *
@@ -65,25 +64,27 @@ Calendar.prototype = {
   setProps(props) {
     if (props.isVisible) {
       // Transform the days and weekHeaders array for rendering
-      const days = props.days.map(({ dateObj, content, classNames, enabled }) => {
-        return {
-          dateObj,
-          textContent: this.state.getDayString(content),
-          className: classNames.join(" "),
-          enabled
-        };
-      });
+      const days = props.days.map(
+        ({ dateObj, content, classNames, enabled }) => {
+          return {
+            dateObj,
+            textContent: this.state.getDayString(content),
+            className: classNames.join(" "),
+            enabled,
+          };
+        }
+      );
       const weekHeaders = props.weekHeaders.map(({ content, classNames }) => {
         return {
           textContent: this.state.getWeekHeaderString(content),
-          className: classNames.join(" ")
+          className: classNames.join(" "),
         };
       });
       // Update the DOM nodes states
       this._render({
         elements: this.elements.daysView,
         items: days,
-        prevState: this.state.days
+        prevState: this.state.days,
       });
       this._render({
         elements: this.elements.weekHeaders,
@@ -165,5 +166,5 @@ Calendar.prototype = {
    */
   _attachEventListeners() {
     this.context.daysView.addEventListener("click", this);
-  }
+  },
 };

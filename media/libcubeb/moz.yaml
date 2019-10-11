@@ -1,0 +1,23 @@
+# Version of this schema
+schema: 1
+
+bugzilla:
+  # Bugzilla product and component for this directory and subdirectories
+  product: "Core"
+  component: "Audio/Video: cubeb"
+
+# The source from this directory was copied from the cubeb
+# git repository using the update.sh script.  The only changes
+# made were those applied by update.sh and the addition of
+# Makefile.in build files for the Mozilla build system.S
+
+origin:
+  name: "cubeb"
+  description: "Cross platform audio library"
+
+  url: "https://github.com/kinetiknz/cubeb"
+  license: "ISC"
+
+  # update.sh will update this value
+  release: "323ced80197a2b3441d28bb12a4e53d4c30e0221 (2019-08-20 11:20:07 +1200)"
+

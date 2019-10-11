@@ -16,18 +16,15 @@
 #include "nsFrame.h"
 
 // Derived class that allows splitting
-class nsSplittableFrame : public nsFrame
-{
-public:
+class nsSplittableFrame : public nsFrame {
+ public:
   NS_DECL_ABSTRACT_FRAME(nsSplittableFrame)
 
-  virtual void Init(nsIContent*       aContent,
-                    nsContainerFrame* aParent,
-                    nsIFrame*         aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 
-  virtual nsSplittableType GetSplittableType() const override;
-
-  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  void DestroyFrom(nsIFrame* aDestructRoot,
+                   PostDestroyData& aPostDestroyData) override;
 
   /*
    * Frame continuations can be either fluid or not:
@@ -37,17 +34,18 @@ public:
    * A "flow" is a chain of fluid continuations.
    */
 
-  // Get the previous/next continuation, regardless of its type (fluid or non-fluid).
-  virtual nsIFrame* GetPrevContinuation() const override;
-  virtual nsIFrame* GetNextContinuation() const override;
+  // Get the previous/next continuation, regardless of its type (fluid or
+  // non-fluid).
+  nsIFrame* GetPrevContinuation() const final;
+  nsIFrame* GetNextContinuation() const final;
 
   // Set a previous/next non-fluid continuation.
-  virtual void SetPrevContinuation(nsIFrame*) override;
-  virtual void SetNextContinuation(nsIFrame*) override;
+  void SetPrevContinuation(nsIFrame*) final;
+  void SetNextContinuation(nsIFrame*) final;
 
   // Get the first/last continuation for this frame.
-  virtual nsIFrame* FirstContinuation() const override;
-  virtual nsIFrame* LastContinuation() const override;
+  nsIFrame* FirstContinuation() const final;
+  nsIFrame* LastContinuation() const final;
 
 #ifdef DEBUG
   // Can aFrame2 be reached from aFrame1 by following prev/next continuations?
@@ -56,36 +54,36 @@ public:
 #endif
 
   // Get the previous/next continuation, only if it is fluid (an "in-flow").
-  nsIFrame* GetPrevInFlow() const;
-  nsIFrame* GetNextInFlow() const;
-
-  virtual nsIFrame* GetPrevInFlowVirtual() const override { return GetPrevInFlow(); }
-  virtual nsIFrame* GetNextInFlowVirtual() const override { return GetNextInFlow(); }
+  nsIFrame* GetPrevInFlow() const final;
+  nsIFrame* GetNextInFlow() const final;
 
   // Set a previous/next fluid continuation.
-  virtual void SetPrevInFlow(nsIFrame*) override;
-  virtual void SetNextInFlow(nsIFrame*) override;
+  void SetPrevInFlow(nsIFrame*) final;
+  void SetNextInFlow(nsIFrame*) final;
 
   // Get the first/last frame in the current flow.
-  virtual nsIFrame* FirstInFlow() const override;
-  virtual nsIFrame* LastInFlow() const override;
+  nsIFrame* FirstInFlow() const final;
+  nsIFrame* LastInFlow() const final;
 
   // Remove the frame from the flow. Connects the frame's prev-in-flow
-  // and its next-in-flow. This should only be called in frame Destroy() methods.
+  // and its next-in-flow. This should only be called in frame Destroy()
+  // methods.
   static void RemoveFromFlow(nsIFrame* aFrame);
 
-protected:
-  nsSplittableFrame(ComputedStyle* aStyle, ClassID aID)
-    : nsFrame(aStyle, aID)
-    , mPrevContinuation(nullptr)
-    , mNextContinuation(nullptr)
-  {}
+ protected:
+  nsSplittableFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
+                    ClassID aID)
+      : nsFrame(aStyle, aPresContext, aID),
+        mPrevContinuation(nullptr),
+        mNextContinuation(nullptr) {}
 
   /**
-   * Return the sum of the block-axis content size of our prev-in-flows.
+   * Return the sum of the block-axis content size of our previous
+   * continuations.
+   *
    * @param aWM a writing-mode to determine the block-axis
    *
-   * @note (bz) This makes laying out a splittable frame with N in-flows
+   * @note (bz) This makes laying out a splittable frame with N continuations
    *       O(N^2)! So, use this function with caution and minimize the number
    *       of calls to this method.
    */
@@ -93,15 +91,18 @@ protected:
 
   /**
    * Retrieve the effective computed block size of this frame, which is the
-   * computed block size, minus the block size consumed by any previous in-flows.
+   * computed block size, minus the block size consumed by any previous
+   * continuations.
    */
-  nscoord GetEffectiveComputedBSize(const ReflowInput& aReflowInput,
-                                    nscoord aConsumed = NS_INTRINSICSIZE) const;
+  nscoord GetEffectiveComputedBSize(
+      const ReflowInput& aReflowInput,
+      nscoord aConsumed = NS_UNCONSTRAINEDSIZE) const;
 
   /**
    * @see nsIFrame::GetLogicalSkipSides()
    */
-  virtual LogicalSides GetLogicalSkipSides(const ReflowInput* aReflowInput = nullptr) const override;
+  LogicalSides GetLogicalSkipSides(
+      const ReflowInput* aReflowInput = nullptr) const override;
 
   /**
    * A faster version of GetLogicalSkipSides() that is intended to be used
@@ -115,8 +116,8 @@ protected:
    */
   LogicalSides PreReflowBlockLevelLogicalSkipSides() const;
 
-  nsIFrame*   mPrevContinuation;
-  nsIFrame*   mNextContinuation;
+  nsIFrame* mPrevContinuation;
+  nsIFrame* mNextContinuation;
 };
 
 #endif /* nsSplittableFrame_h___ */

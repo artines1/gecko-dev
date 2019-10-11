@@ -1,6 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
+/* import-globals-from head.js */
 
 "use strict";
 
@@ -20,9 +21,9 @@
  * @return {Promise} promise that resolves when "shown" has been fired, reflow
  *         and repaint done.
  */
-async function showTooltip(tooltip, anchor, {position, x, y} = {}) {
+async function showTooltip(tooltip, anchor, { position, x, y } = {}) {
   const onShown = tooltip.once("shown");
-  tooltip.show(anchor, {position, x, y});
+  tooltip.show(anchor, { position, x, y });
   await onShown;
   return waitForReflow(tooltip);
 }
@@ -51,7 +52,7 @@ async function hideTooltip(tooltip) {
  *         have been executed.
  */
 function waitForReflow(tooltip) {
-  const {doc} = tooltip;
+  const { doc } = tooltip;
   return new Promise(resolve => {
     doc.documentElement.offsetWidth;
     doc.defaultView.requestAnimationFrame(resolve);
@@ -72,23 +73,38 @@ function waitForReflow(tooltip) {
  *        - {Number} width: expected tooltip width
  *        - {Number} height: expected tooltip height
  */
-function checkTooltipGeometry(tooltip, anchor,
-    {position, leftAligned = true, height, width} = {}) {
+function checkTooltipGeometry(
+  tooltip,
+  anchor,
+  { position, leftAligned = true, height, width } = {}
+) {
   info("Check the tooltip geometry matches expected position and dimensions");
   const tooltipRect = tooltip.container.getBoundingClientRect();
   const anchorRect = anchor.getBoundingClientRect();
+  const { offsetTop, offsetLeft } = getOffsets(tooltip.doc);
 
   if (position === "top") {
-    is(tooltipRect.bottom, anchorRect.top, "Tooltip is above the anchor");
+    is(
+      tooltipRect.bottom,
+      anchorRect.top + offsetTop,
+      "Tooltip is above the anchor"
+    );
   } else if (position === "bottom") {
-    is(tooltipRect.top, anchorRect.bottom, "Tooltip is below the anchor");
+    is(
+      tooltipRect.top,
+      anchorRect.bottom + offsetTop,
+      "Tooltip is below the anchor"
+    );
   } else {
     ok(false, "Invalid position provided to checkTooltipGeometry");
   }
 
   if (leftAligned) {
-    is(tooltipRect.left, anchorRect.left,
-      "Tooltip left-aligned with the anchor");
+    is(
+      tooltipRect.left,
+      anchorRect.left + offsetLeft,
+      "Tooltip left-aligned with the anchor"
+    );
   }
 
   is(tooltipRect.height, height, "Tooltip has the expected height");

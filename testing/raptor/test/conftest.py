@@ -5,9 +5,12 @@ import os
 
 import pytest
 
+from argparse import Namespace
+
+# need this so raptor imports work both from /raptor and via mach
 here = os.path.abspath(os.path.dirname(__file__))
 
-from raptor.raptor import Raptor
+from raptor.raptor import RaptorDesktopFirefox
 
 
 @pytest.fixture(scope='function')
@@ -24,7 +27,7 @@ def options(request):
 
 @pytest.fixture(scope='function')
 def raptor(options):
-    return Raptor(**options)
+    return RaptorDesktopFirefox(**options)
 
 
 @pytest.fixture(scope='session')
@@ -53,5 +56,28 @@ def get_binary():
         if not binary:
             pytest.skip("could not find a {} binary".format(app))
         return binary
+
+    return inner
+
+
+@pytest.fixture
+def create_args():
+    args = Namespace(app='firefox',
+                     test='raptor-tp6-1',
+                     binary='path/to/binary',
+                     gecko_profile=False,
+                     debug_mode=False,
+                     page_cycles=None,
+                     page_timeout=None,
+                     test_url_params=None,
+                     host=None,
+                     run_local=True)
+
+    def inner(**kwargs):
+        for next_arg in kwargs:
+            print(next_arg)
+            print(kwargs[next_arg])
+            setattr(args, next_arg, kwargs[next_arg])
+        return args
 
     return inner

@@ -9,7 +9,7 @@ Test that openLink function is called if accessible object property is rendered 
 <head>
   <meta charset="utf-8">
   <title>Accessible component test</title>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
   <link rel="stylesheet" href="chrome://devtools/skin/light-theme.css" type="text/css">
 </head>
@@ -28,7 +28,7 @@ window.onload = async function() {
     const { createFactory, createElement } =
       browserRequire("devtools/client/shared/vendor/react");
     const { Provider } = require("devtools/client/shared/vendor/react-redux");
-    const createStore = require("devtools/client/shared/redux/create-store")();
+    const createStore = require("devtools/client/shared/redux/create-store");
     const { Simulate } =
       browserRequire("devtools/client/shared/vendor/react-dom-test-utils");
     const Accessible = createFactory(
@@ -59,7 +59,13 @@ window.onload = async function() {
     let URL = "http://example.com";
     const mockStore = createStore((state, action) =>
       action ? { ...state, ...action } : state,
-      { details: { DOMNode: {}, accessible: { value: URL } } });
+      {
+        initialState: {
+          details: { DOMNode: {}, accessible: { value: URL } },
+          ui: { supports: {} }
+        },
+      }
+    );
     const provider = createElement(Provider, { store: mockStore }, a);
     const accessible = ReactDOM.render(provider, window.document.body);
     ok(accessible, "Should be able to mount Accessible instances");

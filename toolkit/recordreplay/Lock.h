@@ -25,26 +25,27 @@ namespace recordreplay {
 // which they originally occurred.
 
 // Information about a recorded lock.
-class Lock
-{
+class Lock {
   // Unique ID for this lock.
   size_t mId;
 
-public:
-  explicit Lock(size_t aId)
-    : mId(aId)
-  {
-    MOZ_ASSERT(aId);
-  }
+  // When replaying, any thread owning this lock as part of the recording.
+  Atomic<size_t, SequentiallyConsistent, Behavior::DontPreserve> mOwner;
+
+ public:
+  explicit Lock(size_t aId) : mId(aId), mOwner(0) { MOZ_ASSERT(aId); }
 
   size_t Id() { return mId; }
 
   // When recording, this is called after the lock has been acquired, and
   // records the acquire in the lock's acquire order stream. When replaying,
   // this is called before the lock has been acquired, and blocks the thread
-  // until it is next in line to acquire the lock before acquiring it via
-  // aCallback.
-  void Enter(const std::function<void()>& aCallback);
+  // until it is next in line to acquire the lock.
+  void Enter();
+
+  // This is called before releasing the lock, allowing the next owner to
+  // acquire it while replaying.
+  void Exit();
 
   // Create a new Lock corresponding to a native lock, with a fresh ID.
   static void New(void* aNativeLock);
@@ -62,7 +63,7 @@ public:
   static void LockAquiresUpdated(size_t aLockId);
 };
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla
 
-#endif // mozilla_recordreplay_Lock_h
+#endif  // mozilla_recordreplay_Lock_h

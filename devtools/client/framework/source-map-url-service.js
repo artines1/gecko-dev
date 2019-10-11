@@ -19,7 +19,11 @@ const SOURCE_MAP_PREF = "devtools.source-map.client-service.enabled";
  */
 function SourceMapURLService(toolbox, sourceMapService) {
   this._toolbox = toolbox;
-  this._target = toolbox.target;
+  Object.defineProperty(this, "_target", {
+    get() {
+      return toolbox.target;
+    },
+  });
   this._sourceMapService = sourceMapService;
   // Map from content URLs to descriptors.  Descriptors are later
   // passed to the source map worker.
@@ -53,30 +57,45 @@ function SourceMapURLService(toolbox, sourceMapService) {
  */
 SourceMapURLService.prototype._getLoadingPromise = function() {
   if (!this._loadingPromise) {
-    let styleSheetsLoadingPromise = null;
-    this._stylesheetsFront = this._toolbox.initStyleSheetsFront();
-    if (this._stylesheetsFront) {
-      this._stylesheetsFront.on("stylesheet-added", this._onNewStyleSheet);
-      styleSheetsLoadingPromise =
-          this._stylesheetsFront.getStyleSheets().then(sheets => {
-            sheets.forEach(this._onNewStyleSheet);
-          }, () => {
-            // Ignore any protocol-based errors.
-          });
-    }
-
-    // Start fetching the sources now.
-    const loadingPromise = this._toolbox.threadClient.getSources().then(({sources}) => {
-      // Ignore errors.  Register the sources we got; we can't rely on
-      // an event to arrive if the source actor already existed.
-      for (const source of sources) {
-        this._onSourceUpdated({source});
+    this._loadingPromise = (async () => {
+      if (this._target.isWorkerTarget) {
+        return;
       }
-    }, e => {
-      // Also ignore any protocol-based errors.
-    });
+      let styleSheetsLoadingPromise;
+      if (this._target.hasActor("styleSheets")) {
+        this._stylesheetsFront = await this._target.getFront("stylesheets");
+        this._stylesheetsFront.on("stylesheet-added", this._onNewStyleSheet);
+        styleSheetsLoadingPromise = this._stylesheetsFront
+          .getStyleSheets()
+          .then(
+            sheets => {
+              sheets.forEach(this._registerNewStyleSheet, this);
+            },
+            () => {
+              // Ignore any protocol-based errors.
+            }
+          );
+      }
 
-    this._loadingPromise = Promise.all([styleSheetsLoadingPromise, loadingPromise]);
+      // Start fetching the sources now.
+      const loadingPromise = this._toolbox.threadFront.getSources().then(
+        ({ sources }) => {
+          // Ignore errors.  Register the sources we got; we can't rely on
+          // an event to arrive if the source actor already existed.
+          for (const source of sources) {
+            this._registerNewSource(source);
+          }
+        },
+        e => {
+          // Also ignore any protocol-based errors.
+        }
+      );
+
+      if (styleSheetsLoadingPromise) {
+        await styleSheetsLoadingPromise;
+      }
+      await loadingPromise;
+    })();
   }
   return this._loadingPromise;
 };
@@ -89,6 +108,7 @@ SourceMapURLService.prototype.reset = function() {
   this._urls.clear();
   this._subscriptions.clear();
   this._idMap.clear();
+  this._loadingPromise = null;
 };
 
 /**
@@ -104,19 +124,35 @@ SourceMapURLService.prototype.destroy = function() {
     this._stylesheetsFront.off("stylesheet-added", this._onNewStyleSheet);
   }
   Services.prefs.removeObserver(SOURCE_MAP_PREF, this._onPrefChanged);
-  this._target = this._urls = this._subscriptions = this._idMap = null;
+  this._urls = this._subscriptions = this._idMap = null;
 };
 
 /**
  * A helper function that is called when a new source is available.
  */
 SourceMapURLService.prototype._onSourceUpdated = function(sourceEvent) {
+  const url = this._registerNewSource(sourceEvent.source);
+
+  if (url) {
+    // Subscribers might have been added for this file before the
+    // "source-updated" event was fired.
+    this._dispatchSubscribersForURL(url);
+  }
+};
+
+/**
+ * A helper function that registers a new source file with the service.
+ *
+ * @param {SourceActor} source The new source's actor.
+ * @returns {string | undefined} A URL for the registered file,
+ *        if registered successfully.
+ */
+SourceMapURLService.prototype._registerNewSource = function(source) {
   // Maybe we were shut down while waiting.
   if (!this._urls) {
     return;
   }
 
-  const { source } = sourceEvent;
   const { generatedUrl, url, actor: id, sourceMapURL } = source;
 
   // |generatedUrl| comes from the actor and is extracted from the
@@ -124,6 +160,8 @@ SourceMapURLService.prototype._onSourceUpdated = function(sourceEvent) {
   const seenUrl = generatedUrl || url;
   this._urls.set(seenUrl, { id, url: seenUrl, sourceMapURL });
   this._idMap.set(id, seenUrl);
+
+  return seenUrl;
 };
 
 /**
@@ -133,15 +171,34 @@ SourceMapURLService.prototype._onSourceUpdated = function(sourceEvent) {
  *        The new style sheet's actor.
  */
 SourceMapURLService.prototype._onNewStyleSheet = function(sheet) {
+  const url = this._registerNewStyleSheet(sheet);
+
+  if (url) {
+    // Subscribers might have been added for this file before the
+    // "stylesheet-added" event was fired.
+    this._dispatchSubscribersForURL(url);
+  }
+};
+
+/**
+ * A helper function that registers a new stylesheet with the service.
+ * @param {StyleSheetActor} sheet
+ *        The new style sheet's actor.
+ * @returns {string | undefined} A URL for the registered file,
+ *        if registered successfully.
+ */
+SourceMapURLService.prototype._registerNewStyleSheet = function(sheet) {
   // Maybe we were shut down while waiting.
   if (!this._urls) {
     return;
   }
 
-  const {href, nodeHref, sourceMapURL, actorID: id} = sheet;
+  const { href, nodeHref, sourceMapURL, actorID: id } = sheet;
   const url = href || nodeHref;
-  this._urls.set(url, { id, url, sourceMapURL});
+  this._urls.set(url, { id, url, sourceMapURL });
   this._idMap.set(id, url);
+
+  return url;
 };
 
 /**
@@ -164,17 +221,26 @@ SourceMapURLService.prototype.sourceMapChanged = function(id, newUrl) {
     // The source map URL here doesn't actually matter.
     this._urls.set(urlKey, { id, url: newUrl, sourceMapURL: "" });
 
-    // Walk over all the location subscribers, looking for any that
-    // are subscribed to a location coming from |urlKey|.  Then,
-    // re-notify any such subscriber by clearing the stored promise
-    // and forcing a re-evaluation.
-    for (const [, subscriptionEntry] of this._subscriptions) {
-      if (subscriptionEntry.url === urlKey) {
-        // Force an update.
-        subscriptionEntry.promise = null;
-        for (const callback of subscriptionEntry.callbacks) {
-          this._callOneCallback(subscriptionEntry, callback);
-        }
+    this._dispatchSubscribersForURL(urlKey);
+  }
+};
+
+/**
+ * A helper function that dispatches subscribers for a specific URL.
+ * @param {string} urlKey
+ *        The url to trigger subscribers for.
+ */
+SourceMapURLService.prototype._dispatchSubscribersForURL = function(urlKey) {
+  // Walk over all the location subscribers, looking for any that
+  // are subscribed to a location coming from |urlKey|.  Then,
+  // re-notify any such subscriber by clearing the stored promise
+  // and forcing a re-evaluation.
+  for (const [, subscriptionEntry] of this._subscriptions) {
+    if (subscriptionEntry.url === urlKey) {
+      // Force an update.
+      subscriptionEntry.promise = null;
+      for (const callback of subscriptionEntry.callbacks) {
+        this._callOneCallback(subscriptionEntry, callback);
       }
     }
   }
@@ -195,7 +261,11 @@ SourceMapURLService.prototype.sourceMapChanged = function(id, newUrl) {
  * @return Promise
  *        A promise resolving either to the original location, or null.
  */
-SourceMapURLService.prototype.originalPositionFor = async function(url, line, column) {
+SourceMapURLService.prototype.originalPositionFor = async function(
+  url,
+  line,
+  column
+) {
   // Ensure the sources are loaded before replying.
   await this._getLoadingPromise();
 
@@ -212,11 +282,15 @@ SourceMapURLService.prototype.originalPositionFor = async function(url, line, co
   // fetched.  We don't actually need the result of this though.
   await this._sourceMapService.getOriginalURLs(urlInfo);
   const location = { sourceId: urlInfo.id, line, column, sourceUrl: url };
-  const resolvedLocation = await this._sourceMapService.getOriginalLocation(location);
-  if (!resolvedLocation ||
-      (resolvedLocation.line === location.line &&
-       resolvedLocation.column === location.column &&
-       resolvedLocation.sourceUrl === location.sourceUrl)) {
+  const resolvedLocation = await this._sourceMapService.getOriginalLocation(
+    location
+  );
+  if (
+    !resolvedLocation ||
+    (resolvedLocation.line === location.line &&
+      resolvedLocation.column === location.column &&
+      resolvedLocation.sourceUrl === location.sourceUrl)
+  ) {
     return null;
   }
   return resolvedLocation;
@@ -230,8 +304,10 @@ SourceMapURLService.prototype.originalPositionFor = async function(url, line, co
  * @param {Function} callback
  *                 The callback to call; @see subscribe
  */
-SourceMapURLService.prototype._callOneCallback = async function(subscriptionEntry,
-                                                                 callback) {
+SourceMapURLService.prototype._callOneCallback = async function(
+  subscriptionEntry,
+  callback
+) {
   // If source maps are disabled, immediately call with just "false".
   if (!this._prefValue) {
     callback(false);
@@ -239,13 +315,13 @@ SourceMapURLService.prototype._callOneCallback = async function(subscriptionEntr
   }
 
   if (!subscriptionEntry.promise) {
-    const {url, line, column} = subscriptionEntry;
+    const { url, line, column } = subscriptionEntry;
     subscriptionEntry.promise = this.originalPositionFor(url, line, column);
   }
 
   const resolvedLocation = await subscriptionEntry.promise;
   if (resolvedLocation) {
-    const {line, column, sourceUrl} = resolvedLocation;
+    const { line, column, sourceUrl } = resolvedLocation;
     // In case we're racing a pref change, pass the current value
     // here, not plain "true".
     callback(this._prefValue, sourceUrl, line, column);
@@ -274,8 +350,15 @@ SourceMapURLService.prototype._callOneCallback = async function(subscriptionEntr
  *                 location.  If false, then source maps are disabled
  *                 and the generated location should be used; in this
  *                 case the remaining arguments should be ignored.
+ * @returns {Function | undefined} An unsubscribe function or undefined if the service
+ *                                 was destroyed.
  */
-SourceMapURLService.prototype.subscribe = function(url, line, column, callback) {
+SourceMapURLService.prototype.subscribe = function(
+  url,
+  line,
+  column,
+  callback
+) {
   if (!this._subscriptions) {
     return;
   }
@@ -298,6 +381,8 @@ SourceMapURLService.prototype.subscribe = function(url, line, column, callback) 
   if (this._prefValue) {
     this._callOneCallback(subscriptionEntry, callback);
   }
+
+  return () => this.unsubscribe(url, line, column, callback);
 };
 
 /**
@@ -312,7 +397,12 @@ SourceMapURLService.prototype.subscribe = function(url, line, column, callback) 
  * @param {Function} callback
  *                 The callback.
  */
-SourceMapURLService.prototype.unsubscribe = function(url, line, column, callback) {
+SourceMapURLService.prototype.unsubscribe = function(
+  url,
+  line,
+  column,
+  callback
+) {
   if (!this._subscriptions) {
     return;
   }

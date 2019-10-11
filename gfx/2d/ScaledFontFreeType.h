@@ -14,37 +14,63 @@
 namespace mozilla {
 namespace gfx {
 
-class ScaledFontFreeType : public ScaledFontBase
-{
-public:
+class UnscaledFontFreeType;
+
+class ScaledFontFreeType : public ScaledFontBase {
+ public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(ScaledFontFreeType, override)
 
-  ScaledFontFreeType(cairo_scaled_font_t* aScaledFont,
-                     FT_Face aFace,
-                     const RefPtr<UnscaledFont>& aUnscaledFont,
-                     Float aSize);
+  ScaledFontFreeType(RefPtr<SharedFTFace>&& aFace,
+                     const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
+                     bool aApplySyntheticBold = false);
 
   FontType GetType() const override { return FontType::FREETYPE; }
 
 #ifdef USE_SKIA
-  virtual SkTypeface* GetSkTypeface() override;
+  SkTypeface* CreateSkTypeface() override;
+  void SetupSkFontDrawOptions(SkFont& aFont) override;
 #endif
+
+  AntialiasMode GetDefaultAAMode() override { return AntialiasMode::GRAY; }
+
+  bool UseSubpixelPosition() const;
 
   bool CanSerialize() override { return true; }
 
   bool GetFontInstanceData(FontInstanceDataOutput aCb, void* aBaton) override;
 
-  bool GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* aOutOptions,
-                                Maybe<wr::FontInstancePlatformOptions>* aOutPlatformOptions,
-                                std::vector<FontVariation>* aOutVariations) override;
+  bool GetWRFontInstanceOptions(
+      Maybe<wr::FontInstanceOptions>* aOutOptions,
+      Maybe<wr::FontInstancePlatformOptions>* aOutPlatformOptions,
+      std::vector<FontVariation>* aOutVariations) override;
 
   bool HasVariationSettings() override;
 
-private:
-  FT_Face mFace;
+ protected:
+#ifdef USE_CAIRO_SCALED_FONT
+  cairo_font_face_t* CreateCairoFontFace(
+      cairo_font_options_t* aFontOptions) override;
+#endif
+
+ private:
+  friend UnscaledFontFreeType;
+
+  RefPtr<SharedFTFace> mFace;
+
+  bool mApplySyntheticBold;
+
+  struct InstanceData {
+    explicit InstanceData(ScaledFontFreeType* aScaledFont)
+        : mApplySyntheticBold(aScaledFont->mApplySyntheticBold) {}
+
+    InstanceData(const wr::FontInstanceOptions* aOptions,
+                 const wr::FontInstancePlatformOptions* aPlatformOptions);
+
+    bool mApplySyntheticBold;
+  };
 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif /* MOZILLA_GFX_SCALEDFONTCAIRO_H_ */

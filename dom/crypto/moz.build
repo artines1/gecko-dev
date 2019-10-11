@@ -13,7 +13,6 @@ EXPORTS.mozilla.dom += [
     'KeyAlgorithmProxy.h',
     'WebCryptoCommon.h',
     'WebCryptoTask.h',
-    'WebCryptoThreadPool.h'
 ]
 
 UNIFIED_SOURCES += [
@@ -21,7 +20,6 @@ UNIFIED_SOURCES += [
     'CryptoKey.cpp',
     'KeyAlgorithmProxy.cpp',
     'WebCryptoTask.cpp',
-    'WebCryptoThreadPool.cpp',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -30,8 +28,8 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '/security/manager/ssl',
-    '/security/pkix/include',
     '/xpcom/build',
 ]
 
 MOCHITEST_MANIFESTS += ['test/mochitest.ini']
+BROWSER_CHROME_MANIFESTS += ['test/browser/browser.ini']

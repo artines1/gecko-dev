@@ -4,21 +4,37 @@
 
 "use strict";
 
-const { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
+const { BrowserLoader } = ChromeUtils.import(
+  "resource://devtools/client/shared/browser-loader.js"
+);
 const require = BrowserLoader({
   baseURI: "resource://devtools/client/application/",
   window,
 }).require;
 
 const { createFactory } = require("devtools/client/shared/vendor/react");
-const { render, unmountComponentAtNode } = require("devtools/client/shared/vendor/react-dom");
-const Provider = createFactory(require("devtools/client/shared/vendor/react-redux").Provider);
+const {
+  render,
+  unmountComponentAtNode,
+} = require("devtools/client/shared/vendor/react-dom");
+const Provider = createFactory(
+  require("devtools/client/shared/vendor/react-redux").Provider
+);
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
-const { L10nRegistry } = require("resource://gre/modules/L10nRegistry.jsm");
-const Services = require("Services");
+const { l10n } = require("./src/modules/l10n");
 
 const { configureStore } = require("./src/create-store");
 const actions = require("./src/actions/index");
+
+const { WorkersListener } = require("devtools/client/shared/workers-listener");
+
+const {
+  addDebugServiceWorkersListener,
+  canDebugServiceWorkers,
+  removeDebugServiceWorkersListener,
+} = require("devtools/shared/service-workers-debug-helper");
+
+const { services } = require("./src/modules/services");
 
 const App = createFactory(require("./src/components/App"));
 
@@ -28,8 +44,10 @@ const App = createFactory(require("./src/components/App"));
  */
 window.Application = {
   async bootstrap({ toolbox, panel }) {
+    this.handleOnNavigate = this.handleOnNavigate.bind(this);
     this.updateWorkers = this.updateWorkers.bind(this);
     this.updateDomain = this.updateDomain.bind(this);
+    this.updateCanDebugWorkers = this.updateCanDebugWorkers.bind(this);
 
     this.mount = document.querySelector("#mount");
     this.toolbox = toolbox;
@@ -37,46 +55,33 @@ window.Application = {
 
     this.store = configureStore();
     this.actions = bindActionCreators(actions, this.store.dispatch);
+    this.serviceWorkerRegistrationFronts = [];
 
-    const serviceContainer = {
-      selectTool(toolId) {
-        return toolbox.selectTool(toolId);
-      }
-    };
+    services.init(this.toolbox);
 
-    this.client.addListener("workerListChanged", this.updateWorkers);
-    this.client.addListener("serviceWorkerRegistrationListChanged", this.updateWorkers);
-    this.client.addListener("registration-changed", this.updateWorkers);
-    this.client.addListener("processListChanged", this.updateWorkers);
-    this.toolbox.target.on("navigate", this.updateDomain);
+    this.workersListener = new WorkersListener(this.client.mainRoot);
+    this.workersListener.addListener(this.updateWorkers);
+    this.toolbox.target.on("navigate", this.handleOnNavigate);
+    addDebugServiceWorkersListener(this.updateCanDebugWorkers);
 
+    // start up updates for the initial state
     this.updateDomain();
+    this.updateCanDebugWorkers();
     await this.updateWorkers();
 
-    const messageContexts = await this.createMessageContexts();
+    await l10n.init(["devtools/application.ftl"]);
 
     // Render the root Application component.
-    const app = App({ client: this.client, messageContexts, serviceContainer });
+    const app = App({
+      client: this.client,
+      fluentBundles: l10n.getBundles(),
+    });
     render(Provider({ store: this.store }, app), this.mount);
   },
 
-  /**
-   * Retrieve message contexts for the current locales, and return them as an array of
-   * MessageContext elements.
-   */
-  async createMessageContexts() {
-    const locales = Services.locale.getAppLocalesAsBCP47();
-    const generator =
-      L10nRegistry.generateContexts(locales, ["devtools/application.ftl"]);
-
-    // Return value of generateContexts is a generator and should be converted to
-    // a sync iterable before using it with React.
-    const contexts = [];
-    for await (const message of generator) {
-      contexts.push(message);
-    }
-
-    return contexts;
+  handleOnNavigate() {
+    this.updateDomain();
+    this.actions.resetManifest();
   },
 
   async updateWorkers() {
@@ -88,14 +93,15 @@ window.Application = {
     this.actions.updateDomain(this.toolbox.target.url);
   },
 
-  destroy() {
-    this.client.removeListener("workerListChanged", this.updateWorkers);
-    this.client.removeListener("serviceWorkerRegistrationListChanged",
-      this.updateWorkers);
-    this.client.removeListener("registration-changed", this.updateWorkers);
-    this.client.removeListener("processListChanged", this.updateWorkers);
+  updateCanDebugWorkers() {
+    const canDebugWorkers = canDebugServiceWorkers();
+    this.actions.updateCanDebugWorkers(canDebugWorkers);
+  },
 
+  destroy() {
+    this.workersListener.removeListener();
     this.toolbox.target.off("navigate", this.updateDomain);
+    removeDebugServiceWorkersListener(this.updateCanDebugWorkers);
 
     unmountComponentAtNode(this.mount);
     this.mount = null;

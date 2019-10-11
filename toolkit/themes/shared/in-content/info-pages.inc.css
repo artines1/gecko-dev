@@ -45,6 +45,8 @@ body.wide-container {
   margin-inline-start: -2.3em;
   padding-inline-start: 2.3em;
   font-size: 2.2em;
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 .title:-moz-locale-dir(rtl),
@@ -114,7 +116,7 @@ button {
 /* Trees */
 .tree-container {
   margin-top: 1.2em;
-  flex-grow: 1;
+  flex: 1 0px;
   min-height: 12em;
 }
 

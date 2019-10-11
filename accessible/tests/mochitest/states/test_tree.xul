@@ -8,8 +8,7 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="Accessible XUL tree states tests">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
   <script type="application/javascript"
           src="../treeview.js" />
@@ -95,13 +94,8 @@
       gQueue.invoke(); // Will call SimpleTest.finish();
     }
 
-    if (MAC && (navigator.userAgent.includes("Mac OS X 10.6"))) {
-      todo(false,
-           "Re-enable on Mac OS 10.6 after fixing bug 845095 - intermittent orange");
-    } else {
     SimpleTest.waitForExplicitFinish();
     addA11yLoadEvent(doTest);
-    }
   ]]>
   </script>
 

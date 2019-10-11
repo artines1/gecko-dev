@@ -4,16 +4,15 @@
 <window title="Window Open Test"
         onload="runTest()"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-<script type="application/javascript"
-        src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
-<script type="application/javascript"
-        src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
+<script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+<script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
 <script class="testbody" type="application/javascript"><![CDATA[
   SimpleTest.waitForExplicitFinish();
 
   function openWindow(features = "") {
-    return window.openDialog("window_intrinsic_size.xul",
-                             null, "chrome,dialog=no,all," + features);
+    return window.docShell.rootTreeItem.domWindow
+                 .openDialog("window_intrinsic_size.xul",
+                             "", "chrome,dialog=no,all," + features);
   }
 
   function checkWindowSize(win, width, height, msg) {

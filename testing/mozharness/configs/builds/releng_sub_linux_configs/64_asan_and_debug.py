@@ -4,8 +4,6 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'check-test',
-        # 'update',
     ],
     'stage_platform': 'linux64-asan-debug',
     'debug_build': True,

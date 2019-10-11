@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import print_function
+
 import argparse
 import os
 import posixpath
@@ -15,7 +17,7 @@ import mozcrash
 import mozinfo
 import mozlog
 import moznetwork
-from mozdevice import ADBAndroid
+from mozdevice import ADBDevice, ADBError, ADBTimeoutError
 from mozprofile import Profile, DEFAULT_PORTS
 from mozprofile.permissions import ServerLocations
 from runtests import MochitestDesktop, update_mozinfo
@@ -43,19 +45,23 @@ class JUnitTestRunner(MochitestDesktop):
         verbose = False
         if options.log_tbpl_level == 'debug' or options.log_mach_level == 'debug':
             verbose = True
-        self.device = ADBAndroid(adb=options.adbPath or 'adb',
-                                 device=options.deviceSerial,
-                                 test_root=options.remoteTestRoot,
-                                 verbose=verbose)
+        self.device = ADBDevice(adb=options.adbPath or 'adb',
+                                device=options.deviceSerial,
+                                test_root=options.remoteTestRoot,
+                                verbose=verbose)
         self.options = options
         self.log.debug("options=%s" % vars(options))
         update_mozinfo()
         self.remote_profile = posixpath.join(self.device.test_root, 'junit-profile')
 
-        if self.options.coverage and not self.options.coverage_output_path:
-            raise Exception("--coverage-output-path is required when using --enable-coverage")
-        self.remote_coverage_output_path = posixpath.join(self.device.test_root,
-                                                          'junit-coverage.ec')
+        if self.options.coverage and not self.options.coverage_output_dir:
+            raise Exception("--coverage-output-dir is required when using --enable-coverage")
+        if self.options.coverage:
+            self.remote_coverage_output_file = posixpath.join(self.device.test_root,
+                                                              'junit-coverage.ec')
+            self.coverage_output_file = os.path.join(self.options.coverage_output_dir,
+                                                     'junit-coverage.ec')
+
         self.server_init()
 
         self.cleanup()
@@ -64,7 +70,7 @@ class JUnitTestRunner(MochitestDesktop):
         self.startServers(
             self.options,
             debuggerInfo=None,
-            ignoreSSLTunnelExts=True)
+            public=True)
         self.log.debug("Servers started")
 
     def server_init(self):
@@ -153,7 +159,7 @@ class JUnitTestRunner(MochitestDesktop):
         # enable code coverage reports
         if self.options.coverage:
             cmd = cmd + " -e coverage true"
-            cmd = cmd + " -e coverageFile %s" % self.remote_coverage_output_path
+            cmd = cmd + " -e coverageFile %s" % self.remote_coverage_output_file
         # environment
         env = {}
         env["MOZ_CRASHREPORTER"] = "1"
@@ -166,6 +172,10 @@ class JUnitTestRunner(MochitestDesktop):
         env["R_LOG_VERBOSE"] = "1"
         env["R_LOG_LEVEL"] = "6"
         env["R_LOG_DESTINATION"] = "stderr"
+        if self.options.enable_webrender:
+            env["MOZ_WEBRENDER"] = '1'
+        else:
+            env["MOZ_WEBRENDER"] = '0'
         for (env_count, (env_key, env_val)) in enumerate(env.iteritems()):
             cmd = cmd + " -e env%d %s=%s" % (env_count, env_key, env_val)
         # runner
@@ -256,6 +266,7 @@ class JUnitTestRunner(MochitestDesktop):
         # names are not known in advance.
         self.log.suite_start(["geckoview-junit"])
         try:
+            self.device.grant_runtime_permissions(self.options.app)
             cmd = self.build_command_line(test_filters)
             self.log.info("launching %s" % cmd)
             p = self.device.shell(cmd, timeout=self.options.max_time, stdout_callback=callback)
@@ -272,7 +283,14 @@ class JUnitTestRunner(MochitestDesktop):
             self.fail_count = 1
 
         if self.options.coverage:
-            self.device.pull(self.remote_coverage_output_path, self.options.coverage_output_path)
+            try:
+                self.device.pull(self.remote_coverage_output_file,
+                                 self.coverage_output_file)
+            except ADBError:
+                # Avoid a task retry in case the code coverage file is not found.
+                self.log.error("No code coverage file (%s) found on remote device" %
+                               self.remote_coverage_output_file)
+                return -1
 
         return 1 if self.fail_count else 0
 
@@ -290,8 +308,8 @@ class JUnitTestRunner(MochitestDesktop):
                 # minidumps directory is automatically created when the app
                 # (first) starts, so its lack of presence is a hint that
                 # something went wrong.
-                print "Automation Error: No crash directory (%s) found on remote device" % \
-                    remote_dir
+                print("Automation Error: " +
+                      "No crash directory ({}) found on remote device".format(remote_dir))
                 return True
             self.device.pull(remote_dir, dump_dir)
             crashed = mozcrash.log_crashes(self.log, dump_dir, symbols_path,
@@ -322,12 +340,14 @@ class JunitArgumentParser(argparse.ArgumentParser):
                           type=str,
                           dest="adbPath",
                           default=None,
-                          help="Path to adb executable.")
+                          help="Path to adb binary.")
         self.add_argument("--deviceSerial",
                           action="store",
                           type=str,
                           dest="deviceSerial",
-                          help="adb serial number of remote device.")
+                          help="adb serial number of remote device. This is required "
+                               "when more than one device is connected to the host. "
+                               "Use 'adb devices' to see connected devices. ")
         self.add_argument("--remoteTestRoot",
                           action="store",
                           type=str,
@@ -381,12 +401,12 @@ class JunitArgumentParser(argparse.ArgumentParser):
                           dest="coverage",
                           default=False,
                           help="Enable code coverage collection.")
-        self.add_argument("--coverage-output-path",
+        self.add_argument("--coverage-output-dir",
                           action="store",
                           type=str,
-                          dest="coverage_output_path",
+                          dest="coverage_output_dir",
                           default=None,
-                          help="If collecting code coverage, save the report file to this path.")
+                          help="If collecting code coverage, save the report file in this dir.")
         # Additional options for server.
         self.add_argument("--certificate-path",
                           action="store",
@@ -399,18 +419,23 @@ class JunitArgumentParser(argparse.ArgumentParser):
                           type=str,
                           dest="httpPort",
                           default=DEFAULT_PORTS['http'],
-                          help="Port of the web server for http traffic.")
+                          help="http port of the remote web server.")
         self.add_argument("--remote-webserver",
                           action="store",
                           type=str,
                           dest="remoteWebServer",
-                          help="IP address of the webserver.")
+                          help="IP address of the remote web server.")
         self.add_argument("--ssl-port",
                           action="store",
                           type=str,
                           dest="sslPort",
                           default=DEFAULT_PORTS['https'],
-                          help="Port of the web server for https traffic.")
+                          help="ssl port of the remote web server.")
+        self.add_argument("--enable-webrender",
+                          action="store_true",
+                          dest="enable_webrender",
+                          default=False,
+                          help="Enable the WebRender compositor in Gecko.")
         # Remaining arguments are test filters.
         self.add_argument("test_filters",
                           nargs="*",
@@ -428,17 +453,21 @@ def run_test_harness(parser, options):
     runner = JUnitTestRunner(log, options)
     result = -1
     try:
+        device_exception = False
         result = runner.run_tests(options.test_filters)
     except KeyboardInterrupt:
         log.info("runjunit.py | Received keyboard interrupt")
         result = -1
-    except Exception:
+    except Exception as e:
         traceback.print_exc()
         log.error(
             "runjunit.py | Received unexpected exception while running tests")
         result = 1
+        if isinstance(e, ADBTimeoutError):
+            device_exception = True
     finally:
-        runner.cleanup()
+        if not device_exception:
+            runner.cleanup()
     return result
 
 

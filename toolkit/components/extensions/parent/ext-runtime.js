@@ -1,17 +1,38 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "AddonManager",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "AddonManagerPrivate",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "ExtensionCommon",
-                               "resource://gre/modules/ExtensionCommon.jsm");
-ChromeUtils.defineModuleGetter(this, "ExtensionParent",
-                               "resource://gre/modules/ExtensionParent.jsm");
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "DevToolsShim",
-                               "chrome://devtools-startup/content/DevToolsShim.jsm");
+var { ExtensionParent } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionParent.jsm"
+);
+
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManagerPrivate",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionCommon",
+  "resource://gre/modules/ExtensionCommon.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Services",
+  "resource://gre/modules/Services.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "DevToolsShim",
+  "chrome://devtools-startup/content/DevToolsShim.jsm"
+);
 
 this.runtime = class extends ExtensionAPI {
   constructor(...args) {
@@ -21,7 +42,7 @@ this.runtime = class extends ExtensionAPI {
   }
 
   getAPI(context) {
-    let {extension} = context;
+    let { extension } = context;
     return {
       runtime: {
         onStartup: new EventManager({
@@ -54,11 +75,11 @@ this.runtime = class extends ExtensionAPI {
               switch (extension.startupReason) {
                 case "APP_STARTUP":
                   if (AddonManagerPrivate.browserUpdated) {
-                    fire.sync({reason: "browser_update", temporary});
+                    fire.sync({ reason: "browser_update", temporary });
                   }
                   break;
                 case "ADDON_INSTALL":
-                  fire.sync({reason: "install", temporary});
+                  fire.sync({ reason: "install", temporary });
                   break;
                 case "ADDON_UPGRADE":
                   fire.sync({
@@ -89,9 +110,7 @@ this.runtime = class extends ExtensionAPI {
               fire.sync(details);
             });
             return () => {
-              AddonManager.removeUpgradeListener(instanceID).catch(e => {
-                // This can happen if we try this after shutdown is complete.
-              });
+              AddonManager.removeUpgradeListener(instanceID);
             };
           },
         }).api(),
@@ -115,8 +134,8 @@ this.runtime = class extends ExtensionAPI {
         },
 
         getBrowserInfo: function() {
-          const {name, vendor, version, appBuildID} = Services.appinfo;
-          const info = {name, vendor, version, buildID: appBuildID};
+          const { name, vendor, version, appBuildID } = Services.appinfo;
+          const info = { name, vendor, version, buildID: appBuildID };
           return Promise.resolve(info);
         },
 
@@ -126,7 +145,7 @@ this.runtime = class extends ExtensionAPI {
 
         openOptionsPage: function() {
           if (!extension.manifest.options_ui) {
-            return Promise.reject({message: "No `options_ui` declared"});
+            return Promise.reject({ message: "No `options_ui` declared" });
           }
 
           // This expects openOptionsPage to be defined in the file using this,
@@ -136,7 +155,8 @@ this.runtime = class extends ExtensionAPI {
         },
 
         setUninstallURL: function(url) {
-          if (url.length == 0) {
+          if (url === null || url.length === 0) {
+            extension.uninstallURL = null;
             return Promise.resolve();
           }
 
@@ -144,11 +164,15 @@ this.runtime = class extends ExtensionAPI {
           try {
             uri = new URL(url);
           } catch (e) {
-            return Promise.reject({message: `Invalid URL: ${JSON.stringify(url)}`});
+            return Promise.reject({
+              message: `Invalid URL: ${JSON.stringify(url)}`,
+            });
           }
 
           if (uri.protocol != "http:" && uri.protocol != "https:") {
-            return Promise.reject({message: "url must have the scheme http or https"});
+            return Promise.reject({
+              message: "url must have the scheme http or https",
+            });
           }
 
           extension.uninstallURL = url;
@@ -169,12 +193,18 @@ this.runtime = class extends ExtensionAPI {
           let count = (this.messagingListeners.get(event) || 0) + 1;
           this.messagingListeners.set(event, count);
           if (count == 1) {
-            ExtensionCommon.EventManager.savePersistentListener(extension,
-                                                                "runtime", event);
+            ExtensionCommon.EventManager.savePersistentListener(
+              extension,
+              "runtime",
+              event
+            );
           }
 
-          ExtensionCommon.EventManager.clearOnePrimedListener(extension,
-                                                              "runtime", event);
+          ExtensionCommon.EventManager.clearOnePrimedListener(
+            extension,
+            "runtime",
+            event
+          );
         },
 
         removeMessagingListener: event => {
@@ -184,8 +214,11 @@ this.runtime = class extends ExtensionAPI {
           }
           this.messagingListeners.set(event, --count);
           if (count == 0) {
-            ExtensionCommon.EventManager.clearPersistentListener(extension,
-                                                                 "runtime", event);
+            ExtensionCommon.EventManager.clearPersistentListener(
+              extension,
+              "runtime",
+              event
+            );
           }
         },
       },
@@ -201,7 +234,9 @@ this.runtime = class extends ExtensionAPI {
     // scheduling can inadvertently re-order messages.
     extension.wakeupBackground = () => {
       let promise = fire.wakeup();
-      promise.then(() => { extension.wakeupBackground = undefined; });
+      promise.then(() => {
+        extension.wakeupBackground = undefined;
+      });
       extension.wakeupBackground = () => promise;
       return promise;
     };

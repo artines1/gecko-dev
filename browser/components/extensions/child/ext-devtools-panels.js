@@ -1,13 +1,24 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "ExtensionChildDevToolsUtils",
-                               "resource://gre/modules/ExtensionChildDevToolsUtils.jsm");
+var { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-var {
-  promiseDocumentLoaded,
-} = ExtensionUtils;
+XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
+
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionChildDevToolsUtils",
+  "resource://gre/modules/ExtensionChildDevToolsUtils.jsm"
+);
+
+var { promiseDocumentLoaded } = ExtensionUtils;
 
 /**
  * Represents an addon devtools panel in the child process.
@@ -19,7 +30,7 @@ var {
  *   The id of the addon devtools panel registered in the main process.
  */
 class ChildDevToolsPanel extends ExtensionCommon.EventEmitter {
-  constructor(context, {id}) {
+  constructor(context, { id }) {
     super();
 
     this.context = context;
@@ -39,8 +50,10 @@ class ChildDevToolsPanel extends ExtensionCommon.EventEmitter {
     }
 
     for (let view of this.context.extension.devtoolsViews) {
-      if (view.viewType === "devtools_panel" &&
-          view.devtoolsToolboxInfo.toolboxPanelId === this.id) {
+      if (
+        view.viewType === "devtools_panel" &&
+        view.devtoolsToolboxInfo.toolboxPanelId === this.id
+      ) {
         this._panelContext = view;
 
         // Reset the cached _panelContext property when the view is closed.
@@ -56,7 +69,7 @@ class ChildDevToolsPanel extends ExtensionCommon.EventEmitter {
     return null;
   }
 
-  receiveMessage({name, data}) {
+  receiveMessage({ name, data }) {
     // Filter out any message that is not related to the id of this
     // toolbox panel.
     if (!data || data.toolboxPanelId !== this.id) {
@@ -79,7 +92,7 @@ class ChildDevToolsPanel extends ExtensionCommon.EventEmitter {
   }
 
   onParentPanelShown() {
-    const {document} = this.panelContext.contentWindow;
+    const { document } = this.panelContext.contentWindow;
 
     // Ensure that the onShown event is fired when the panel document has
     // been fully loaded.
@@ -145,7 +158,7 @@ class ChildDevToolsPanel extends ExtensionCommon.EventEmitter {
  *   The id of the addon devtools sidebar registered in the main process.
  */
 class ChildDevToolsInspectorSidebar extends ExtensionCommon.EventEmitter {
-  constructor(context, {id}) {
+  constructor(context, { id }) {
     super();
 
     this.context = context;
@@ -155,17 +168,26 @@ class ChildDevToolsInspectorSidebar extends ExtensionCommon.EventEmitter {
 
     this.mm = context.messageManager;
     this.mm.addMessageListener("Extension:DevToolsInspectorSidebarShown", this);
-    this.mm.addMessageListener("Extension:DevToolsInspectorSidebarHidden", this);
+    this.mm.addMessageListener(
+      "Extension:DevToolsInspectorSidebarHidden",
+      this
+    );
   }
 
   close() {
-    this.mm.removeMessageListener("Extension:DevToolsInspectorSidebarShown", this);
-    this.mm.removeMessageListener("Extension:DevToolsInspectorSidebarHidden", this);
+    this.mm.removeMessageListener(
+      "Extension:DevToolsInspectorSidebarShown",
+      this
+    );
+    this.mm.removeMessageListener(
+      "Extension:DevToolsInspectorSidebarHidden",
+      this
+    );
 
     this.content = null;
   }
 
-  receiveMessage({name, data}) {
+  receiveMessage({ name, data }) {
     // Filter out any message that is not related to the id of this
     // toolbox panel.
     if (!data || data.inspectorSidebarId !== this.id) {
@@ -192,7 +214,29 @@ class ChildDevToolsInspectorSidebar extends ExtensionCommon.EventEmitter {
   }
 
   api() {
-    const {context, id} = this;
+    const { context, id } = this;
+
+    let extensionURL = new URL("/", context.uri.spec);
+
+    // This is currently needed by sidebar.setPage because API objects are not automatically wrapped
+    // by the API Schema validations and so the ExtensionURL type used in the JSON schema
+    // doesn't have any effect on the parameter received by the setPage API method.
+    function resolveExtensionURL(url) {
+      let sidebarPageURL = new URL(url, context.uri.spec);
+
+      if (
+        extensionURL.protocol !== sidebarPageURL.protocol ||
+        extensionURL.host !== sidebarPageURL.host
+      ) {
+        throw new context.cloneScope.Error(
+          `Invalid sidebar URL: ${
+            sidebarPageURL.href
+          } is not a valid extension URL`
+        );
+      }
+
+      return sidebarPageURL.href;
+    }
 
     return {
       onShown: new EventManager({
@@ -222,6 +266,15 @@ class ChildDevToolsInspectorSidebar extends ExtensionCommon.EventEmitter {
           };
         },
       }).api(),
+
+      setPage(extensionPageURL) {
+        let resolvedSidebarURL = resolveExtensionURL(extensionPageURL);
+
+        return context.childManager.callParentAsyncFunction(
+          "devtools.panels.elements.Sidebar.setPage",
+          [id, resolvedSidebarURL]
+        );
+      },
 
       setObject(jsonObject, rootTitle) {
         return context.cloneScope.Promise.resolve().then(() => {
@@ -259,13 +312,19 @@ this.devtools_panels = class extends ExtensionAPI {
               // chrome privileged code).
               return context.cloneScope.Promise.resolve().then(async () => {
                 const sidebarId = await context.childManager.callParentAsyncFunction(
-                  "devtools.panels.elements.createSidebarPane", [title]);
+                  "devtools.panels.elements.createSidebarPane",
+                  [title]
+                );
 
-                const sidebar = new ChildDevToolsInspectorSidebar(context, {id: sidebarId});
+                const sidebar = new ChildDevToolsInspectorSidebar(context, {
+                  id: sidebarId,
+                });
 
-                const sidebarAPI = Cu.cloneInto(sidebar.api(),
-                                                context.cloneScope,
-                                                {cloneFunctions: true});
+                const sidebarAPI = Cu.cloneInto(
+                  sidebar.api(),
+                  context.cloneScope,
+                  { cloneFunctions: true }
+                );
 
                 return sidebarAPI;
               });
@@ -278,13 +337,19 @@ this.devtools_panels = class extends ExtensionAPI {
             // chrome privileged code).
             return context.cloneScope.Promise.resolve().then(async () => {
               const panelId = await context.childManager.callParentAsyncFunction(
-                "devtools.panels.create", [title, icon, url]);
+                "devtools.panels.create",
+                [title, icon, url]
+              );
 
-              const devtoolsPanel = new ChildDevToolsPanel(context, {id: panelId});
+              const devtoolsPanel = new ChildDevToolsPanel(context, {
+                id: panelId,
+              });
 
-              const devtoolsPanelAPI = Cu.cloneInto(devtoolsPanel.api(),
-                                                    context.cloneScope,
-                                                    {cloneFunctions: true});
+              const devtoolsPanelAPI = Cu.cloneInto(
+                devtoolsPanel.api(),
+                context.cloneScope,
+                { cloneFunctions: true }
+              );
               return devtoolsPanelAPI;
             });
           },

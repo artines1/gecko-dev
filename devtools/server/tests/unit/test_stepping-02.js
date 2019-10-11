@@ -8,71 +8,49 @@
  * Check basic step-in functionality.
  */
 
-var gDebuggee;
-var gClient;
-var gCallback;
+add_task(
+  threadFrontTest(async ({ threadFront, debuggee }) => {
+    dumpn("Evaluating test code and waiting for first debugger statement");
+    const dbgStmt = await executeOnNextTickAndWaitForPause(
+      () => evaluateTestCode(debuggee),
+      threadFront
+    );
+    equal(
+      dbgStmt.frame.where.line,
+      2,
+      "Should be at debugger statement on line 2"
+    );
+    equal(debuggee.a, undefined);
+    equal(debuggee.b, undefined);
 
-function run_test() {
-  do_test_pending();
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-}
+    const step1 = await stepIn(threadFront);
+    equal(step1.why.type, "resumeLimit");
+    equal(step1.frame.where.line, 3);
+    equal(debuggee.a, undefined);
+    equal(debuggee.b, undefined);
 
-function run_test_with_server(server, callback) {
-  gCallback = callback;
-  initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-stepping", server);
-  gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect(test_simple_stepping);
-}
+    const step3 = await stepIn(threadFront);
+    equal(step3.why.type, "resumeLimit");
+    equal(step3.frame.where.line, 4);
+    equal(debuggee.a, 1);
+    equal(debuggee.b, undefined);
 
-async function test_simple_stepping() {
-  const [attachResponse,, threadClient] = await attachTestTabAndResume(
-    gClient,
-    "test-stepping"
-  );
+    const step4 = await stepIn(threadFront);
+    equal(step4.why.type, "resumeLimit");
+    equal(step4.frame.where.line, 4);
+    equal(debuggee.a, 1);
+    equal(debuggee.b, 2);
+  })
+);
 
-  ok(!attachResponse.error, "Should not get an error attaching");
-
-  dumpn("Evaluating test code and waiting for first debugger statement");
-  const dbgStmt = await executeOnNextTickAndWaitForPause(evaluateTestCode, gClient);
-  equal(dbgStmt.frame.where.line, 2, "Should be at debugger statement on line 2");
-  equal(gDebuggee.a, undefined);
-  equal(gDebuggee.b, undefined);
-
-  const step1 = await stepIn(gClient, threadClient);
-  equal(step1.type, "paused");
-  equal(step1.why.type, "resumeLimit");
-  equal(step1.frame.where.line, 3);
-  equal(gDebuggee.a, undefined);
-  equal(gDebuggee.b, undefined);
-
-  const step3 = await stepIn(gClient, threadClient);
-  equal(step3.type, "paused");
-  equal(step3.why.type, "resumeLimit");
-  equal(step3.frame.where.line, 4);
-  equal(gDebuggee.a, 1);
-  equal(gDebuggee.b, undefined);
-
-  const step4 = await stepIn(gClient, threadClient);
-  equal(step4.type, "paused");
-  equal(step4.why.type, "resumeLimit");
-  equal(step4.frame.where.line, 4);
-  equal(gDebuggee.a, 1);
-  equal(gDebuggee.b, 2);
-
-  finishClient(gClient, gCallback);
-}
-
-function evaluateTestCode() {
+function evaluateTestCode(debuggee) {
   /* eslint-disable */
   Cu.evalInSandbox(
     `                                   // 1
     debugger;                           // 2
     var a = 1;                          // 3
     var b = 2;`,                        // 4
-    gDebuggee,
+    debuggee,
     "1.8",
     "test_stepping-01-test-code.js",
     1

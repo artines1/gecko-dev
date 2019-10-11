@@ -20,10 +20,10 @@ class nsNPAPIPluginInstance;
  * This interface represents a content node that loads objects.
  *
  * Please make sure to update the MozObjectLoadingContent WebIDL
- * interface to mirror this interface when changing it.
+ * mixin to mirror this interface when changing it.
  */
 
-[scriptable, uuid(2eb3195e-3eea-4083-bb1d-d2d70fa35ccb)]
+[scriptable, builtinclass, uuid(2eb3195e-3eea-4083-bb1d-d2d70fa35ccb)]
 interface nsIObjectLoadingContent : nsISupports
 {
   /**
@@ -94,18 +94,11 @@ interface nsIObjectLoadingContent : nsISupports
   unsigned long getContentTypeForMIMEType(in AUTF8String aMimeType);
 
   /**
-   * Returns the base URI of the object as seen by plugins. This differs from
-   * the normal codebase in that it takes <param> tags and plugin-specific
-   * quirks into account.
-   */
-  [noscript] readonly attribute nsIURI baseURI;
-
-  /**
    * Returns the plugin instance if it has already been instantiated. This
    * will never instantiate the plugin and so is safe to call even when
    * content script must not execute.
    */
-  [noscript] readonly attribute nsNPAPIPluginInstancePtr pluginInstance;
+  [notxpcom,nostdcall] readonly attribute nsNPAPIPluginInstancePtr pluginInstance;
 
   /**
    * Tells the content about an associated object frame.

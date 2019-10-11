@@ -2,7 +2,7 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
 <?xml-stylesheet href="chrome://devtools/content/shared/widgets/widgets.css" type="text/css"?>
 <?xml-stylesheet href="chrome://devtools/skin/widgets.css" type="text/css"?>
 <?xml-stylesheet href="chrome://devtools/skin/performance.css" type="text/css"?>
@@ -16,18 +16,7 @@
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml">
   <script src="chrome://devtools/content/shared/theme-switching.js"/>
-  <script type="application/javascript" src="performance-controller.js"/>
-  <script type="application/javascript" src="performance-view.js"/>
-  <script type="application/javascript" src="views/overview.js"/>
-  <script type="application/javascript" src="views/toolbar.js"/>
-  <script type="application/javascript" src="views/details-abstract-subview.js"/>
-  <script type="application/javascript" src="views/details-waterfall.js"/>
-  <script type="application/javascript" src="views/details-js-call-tree.js"/>
-  <script type="application/javascript" src="views/details-js-flamegraph.js"/>
-  <script type="application/javascript" src="views/details-memory-call-tree.js"/>
-  <script type="application/javascript" src="views/details-memory-flamegraph.js"/>
-  <script type="application/javascript" src="views/details.js"/>
-  <script type="application/javascript" src="views/recordings.js"/>
+  <script src="resource://devtools/client/performance/initializer.js"/>
 
   <popupset id="performance-options-popupset">
     <menupopup id="performance-filter-menupopup" position="before_start"/>

@@ -19,7 +19,6 @@
 #include "nsError.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "mozilla/Mutex.h"
-#include "mozilla/net/ReferrerPolicy.h"
 #include "ImageCacheKey.h"
 
 class imgCacheValidator;
@@ -31,13 +30,14 @@ class nsIProperties;
 class nsIRequest;
 class nsITimedChannel;
 class nsIURI;
+class nsIReferrerInfo;
 
 namespace mozilla {
 namespace image {
 class Image;
 class ProgressTracker;
-} // namespace image
-} // namespace mozilla
+}  // namespace image
+}  // namespace mozilla
 
 struct NewPartResult;
 
@@ -45,14 +45,13 @@ class imgRequest final : public nsIStreamListener,
                          public nsIThreadRetargetableStreamListener,
                          public nsIChannelEventSink,
                          public nsIInterfaceRequestor,
-                         public nsIAsyncVerifyRedirectCallback
-{
+                         public nsIAsyncVerifyRedirectCallback {
   typedef mozilla::image::Image Image;
   typedef mozilla::image::ImageCacheKey ImageCacheKey;
   typedef mozilla::image::ProgressTracker ProgressTracker;
-  typedef mozilla::net::ReferrerPolicy ReferrerPolicy;
+  typedef mozilla::dom::ReferrerPolicy ReferrerPolicy;
 
-public:
+ public:
   imgRequest(imgLoader* aLoader, const ImageCacheKey& aCacheKey);
 
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -63,16 +62,12 @@ public:
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIASYNCVERIFYREDIRECTCALLBACK
 
-  MOZ_MUST_USE nsresult Init(nsIURI* aURI,
-                             nsIURI* aFinalURI,
-                             bool aHadInsecureRedirect,
-                             nsIRequest* aRequest,
-                             nsIChannel* aChannel,
-                             imgCacheEntry* aCacheEntry,
+  MOZ_MUST_USE nsresult Init(nsIURI* aURI, nsIURI* aFinalURI,
+                             bool aHadInsecureRedirect, nsIRequest* aRequest,
+                             nsIChannel* aChannel, imgCacheEntry* aCacheEntry,
                              nsISupports* aCX,
                              nsIPrincipal* aTriggeringPrincipal,
-                             int32_t aCORSMode,
-                             ReferrerPolicy aReferrerPolicy);
+                             int32_t aCORSMode, nsIReferrerInfo* aReferrerInfo);
 
   void ClearLoader();
 
@@ -95,8 +90,9 @@ public:
   // Request that we start decoding the image as soon as data becomes available.
   void StartDecoding();
 
-  inline uint64_t InnerWindowID() const {
-    return mInnerWindowId;
+  inline uint64_t InnerWindowID() const { return mInnerWindowId; }
+  void SetInnerWindowID(uint64_t aInnerWindowId) {
+    mInnerWindowId = aInnerWindowId;
   }
 
   // Set the cache validation information (expiry time, whether we must
@@ -120,13 +116,12 @@ public:
   // The CORS mode for which we loaded this image.
   int32_t GetCORSMode() const { return mCORSMode; }
 
-  // The Referrer Policy in effect when loading this image.
-  ReferrerPolicy GetReferrerPolicy() const { return mReferrerPolicy; }
+  // The ReferrerInfo in effect when loading this image.
+  nsIReferrerInfo* GetReferrerInfo() const { return mReferrerInfo; }
 
   // The principal for the document that loaded this image. Used when trying to
   // validate a CORS image load.
-  already_AddRefed<nsIPrincipal> GetTriggeringPrincipal() const
-  {
+  already_AddRefed<nsIPrincipal> GetTriggeringPrincipal() const {
     nsCOMPtr<nsIPrincipal> principal = mTriggeringPrincipal;
     return principal.forget();
   }
@@ -151,14 +146,10 @@ public:
   // OK to use on any thread.
   nsresult GetURI(nsIURI** aURI);
   nsresult GetFinalURI(nsIURI** aURI);
-  bool IsScheme(const char* aScheme) const;
   bool IsChrome() const;
   bool IsData() const;
 
   nsresult GetImageErrorCode(void);
-
-  /// Returns true if we've received any data.
-  bool HasTransferredData() const;
 
   /// Returns a non-owning pointer to this imgRequest's MIME type.
   const char* GetMimeType() const { return mContentType.get(); }
@@ -177,8 +168,6 @@ public:
   nsIRequest* GetRequest() const { return mRequest; }
 
   nsITimedChannel* GetTimedChannel() const { return mTimedChannel; }
-
-  nsresult GetSecurityInfo(nsISupports** aSecurityInfoOut);
 
   imgCacheValidator* GetValidator() const { return mValidator; }
   void SetValidator(imgCacheValidator* aValidator) { mValidator = aValidator; }
@@ -210,7 +199,9 @@ public:
 
   bool HasConsumers() const;
 
-private:
+  bool ImageAvailable() const;
+
+ private:
   friend class FinishPreparingForNewPartRunnable;
 
   virtual ~imgRequest();
@@ -238,12 +229,12 @@ private:
   nsCOMPtr<nsIURI> mFinalURI;
   // The principal which triggered the load of this image. Generally either
   // the principal of the document the image is being loaded into, or of the
-  // stylesheet which specified the image to load. Used when validating for CORS.
+  // stylesheet which specified the image to load. Used when validating for
+  // CORS.
   nsCOMPtr<nsIPrincipal> mTriggeringPrincipal;
   // The principal of this image.
   nsCOMPtr<nsIPrincipal> mPrincipal;
   nsCOMPtr<nsIProperties> mProperties;
-  nsCOMPtr<nsISupports> mSecurityInfo;
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsIInterfaceRequestor> mPrevChannelSink;
   nsCOMPtr<nsIApplicationCache> mApplicationCache;
@@ -275,13 +266,16 @@ private:
   // default, imgIRequest::CORS_NONE.
   int32_t mCORSMode;
 
-  // The Referrer Policy (defined in ReferrerPolicy.h) used for this image.
-  ReferrerPolicy mReferrerPolicy;
+  // The ReferrerInfo used for this image.
+  nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
 
   nsresult mImageErrorCode;
 
   // The categories of prioritization strategy that have been requested.
   uint32_t mBoostCategoriesRequested = 0;
+
+  // If we've called OnImageAvailable.
+  bool mImageAvailable;
 
   mutable mozilla::Mutex mMutex;
 
@@ -291,11 +285,10 @@ private:
   RefPtr<ProgressTracker> mProgressTracker;
   RefPtr<Image> mImage;
   bool mIsMultiPartChannel : 1;
-  bool mGotData : 1;
   bool mIsInCache : 1;
   bool mDecodeRequested : 1;
   bool mNewPartPending : 1;
   bool mHadInsecureRedirect : 1;
 };
 
-#endif // mozilla_image_imgRequest_h
+#endif  // mozilla_image_imgRequest_h

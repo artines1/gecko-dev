@@ -3,33 +3,55 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
 ChromeUtils.defineModuleGetter(
-  this, "CleanupManager", "resource://normandy/lib/CleanupManager.jsm",
+  this,
+  "AddonStudies",
+  "resource://normandy/lib/AddonStudies.jsm"
 );
 ChromeUtils.defineModuleGetter(
-  this, "AddonStudies", "resource://normandy/lib/AddonStudies.jsm",
+  this,
+  "AddonStudyAction",
+  "resource://normandy/actions/AddonStudyAction.jsm"
 );
 ChromeUtils.defineModuleGetter(
-  this, "RecipeRunner", "resource://normandy/lib/RecipeRunner.jsm",
+  this,
+  "CleanupManager",
+  "resource://normandy/lib/CleanupManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PreferenceExperiments",
+  "resource://normandy/lib/PreferenceExperiments.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "RecipeRunner",
+  "resource://normandy/lib/RecipeRunner.jsm"
 );
 
 var EXPORTED_SYMBOLS = ["AboutPages"];
 
 const SHIELD_LEARN_MORE_URL_PREF = "app.normandy.shieldLearnMoreUrl";
-
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gOptOutStudiesEnabled",
+  "app.shield.optoutstudies.enabled"
+);
 
 /**
  * Class for managing an about: page that Normandy provides. Adapted from
- * browser/extensions/pocket/content/AboutPocket.jsm.
+ * browser/components/pocket/content/AboutPocket.jsm.
  *
  * @implements nsIFactory
  * @implements nsIAboutModule
  */
 class AboutPage {
-  constructor({chromeUrl, aboutHost, classID, description, uriFlags}) {
+  constructor({ chromeUrl, aboutHost, classID, description, uriFlags }) {
     this.chromeUrl = chromeUrl;
     this.aboutHost = aboutHost;
     this.classID = Components.ID(classID);
@@ -47,13 +69,18 @@ class AboutPage {
     channel.originalURI = uri;
 
     if (this.uriFlags & Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT) {
-      const principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
+      const principal = Services.scriptSecurityManager.createContentPrincipal(
+        uri,
+        {}
+      );
       channel.owner = principal;
     }
     return channel;
   }
 }
-AboutPage.prototype.QueryInterface = ChromeUtils.generateQI([Ci.nsIAboutModule]);
+AboutPage.prototype.QueryInterface = ChromeUtils.generateQI([
+  Ci.nsIAboutModule,
+]);
 
 /**
  * The module exported by this file.
@@ -66,7 +93,7 @@ var AboutPages = {
     this.aboutStudies.registerParentListeners();
 
     CleanupManager.addCleanupHandler(() => {
-      // Stop loading processs scripts and notify existing scripts to clean up.
+      // Stop loading process scripts and notify existing scripts to clean up.
       Services.ppmm.broadcastAsyncMessage("Shield:ShuttingDown");
       Services.mm.broadcastAsyncMessage("Shield:ShuttingDown");
 
@@ -87,11 +114,10 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     aboutHost: "studies",
     classID: "{6ab96943-a163-482c-9622-4faedc0e827f}",
     description: "Shield Study Listing",
-    uriFlags: (
-      Ci.nsIAboutModule.ALLOW_SCRIPT
-      | Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT
-      | Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD
-    ),
+    uriFlags:
+      Ci.nsIAboutModule.ALLOW_SCRIPT |
+      Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT |
+      Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD,
   });
 
   // Extra methods for about:study-specific behavior.
@@ -100,8 +126,10 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
      * Register listeners for messages from the content processes.
      */
     registerParentListeners() {
-      Services.mm.addMessageListener("Shield:GetStudyList", this);
-      Services.mm.addMessageListener("Shield:RemoveStudy", this);
+      Services.mm.addMessageListener("Shield:GetAddonStudyList", this);
+      Services.mm.addMessageListener("Shield:GetPreferenceStudyList", this);
+      Services.mm.addMessageListener("Shield:RemoveAddonStudy", this);
+      Services.mm.addMessageListener("Shield:RemovePreferenceStudy", this);
       Services.mm.addMessageListener("Shield:OpenDataPreferences", this);
       Services.mm.addMessageListener("Shield:GetStudiesEnabled", this);
     },
@@ -110,8 +138,10 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
      * Unregister listeners for messages from the content process.
      */
     unregisterParentListeners() {
-      Services.mm.removeMessageListener("Shield:GetStudyList", this);
-      Services.mm.removeMessageListener("Shield:RemoveStudy", this);
+      Services.mm.removeMessageListener("Shield:GetAddonStudyList", this);
+      Services.mm.removeMessageListener("Shield:GetPreferenceStudyList", this);
+      Services.mm.removeMessageListener("Shield:RemoveAddonStudy", this);
+      Services.mm.removeMessageListener("Shield:RemovePreferenceStudy", this);
       Services.mm.removeMessageListener("Shield:OpenDataPreferences", this);
       Services.mm.removeMessageListener("Shield:GetStudiesEnabled", this);
     },
@@ -123,11 +153,20 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
      */
     receiveMessage(message) {
       switch (message.name) {
-        case "Shield:GetStudyList":
-          this.sendStudyList(message.target);
+        case "Shield:GetAddonStudyList":
+          this.sendAddonStudyList(message.target);
           break;
-        case "Shield:RemoveStudy":
-          this.removeStudy(message.data.recipeId, message.data.reason);
+        case "Shield:GetPreferenceStudyList":
+          this.sendPreferenceStudyList(message.target);
+          break;
+        case "Shield:RemoveAddonStudy":
+          this.removeAddonStudy(message.data.recipeId, message.data.reason);
+          break;
+        case "Shield:RemovePreferenceStudy":
+          this.removePreferenceStudy(
+            message.data.experimentName,
+            message.data.reason
+          );
           break;
         case "Shield:OpenDataPreferences":
           this.openDataPreferences();
@@ -139,17 +178,38 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     },
 
     /**
-     * Fetch a list of studies from storage and send it to the process that
-     * requested them.
+     * Fetch a list of add-on studies from storage and send it to the process
+     * that requested them.
      * @param {<browser>} target
      *   XUL <browser> element for the tab containing the about:studies page
      *   that requested a study list.
      */
-    async sendStudyList(target) {
+    async sendAddonStudyList(target) {
       try {
-        target.messageManager.sendAsyncMessage("Shield:ReceiveStudyList", {
+        target.messageManager.sendAsyncMessage("Shield:ReceiveAddonStudyList", {
           studies: await AddonStudies.getAll(),
         });
+      } catch (err) {
+        // The child process might be gone, so no need to throw here.
+        Cu.reportError(err);
+      }
+    },
+
+    /**
+     * Fetch a list of preference studies from storage and send it to the
+     * process that requested them.
+     * @param {<browser>} target
+     *   XUL <browser> element for the tab containing the about:studies page
+     *   that requested a study list.
+     */
+    async sendPreferenceStudyList(target) {
+      try {
+        target.messageManager.sendAsyncMessage(
+          "Shield:ReceivePreferenceStudyList",
+          {
+            studies: await PreferenceExperiments.getAll(),
+          }
+        );
       } catch (err) {
         // The child process might be gone, so no need to throw here.
         Cu.reportError(err);
@@ -168,9 +228,10 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
      */
     sendStudiesEnabled(target) {
       RecipeRunner.checkPrefs();
+      const studiesEnabled = RecipeRunner.enabled && gOptOutStudiesEnabled;
       try {
         target.messageManager.sendAsyncMessage("Shield:ReceiveStudiesEnabled", {
-          studiesEnabled: RecipeRunner.enabled,
+          studiesEnabled,
         });
       } catch (err) {
         // The child process might be gone, so no need to throw here.
@@ -179,31 +240,60 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     },
 
     /**
-     * Disable an active study and remove its add-on.
+     * Disable an active add-on study and remove its add-on.
      * @param {String} studyName
      */
-    async removeStudy(recipeId, reason) {
-      await AddonStudies.stop(recipeId, reason);
+    async removeAddonStudy(recipeId, reason) {
+      try {
+        const action = new AddonStudyAction();
+        await action.unenroll(recipeId, reason);
+      } catch (err) {
+        // If the exception was that the study was already removed, that's ok.
+        // If not, rethrow the error.
+        if (!err.toString().includes("already inactive")) {
+          throw err;
+        }
+      } finally {
+        // Update any open tabs with the new study list now that it has changed,
+        // even if the above failed.
+        Services.mm.broadcastAsyncMessage("Shield:ReceiveAddonStudyList", {
+          studies: await AddonStudies.getAll(),
+        });
+      }
+    },
 
-      // Update any open tabs with the new study list now that it has changed.
-      Services.mm.broadcastAsyncMessage("Shield:ReceiveStudyList", {
-        studies: await AddonStudies.getAll(),
-      });
+    /**
+     * Disable an active preference study
+     * @param {String} studyName
+     */
+    async removePreferenceStudy(experimentName, reason) {
+      try {
+        await PreferenceExperiments.stop(experimentName, { reason });
+      } catch (err) {
+        // If the exception was that the study was already removed, that's ok.
+        // If not, rethrow the error.
+        if (!err.toString().includes("already expired")) {
+          throw err;
+        }
+      } finally {
+        // Update any open tabs with the new study list now that it has changed,
+        // even if the above failed.
+        Services.mm.broadcastAsyncMessage("Shield:ReceivePreferenceStudyList", {
+          studies: await PreferenceExperiments.getAll(),
+        });
+      }
     },
 
     openDataPreferences() {
-      const browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
-      browserWindow.openPreferences("privacy-reports", {origin: "aboutStudies"});
+      const browserWindow = Services.wm.getMostRecentWindow(
+        "navigator:browser"
+      );
+      browserWindow.openPreferences("privacy-reports");
     },
 
     getShieldLearnMoreHref() {
       return Services.urlFormatter.formatURLPref(SHIELD_LEARN_MORE_URL_PREF);
     },
-
-    getStudiesEnabled() {
-      RecipeRunner.checkPrefs();
-      return RecipeRunner.enabled;
-    }
   });
 
   return aboutStudies;

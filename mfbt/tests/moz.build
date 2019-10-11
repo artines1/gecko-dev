@@ -9,6 +9,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT']:
         'gtest',
     ]
 
+# Important: for these tests to be run, they also need to be added
+# to testing/cppunittest.ini.
 CppUnitTests([
     'TestAlgorithm',
     'TestArray',
@@ -30,6 +32,7 @@ CppUnitTests([
     'TestEnumTypeTraits',
     'TestFastBernoulliTrial',
     'TestFloatingPoint',
+    'TestFunctionTypeTraits',
     'TestIntegerPrintfMacros',
     'TestIntegerRange',
     'TestJSONWriter',
@@ -41,6 +44,7 @@ CppUnitTests([
     'TestNonDereferenceable',
     'TestNotNull',
     'TestPair',
+    'TestRandomNum',
     'TestRange',
     'TestRefPtr',
     'TestResult',
@@ -59,12 +63,18 @@ CppUnitTests([
     'TestTypedEnum',
     'TestTypeTraits',
     'TestUniquePtr',
-    'TestUtf8',
     'TestVariant',
     'TestVector',
     'TestWeakPtr',
     'TestWrappingOperations',
     'TestXorShift128PlusRNG',
+])
+
+# Not to be unified with the rest, because this test
+# sets MOZ_PRETEND_NO_JSRUST, which changes the behavior
+# of the included headers.
+CppUnitTests([
+    'TestUtf8',
 ])
 
 if not CONFIG['MOZ_ASAN']:
@@ -77,7 +87,7 @@ DEFINES['IMPL_MFBT'] = True
 
 DisableStlWrapping()
 
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+if CONFIG['CC_TYPE'] == 'clang-cl':
   CXXFLAGS += [
     '-wd4275', # non dll-interface class used as base for dll-interface class
     '-wd4530', # C++ exception handler used, but unwind semantics are not enabled

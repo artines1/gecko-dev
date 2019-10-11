@@ -1,34 +1,45 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 <% from data import SYSTEM_FONT_LONGHANDS %>
 
-<%helpers:shorthand name="font"
-                    sub_properties="font-style font-variant-caps font-weight font-stretch
-                                    font-size line-height font-family
-                                    ${'font-size-adjust' if product == 'gecko' else ''}
-                                    ${'font-kerning' if product == 'gecko' else ''}
-                                    ${'font-optical-sizing' if product == 'gecko' else ''}
-                                    ${'font-variant-alternates' if product == 'gecko' else ''}
-                                    ${'font-variant-east-asian' if product == 'gecko' else ''}
-                                    ${'font-variant-ligatures' if product == 'gecko' else ''}
-                                    ${'font-variant-numeric' if product == 'gecko' else ''}
-                                    ${'font-variant-position' if product == 'gecko' else ''}
-                                    ${'font-language-override' if product == 'gecko' else ''}
-                                    ${'font-feature-settings' if product == 'gecko' else ''}
-                                    ${'font-variation-settings' if product == 'gecko' else ''}"
-                    derive_value_info="False"
-                    spec="https://drafts.csswg.org/css-fonts-3/#propdef-font">
-    use parser::Parse;
-    use properties::longhands::{font_family, font_style, font_weight, font_stretch};
-    use properties::longhands::font_variant_caps;
+<%helpers:shorthand
+    name="font"
+    engines="gecko servo-2013 servo-2020"
+    servo_2020_pref="layout.2020.unimplemented"
+    sub_properties="
+        font-style
+        font-variant-caps
+        font-weight
+        font-stretch
+        font-size
+        line-height
+        font-family
+        ${'font-size-adjust' if engine == 'gecko' else ''}
+        ${'font-kerning' if engine == 'gecko' else ''}
+        ${'font-optical-sizing' if engine == 'gecko' else ''}
+        ${'font-variant-alternates' if engine == 'gecko' else ''}
+        ${'font-variant-east-asian' if engine == 'gecko' else ''}
+        ${'font-variant-ligatures' if engine == 'gecko' else ''}
+        ${'font-variant-numeric' if engine == 'gecko' else ''}
+        ${'font-variant-position' if engine == 'gecko' else ''}
+        ${'font-language-override' if engine == 'gecko' else ''}
+        ${'font-feature-settings' if engine == 'gecko' else ''}
+        ${'font-variation-settings' if engine == 'gecko' else ''}
+    "
+    derive_value_info="False"
+    spec="https://drafts.csswg.org/css-fonts-3/#propdef-font"
+>
+    use crate::parser::Parse;
+    use crate::properties::longhands::{font_family, font_style, font_weight, font_stretch};
+    use crate::properties::longhands::font_variant_caps;
     #[cfg(feature = "gecko")]
-    use properties::longhands::system_font::SystemFont;
-    use values::specified::text::LineHeight;
-    use values::specified::FontSize;
-    use values::specified::font::{FontStretch, FontStretchKeyword};
+    use crate::properties::longhands::system_font::SystemFont;
+    use crate::values::specified::text::LineHeight;
+    use crate::values::specified::FontSize;
+    use crate::values::specified::font::{FontStretch, FontStretchKeyword};
 
     <%
         gecko_sub_properties = "kerning language_override size_adjust \
@@ -37,9 +48,9 @@
                                 variant_position feature_settings \
                                 variation_settings optical_sizing".split()
     %>
-    % if product == "gecko":
+    % if engine == "gecko":
         % for prop in gecko_sub_properties:
-            use properties::longhands::font_${prop};
+            use crate::properties::longhands::font_${prop};
         % endfor
     % endif
     use self::font_family::SpecifiedValue as FontFamily;
@@ -54,7 +65,7 @@
         let mut weight = None;
         let mut stretch = None;
         let size;
-        % if product == "gecko":
+        % if engine == "gecko":
             if let Ok(sys) = input.try(SystemFont::parse) {
                 return Ok(expanded! {
                      % for name in SYSTEM_FONT_LONGHANDS:
@@ -135,7 +146,7 @@
             font_size: size,
             line_height: line_height.unwrap_or(LineHeight::normal()),
             font_family: family,
-            % if product == "gecko":
+            % if engine == "gecko":
                 % for name in gecko_sub_properties:
                     font_${name}: font_${name}::get_initial_specified_value(),
                 % endfor
@@ -143,7 +154,7 @@
         })
     }
 
-    % if product == "gecko":
+    % if engine == "gecko":
         enum CheckSystemResult {
             AllSystem(SystemFont),
             SomeSystem,
@@ -153,7 +164,7 @@
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            % if product == "gecko":
+            % if engine == "gecko":
                 match self.check_system() {
                     CheckSystemResult::AllSystem(sys) => return sys.to_css(dest),
                     CheckSystemResult::SomeSystem => return Ok(()),
@@ -161,7 +172,7 @@
                 }
             % endif
 
-            % if product == "gecko":
+            % if engine == "gecko":
             if let Some(v) = self.font_optical_sizing {
                 if v != &font_optical_sizing::get_initial_specified_value() {
                     return Ok(());
@@ -210,7 +221,7 @@
             self.font_size.to_css(dest)?;
 
             if *self.line_height != LineHeight::normal() {
-                dest.write_str("/")?;
+                dest.write_str(" / ")?;
                 self.line_height.to_css(dest)?;
             }
 
@@ -222,7 +233,7 @@
     }
 
     impl<'a> LonghandsToSerialize<'a> {
-        % if product == "gecko":
+        % if engine == "gecko":
         /// Check if some or all members are system fonts
         fn check_system(&self) -> CheckSystemResult {
             let mut sys = None;
@@ -285,26 +296,27 @@
 </%helpers:shorthand>
 
 <%helpers:shorthand name="font-variant"
+                    engines="gecko servo-2013"
                     flags="SHORTHAND_IN_GETCS"
                     sub_properties="font-variant-caps
-                                    ${'font-variant-alternates' if product == 'gecko' else ''}
-                                    ${'font-variant-east-asian' if product == 'gecko' else ''}
-                                    ${'font-variant-ligatures' if product == 'gecko' else ''}
-                                    ${'font-variant-numeric' if product == 'gecko' else ''}
-                                    ${'font-variant-position' if product == 'gecko' else ''}"
+                                    ${'font-variant-alternates' if engine == 'gecko' else ''}
+                                    ${'font-variant-east-asian' if engine == 'gecko' else ''}
+                                    ${'font-variant-ligatures' if engine == 'gecko' else ''}
+                                    ${'font-variant-numeric' if engine == 'gecko' else ''}
+                                    ${'font-variant-position' if engine == 'gecko' else ''}"
                     spec="https://drafts.csswg.org/css-fonts-3/#propdef-font-variant">
     <% gecko_sub_properties = "alternates east_asian ligatures numeric position".split() %>
     <%
         sub_properties = ["caps"]
-        if product == "gecko":
+        if engine == "gecko":
             sub_properties += gecko_sub_properties
     %>
 
 % for prop in sub_properties:
-    use properties::longhands::font_variant_${prop};
+    use crate::properties::longhands::font_variant_${prop};
 % endfor
     #[allow(unused_imports)]
-    use values::specified::FontVariantLigatures;
+    use crate::values::specified::FontVariantLigatures;
 
     pub fn parse_value<'i, 't>(
         context: &ParserContext,
@@ -319,7 +331,7 @@
         } else if input.try(|input| input.expect_ident_matching("none")).is_ok() {
             // The 'none' value sets 'font-variant-ligatures' to 'none' and resets all other sub properties
             // to their initial value.
-        % if product == "gecko":
+        % if engine == "gecko":
             ligatures = Some(FontVariantLigatures::none());
         % endif
         } else {
@@ -359,7 +371,7 @@
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
 
             let has_none_ligatures =
-            % if product == "gecko":
+            % if engine == "gecko":
                 self.font_variant_ligatures == &FontVariantLigatures::none();
             % else:
                 false;

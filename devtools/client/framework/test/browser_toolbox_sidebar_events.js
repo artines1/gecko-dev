@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -33,35 +31,38 @@ function test() {
 
   gDevTools.registerTool(toolDefinition);
 
-  addTab("about:blank").then(function(aTab) {
-    const target = TargetFactory.forTab(aTab);
-    gDevTools.showToolbox(target, toolDefinition.id).then(function(toolbox) {
-      const panel = toolbox.getPanel(toolDefinition.id);
-      ok(true, "Tool open");
+  addTab("about:blank").then(async function(aTab) {
+    const target = await TargetFactory.forTab(aTab);
+    gDevTools
+      .showToolbox(target, toolDefinition.id)
+      .then(function(toolbox) {
+        const panel = toolbox.getPanel(toolDefinition.id);
+        ok(true, "Tool open");
 
-      panel.once("sidebar-created", function() {
-        collectedEvents.push("sidebar-created");
-      });
+        panel.once("sidebar-created", function() {
+          collectedEvents.push("sidebar-created");
+        });
 
-      panel.once("sidebar-destroyed", function() {
-        collectedEvents.push("sidebar-destroyed");
-      });
+        panel.once("sidebar-destroyed", function() {
+          collectedEvents.push("sidebar-destroyed");
+        });
 
-      const tabbox = panel.panelDoc.getElementById("sidebar");
-      panel.sidebar = new ToolSidebar(tabbox, panel, "testbug1072208", true);
+        const tabbox = panel.panelDoc.getElementById("sidebar");
+        panel.sidebar = new ToolSidebar(tabbox, panel, "testbug1072208", true);
 
-      panel.sidebar.once("show", function() {
-        collectedEvents.push("show");
-      });
+        panel.sidebar.once("show", function() {
+          collectedEvents.push("show");
+        });
 
-      panel.sidebar.once("hide", function() {
-        collectedEvents.push("hide");
-      });
+        panel.sidebar.once("hide", function() {
+          collectedEvents.push("hide");
+        });
 
-      panel.sidebar.once("tab1-selected", () => finishUp(panel));
-      panel.sidebar.addTab("tab1", tab1URL, {selected: true});
-      panel.sidebar.show();
-    }).catch(console.error);
+        panel.sidebar.once("tab1-selected", () => finishUp(panel));
+        panel.sidebar.addTab("tab1", tab1URL, { selected: true });
+        panel.sidebar.show();
+      })
+      .catch(console.error);
   });
 
   function finishUp(panel) {
@@ -69,8 +70,11 @@ function test() {
     panel.sidebar.destroy();
 
     const events = collectedEvents.join(":");
-    is(events, "sidebar-created:show:hide:sidebar-destroyed",
-      "Found the right amount of collected events.");
+    is(
+      events,
+      "sidebar-created:show:hide:sidebar-destroyed",
+      "Found the right amount of collected events."
+    );
 
     panel.toolbox.destroy().then(function() {
       gDevTools.unregisterTool(toolDefinition.id);
@@ -82,4 +86,3 @@ function test() {
     });
   }
 }
-

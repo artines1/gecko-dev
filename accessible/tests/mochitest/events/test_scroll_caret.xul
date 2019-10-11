@@ -6,10 +6,8 @@
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
-  <script type="application/javascript"
-          src="chrome://mochikit/content/chrome-harness.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/chrome-harness.js"/>
 
   <script type="application/javascript"
           src="../common.js" />
@@ -43,7 +41,9 @@
 
       this.invoke = function loadTab_invoke()
       {
-        tabBrowser().loadURI(aURL);
+        tabBrowser().loadURI(aURL, {
+          triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+        });
       }
 
       this.getID = function loadTab_getID()

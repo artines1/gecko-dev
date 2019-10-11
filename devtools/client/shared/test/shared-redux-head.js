@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -43,14 +41,16 @@ function waitUntilState(store, predicate) {
 
 /**
  * Wait until a particular action has been emitted by the store.
- * @param Store store
+ * @param {Store} store
  *        The Redux store being used.
- * @param string actionType
+ * @param {String} actionType
  *        The expected action to wait for.
+ * @param {Number} count
+ *         Number of times to expect the action to occur. Default is once.
  * @return Promise
  *         Resolved once the expected action is emitted by the store.
  */
-function waitUntilAction(store, actionType) {
+function waitUntilAction(store, actionType, count = 1) {
   const deferred = defer();
   const unsubscribe = store.subscribe(check);
   const history = store.history;
@@ -61,8 +61,11 @@ function waitUntilAction(store, actionType) {
     const action = history[index++];
     if (action && action.type === actionType) {
       info(`Found action "${actionType}"`);
-      unsubscribe();
-      deferred.resolve(store.getState());
+      count--;
+      if (count === 0) {
+        unsubscribe();
+        deferred.resolve(store.getState());
+      }
     }
   }
 

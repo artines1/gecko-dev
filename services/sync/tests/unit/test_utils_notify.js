@@ -1,12 +1,10 @@
 _("Make sure notify sends out the right notifications");
-ChromeUtils.import("resource://services-sync/util.js");
-
 add_task(async function run_test() {
   let ret, rightThis, didCall;
   let obj = {
     notify: Utils.notify("foo:"),
     _log: {
-      trace() {}
+      trace() {},
     },
 
     func() {
@@ -23,7 +21,7 @@ add_task(async function run_test() {
         didCall = true;
         throw new Error("covfefe");
       })();
-    }
+    },
   };
 
   let state = 0;
@@ -34,7 +32,7 @@ add_task(async function run_test() {
         this.subject = subject;
         this.topic = obsTopic;
         this.data = data;
-      }
+      },
     };
 
     Svc.Obs.add(topic, obj2);

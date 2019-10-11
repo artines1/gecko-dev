@@ -6,9 +6,10 @@
 #include "GPUProcessImpl.h"
 #include "mozilla/ipc/IOThreadChild.h"
 #include "nsXPCOM.h"
+#include "ProcessUtils.h"
 
 #if defined(OS_WIN) && defined(MOZ_SANDBOX)
-#include "mozilla/sandboxTarget.h"
+#  include "mozilla/sandboxTarget.h"
 #endif
 
 namespace mozilla {
@@ -17,38 +18,62 @@ namespace gfx {
 using namespace ipc;
 
 GPUProcessImpl::GPUProcessImpl(ProcessId aParentPid)
- : ProcessChild(aParentPid)
-{
-}
+    : ProcessChild(aParentPid) {}
 
-GPUProcessImpl::~GPUProcessImpl()
-{
-}
+GPUProcessImpl::~GPUProcessImpl() {}
 
-bool
-GPUProcessImpl::Init(int aArgc, char* aArgv[])
-{
+bool GPUProcessImpl::Init(int aArgc, char* aArgv[]) {
 #if defined(MOZ_SANDBOX) && defined(OS_WIN)
   mozilla::SandboxTarget::Instance()->StartSandbox();
 #endif
   char* parentBuildID = nullptr;
+  char* prefsHandle = nullptr;
+  char* prefMapHandle = nullptr;
+  char* prefsLen = nullptr;
+  char* prefMapSize = nullptr;
   for (int i = 1; i < aArgc; i++) {
+    if (!aArgv[i]) {
+      continue;
+    }
     if (strcmp(aArgv[i], "-parentBuildID") == 0) {
       parentBuildID = aArgv[i + 1];
+
+#ifdef XP_WIN
+    } else if (strcmp(aArgv[i], "-prefsHandle") == 0) {
+      if (++i == aArgc) {
+        return false;
+      }
+      prefsHandle = aArgv[i];
+    } else if (strcmp(aArgv[i], "-prefMapHandle") == 0) {
+      if (++i == aArgc) {
+        return false;
+      }
+      prefMapHandle = aArgv[i];
+#endif
+    } else if (strcmp(aArgv[i], "-prefsLen") == 0) {
+      if (++i == aArgc) {
+        return false;
+      }
+      prefsLen = aArgv[i];
+    } else if (strcmp(aArgv[i], "-prefMapSize") == 0) {
+      if (++i == aArgc) {
+        return false;
+      }
+      prefMapSize = aArgv[i];
     }
   }
 
-  return mGPU.Init(ParentPid(),
-                   parentBuildID,
-                   IOThreadChild::message_loop(),
+  SharedPreferenceDeserializer deserializer;
+  if (!deserializer.DeserializeFromSharedMemory(prefsHandle, prefMapHandle,
+                                                prefsLen, prefMapSize)) {
+    return false;
+  }
+
+  return mGPU.Init(ParentPid(), parentBuildID, IOThreadChild::message_loop(),
                    IOThreadChild::channel());
 }
 
-void
-GPUProcessImpl::CleanUp()
-{
-  NS_ShutdownXPCOM(nullptr);
-}
+void GPUProcessImpl::CleanUp() { NS_ShutdownXPCOM(nullptr); }
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla

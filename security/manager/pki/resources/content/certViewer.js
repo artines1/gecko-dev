@@ -12,19 +12,6 @@
  *           The cert to view, queryable to nsIX509Cert.
  */
 
-const nsIX509Cert = Ci.nsIX509Cert;
-const nsX509CertDB = "@mozilla.org/security/x509certdb;1";
-const nsIX509CertDB = Ci.nsIX509CertDB;
-const nsPK11TokenDB = "@mozilla.org/security/pk11tokendb;1";
-const nsIPK11TokenDB = Ci.nsIPK11TokenDB;
-const nsIASN1Object = Ci.nsIASN1Object;
-const nsIASN1Sequence = Ci.nsIASN1Sequence;
-const nsIASN1PrintableItem = Ci.nsIASN1PrintableItem;
-const nsIASN1Tree = Ci.nsIASN1Tree;
-const nsASN1Tree = "@mozilla.org/security/nsASN1Tree;1";
-
-var bundle;
-
 /**
  * Fills out the "Certificate Hierarchy" tree of the cert viewer "Details" tab.
  *
@@ -54,25 +41,27 @@ function AddCertChain(node, chain) {
 /**
  * Adds a "verified usage" of a cert to the "General" tab of the cert viewer.
  *
- * @param {String} usage
- *        Verified usage to add.
+ * @param {String} l10nId
+ *        l10nId of verified usage to add.
  */
-function AddUsage(usage) {
+function AddUsage(l10nId) {
   let verifyInfoBox = document.getElementById("verify_info_box");
-  let text = document.createElement("textbox");
-  text.setAttribute("value", usage);
+  let text = document.createElementNS("http://www.w3.org/1999/xhtml", "input");
+  document.l10n.setAttributes(text, l10nId);
+  text.setAttribute("data-l10n-attrs", "value");
   text.setAttribute("style", "margin: 2px 5px");
-  text.setAttribute("readonly", "true");
+  text.setAttribute("readonly", "readonly");
   text.setAttribute("class", "scrollfield");
   verifyInfoBox.appendChild(text);
 }
 
 function setWindowName() {
-  bundle = document.getElementById("pippki_bundle");
-
   let cert = window.arguments[0].QueryInterface(Ci.nsIX509Cert);
-  document.title = bundle.getFormattedString("certViewerTitle",
-                                             [cert.displayName]);
+  window.document.l10n.setAttributes(
+    window.document.documentElement,
+    "cert-viewer-title",
+    { certName: cert.displayName }
+  );
 
   //
   //  Set the cert attributes for viewing
@@ -90,22 +79,21 @@ function setWindowName() {
 
 // Map of certificate usage name to localization identifier.
 const certificateUsageToStringBundleName = {
-  certificateUsageSSLClient: "VerifySSLClient",
-  certificateUsageSSLServer: "VerifySSLServer",
-  certificateUsageSSLCA: "VerifySSLCA",
-  certificateUsageEmailSigner: "VerifyEmailSigner",
-  certificateUsageEmailRecipient: "VerifyEmailRecip",
+  certificateUsageSSLClient: "verify-ssl-client",
+  certificateUsageSSLServer: "verify-ssl-server",
+  certificateUsageSSLCA: "verify-ssl-ca",
+  certificateUsageEmailSigner: "verify-email-signer",
+  certificateUsageEmailRecipient: "verify-email-recip",
 };
 
 const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
-const SEC_ERROR_EXPIRED_CERTIFICATE                     = SEC_ERROR_BASE + 11;
-const SEC_ERROR_REVOKED_CERTIFICATE                     = SEC_ERROR_BASE + 12;
-const SEC_ERROR_UNKNOWN_ISSUER                          = SEC_ERROR_BASE + 13;
-const SEC_ERROR_UNTRUSTED_ISSUER                        = SEC_ERROR_BASE + 20;
-const SEC_ERROR_UNTRUSTED_CERT                          = SEC_ERROR_BASE + 21;
-const SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE              = SEC_ERROR_BASE + 30;
-const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED       = SEC_ERROR_BASE + 176;
-
+const SEC_ERROR_EXPIRED_CERTIFICATE = SEC_ERROR_BASE + 11;
+const SEC_ERROR_REVOKED_CERTIFICATE = SEC_ERROR_BASE + 12;
+const SEC_ERROR_UNKNOWN_ISSUER = SEC_ERROR_BASE + 13;
+const SEC_ERROR_UNTRUSTED_ISSUER = SEC_ERROR_BASE + 20;
+const SEC_ERROR_UNTRUSTED_CERT = SEC_ERROR_BASE + 21;
+const SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE = SEC_ERROR_BASE + 30;
+const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED = SEC_ERROR_BASE + 176;
 
 /**
  * Updates the usage display area given the results from asyncDetermineUsages.
@@ -121,54 +109,64 @@ const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED       = SEC_ERROR_BASE + 176;
 function displayUsages(results) {
   document.getElementById("verify_pending").setAttribute("hidden", "true");
   let verified = document.getElementById("verified");
-  let someSuccess = results.some(result =>
-    result.errorCode == PRErrorCodeSuccess
+  let someSuccess = results.some(
+    result => result.errorCode == PRErrorCodeSuccess
   );
   if (someSuccess) {
-    let verifystr = bundle.getString("certVerified");
-    verified.textContent = verifystr;
-    let pipnssBundle = Services.strings.createBundle(
-      "chrome://pipnss/locale/pipnss.properties");
+    document.l10n.setAttributes(verified, "cert-verified");
     results.forEach(result => {
       if (result.errorCode != PRErrorCodeSuccess) {
         return;
       }
-      let bundleName = certificateUsageToStringBundleName[result.usageString];
-      let usage = pipnssBundle.GetStringFromName(bundleName);
-      AddUsage(usage);
+      let usageL10nId = certificateUsageToStringBundleName[result.usageString];
+      AddUsage(usageL10nId);
     });
     AddCertChain("treesetDump", getBestChain(results));
   } else {
     const errorRankings = [
-      { error: SEC_ERROR_REVOKED_CERTIFICATE,
-        bundleString: "certNotVerified_CertRevoked" },
-      { error: SEC_ERROR_UNTRUSTED_CERT,
-        bundleString: "certNotVerified_CertNotTrusted" },
-      { error: SEC_ERROR_UNTRUSTED_ISSUER,
-        bundleString: "certNotVerified_IssuerNotTrusted" },
-      { error: SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED,
-        bundleString: "certNotVerified_AlgorithmDisabled" },
-      { error: SEC_ERROR_EXPIRED_CERTIFICATE,
-        bundleString: "certNotVerified_CertExpired" },
-      { error: SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE,
-        bundleString: "certNotVerified_CAInvalid" },
-      { error: SEC_ERROR_UNKNOWN_ISSUER,
-        bundleString: "certNotVerified_IssuerUnknown" },
+      {
+        error: SEC_ERROR_REVOKED_CERTIFICATE,
+        bundleString: "cert-not-verified-cert-revoked",
+      },
+      {
+        error: SEC_ERROR_UNTRUSTED_CERT,
+        bundleString: "cert-not-verified-cert-not-trusted",
+      },
+      {
+        error: SEC_ERROR_UNTRUSTED_ISSUER,
+        bundleString: "cert-not-verified-issuer-not-trusted",
+      },
+      {
+        error: SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED,
+        bundleString: "cert-not-verified_algorithm-disabled",
+      },
+      {
+        error: SEC_ERROR_EXPIRED_CERTIFICATE,
+        bundleString: "cert-not-verified-cert-expired",
+      },
+      {
+        error: SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE,
+        bundleString: "cert-not-verified-ca-invalid",
+      },
+      {
+        error: SEC_ERROR_UNKNOWN_ISSUER,
+        bundleString: "cert-not-verified-issuer-unknown",
+      },
     ];
-    let verifystr;
+    let errorPresentFlag = false;
     for (let errorRanking of errorRankings) {
-      let errorPresent = results.some(result =>
-        result.errorCode == errorRanking.error
+      let errorPresent = results.some(
+        result => result.errorCode == errorRanking.error
       );
       if (errorPresent) {
-        verifystr = bundle.getString(errorRanking.bundleString);
+        document.l10n.setAttributes(verified, errorRanking.bundleString);
+        errorPresentFlag = true;
         break;
       }
     }
-    if (!verifystr) {
-      verifystr = bundle.getString("certNotVerified_Unknown");
+    if (!errorPresentFlag) {
+      document.l10n.setAttributes(verified, "cert-not-verified-unknown");
     }
-    verified.textContent = verifystr;
   }
   // Notify that we are done determining the certificate's valid usages (this
   // should be treated as an implementation detail that enables tests to run
@@ -177,21 +175,25 @@ function displayUsages(results) {
 }
 
 function addChildrenToTree(parentTree, label, value, addTwistie) {
-  let treeChild1 = document.createElement("treechildren");
-  let treeElement = addTreeItemToTreeChild(treeChild1, label, value,
-                                           addTwistie);
+  let treeChild1 = document.createXULElement("treechildren");
+  let treeElement = addTreeItemToTreeChild(
+    treeChild1,
+    label,
+    value,
+    addTwistie
+  );
   parentTree.appendChild(treeChild1);
   return treeElement;
 }
 
 function addTreeItemToTreeChild(treeChild, label, value, addTwistie) {
-  let treeElem1 = document.createElement("treeitem");
+  let treeElem1 = document.createXULElement("treeitem");
   if (addTwistie) {
     treeElem1.setAttribute("container", "true");
     treeElem1.setAttribute("open", "true");
   }
-  let treeRow = document.createElement("treerow");
-  let treeCell = document.createElement("treecell");
+  let treeRow = document.createXULElement("treerow");
+  let treeCell = document.createXULElement("treecell");
   treeCell.setAttribute("label", label);
   if (value) {
     treeCell.setAttribute("display", value);
@@ -203,8 +205,9 @@ function addTreeItemToTreeChild(treeChild, label, value, addTwistie) {
 }
 
 function displaySelected() {
-  var asn1Tree = document.getElementById("prettyDumpTree")
-          .view.QueryInterface(nsIASN1Tree);
+  var asn1Tree = document
+    .getElementById("prettyDumpTree")
+    .view.QueryInterface(Ci.nsIASN1Tree);
   var items = asn1Tree.selection;
   var certDumpVal = document.getElementById("certDumpVal");
   if (items.currentIndex != -1) {
@@ -216,8 +219,9 @@ function displaySelected() {
 }
 
 function BuildPrettyPrint(cert) {
-  var certDumpTree = Cc[nsASN1Tree].
-                          createInstance(nsIASN1Tree);
+  var certDumpTree = Cc["@mozilla.org/security/nsASN1Tree;1"].createInstance(
+    Ci.nsIASN1Tree
+  );
   certDumpTree.loadASN1Structure(cert.ASN1Structure);
   document.getElementById("prettyDumpTree").view = certDumpTree;
 }
@@ -225,9 +229,10 @@ function BuildPrettyPrint(cert) {
 function addAttributeFromCert(nodeName, value) {
   var node = document.getElementById(nodeName);
   if (!value) {
-    value = bundle.getString("notPresent");
+    document.l10n.setAttributes(node, "not-present");
+    return;
   }
-  node.setAttribute("value", value);
+  node.value = value;
 }
 
 /**
@@ -252,15 +257,18 @@ function DisplayGeneralDataFromCert(cert) {
 }
 
 function updateCertDump() {
-  var asn1Tree = document.getElementById("prettyDumpTree")
-          .view.QueryInterface(nsIASN1Tree);
+  var asn1Tree = document
+    .getElementById("prettyDumpTree")
+    .view.QueryInterface(Ci.nsIASN1Tree);
 
   var tree = document.getElementById("treesetDump");
   if (tree.currentIndex >= 0) {
-    var item = tree.contentView.getItemAtIndex(tree.currentIndex);
+    var item = tree.view.getItemAtIndex(tree.currentIndex);
     var dbKey = item.firstChild.firstChild.getAttribute("display");
     //  Get the cert from the cert database
-    var certdb = Cc[nsX509CertDB].getService(nsIX509CertDB);
+    var certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+      Ci.nsIX509CertDB
+    );
     var cert = certdb.findCertByDBKey(dbKey);
     asn1Tree.loadASN1Structure(cert.ASN1Structure);
   }
@@ -270,8 +278,10 @@ function updateCertDump() {
 function getCurrentCert() {
   var realIndex;
   var tree = document.getElementById("treesetDump");
-  if (tree.view.selection.isSelected(tree.currentIndex)
-      && document.getElementById("prettyprint_tab").selected) {
+  if (
+    tree.view.selection.isSelected(tree.currentIndex) &&
+    document.getElementById("prettyprint_tab").selected
+  ) {
     /* if the user manually selected a cert on the Details tab,
        then take that one  */
     realIndex = tree.currentIndex;
@@ -282,9 +292,11 @@ function getCurrentCert() {
     realIndex = tree.view.rowCount - 1;
   }
   if (realIndex >= 0) {
-    var item = tree.contentView.getItemAtIndex(realIndex);
+    var item = tree.view.getItemAtIndex(realIndex);
     var dbKey = item.firstChild.firstChild.getAttribute("display");
-    var certdb = Cc[nsX509CertDB].getService(nsIX509CertDB);
+    var certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+      Ci.nsIX509CertDB
+    );
     var cert = certdb.findCertByDBKey(dbKey);
     return cert;
   }

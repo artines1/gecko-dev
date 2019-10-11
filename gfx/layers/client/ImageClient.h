@@ -7,18 +7,18 @@
 #ifndef MOZILLA_GFX_IMAGECLIENT_H
 #define MOZILLA_GFX_IMAGECLIENT_H
 
-#include <stdint.h>                     // for uint32_t, uint64_t
-#include <sys/types.h>                  // for int32_t
-#include "mozilla/Attributes.h"         // for override
-#include "mozilla/RefPtr.h"             // for RefPtr, already_AddRefed
-#include "mozilla/gfx/Types.h"          // for SurfaceFormat
+#include <stdint.h>                             // for uint32_t, uint64_t
+#include <sys/types.h>                          // for int32_t
+#include "mozilla/Attributes.h"                 // for override
+#include "mozilla/RefPtr.h"                     // for RefPtr, already_AddRefed
+#include "mozilla/gfx/Types.h"                  // for SurfaceFormat
 #include "mozilla/layers/CompositableClient.h"  // for CompositableClient
-#include "mozilla/layers/CompositorTypes.h"  // for CompositableType, etc
-#include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor
-#include "mozilla/layers/TextureClient.h"  // for TextureClient, etc
-#include "mozilla/mozalloc.h"           // for operator delete
-#include "nsCOMPtr.h"                   // for already_AddRefed
-#include "nsRect.h"                     // for mozilla::gfx::IntRect
+#include "mozilla/layers/CompositorTypes.h"     // for CompositableType, etc
+#include "mozilla/layers/LayersSurfaces.h"      // for SurfaceDescriptor
+#include "mozilla/layers/TextureClient.h"       // for TextureClient, etc
+#include "mozilla/mozalloc.h"                   // for operator delete
+#include "nsCOMPtr.h"                           // for already_AddRefed
+#include "nsRect.h"                             // for mozilla::gfx::IntRect
 
 namespace mozilla {
 namespace layers {
@@ -35,26 +35,26 @@ class ImageClientSingle;
  * always match with an ImageHost on the compositor thread. See
  * CompositableClient.h for information on connecting clients to hosts.
  */
-class ImageClient : public CompositableClient
-{
-public:
+class ImageClient : public CompositableClient {
+ public:
   /**
    * Creates, configures, and returns a new image client. If necessary, a
    * message will be sent to the compositor to create a corresponding image
    * host.
    */
-  static already_AddRefed<ImageClient> CreateImageClient(CompositableType aImageHostType,
-                                                     CompositableForwarder* aFwd,
-                                                     TextureFlags aFlags);
+  static already_AddRefed<ImageClient> CreateImageClient(
+      CompositableType aImageHostType, CompositableForwarder* aFwd,
+      TextureFlags aFlags);
 
-  virtual ~ImageClient() {}
+  virtual ~ImageClient() = default;
 
   /**
    * Update this ImageClient from aContainer in aLayer
    * returns false if this is the wrong kind of ImageClient for aContainer.
    * Note that returning true does not necessarily imply success
    */
-  virtual bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlags) = 0;
+  virtual bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlags,
+                           const Maybe<wr::RenderRoot>& aRenderRoot) = 0;
 
   void SetLayer(ClientLayer* aLayer) { mLayer = aLayer; }
   ClientLayer* GetLayer() const { return mLayer; }
@@ -65,17 +65,21 @@ public:
    */
   virtual void FlushAllImages() {}
 
-  virtual void RemoveTexture(TextureClient* aTexture) override;
+  virtual void RemoveTexture(TextureClient* aTexture,
+                             const Maybe<wr::RenderRoot>& aRenderRoot) override;
 
   virtual ImageClientSingle* AsImageClientSingle() { return nullptr; }
 
-  static already_AddRefed<TextureClient> CreateTextureClientForImage(Image* aImage, KnowsCompositor* aForwarder);
+  static already_AddRefed<TextureClient> CreateTextureClientForImage(
+      Image* aImage, KnowsCompositor* aForwarder);
 
-  uint32_t GetLastUpdateGenerationCounter() { return mLastUpdateGenerationCounter; }
+  uint32_t GetLastUpdateGenerationCounter() {
+    return mLastUpdateGenerationCounter;
+  }
 
   virtual RefPtr<TextureClient> GetForwardedTexture() { return nullptr; }
 
-protected:
+ protected:
   ImageClient(CompositableForwarder* aFwd, TextureFlags aFlags,
               CompositableType aType);
 
@@ -87,30 +91,29 @@ protected:
 /**
  * An image client which uses a single texture client.
  */
-class ImageClientSingle : public ImageClient
-{
-public:
-  ImageClientSingle(CompositableForwarder* aFwd,
-                    TextureFlags aFlags,
+class ImageClientSingle : public ImageClient {
+ public:
+  ImageClientSingle(CompositableForwarder* aFwd, TextureFlags aFlags,
                     CompositableType aType);
 
-  virtual bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlags) override;
+  bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlag,
+                   const Maybe<wr::RenderRoot>& aRenderRoot) override;
 
-  virtual void OnDetach() override;
+  void OnDetach() override;
 
-  virtual bool AddTextureClient(TextureClient* aTexture) override;
+  bool AddTextureClient(TextureClient* aTexture) override;
 
-  virtual TextureInfo GetTextureInfo() const override;
+  TextureInfo GetTextureInfo() const override;
 
-  virtual void FlushAllImages() override;
+  void FlushAllImages() override;
 
   ImageClientSingle* AsImageClientSingle() override { return this; }
 
-  virtual RefPtr<TextureClient> GetForwardedTexture() override;
+  RefPtr<TextureClient> GetForwardedTexture() override;
 
   bool IsEmpty() { return mBuffers.IsEmpty(); }
 
-protected:
+ protected:
   struct Buffer {
     RefPtr<TextureClient> mTextureClient;
     int32_t mImageSerial;
@@ -123,25 +126,21 @@ protected:
  * protocol.
  * We store the ImageBridge id in the TextureClientIdentifier.
  */
-class ImageClientBridge : public ImageClient
-{
-public:
-  ImageClientBridge(CompositableForwarder* aFwd,
-                    TextureFlags aFlags);
+class ImageClientBridge : public ImageClient {
+ public:
+  ImageClientBridge(CompositableForwarder* aFwd, TextureFlags aFlags);
 
-  virtual bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlags) override;
-  virtual bool Connect(ImageContainer* aImageContainer) override { return false; }
+  bool UpdateImage(ImageContainer* aContainer, uint32_t aContentFlags,
+                   const Maybe<wr::RenderRoot>& aRenderRoot) override;
+  bool Connect(ImageContainer* aImageContainer) override { return false; }
 
-  virtual TextureInfo GetTextureInfo() const override
-  {
-    return TextureInfo(mType);
-  }
+  TextureInfo GetTextureInfo() const override { return TextureInfo(mType); }
 
-protected:
+ protected:
   CompositableHandle mAsyncContainerHandle;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

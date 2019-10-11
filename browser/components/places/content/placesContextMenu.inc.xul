@@ -1,7 +1,11 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 <menupopup id="placesContext"
            onpopupshowing="this._view = PlacesUIUtils.getViewForNode(document.popupNode);
                            if (!PlacesUIUtils.openInTabClosesMenu) {
-                             document.getElementById ('placesContext_open:newtab')
+                             document.getElementById('placesContext_open:newtab')
                              .setAttribute('closemenu', 'single');
                            }
                            return this._view.buildContextMenu(this);"
@@ -12,7 +16,8 @@
             accesskey="&cmd.open.accesskey;"
             default="true"
             selectiontype="single"
-            selection="link"/>
+            selection="link"
+            forcehideintabbrowser="true"/>
   <menuitem id="placesContext_open:newtab"
             command="placesCmd_open:tab"
             label="&cmd.open_tab.label;"
@@ -79,7 +84,7 @@
             accesskey="&cutCmd.accesskey;"
             closemenu="single"
             selection="bookmark|folder|separator|query"
-            forcehideselection="tagChild|livemarkChild"/>
+            forcehideselection="tagChild"/>
   <menuitem id="placesContext_copy"
             command="placesCmd_copy"
             label="&copyCmd.label;"
@@ -120,17 +125,10 @@
             accesskey="&cmd.context_sortby_name.accesskey;"
             closemenu="single"
             selection="folder"/>
-  <menuitem id="placesContext_reload"
-            command="placesCmd_reload"
-            label="&cmd.reloadLivebookmark.label;"
-            accesskey="&cmd.reloadLivebookmark.accesskey;"
-            closemenu="single"
-            selection="livemark"/>
   <menuseparator id="placesContext_sortSeparator"/>
   <menuitem id="placesContext_show:info"
             command="placesCmd_show:info"
             label="&cmd.properties.label;"
             accesskey="&cmd.properties.accesskey;"
-            selection="bookmark|folder|query"
-            forcehideselection="livemarkChild"/>
+            selection="bookmark|folder|query"/>
 </menupopup>

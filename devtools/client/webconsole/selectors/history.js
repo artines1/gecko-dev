@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,7 +28,7 @@ function getHistoryValue(state, direction) {
 }
 
 function getNextHistoryValue(state) {
-  if (state.history.position < (state.history.entries.length - 1)) {
+  if (state.history.position < state.history.entries.length - 1) {
     return state.history.entries[state.history.position + 1];
   }
 
@@ -46,8 +44,48 @@ function getPreviousHistoryValue(state) {
   return null;
 }
 
+function getReverseSearchResult(state) {
+  const { history } = state;
+  const {
+    currentReverseSearchResults,
+    currentReverseSearchResultsPosition,
+  } = history;
+
+  if (
+    !Array.isArray(currentReverseSearchResults) ||
+    currentReverseSearchResults.length === 0 ||
+    !Number.isInteger(currentReverseSearchResultsPosition)
+  ) {
+    return null;
+  }
+  return currentReverseSearchResults[currentReverseSearchResultsPosition];
+}
+
+function getReverseSearchResultPosition(state) {
+  const { history } = state;
+  const { currentReverseSearchResultsPosition } = history;
+  if (!Number.isInteger(currentReverseSearchResultsPosition)) {
+    return currentReverseSearchResultsPosition;
+  }
+
+  return currentReverseSearchResultsPosition + 1;
+}
+
+function getReverseSearchTotalResults(state) {
+  const { history } = state;
+  const { currentReverseSearchResults } = history;
+  if (!currentReverseSearchResults) {
+    return null;
+  }
+
+  return currentReverseSearchResults.length;
+}
+
 module.exports = {
   getHistory,
   getHistoryEntries,
   getHistoryValue,
+  getReverseSearchResult,
+  getReverseSearchResultPosition,
+  getReverseSearchTotalResults,
 };

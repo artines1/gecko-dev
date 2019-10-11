@@ -4,8 +4,6 @@
 
 "use strict";
 
-loader.lazyRequireGetter(this, "getCssProperties", "devtools/shared/fronts/css-properties", true);
-
 /**
  * An instance of EditingSession tracks changes that have been made during the
  * modification of box model values. All of these changes can be reverted by
@@ -20,7 +18,7 @@ loader.lazyRequireGetter(this, "getCssProperties", "devtools/shared/fronts/css-p
  *         edited. These should be in order of priority, least
  *         important first.
  */
-function EditingSession({inspector, doc, elementRules}) {
+function EditingSession({ inspector, doc, elementRules }) {
   this._doc = doc;
   this._inspector = inspector;
   this._rules = elementRules;
@@ -28,14 +26,6 @@ function EditingSession({inspector, doc, elementRules}) {
 }
 
 EditingSession.prototype = {
-  get cssProperties() {
-    if (!this._cssProperties) {
-      this._cssProperties = getCssProperties(this._inspector.toolbox);
-    }
-
-    return this._cssProperties;
-  },
-
   /**
    * Gets the value of a single property from the CSS rule.
    *
@@ -120,12 +110,16 @@ EditingSession.prototype = {
       // StyleRuleActor to make changes to CSS properties.
       // Note that RuleRewriter doesn't support modifying several properties at
       // once, so we do this in a sequence here.
-      const modifications = this._rules[0].startModifyingProperties(this.cssProperties);
+      const modifications = this._rules[0].startModifyingProperties(
+        this._inspector.cssProperties
+      );
 
       // Remember the property so it can be reverted.
       if (!this._modifications.has(property.name)) {
-        this._modifications.set(property.name,
-          this.getPropertyFromRule(this._rules[0], property.name));
+        this._modifications.set(
+          property.name,
+          this.getPropertyFromRule(this._rules[0], property.name)
+        );
       }
 
       // Find the index of the property to be changed, or get the next index to
@@ -154,7 +148,9 @@ EditingSession.prototype = {
     // Revert each property that we modified previously, one by one. See
     // setProperties for information about why.
     for (const [property, value] of this._modifications) {
-      const modifications = this._rules[0].startModifyingProperties(this.cssProperties);
+      const modifications = this._rules[0].startModifyingProperties(
+        this._inspector.cssProperties
+      );
 
       // Find the index of the property to be reverted.
       let index = this.getPropertyIndex(property);
@@ -187,7 +183,7 @@ EditingSession.prototype = {
     this._inspector = null;
     this._modifications = null;
     this._rules = null;
-  }
+  },
 };
 
 module.exports = EditingSession;

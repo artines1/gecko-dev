@@ -8,69 +8,64 @@
 
 #include "DOMSVGPoint.h"
 #include "gfxPlatform.h"
-#include "mozilla/gfx/2D.h"
-#include "mozilla/dom/SVGLengthBinding.h"
-#include "nsComputedDOMStyle.h"
+#include "nsCOMPtr.h"
 #include "nsSVGUtils.h"
-#include "nsSVGLength2.h"
-#include "SVGContentUtils.h"
+#include "SVGAnimatedLength.h"
+#include "SVGCircleElement.h"
+#include "SVGEllipseElement.h"
+#include "SVGGeometryProperty.h"
+#include "SVGRectElement.h"
+#include "mozilla/dom/DOMPointBinding.h"
+#include "mozilla/dom/SVGLengthBinding.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/SVGContentUtils.h"
 
-using namespace mozilla;
 using namespace mozilla::gfx;
-using namespace mozilla::dom;
 
-nsSVGElement::NumberInfo SVGGeometryElement::sNumberInfo =
-{ &nsGkAtoms::pathLength, 0, false };
+namespace mozilla {
+namespace dom {
+
+SVGElement::NumberInfo SVGGeometryElement::sNumberInfo = {nsGkAtoms::pathLength,
+                                                          0, false};
 
 //----------------------------------------------------------------------
 // Implementation
 
-SVGGeometryElement::SVGGeometryElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : SVGGeometryElementBase(aNodeInfo)
-{
-}
+SVGGeometryElement::SVGGeometryElement(
+    already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+    : SVGGeometryElementBase(std::move(aNodeInfo)) {}
 
-nsSVGElement::NumberAttributesInfo
-SVGGeometryElement::GetNumberInfo()
-{
+SVGElement::NumberAttributesInfo SVGGeometryElement::GetNumberInfo() {
   return NumberAttributesInfo(&mPathLength, &sNumberInfo, 1);
 }
 
-nsresult
-SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
-                                 const nsAttrValue* aValue,
-                                 const nsAttrValue* aOldValue,
-                                 nsIPrincipal* aSubjectPrincipal,
-                                 bool aNotify)
-{
-  if (mCachedPath &&
-      aNamespaceID == kNameSpaceID_None &&
+nsresult SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+                                          const nsAttrValue* aValue,
+                                          const nsAttrValue* aOldValue,
+                                          nsIPrincipal* aSubjectPrincipal,
+                                          bool aNotify) {
+  if (mCachedPath && aNamespaceID == kNameSpaceID_None &&
       AttributeDefinesGeometry(aName)) {
     mCachedPath = nullptr;
   }
-  return SVGGeometryElementBase::AfterSetAttr(aNamespaceID, aName,
-                                              aValue, aOldValue,
-                                              aSubjectPrincipal,
-                                              aNotify);
+  return SVGGeometryElementBase::AfterSetAttr(
+      aNamespaceID, aName, aValue, aOldValue, aSubjectPrincipal, aNotify);
 }
 
-bool
-SVGGeometryElement::IsNodeOfType(uint32_t aFlags) const
-{
+bool SVGGeometryElement::IsNodeOfType(uint32_t aFlags) const {
   return !(aFlags & ~eSHAPE);
 }
 
-bool
-SVGGeometryElement::AttributeDefinesGeometry(const nsAtom *aName)
-{
+bool SVGGeometryElement::AttributeDefinesGeometry(const nsAtom* aName) {
   if (aName == nsGkAtoms::pathLength) {
     return true;
   }
 
-  // Check for nsSVGLength2 attribute
+  // Check for SVGAnimatedLength attribute
   LengthAttributesInfo info = GetLengthInfo();
   for (uint32_t i = 0; i < info.mLengthCount; i++) {
-    if (aName == *info.mLengthInfo[i].mName) {
+    if (aName == info.mLengthInfo[i].mName) {
       return true;
     }
   }
@@ -78,38 +73,28 @@ SVGGeometryElement::AttributeDefinesGeometry(const nsAtom *aName)
   return false;
 }
 
-bool
-SVGGeometryElement::GeometryDependsOnCoordCtx()
-{
-  // Check the nsSVGLength2 attribute
-  LengthAttributesInfo info = const_cast<SVGGeometryElement*>(this)->GetLengthInfo();
+bool SVGGeometryElement::GeometryDependsOnCoordCtx() {
+  // Check the SVGAnimatedLength attribute
+  LengthAttributesInfo info =
+      const_cast<SVGGeometryElement*>(this)->GetLengthInfo();
   for (uint32_t i = 0; i < info.mLengthCount; i++) {
     if (info.mLengths[i].GetSpecifiedUnitType() ==
-          SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE) {
+        SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE) {
       return true;
     }
   }
   return false;
 }
 
-bool
-SVGGeometryElement::IsMarkable()
-{
-  return false;
-}
+bool SVGGeometryElement::IsMarkable() { return false; }
 
-void
-SVGGeometryElement::GetMarkPoints(nsTArray<nsSVGMark> *aMarks)
-{
-}
+void SVGGeometryElement::GetMarkPoints(nsTArray<SVGMark>* aMarks) {}
 
-already_AddRefed<Path>
-SVGGeometryElement::GetOrBuildPath(const DrawTarget* aDrawTarget,
-                                   FillRule aFillRule)
-{
+already_AddRefed<Path> SVGGeometryElement::GetOrBuildPath(
+    const DrawTarget* aDrawTarget, FillRule aFillRule) {
   // We only cache the path if it matches the backend used for screen painting:
-  bool cacheable  = aDrawTarget->GetBackendType() ==
-                    gfxPlatform::GetPlatform()->GetDefaultContentBackend();
+  bool cacheable = aDrawTarget->GetBackendType() ==
+                   gfxPlatform::GetPlatform()->GetDefaultContentBackend();
 
   if (cacheable && mCachedPath && mCachedPath->GetFillRule() == aFillRule &&
       aDrawTarget->GetBackendType() == mCachedPath->GetBackendType()) {
@@ -124,65 +109,132 @@ SVGGeometryElement::GetOrBuildPath(const DrawTarget* aDrawTarget,
   return path.forget();
 }
 
-already_AddRefed<Path>
-SVGGeometryElement::GetOrBuildPathForMeasuring()
-{
+already_AddRefed<Path> SVGGeometryElement::GetOrBuildPathForMeasuring() {
   RefPtr<DrawTarget> drawTarget =
-    gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
+      gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
   FillRule fillRule = mCachedPath ? mCachedPath->GetFillRule() : GetFillRule();
   return GetOrBuildPath(drawTarget, fillRule);
 }
 
-FillRule
-SVGGeometryElement::GetFillRule()
-{
-  FillRule fillRule = FillRule::FILL_WINDING; // Equivalent to StyleFillRule::Nonzero
+// This helper is currently identical to GetOrBuildPathForMeasuring.
+// We keep it a separate method because for length measuring purpose,
+// fillRule isn't really needed. Derived class (e.g. SVGPathElement)
+// may override GetOrBuildPathForMeasuring() to ignore fillRule. And
+// GetOrBuildPathForMeasuring() itself may be modified in the future.
+already_AddRefed<Path> SVGGeometryElement::GetOrBuildPathForHitTest() {
+  RefPtr<DrawTarget> drawTarget =
+      gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
+  FillRule fillRule = mCachedPath ? mCachedPath->GetFillRule() : GetFillRule();
+  return GetOrBuildPath(drawTarget, fillRule);
+}
 
-  RefPtr<ComputedStyle> computedStyle =
-    nsComputedDOMStyle::GetComputedStyleNoFlush(this, nullptr);
+bool SVGGeometryElement::IsGeometryChangedViaCSS(
+    ComputedStyle const& aNewStyle, ComputedStyle const& aOldStyle) const {
+  if (IsSVGElement(nsGkAtoms::rect)) {
+    return SVGRectElement::IsLengthChangedViaCSS(aNewStyle, aOldStyle);
+  }
 
-  if (computedStyle) {
-    MOZ_ASSERT(computedStyle->StyleSVG()->mFillRule == StyleFillRule::Nonzero ||
-               computedStyle->StyleSVG()->mFillRule == StyleFillRule::Evenodd);
+  if (IsSVGElement(nsGkAtoms::circle)) {
+    return SVGCircleElement::IsLengthChangedViaCSS(aNewStyle, aOldStyle);
+  }
 
-    if (computedStyle->StyleSVG()->mFillRule == StyleFillRule::Evenodd) {
-      fillRule = FillRule::FILL_EVEN_ODD;
-    }
-  } else {
-    // ReportToConsole
+  if (IsSVGElement(nsGkAtoms::ellipse)) {
+    return SVGEllipseElement::IsLengthChangedViaCSS(aNewStyle, aOldStyle);
+  }
+  return false;
+}
+
+FillRule SVGGeometryElement::GetFillRule() {
+  FillRule fillRule =
+      FillRule::FILL_WINDING;  // Equivalent to StyleFillRule::Nonzero
+
+  bool res = SVGGeometryProperty::DoForComputedStyle(
+      this, [&](const ComputedStyle* s) {
+        const auto* styleSVG = s->StyleSVG();
+
+        MOZ_ASSERT(styleSVG->mFillRule == StyleFillRule::Nonzero ||
+                   styleSVG->mFillRule == StyleFillRule::Evenodd);
+
+        if (styleSVG->mFillRule == StyleFillRule::Evenodd) {
+          fillRule = FillRule::FILL_EVEN_ODD;
+        }
+      });
+
+  if (!res) {
     NS_WARNING("Couldn't get ComputedStyle for content in GetFillRule");
   }
 
   return fillRule;
 }
 
-float
-SVGGeometryElement::GetTotalLength()
-{
+static Point GetPointFrom(const DOMPointInit& aPoint) {
+  return Point(aPoint.mX, aPoint.mY);
+}
+
+bool SVGGeometryElement::IsPointInFill(const DOMPointInit& aPoint) {
+  auto point = GetPointFrom(aPoint);
+
+  RefPtr<Path> path = GetOrBuildPathForHitTest();
+  if (!path) {
+    return false;
+  }
+
+  return path->ContainsPoint(point, {});
+}
+
+bool SVGGeometryElement::IsPointInStroke(const DOMPointInit& aPoint) {
+  auto point = GetPointFrom(aPoint);
+
+  RefPtr<Path> path = GetOrBuildPathForHitTest();
+  if (!path) {
+    return false;
+  }
+
+  bool res = false;
+  SVGGeometryProperty::DoForComputedStyle(this, [&](const ComputedStyle* s) {
+    // Per spec, we should take vector-effect into account.
+    if (s->StyleSVGReset()->HasNonScalingStroke()) {
+      auto mat = SVGContentUtils::GetCTM(this, true);
+      if (mat.HasNonTranslation()) {
+        // We have non-scaling-stroke as well as a non-translation transform.
+        // We should transform the path first then apply the stroke on the
+        // transformed path to preserve the stroke-width.
+        RefPtr<PathBuilder> builder = path->TransformedCopyToBuilder(mat);
+
+        path = builder->Finish();
+        point = mat.TransformPoint(point);
+      }
+    }
+
+    SVGContentUtils::AutoStrokeOptions strokeOptions;
+    SVGContentUtils::GetStrokeOptions(&strokeOptions, this, s, nullptr);
+
+    res = path->StrokeContainsPoint(strokeOptions, point, {});
+  });
+
+  return res;
+}
+
+float SVGGeometryElement::GetTotalLength() {
   RefPtr<Path> flat = GetOrBuildPathForMeasuring();
   return flat ? flat->ComputeLength() : 0.f;
 }
 
-already_AddRefed<nsISVGPoint>
-SVGGeometryElement::GetPointAtLength(float distance, ErrorResult& rv)
-{
+already_AddRefed<nsISVGPoint> SVGGeometryElement::GetPointAtLength(
+    float distance, ErrorResult& rv) {
   RefPtr<Path> path = GetOrBuildPathForMeasuring();
   if (!path) {
     rv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
 
-  nsCOMPtr<nsISVGPoint> point =
-    new DOMSVGPoint(path->ComputePointAtLength(
+  nsCOMPtr<nsISVGPoint> point = new DOMSVGPoint(path->ComputePointAtLength(
       clamped(distance, 0.f, path->ComputeLength())));
   return point.forget();
 }
 
-float
-SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor)
-{
-  MOZ_ASSERT(aFor == eForTextPath || aFor == eForStroking,
-             "Unknown enum");
+float SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor) {
+  MOZ_ASSERT(aFor == eForTextPath || aFor == eForStroking, "Unknown enum");
   if (mPathLength.IsExplicitlySet()) {
     float authorsPathLengthEstimate = mPathLength.GetAnimValue();
     if (authorsPathLengthEstimate > 0) {
@@ -199,7 +251,7 @@ SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor)
         gfxMatrix matrix = PrependLocalTransformsTo(gfxMatrix());
         if (!matrix.IsIdentity()) {
           RefPtr<PathBuilder> builder =
-            path->TransformedCopyToBuilder(ToMatrix(matrix));
+              path->TransformedCopyToBuilder(ToMatrix(matrix));
           path = builder->Finish();
         }
       }
@@ -209,8 +261,9 @@ SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor)
   return 1.0;
 }
 
-already_AddRefed<SVGAnimatedNumber>
-SVGGeometryElement::PathLength()
-{
+already_AddRefed<DOMSVGAnimatedNumber> SVGGeometryElement::PathLength() {
   return mPathLength.ToDOMAnimatedNumber(this);
 }
+
+}  // namespace dom
+}  // namespace mozilla

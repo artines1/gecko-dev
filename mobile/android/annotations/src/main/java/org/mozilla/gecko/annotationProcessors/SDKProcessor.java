@@ -226,14 +226,14 @@ public class SDKProcessor {
 
     public static void main(String[] args) throws Exception {
         // We expect a list of jars on the commandline. If missing, whinge about it.
-        if (args.length < 5 || args.length % 2 != 1) {
-            System.err.println("Usage: java SDKProcessor sdkjar max-sdk-version outdir [configfile fileprefix]+");
+        if (args.length < 3 || args.length % 2 != 1) {
+            System.err.println("Usage: java SDKProcessor sdkjar max-sdk-version outdir [configfile fileprefix]*");
             System.exit(1);
         }
 
         System.out.println("Processing platform bindings...");
 
-        final String sdkJar = args[0];
+        final File sdkJar = new File(args[0]);
         sMaxSdkVersion = Integer.parseInt(args[1]);
         final String outdir = args[2];
 
@@ -276,7 +276,7 @@ public class SDKProcessor {
             // Used to track the calls to the various class-specific initialisation functions.
             ClassLoader loader = null;
             try {
-                loader = URLClassLoader.newInstance(new URL[]{new URL("file://" + sdkJar)},
+                loader = URLClassLoader.newInstance(new URL[]{sdkJar.toURI().toURL()},
                         SDKProcessor.class.getClassLoader());
             } catch (Exception e) {
                 throw new RuntimeException(e.toString());
@@ -322,7 +322,7 @@ public class SDKProcessor {
 
     private static int getAPIVersion(Class<?> cls, Member m) {
         if (m instanceof Method || m instanceof Constructor) {
-            return sApiLookup.getCallVersion(
+            return sApiLookup.getMethodVersion(
                     cls.getName().replace('.', '/'),
                     Utils.getMemberName(m),
                     Utils.getSignature(m));

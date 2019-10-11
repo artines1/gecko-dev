@@ -4,7 +4,10 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
@@ -19,10 +22,9 @@ class FontsApp extends PureComponent {
     return {
       fontData: PropTypes.shape(Types.fontData).isRequired,
       fontEditor: PropTypes.shape(Types.fontEditor).isRequired,
-      fontEditorEnabled: PropTypes.bool.isRequired,
       fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
       onInstanceChange: PropTypes.func.isRequired,
-      onPreviewFonts: PropTypes.func.isRequired,
+      onPreviewTextChange: PropTypes.func.isRequired,
       onPropertyChange: PropTypes.func.isRequired,
       onToggleFontHighlight: PropTypes.func.isRequired,
     };
@@ -32,10 +34,9 @@ class FontsApp extends PureComponent {
     const {
       fontData,
       fontEditor,
-      fontEditorEnabled,
       fontOptions,
       onInstanceChange,
-      onPreviewFonts,
+      onPreviewTextChange,
       onPropertyChange,
       onToggleFontHighlight,
     } = this.props;
@@ -43,9 +44,9 @@ class FontsApp extends PureComponent {
     return dom.div(
       {
         className: "theme-sidebar inspector-tabpanel",
-        id: "sidebar-panel-fontinspector"
+        id: "sidebar-panel-fontinspector",
       },
-      fontEditorEnabled && FontEditor({
+      FontEditor({
         fontEditor,
         onInstanceChange,
         onPropertyChange,
@@ -54,7 +55,7 @@ class FontsApp extends PureComponent {
       FontOverview({
         fontData,
         fontOptions,
-        onPreviewFonts,
+        onPreviewTextChange,
         onToggleFontHighlight,
       })
     );

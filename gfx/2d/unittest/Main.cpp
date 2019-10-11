@@ -9,37 +9,29 @@
 #include "TestScaling.h"
 #include "TestBugs.h"
 #ifdef WIN32
-#include "TestDrawTargetD2D.h"
+#  include "TestDrawTargetD2D.h"
 #endif
 
 #include <string>
 #include <sstream>
 
 struct TestObject {
-  TestBase *test;
+  TestBase* test;
   std::string name;
 };
 
-
-using namespace std;
-
-int
-main()
-{
-  TestObject tests[] = 
-  {
-    { new SanityChecks(), "Sanity Checks" },
-  #ifdef WIN32
-    { new TestDrawTargetD2D(), "DrawTarget (D2D)" },
-  #endif
-    { new TestPoint(), "Point Tests" },
-    { new TestScaling(), "Scaling Tests" }
-    { new TestBugs(), "Bug Tests" }
-  };
+int main() {
+  TestObject tests[] = {
+      {new SanityChecks(), "Sanity Checks"},
+#ifdef WIN32
+      {new TestDrawTargetD2D(), "DrawTarget (D2D)"},
+#endif
+      {new TestPoint(), "Point Tests"},
+      {new TestScaling(), "Scaling Tests"} {new TestBugs(), "Bug Tests"}};
 
   int totalFailures = 0;
   int totalTests = 0;
-  stringstream message;
+  std::stringstream message;
   printf("------ STARTING RUNNING TESTS ------\n");
   for (int i = 0; i < sizeof(tests) / sizeof(TestObject); i++) {
     message << "--- RUNNING TESTS: " << tests[i].name << " ---\n";
@@ -51,7 +43,9 @@ main()
     // Done with this test!
     delete tests[i].test;
   }
-  message << "------ FINISHED RUNNING TESTS ------\nTests run: " << totalTests << " - Passes: " << totalTests - totalFailures << " - Failures: " << totalFailures << "\n";
+  message << "------ FINISHED RUNNING TESTS ------\nTests run: " << totalTests
+          << " - Passes: " << totalTests - totalFailures
+          << " - Failures: " << totalFailures << "\n";
   printf(message.str().c_str());
   return totalFailures;
 }

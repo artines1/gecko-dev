@@ -45,7 +45,7 @@
                   "suggest_url": {
                     "type": "string",
                     "optional": true,
-                    "format": "url",
+                    "pattern": "^https://.*$|^$",
                     "preprocess": "localize"
                   },
                   "instant_url": {
@@ -62,11 +62,29 @@
                     "preprocess": "localize",
                     "deprecated": "Unsupported on Firefox at this time."
                   },
+                  "search_url_get_params": {
+                    "type": "string",
+                    "optional": true,
+                    "preprocess": "localize",
+                    "description": "GET parameters to the search_url as a query string."
+                  },
                   "search_url_post_params": {
                     "type": "string",
                     "optional": true,
                     "preprocess": "localize",
-                    "deprecated": "Unsupported on Firefox at this time."
+                    "description": "POST parameters to the search_url as a query string."
+                  },
+                  "suggest_url_get_params": {
+                    "type": "string",
+                    "optional": true,
+                    "preprocess": "localize",
+                    "description": "GET parameters to the suggest_url as a query string."
+                  },
+                  "suggest_url_post_params": {
+                    "type": "string",
+                    "optional": true,
+                    "preprocess": "localize",
+                    "description": "POST parameters to the suggest_url as a query string."
                   },
                   "instant_url_post_params": {
                     "type": "string",
@@ -79,6 +97,13 @@
                     "optional": true,
                     "preprocess": "localize",
                     "deprecated": "Unsupported on Firefox at this time."
+                  },
+                  "search_form": {
+                    "type": "string",
+                    "optional": true,
+                    "format": "url",
+                    "pattern": "^https://.*$",
+                    "preprocess": "localize"
                   },
                   "alternate_urls": {
                     "type": "array",
@@ -95,10 +120,52 @@
                     "optional": true,
                     "deprecated": "Unsupported on Firefox."
                   },
+                  "encoding": {
+                    "type": "string",
+                    "optional": true,
+                    "description": "Encoding of the search term."
+                  },
                   "is_default": {
                     "type": "boolean",
                     "optional": true,
                     "description": "Sets the default engine to a built-in engine only."
+                  },
+                  "params": {
+                    "optional": true,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "A url parameter name"
+                        },
+                        "condition": {
+                          "type": "string",
+                          "optional": true,
+                          "enum": ["purpose", "pref"],
+                          "description": "The type of param can be either \"purpose\" or \"pref\"."
+                        },
+                        "pref": {
+                          "type": "string",
+                          "optional": true,
+                          "description": "The preference to retreive the value from."
+                        },
+                        "purpose": {
+                          "type": "string",
+                          "optional": true,
+                          "enum": ["contextmenu", "searchbar", "homepage", "keyword", "newtab"],
+                          "description": "The context that initiates a search, required if condition is \"purpose\"."
+                        },
+                        "value": {
+                          "type": "string",
+                          "optional": true,
+                          "description": "A url parameter value.",
+                          "preprocess": "localize"
+                        }
+                      }
+                    },
+                    "description": "A list of optional search url parameters. This allows the additon of search url parameters based on how the search is performed in Firefox."
                   }
                 }
               }

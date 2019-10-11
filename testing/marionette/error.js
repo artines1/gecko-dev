@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {pprint} = ChromeUtils.import("chrome://marionette/content/format.js", {});
+const { pprint } = ChromeUtils.import("chrome://marionette/content/format.js");
 
 const ERRORS = new Set([
   "ElementClickInterceptedError",
@@ -45,10 +45,7 @@ const BUILTIN_ERRORS = new Set([
   "URIError",
 ]);
 
-this.EXPORTED_SYMBOLS = [
-  "error",
-  "stack",
-].concat(Array.from(ERRORS));
+this.EXPORTED_SYMBOLS = ["error", "stack"].concat(Array.from(ERRORS));
 
 /** @namespace */
 this.error = {};
@@ -103,8 +100,7 @@ error.isError = function(val) {
  *     false otherwise.
  */
 error.isWebDriverError = function(obj) {
-  return error.isError(obj) &&
-      ("name" in obj && ERRORS.has(obj.name));
+  return error.isError(obj) && ("name" in obj && ERRORS.has(obj.name));
 };
 
 /**
@@ -160,7 +156,8 @@ this.stack = function() {
   let trace = new Error().stack;
   let sa = trace.split("\n");
   sa = sa.slice(1);
-  return "stacktrace:\n" + sa.join("\n");
+  let rv = "stacktrace:\n" + sa.join("\n");
+  return rv.trimEnd();
 };
 
 /**
@@ -256,18 +253,20 @@ class ElementClickInterceptedError extends WebDriverError {
 
       switch (obscuredEl.style.pointerEvents) {
         case "none":
-          msg = pprint`Element ${obscuredEl} is not clickable ` +
-              `at point (${coords.x},${coords.y}) ` +
-              `because it does not have pointer events enabled, ` +
-              pprint`and element ${overlayingEl} ` +
-              `would receive the click instead`;
+          msg =
+            pprint`Element ${obscuredEl} is not clickable ` +
+            `at point (${coords.x},${coords.y}) ` +
+            `because it does not have pointer events enabled, ` +
+            pprint`and element ${overlayingEl} ` +
+            `would receive the click instead`;
           break;
 
         default:
-          msg = pprint`Element ${obscuredEl} is not clickable ` +
-              `at point (${coords.x},${coords.y}) ` +
-              pprint`because another element ${overlayingEl} ` +
-              `obscures it`;
+          msg =
+            pprint`Element ${obscuredEl} is not clickable ` +
+            `at point (${coords.x},${coords.y}) ` +
+            pprint`because another element ${overlayingEl} ` +
+            `obscures it`;
           break;
       }
     }

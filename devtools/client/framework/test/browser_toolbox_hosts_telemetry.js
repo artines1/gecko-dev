@@ -5,8 +5,8 @@
 
 "use strict";
 
-const {Toolbox} = require("devtools/client/framework/toolbox");
-const {LEFT, RIGHT, BOTTOM, WINDOW} = Toolbox.HostType;
+const { Toolbox } = require("devtools/client/framework/toolbox");
+const { LEFT, RIGHT, BOTTOM, WINDOW } = Toolbox.HostType;
 
 const URL = "data:text/html;charset=utf8,browser_toolbox_hosts_telemetry.js";
 
@@ -15,7 +15,7 @@ add_task(async function() {
 
   info("Create a test tab and open the toolbox");
   const tab = await addTab(URL);
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
   const toolbox = await gDevTools.showToolbox(target, "webconsole");
 
   await changeToolboxHost(toolbox);
@@ -41,5 +41,10 @@ function checkResults() {
   //   - 2 "left" entries.
   //   - 3 "right" entries.
   //   - 2 "window" entries.
-  checkTelemetry("DEVTOOLS_TOOLBOX_HOST", "", [3, 3, 2, 0, 2, 0, 0, 0, 0, 0], "array");
+  checkTelemetry(
+    "DEVTOOLS_TOOLBOX_HOST",
+    "",
+    { 0: 3, 1: 3, 2: 2, 4: 2, 5: 0 },
+    "array"
+  );
 }

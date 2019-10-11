@@ -6,7 +6,6 @@ from __future__ import absolute_import, print_function
 import copy
 import os
 import sys
-import time
 
 from mozlog.commandline import setup_logging
 from talos import utils, test
@@ -39,6 +38,7 @@ DEFAULTS = dict(
         tpcycles=10,
         tpmozafterpaint=False,
         tphero=False,
+        pdfpaint=True,
         fnbpaint=False,
         firstpaint=False,
         format_pagename=True,
@@ -73,6 +73,7 @@ GLOBAL_OVERRIDES = (
     'tpmozafterpaint',
     'tphero',
     'fnbpaint',
+    'pdfpaint',
     'firstpaint',
     'userready',
 )
@@ -112,6 +113,7 @@ def fix_xperf(config):
     # BBB: remove doubly-quoted xperf values from command line
     # (needed for buildbot)
     # https://bugzilla.mozilla.org/show_bug.cgi?id=704654#c43
+    win7_path = 'c:/Program Files/Microsoft Windows Performance Toolkit/xperf.exe'
     if config['xperf_path']:
         xperf_path = config['xperf_path']
         quotes = ('"', "'")
@@ -120,8 +122,11 @@ def fix_xperf(config):
                 config['xperf_path'] = xperf_path[1:-1]
                 break
         if not os.path.exists(config['xperf_path']):
-            raise ConfigurationError(
-                "xperf.exe cannot be found at the path specified")
+            # look for old win7 path
+            if not os.path.exists(win7_path):
+                raise ConfigurationError(
+                    "xperf.exe cannot be found at the path specified")
+            config['xperf_path'] = win7_path
 
 
 @validator
@@ -133,15 +138,12 @@ def set_webserver(config):
     port = sock.getsockname()[1]
     sock.close()
 
-    config['webserver'] = 'localhost:%d' % port
+    config['webserver'] = '127.0.0.1:%d' % port
 
 
 @validator
 def update_prefs(config):
-    config.setdefault('preferences', {}).update({
-        # Bug 1383896 - reduces noise in tests
-        'idle.lastDailyNotification': int(time.time()),
-    })
+    config.setdefault('preferences', {})
 
     # update prefs from command line
     prefs = config.pop('extraPrefs')
@@ -227,6 +229,7 @@ def get_test(config, global_overrides, counters, test_instance):
     firstPaint = getattr(test_instance, 'firstpaint', None)
     userReady = getattr(test_instance, 'userready', None)
     firstNonBlankPaint = getattr(test_instance, 'fnbpaint', None)
+    pdfPaint = getattr(test_instance, 'pdfpaint', None)
 
     test_instance.update(**global_overrides)
 
@@ -242,6 +245,8 @@ def get_test(config, global_overrides, counters, test_instance):
         test_instance.userready = userReady
     if hero is not None:
         test_instance.tphero = hero
+    if pdfPaint is not None:
+        test_instance.pdfpaint = pdfPaint
 
     # fix up url
     url = getattr(test_instance, 'url', None)
@@ -289,12 +294,13 @@ def get_browser_config(config):
     required = ('extensions', 'browser_path', 'browser_wait',
                 'extra_args', 'buildid', 'env', 'init_url', 'webserver')
     optional = {'bcontroller_config': '${talos}/bcontroller.json',
-                'branch_name': '',
                 'child_process': 'plugin-container',
                 'debug': False,
                 'debugger': None,
                 'debugger_args': None,
                 'develop': False,
+                'enable_webrender': False,
+                'enable_fission': False,
                 'process': '',
                 'framework': 'talos',
                 'repository': None,

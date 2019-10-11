@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 /* Bug 714942 */
@@ -11,7 +10,10 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html,<p>test the 'Jump to line' feature in Scratchpad");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html,<p>test the 'Jump to line' feature in Scratchpad"
+  );
 }
 
 function runTests(aWindow, aScratchpad) {
@@ -28,11 +30,11 @@ function runTests(aWindow, aScratchpad) {
   };
 
   desiredValue = 3;
-  EventUtils.synthesizeKey("J", {accelKey: true}, aWindow);
+  EventUtils.synthesizeKey("J", { accelKey: true }, aWindow);
   is(editor.getCursor().line, 2, "line is correct");
 
   desiredValue = 2;
-  EventUtils.synthesizeKey("J", {accelKey: true}, aWindow);
+  EventUtils.synthesizeKey("J", { accelKey: true }, aWindow);
   is(editor.getCursor().line, 1, "line is correct (again)");
 
   editor.openDialog = oldPrompt;

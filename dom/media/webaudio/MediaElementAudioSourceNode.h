@@ -15,42 +15,55 @@ namespace dom {
 class AudioContext;
 struct MediaElementAudioSourceOptions;
 
-class MediaElementAudioSourceNode final : public MediaStreamAudioSourceNode
-{
-public:
-  static already_AddRefed<MediaElementAudioSourceNode>
-  Create(AudioContext& aAudioContext,
-         const MediaElementAudioSourceOptions& aOptions,
-         ErrorResult& aRv);
+class MediaElementAudioSourceNode final : public MediaStreamAudioSourceNode {
+ public:
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(MediaElementAudioSourceNode,
+                                           MediaStreamAudioSourceNode)
+  static already_AddRefed<MediaElementAudioSourceNode> Create(
+      AudioContext& aAudioContext,
+      const MediaElementAudioSourceOptions& aOptions, ErrorResult& aRv);
 
-  static already_AddRefed<MediaElementAudioSourceNode>
-  Constructor(const GlobalObject& aGlobal, AudioContext& aAudioContext,
-              const MediaElementAudioSourceOptions& aOptions, ErrorResult& aRv)
-  {
+  static already_AddRefed<MediaElementAudioSourceNode> Constructor(
+      const GlobalObject& aGlobal, AudioContext& aAudioContext,
+      const MediaElementAudioSourceOptions& aOptions, ErrorResult& aRv) {
     return Create(aAudioContext, aOptions, aRv);
   }
 
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
 
-  const char* NodeType() const override
-  {
+  const char* NodeType() const override {
     return "MediaElementAudioSourceNode";
   }
 
-  const char* CrossOriginErrorString() const override
-  {
+  const char* CrossOriginErrorString() const override {
     return "MediaElementAudioSourceNodeCrossOrigin";
   }
 
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
-  {
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
-private:
-  explicit MediaElementAudioSourceNode(AudioContext* aContext);
+
+  HTMLMediaElement* MediaElement();
+
+ private:
+  explicit MediaElementAudioSourceNode(AudioContext* aContext,
+                                       HTMLMediaElement* aElement);
+  ~MediaElementAudioSourceNode() = default;
+
+  void Destroy() override;
+
+  // If AudioContext was not allowed to start, we would try to start it when
+  // source starts.
+  void ListenForAllowedToPlay(const MediaElementAudioSourceOptions& aOptions);
+
+  MozPromiseRequestHolder<GenericNonExclusivePromise> mAllowedToPlayRequest;
+
+  RefPtr<HTMLMediaElement> mElement;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

@@ -16,23 +16,22 @@
  * with optional additional drawtarget-specific tests. And is intended to run
  * on a 500x500 32 BPP drawtarget.
  */
-class TestDrawTargetBase : public TestBase
-{
-public:
+class TestDrawTargetBase : public TestBase {
+ public:
   void Initialized();
   void FillCompletely();
   void FillRect();
 
-protected:
+ protected:
   TestDrawTargetBase();
 
   void RefreshSnapshot();
 
-  void VerifyAllPixels(const mozilla::gfx::Color &aColor);
-  void VerifyPixel(const mozilla::gfx::IntPoint &aPoint,
-                   mozilla::gfx::Color &aColor);
+  void VerifyAllPixels(const mozilla::gfx::Color& aColor);
+  void VerifyPixel(const mozilla::gfx::IntPoint& aPoint,
+                   mozilla::gfx::Color& aColor);
 
-  uint32_t RGBAPixelFromColor(const mozilla::gfx::Color &aColor);
+  uint32_t RGBAPixelFromColor(const mozilla::gfx::Color& aColor);
 
   RefPtr<mozilla::gfx::DrawTarget> mDT;
   RefPtr<mozilla::gfx::DataSourceSurface> mDataSnapshot;

@@ -8,7 +8,7 @@
 // ------------------------------------------------------------------------------
 
 var rule = require("../lib/rules/use-ownerGlobal");
-var RuleTester = require("eslint/lib/testers/rule-tester");
+var RuleTester = require("eslint").RuleTester;
 
 const ruleTester = new RuleTester({ parserOptions: { ecmaVersion: 6 } });
 
@@ -18,19 +18,18 @@ const ruleTester = new RuleTester({ parserOptions: { ecmaVersion: 6 } });
 
 function invalidCode(code) {
   let message = "use .ownerGlobal instead of .ownerDocument.defaultView";
-  return {code, errors: [{message, type: "MemberExpression"}]};
+  return { code, errors: [{ message, type: "MemberExpression" }] };
 }
 
 ruleTester.run("use-ownerGlobal", rule, {
   valid: [
     "aEvent.target.ownerGlobal;",
     "this.DOMPointNode.ownerGlobal.getSelection();",
-    "windowToMessageManager(node.ownerGlobal);"
+    "windowToMessageManager(node.ownerGlobal);",
   ],
   invalid: [
     invalidCode("aEvent.target.ownerDocument.defaultView;"),
-    invalidCode(
-      "this.DOMPointNode.ownerDocument.defaultView.getSelection();"),
-    invalidCode("windowToMessageManager(node.ownerDocument.defaultView);")
-  ]
+    invalidCode("this.DOMPointNode.ownerDocument.defaultView.getSelection();"),
+    invalidCode("windowToMessageManager(node.ownerDocument.defaultView);"),
+  ],
 });

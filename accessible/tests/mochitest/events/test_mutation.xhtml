@@ -14,10 +14,8 @@
     </binding>
   </bindings>
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -39,7 +37,7 @@
 
       this.eventSeq = [
         new invokerChecker(EVENT_SHOW, getButtonFromBinding, this.containerNode),
-        new invokerChecker(EVENT_REORDER, this.containerNode)
+        new invokerChecker(EVENT_REORDER, this.containerNode),
       ];
 
       this.invoke = function insertBinding_invoke() {

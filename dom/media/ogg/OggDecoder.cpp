@@ -7,16 +7,14 @@
 #include "OggDecoder.h"
 #include "MediaContainerType.h"
 #include "MediaDecoder.h"
-#include "mozilla/StaticPrefs.h"
+#include "mozilla/StaticPrefs_media.h"
 #include "nsMimeTypes.h"
 
 namespace mozilla {
 
 /* static */
-bool
-OggDecoder::IsSupportedType(const MediaContainerType& aContainerType)
-{
-  if (!StaticPrefs::MediaOggEnabled()) {
+bool OggDecoder::IsSupportedType(const MediaContainerType& aContainerType) {
+  if (!StaticPrefs::media_ogg_enabled()) {
     return false;
   }
 
@@ -37,8 +35,7 @@ OggDecoder::IsSupportedType(const MediaContainerType& aContainerType)
   // we can play.
   for (const auto& codec : codecs.Range()) {
     if ((MediaDecoder::IsOpusEnabled() && codec.EqualsLiteral("opus")) ||
-        codec.EqualsLiteral("vorbis") ||
-        codec.EqualsLiteral("flac")) {
+        codec.EqualsLiteral("vorbis") || codec.EqualsLiteral("flac")) {
       continue;
     }
     // Note: Only accept Theora in a video container type, not in an audio
@@ -52,9 +49,9 @@ OggDecoder::IsSupportedType(const MediaContainerType& aContainerType)
   return true;
 }
 
-/* static */ nsTArray<UniquePtr<TrackInfo>>
-OggDecoder::GetTracksInfo(const MediaContainerType& aType)
-{
+/* static */
+nsTArray<UniquePtr<TrackInfo>> OggDecoder::GetTracksInfo(
+    const MediaContainerType& aType) {
   nsTArray<UniquePtr<TrackInfo>> tracks;
   if (!IsSupportedType(aType)) {
     return tracks;
@@ -70,16 +67,18 @@ OggDecoder::GetTracksInfo(const MediaContainerType& aType)
     if (codec.EqualsLiteral("opus") || codec.EqualsLiteral("vorbis") ||
         codec.EqualsLiteral("flac")) {
       tracks.AppendElement(
-        CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
-          NS_LITERAL_CSTRING("audio/") + NS_ConvertUTF16toUTF8(codec), aType));
+          CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+              NS_LITERAL_CSTRING("audio/") + NS_ConvertUTF16toUTF8(codec),
+              aType));
     } else {
       MOZ_ASSERT(codec.EqualsLiteral("theora"));
       tracks.AppendElement(
-        CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
-          NS_LITERAL_CSTRING("video/") + NS_ConvertUTF16toUTF8(codec), aType));
+          CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+              NS_LITERAL_CSTRING("video/") + NS_ConvertUTF16toUTF8(codec),
+              aType));
     }
   }
   return tracks;
 }
 
-} // namespace mozilla
+}  // namespace mozilla

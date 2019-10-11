@@ -1,8 +1,8 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
+
+/* import-globals-from ../../inspector/test/shared-head.js */
 
 "use strict";
 
@@ -12,41 +12,76 @@
 
 const { Constructor: CC } = Components;
 
-function scopedCuImport(path) {
-  const scope = {};
-  ChromeUtils.import(path, scope);
-  return scope;
+// Print allocation count if DEBUG_DEVTOOLS_ALLOCATIONS is set to "normal",
+// and allocation sites if DEBUG_DEVTOOLS_ALLOCATIONS is set to "verbose".
+const env = Cc["@mozilla.org/process/environment;1"].getService(
+  Ci.nsIEnvironment
+);
+const DEBUG_ALLOCATIONS = env.get("DEBUG_DEVTOOLS_ALLOCATIONS");
+if (DEBUG_ALLOCATIONS) {
+  // Use a custom loader with `invisibleToDebugger` flag for the allocation tracker
+  // as it instantiates custom Debugger API instances and has to be running in a distinct
+  // compartments from DevTools and system scopes (JSMs, XPCOM,...)
+  const { DevToolsLoader } = ChromeUtils.import(
+    "resource://devtools/shared/Loader.jsm"
+  );
+  const loader = new DevToolsLoader({
+    invisibleToDebugger: true,
+  });
+
+  const { allocationTracker } = loader.require(
+    "devtools/shared/test-helpers/allocation-tracker"
+  );
+  const tracker = allocationTracker({ watchAllGlobals: true });
+  registerCleanupFunction(() => {
+    if (DEBUG_ALLOCATIONS == "normal") {
+      tracker.logCount();
+    } else if (DEBUG_ALLOCATIONS == "verbose") {
+      tracker.logAllocationSites();
+    }
+    tracker.stop();
+  });
 }
 
-const {ScratchpadManager} = scopedCuImport("resource://devtools/client/scratchpad/scratchpad-manager.jsm");
-const {loader, require} = scopedCuImport("resource://devtools/shared/Loader.jsm");
+const { ScratchpadManager } = ChromeUtils.import(
+  "resource://devtools/client/scratchpad/scratchpad-manager.jsm"
+);
+const { loader, require } = ChromeUtils.import(
+  "resource://devtools/shared/Loader.jsm"
+);
 
-const {gDevTools} = require("devtools/client/framework/devtools");
-const {TargetFactory} = require("devtools/client/framework/target");
+const { gDevTools } = require("devtools/client/framework/devtools");
+const { TargetFactory } = require("devtools/client/framework/target");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
 // This is overridden in files that load shared-head via loadSubScript.
 // eslint-disable-next-line prefer-const
 let promise = require("promise");
 const defer = require("devtools/shared/defer");
-const Services = require("Services");
 const KeyShortcuts = require("devtools/client/shared/key-shortcuts");
 
 const TEST_DIR = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
 const CHROME_URL_ROOT = TEST_DIR + "/";
-const URL_ROOT = CHROME_URL_ROOT.replace("chrome://mochitests/content/",
-                                         "http://example.com/");
-const URL_ROOT_SSL = CHROME_URL_ROOT.replace("chrome://mochitests/content/",
-                                             "https://example.com/");
+const URL_ROOT = CHROME_URL_ROOT.replace(
+  "chrome://mochitests/content/",
+  "http://example.com/"
+);
+const URL_ROOT_SSL = CHROME_URL_ROOT.replace(
+  "chrome://mochitests/content/",
+  "https://example.com/"
+);
 
 try {
   Services.scriptloader.loadSubScript(
-    "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
+    "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js",
+    this
+  );
 } catch (e) {
-  ok(false,
+  ok(
+    false,
     "MISSING DEPENDENCY ON telemetry-test-helpers.js\n" +
-    "Please add the following line in browser.ini:\n" +
-    "  !/devtools/client/shared/test/telemetry-test-helpers.js\n"
+      "Please add the following line in browser.ini:\n" +
+      "  !/devtools/client/shared/test/telemetry-test-helpers.js\n"
   );
   throw e;
 }
@@ -60,12 +95,17 @@ waitForExplicitFinish();
 var EXPECTED_DTU_ASSERT_FAILURE_COUNT = 0;
 
 registerCleanupFunction(function() {
-  if (DevToolsUtils.assertionFailureCount !==
-      EXPECTED_DTU_ASSERT_FAILURE_COUNT) {
-    ok(false,
-      "Should have had the expected number of DevToolsUtils.assert() failures."
-      + " Expected " + EXPECTED_DTU_ASSERT_FAILURE_COUNT
-      + ", got " + DevToolsUtils.assertionFailureCount);
+  if (
+    DevToolsUtils.assertionFailureCount !== EXPECTED_DTU_ASSERT_FAILURE_COUNT
+  ) {
+    ok(
+      false,
+      "Should have had the expected number of DevToolsUtils.assert() failures." +
+        " Expected " +
+        EXPECTED_DTU_ASSERT_FAILURE_COUNT +
+        ", got " +
+        DevToolsUtils.assertionFailureCount
+    );
   }
 });
 
@@ -84,7 +124,7 @@ const ConsoleObserver = {
     if (message && /Failed propType/.test(message.toString())) {
       ok(false, message);
     }
-  }
+  },
 };
 
 Services.obs.addObserver(ConsoleObserver, "console-api-log-event");
@@ -92,28 +132,12 @@ registerCleanupFunction(() => {
   Services.obs.removeObserver(ConsoleObserver, "console-api-log-event");
 });
 
-// Print allocation count if DEBUG_DEVTOOLS_ALLOCATIONS is set to "normal",
-// and allocation sites if DEBUG_DEVTOOLS_ALLOCATIONS is set to "verbose".
-const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
-const DEBUG_ALLOCATIONS = env.get("DEBUG_DEVTOOLS_ALLOCATIONS");
-if (DEBUG_ALLOCATIONS) {
-  const { allocationTracker } = require("devtools/shared/test-helpers/allocation-tracker");
-  const tracker = allocationTracker();
-  registerCleanupFunction(() => {
-    if (DEBUG_ALLOCATIONS == "normal") {
-      tracker.logCount();
-    } else if (DEBUG_ALLOCATIONS == "verbose") {
-      tracker.logAllocationSites();
-    }
-    tracker.stop();
-  });
-}
-
 var waitForTime = DevToolsUtils.waitForTime;
 
 function loadFrameScriptUtils(browser = gBrowser.selectedBrowser) {
   let mm = browser.messageManager;
-  const frameURL = "chrome://mochitests/content/browser/devtools/client/shared/test/frame-script-utils.js";
+  const frameURL =
+    "chrome://mochitests/content/browser/devtools/client/shared/test/frame-script-utils.js";
   info("Loading the helper frame script " + frameURL);
   mm.loadFrameScript(frameURL, false);
   SimpleTest.registerCleanupFunction(() => {
@@ -123,11 +147,9 @@ function loadFrameScriptUtils(browser = gBrowser.selectedBrowser) {
 }
 
 Services.prefs.setBoolPref("devtools.inspector.three-pane-enabled", true);
-Services.prefs.setBoolPref("devtools.inspector.show-three-pane-tooltip", false);
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("devtools.dump.emit");
   Services.prefs.clearUserPref("devtools.inspector.three-pane-enabled");
-  Services.prefs.clearUserPref("devtools.inspector.show-three-pane-tooltip");
   Services.prefs.clearUserPref("devtools.toolbox.host");
   Services.prefs.clearUserPref("devtools.toolbox.previousHost");
   Services.prefs.clearUserPref("devtools.toolbox.splitconsoleEnabled");
@@ -135,8 +157,29 @@ registerCleanupFunction(() => {
 });
 
 registerCleanupFunction(async function cleanup() {
+  // Close any tab opened by the test.
+  // There should be only one tab opened by default when firefox starts the test.
   while (gBrowser.tabs.length > 1) {
     await closeTabAndToolbox(gBrowser.selectedTab);
+  }
+
+  // Note that this will run before cleanup functions registered by tests or other head.js files.
+  // So all connections must be cleaned up by the test when the test ends,
+  // before the harness starts invoking the cleanup functions
+  await waitForTick();
+
+  // All connections must be cleaned up by the test when the test ends.
+  const { DebuggerServer } = require("devtools/server/debugger-server");
+  ok(
+    !DebuggerServer.hasConnection(),
+    "The main process DebuggerServer has no pending connection when the test ends"
+  );
+  // If there is still open connection, close all of them so that following tests
+  // could pass.
+  if (DebuggerServer.hasConnection()) {
+    for (const conn of Object.values(DebuggerServer._connections)) {
+      conn.close();
+    }
   }
 });
 
@@ -211,6 +254,24 @@ var refreshTab = async function(tab = gBrowser.selectedTab) {
 };
 
 /**
+ * Open the inspector in a tab with given URL.
+ * @param {string} url  The URL to open.
+ * @param {String} hostType Optional hostType, as defined in Toolbox.HostType
+ * @return A promise that is resolved once the tab and inspector have loaded
+ *         with an object: { tab, toolbox, inspector }.
+ */
+var openInspectorForURL = async function(url, hostType) {
+  const tab = await addTab(url);
+  const { inspector, toolbox, testActor } = await openInspector(hostType);
+  return { tab, inspector, toolbox, testActor };
+};
+
+async function getActiveInspector() {
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
+  return gDevTools.getToolbox(target).getPanel("inspector");
+}
+
+/**
  * Simulate a key event from a <key> element.
  * @param {DOMNode} key
  */
@@ -234,7 +295,7 @@ function synthesizeKeyFromKeyTag(key) {
     ctrlKey: !!modifiersAttr.match("control"),
     altKey: !!modifiersAttr.match("alt"),
     metaKey: !!modifiersAttr.match("meta"),
-    accelKey: !!modifiersAttr.match("accel")
+    accelKey: !!modifiersAttr.match("accel"),
   };
 
   info("Synthesizing key " + name + " " + JSON.stringify(modifiers));
@@ -257,7 +318,7 @@ function synthesizeKeyShortcut(key, target) {
     altKey: shortcut.alt,
     ctrlKey: shortcut.ctrl,
     metaKey: shortcut.meta,
-    shiftKey: shortcut.shift
+    shiftKey: shortcut.shift,
   };
   if (shortcut.keyCode) {
     keyEvent.keyCode = shortcut.keyCode;
@@ -290,19 +351,23 @@ function waitForNEvents(target, eventName, numTimes, useCapture = false) {
       ["on", "off"],
       ["addEventListener", "removeEventListener"],
       ["addListener", "removeListener"],
-      ["addMessageListener", "removeMessageListener"]
+      ["addMessageListener", "removeMessageListener"],
     ]) {
-      if ((add in target) && (remove in target)) {
-        target[add](eventName, function onEvent(...args) {
-          if (typeof info === "function") {
-            info("Got event: '" + eventName + "' on " + target + ".");
-          }
+      if (add in target && remove in target) {
+        target[add](
+          eventName,
+          function onEvent(...args) {
+            if (typeof info === "function") {
+              info("Got event: '" + eventName + "' on " + target + ".");
+            }
 
-          if (++count == numTimes) {
-            target[remove](eventName, onEvent, useCapture);
-            resolve(...args);
-          }
-        }, useCapture);
+            if (++count == numTimes) {
+              target[remove](eventName, onEvent, useCapture);
+              resolve(...args);
+            }
+          },
+          useCapture
+        );
         break;
       }
     }
@@ -324,9 +389,9 @@ function waitForNEvents(target, eventName, numTimes, useCapture = false) {
  * @return A promise that resolves when the event has been handled
  */
 function waitForDOM(target, selector, expectedLength = 1) {
-  return new Promise((resolve) => {
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
+  return new Promise(resolve => {
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
         const elements = mutation.target.querySelectorAll(selector);
 
         if (elements.length === expectedLength) {
@@ -368,7 +433,6 @@ function once(target, eventName, useCapture = false) {
  * @param {String} filePath The file path, relative to the current directory.
  *                 Examples:
  *                 - "helper_attributes_test_runner.js"
- *                 - "../../../commandline/test/helpers.js"
  */
 function loadHelperScript(filePath) {
   const testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
@@ -380,7 +444,7 @@ function loadHelperScript(filePath) {
  * @return {Promise}
  */
 function waitForTick() {
-  return new Promise(resolve => executeSoon(resolve));
+  return new Promise(resolve => DevToolsUtils.executeSoon(resolve));
 }
 
 /**
@@ -409,8 +473,7 @@ var openToolboxForTab = async function(tab, toolId, hostType) {
   info("Opening the toolbox");
 
   let toolbox;
-  const target = TargetFactory.forTab(tab);
-  await target.makeRemote();
+  const target = await TargetFactory.forTab(tab);
 
   // Check if the toolbox is already loaded.
   toolbox = gDevTools.getToolbox(target);
@@ -452,12 +515,16 @@ var openNewTabAndToolbox = async function(url, toolId, hostType) {
  * closed.
  */
 var closeTabAndToolbox = async function(tab = gBrowser.selectedTab) {
-  const target = TargetFactory.forTab(tab);
-  if (target) {
-    await gDevTools.closeToolbox(target);
+  if (TargetFactory.isKnownTab(tab)) {
+    const target = await TargetFactory.forTab(tab);
+    if (target) {
+      await gDevTools.closeToolbox(target);
+    }
   }
 
   await removeTab(tab);
+
+  await new Promise(resolve => setTimeout(resolve, 0));
 };
 
 /**
@@ -553,7 +620,7 @@ function waitForContextMenu(popup, button, onShown, onHidden) {
 
       // Use executeSoon() to get out of the popupshown event.
       popup.addEventListener("popuphidden", onPopupHidden);
-      executeSoon(() => popup.hidePopup());
+      DevToolsUtils.executeSoon(() => popup.hidePopup());
     }
     function onPopupHidden() {
       info("onPopupHidden");
@@ -573,8 +640,14 @@ function waitForContextMenu(popup, button, onShown, onHidden) {
 
 function synthesizeContextMenuEvent(el) {
   el.scrollIntoView();
-  const eventDetails = {type: "contextmenu", button: 2};
-  EventUtils.synthesizeMouse(el, 5, 2, eventDetails, el.ownerDocument.defaultView);
+  const eventDetails = { type: "contextmenu", button: 2 };
+  EventUtils.synthesizeMouse(
+    el,
+    5,
+    2,
+    eventDetails,
+    el.ownerDocument.defaultView
+  );
 }
 
 /**
@@ -598,10 +671,8 @@ function waitForClipboardPromise(setup, expected) {
  * @return {Promise} resolves when the preferences have been updated
  */
 function pushPref(preferenceName, value) {
-  return new Promise(resolve => {
-    const options = {"set": [[preferenceName, value]]};
-    SpecialPowers.pushPrefEnv(options, resolve);
-  });
+  const options = { set: [[preferenceName, value]] };
+  return SpecialPowers.pushPrefEnv(options);
 }
 
 /**
@@ -619,7 +690,7 @@ function lookupPath(obj, path) {
 }
 
 var closeToolbox = async function() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
 };
 
@@ -644,9 +715,9 @@ function isWindows() {
  */
 function waitForTitleChange(toolbox) {
   return new Promise(resolve => {
-    toolbox.win.parent.addEventListener("message", function onmessage(event) {
+    toolbox.topWindow.addEventListener("message", function onmessage(event) {
       if (event.data.name == "set-host-title") {
-        toolbox.win.parent.removeEventListener("message", onmessage);
+        toolbox.topWindow.removeEventListener("message", onmessage);
         resolve();
       }
     });
@@ -669,7 +740,9 @@ function waitForTitleChange(toolbox) {
  * @returns {HttpServer}
  */
 function createTestHTTPServer() {
-  const {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js", {});
+  const { HttpServer } = ChromeUtils.import(
+    "resource://testing-common/httpd.js"
+  );
   const server = new HttpServer();
 
   registerCleanupFunction(async function cleanup() {
@@ -680,62 +753,10 @@ function createTestHTTPServer() {
   return server;
 }
 
-/**
- * Inject `EventUtils` helpers into ContentTask scope.
- *
- * This helper is automatically exposed to mochitest browser tests,
- * but is missing from content task scope.
- * You should call this method only once per <browser> tag
- *
- * @param {xul:browser} browser
- *        Reference to the browser in which we load content task
- */
-async function injectEventUtilsInContentTask(browser) {
-  await ContentTask.spawn(browser, {}, async function() {
-    if ("EventUtils" in this) {
-      return;
-    }
-
-    const EventUtils = this.EventUtils = {};
-
-    EventUtils.window = {};
-    EventUtils.parent = EventUtils.window;
-    /* eslint-disable camelcase */
-    EventUtils._EU_Ci = Ci;
-    EventUtils._EU_Cc = Cc;
-    /* eslint-enable camelcase */
-    // EventUtils' `sendChar` function relies on the navigator to synthetize events.
-    EventUtils.navigator = content.navigator;
-    EventUtils.KeyboardEvent = content.KeyboardEvent;
-
-    EventUtils.synthesizeClick = element => new Promise(resolve => {
-      element.addEventListener("click", function() {
-        resolve();
-      }, {once: true});
-
-      EventUtils.synthesizeMouseAtCenter(element,
-        { type: "mousedown", isSynthesized: false }, content);
-      EventUtils.synthesizeMouseAtCenter(element,
-        { type: "mouseup", isSynthesized: false }, content);
-    });
-
-    Services.scriptloader.loadSubScript(
-      "chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
-  });
-}
-
-/**
- * Temporarily flip all the preferences needed to enable web components.
- */
-async function enableWebComponents() {
-  await pushPref("dom.webcomponents.shadowdom.enabled", true);
-  await pushPref("dom.webcomponents.customelements.enabled", true);
-}
-
 /*
  * Register an actor in the content process of the current tab.
  *
- * Calling DebuggerServer.registerModule only registers the actor in the current process.
+ * Calling ActorRegistry.registerModule only registers the actor in the current process.
  * As all test scripts are ran in the parent process, it is only registered here.
  * This function helps register them in the content process used for the current tab.
  *
@@ -747,16 +768,20 @@ async function enableWebComponents() {
 async function registerActorInContentProcess(url, options) {
   function convertChromeToFile(uri) {
     return Cc["@mozilla.org/chrome/chrome-registry;1"]
-             .getService(Ci.nsIChromeRegistry)
-             .convertChromeURL(Services.io.newURI(uri)).spec;
+      .getService(Ci.nsIChromeRegistry)
+      .convertChromeURL(Services.io.newURI(uri)).spec;
   }
   // chrome://mochitests URI is registered only in the parent process, so convert these
   // URLs to file:// one in order to work in the content processes
   url = url.startsWith("chrome://mochitests") ? convertChromeToFile(url) : url;
   return ContentTask.spawn(gBrowser.selectedBrowser, { url, options }, args => {
     // eslint-disable-next-line no-shadow
-    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-    const { DebuggerServer } = require("devtools/server/main");
-    DebuggerServer.registerModule(args.url, args.options);
+    const { require } = ChromeUtils.import(
+      "resource://devtools/shared/Loader.jsm"
+    );
+    const {
+      ActorRegistry,
+    } = require("devtools/server/actors/utils/actor-registry");
+    ActorRegistry.registerModule(args.url, args.options);
   });
 }

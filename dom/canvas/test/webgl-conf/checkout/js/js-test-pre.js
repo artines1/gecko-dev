@@ -49,11 +49,6 @@
       window.console.log = function() { };
       window.console.error = function() { };
       window.internals.settings.setWebGLErrorsToConsoleEnabled(false);
-
-      // RAF doesn't work in LayoutTests. Disable it so the tests will
-      // use setTimeout instead.
-      window.requestAnimationFrame = undefined;
-      window.webkitRequestAnimationFrame = undefined;
     }
 
     /* -- end platform specific code --*/
@@ -378,6 +373,16 @@ function evalAndLog(_a)
   return _av;
 }
 
+function shouldBeString(evalable, expected) {
+    const val = eval(evalable);
+    const text = evalable + " should be " + expected + ".";
+    if (val == expected) {
+        testPassed(text);
+    } else {
+        testFailed(text + " (was " + val + ")");
+    }
+}
+
 function shouldBe(_a, _b, quiet)
 {
     if (typeof _a != "string" || typeof _b != "string")
@@ -596,6 +601,31 @@ function expectTrue(v, msg) {
   }
 }
 
+function maxArrayDiff(a, b) {
+    if (a.length != b.length)
+        throw new Error(`a and b have different lengths: ${a.length} vs ${b.length}`);
+
+    let diff = 0;
+    for (const i in a) {
+        diff = Math.max(diff, Math.abs(a[i] - b[i]));
+    }
+    return diff;
+}
+
+function expectArray(was, expected, maxDiff=0) {
+    const diff = maxArrayDiff(expected, was);
+    let str = `Expected [${expected.toString()}]`;
+    let fn = testPassed;
+    if (maxDiff) {
+        str += ' +/- ' + maxDiff;
+    }
+    if (diff > maxDiff) {
+        fn = testFailed;
+        str += `, was [${was.toString()}]`;
+    }
+    fn(str);
+}
+
 function shouldThrow(_a, _e)
 {
   var exception;
@@ -697,7 +727,9 @@ function webglHarnessCollectGarbage() {
     }
 
     try {
-        window.windowUtils.garbageCollect();
+        window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+              .getInterface(Components.interfaces.nsIDOMWindowUtils)
+              .garbageCollect();
         return;
     } catch(e) {}
 

@@ -8,6 +8,7 @@
 
 #include <unordered_set>
 
+#include "base/process_util.h"
 #include "chrome/common/mach_ipc_mac.h"
 #include "mozilla/ipc/SharedMemoryBasic.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -15,13 +16,15 @@
 #include "mozilla/StaticPtr.h"
 
 #ifdef DEBUG
-#define LOG_ERROR(str, args...)                                   \
-  PR_BEGIN_MACRO                                                  \
-  mozilla::SmprintfPointer msg = mozilla::Smprintf(str, ## args); \
-  NS_WARNING(msg.get());                                          \
-  PR_END_MACRO
+#  define LOG_ERROR(str, args...)                                  \
+    PR_BEGIN_MACRO                                                 \
+    mozilla::SmprintfPointer msg = mozilla::Smprintf(str, ##args); \
+    NS_WARNING(msg.get());                                         \
+    PR_END_MACRO
 #else
-#define LOG_ERROR(str, args...) do { /* nothing */ } while(0)
+#  define LOG_ERROR(str, args...) \
+    do { /* nothing */            \
+    } while (0)
 #endif
 
 namespace mozilla {
@@ -38,23 +41,19 @@ static std::map<pid_t, std::unordered_set<uint64_t>> gProcessTextureIds;
 static StaticMonitor gTextureLockMonitor;
 
 const int kSendMessageTimeout = 1000;
-const int kTextureLockTimeout = 32; // We really don't want to wait more than
-                                    // two frames for a texture to unlock. This
-                                    // will in any case be very uncommon.
+const int kTextureLockTimeout = 32;  // We really don't want to wait more than
+                                     // two frames for a texture to unlock. This
+                                     // will in any case be very uncommon.
 
-struct WaitForTexturesReply
-{
+struct WaitForTexturesReply {
   bool success;
 };
 
-struct WaitForTexturesRequest
-{
+struct WaitForTexturesRequest {
   pid_t pid;
 };
 
-std::unordered_set<uint64_t>*
-GetLockedTextureIdsForProcess(pid_t pid)
-{
+static std::unordered_set<uint64_t>* GetLockedTextureIdsForProcess(pid_t pid) {
   gTextureLockMonitor.AssertCurrentThreadOwns();
 
   if (gProcessTextureIds.find(pid) == gProcessTextureIds.end()) {
@@ -64,12 +63,12 @@ GetLockedTextureIdsForProcess(pid_t pid)
   return &gProcessTextureIds.at(pid);
 }
 
-bool
-WaitForTextureIdsToUnlock(pid_t pid, const Span<const uint64_t>& textureIds)
-{
+static bool WaitForTextureIdsToUnlock(pid_t pid,
+                                      const Span<const uint64_t>& textureIds) {
   {
     StaticMonitorAutoLock lock(gTextureLockMonitor);
-    std::unordered_set<uint64_t>* freedTextureIds = GetLockedTextureIdsForProcess(pid);
+    std::unordered_set<uint64_t>* freedTextureIds =
+        GetLockedTextureIdsForProcess(pid);
 
     TimeStamp start = TimeStamp::Now();
     while (true) {
@@ -84,46 +83,48 @@ WaitForTextureIdsToUnlock(pid_t pid, const Span<const uint64_t>& textureIds)
         return true;
       }
 
-      if (lock.Wait(TimeDuration::FromMilliseconds(kTextureLockTimeout)) == CVStatus::Timeout) {
+      if (lock.Wait(TimeDuration::FromMilliseconds(kTextureLockTimeout)) ==
+          CVStatus::Timeout) {
         return false;
       }
 
-      // In case the monitor gets signaled multiple times, each less than kTextureLockTimeout.
-      // This ensures that the total time we wait is < 2 * kTextureLockTimeout
-      if ((TimeStamp::Now() - start).ToMilliseconds() > (double)kTextureLockTimeout) {
+      // In case the monitor gets signaled multiple times, each less than
+      // kTextureLockTimeout.  This ensures that the total time we wait is
+      // < 2 * kTextureLockTimeout
+      if ((TimeStamp::Now() - start).ToMilliseconds() >
+          (double)kTextureLockTimeout) {
         return false;
       }
     }
   }
 }
 
-void
-CheckTexturesForUnlock()
-{
+static void CheckTexturesForUnlock() {
   if (gTextureSourceProviders) {
-    for (auto it = gTextureSourceProviders->begin(); it != gTextureSourceProviders->end(); ++it) {
+    for (auto it = gTextureSourceProviders->begin();
+         it != gTextureSourceProviders->end(); ++it) {
       (*it)->TryUnlockTextures();
     }
   }
 }
 
-void
-TextureSync::DispatchCheckTexturesForUnlock()
-{
-  RefPtr<Runnable> task = NS_NewRunnableFunction(
-    "CheckTexturesForUnlock",
-    &CheckTexturesForUnlock);
+void TextureSync::DispatchCheckTexturesForUnlock() {
+  RefPtr<Runnable> task =
+      NS_NewRunnableFunction("CheckTexturesForUnlock", &CheckTexturesForUnlock);
   CompositorThreadHolder::Loop()->PostTask(task.forget());
 }
 
-void
-TextureSync::HandleWaitForTexturesMessage(MachReceiveMessage* rmsg, ipc::MemoryPorts* ports)
-{
-  WaitForTexturesRequest* req = reinterpret_cast<WaitForTexturesRequest*>(rmsg->GetData());
+void TextureSync::HandleWaitForTexturesMessage(MachReceiveMessage* rmsg,
+                                               ipc::MemoryPorts* ports) {
+  WaitForTexturesRequest* req =
+      reinterpret_cast<WaitForTexturesRequest*>(rmsg->GetData());
   uint64_t* textureIds = (uint64_t*)(req + 1);
-  uint32_t textureIdsLength = (rmsg->GetDataLength() - sizeof(WaitForTexturesRequest)) / sizeof(uint64_t);
+  uint32_t textureIdsLength =
+      (rmsg->GetDataLength() - sizeof(WaitForTexturesRequest)) /
+      sizeof(uint64_t);
 
-  bool success = WaitForTextureIdsToUnlock(req->pid, MakeSpan<uint64_t>(textureIds, textureIdsLength));
+  bool success = WaitForTextureIdsToUnlock(
+      req->pid, MakeSpan<uint64_t>(textureIds, textureIdsLength));
 
   if (!success) {
     LOG_ERROR("Waiting for textures to unlock failed.\n");
@@ -139,9 +140,8 @@ TextureSync::HandleWaitForTexturesMessage(MachReceiveMessage* rmsg, ipc::MemoryP
   }
 }
 
-void
-TextureSync::RegisterTextureSourceProvider(TextureSourceProvider* textureSourceProvider)
-{
+void TextureSync::RegisterTextureSourceProvider(
+    TextureSourceProvider* textureSourceProvider) {
   if (!gTextureSourceProviders) {
     gTextureSourceProviders = new nsTArray<TextureSourceProvider*>();
   }
@@ -149,9 +149,8 @@ TextureSync::RegisterTextureSourceProvider(TextureSourceProvider* textureSourceP
   gTextureSourceProviders->AppendElement(textureSourceProvider);
 }
 
-void
-TextureSync::UnregisterTextureSourceProvider(TextureSourceProvider* textureSourceProvider)
-{
+void TextureSync::UnregisterTextureSourceProvider(
+    TextureSourceProvider* textureSourceProvider) {
   if (gTextureSourceProviders) {
     MOZ_ASSERT(gTextureSourceProviders->Contains(textureSourceProvider));
     gTextureSourceProviders->RemoveElement(textureSourceProvider);
@@ -161,23 +160,23 @@ TextureSync::UnregisterTextureSourceProvider(TextureSourceProvider* textureSourc
   }
 }
 
-void
-TextureSync::SetTexturesLocked(pid_t pid, const nsTArray<uint64_t>& textureIds)
-{
+void TextureSync::SetTexturesLocked(pid_t pid,
+                                    const nsTArray<uint64_t>& textureIds) {
   StaticMonitorAutoLock mal(gTextureLockMonitor);
-  std::unordered_set<uint64_t>* lockedTextureIds = GetLockedTextureIdsForProcess(pid);
+  std::unordered_set<uint64_t>* lockedTextureIds =
+      GetLockedTextureIdsForProcess(pid);
   for (uint64_t textureId : textureIds) {
     lockedTextureIds->insert(textureId);
   }
 }
 
-void
-TextureSync::SetTexturesUnlocked(pid_t pid, const nsTArray<uint64_t>& textureIds)
-{
+void TextureSync::SetTexturesUnlocked(pid_t pid,
+                                      const nsTArray<uint64_t>& textureIds) {
   bool oneErased = false;
   {
     StaticMonitorAutoLock mal(gTextureLockMonitor);
-    std::unordered_set<uint64_t>* lockedTextureIds = GetLockedTextureIdsForProcess(pid);
+    std::unordered_set<uint64_t>* lockedTextureIds =
+        GetLockedTextureIdsForProcess(pid);
     for (uint64_t textureId : textureIds) {
       if (lockedTextureIds->erase(textureId)) {
         oneErased = true;
@@ -189,9 +188,7 @@ TextureSync::SetTexturesUnlocked(pid_t pid, const nsTArray<uint64_t>& textureIds
   }
 }
 
-void
-TextureSync::Shutdown()
-{
+void TextureSync::Shutdown() {
   {
     StaticMonitorAutoLock lock(gTextureLockMonitor);
 
@@ -208,10 +205,8 @@ TextureSync::Shutdown()
   }
 }
 
-void
-TextureSync::UpdateTextureLocks(base::ProcessId aProcessId)
-{
-  if (aProcessId == getpid()) {
+void TextureSync::UpdateTextureLocks(base::ProcessId aProcessId) {
+  if (aProcessId == base::GetCurrentProcId()) {
     DispatchCheckTexturesForUnlock();
     return;
   }
@@ -221,11 +216,11 @@ TextureSync::UpdateTextureLocks(base::ProcessId aProcessId)
   ipc::SharedMemoryBasic::SendMachMessage(aProcessId, smsg, NULL);
 }
 
-bool
-TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t>& textureIds)
-{
-  if (aProcessId == getpid()) {
-    bool success = WaitForTextureIdsToUnlock(aProcessId, MakeSpan<uint64_t>(textureIds));
+bool TextureSync::WaitForTextures(base::ProcessId aProcessId,
+                                  const nsTArray<uint64_t>& textureIds) {
+  if (aProcessId == base::GetCurrentProcId()) {
+    bool success =
+        WaitForTextureIdsToUnlock(aProcessId, MakeSpan<uint64_t>(textureIds));
     if (!success) {
       LOG_ERROR("Failed waiting for textures to unlock.\n");
     }
@@ -234,7 +229,8 @@ TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t
   }
 
   MachSendMessage smsg(ipc::kWaitForTexturesMsg);
-  size_t messageSize = sizeof(WaitForTexturesRequest) + textureIds.Length() * sizeof(uint64_t);
+  size_t messageSize =
+      sizeof(WaitForTexturesRequest) + textureIds.Length() * sizeof(uint64_t);
   UniquePtr<uint8_t[]> messageData = MakeUnique<uint8_t[]>(messageSize);
   WaitForTexturesRequest* req = (WaitForTexturesRequest*)messageData.get();
   uint64_t* reqTextureIds = (uint64_t*)(req + 1);
@@ -243,7 +239,7 @@ TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t
     reqTextureIds[i] = textureIds[i];
   }
 
-  req->pid = getpid();
+  req->pid = base::GetCurrentProcId();
   bool dataWasSet = smsg.SetData(req, messageSize);
 
   if (!dataWasSet) {
@@ -252,7 +248,8 @@ TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t
   }
 
   MachReceiveMessage msg;
-  bool success = ipc::SharedMemoryBasic::SendMachMessage(aProcessId, smsg, &msg);
+  bool success =
+      ipc::SharedMemoryBasic::SendMachMessage(aProcessId, smsg, &msg);
   if (!success) {
     return false;
   }
@@ -262,7 +259,8 @@ TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t
     return false;
   }
 
-  WaitForTexturesReply* msg_data = reinterpret_cast<WaitForTexturesReply*>(msg.GetData());
+  WaitForTexturesReply* msg_data =
+      reinterpret_cast<WaitForTexturesReply*>(msg.GetData());
   if (!msg_data->success) {
     LOG_ERROR("Failed waiting for textures to unlock.\n");
     return false;
@@ -271,17 +269,16 @@ TextureSync::WaitForTextures(base::ProcessId aProcessId, const nsTArray<uint64_t
   return true;
 }
 
-void
-TextureSync::CleanupForPid(base::ProcessId aProcessId)
-{
+void TextureSync::CleanupForPid(base::ProcessId aProcessId) {
   {
     StaticMonitorAutoLock lock(gTextureLockMonitor);
-    std::unordered_set<uint64_t>* lockedTextureIds = GetLockedTextureIdsForProcess(aProcessId);
+    std::unordered_set<uint64_t>* lockedTextureIds =
+        GetLockedTextureIdsForProcess(aProcessId);
     lockedTextureIds->clear();
   }
   gTextureLockMonitor.NotifyAll();
 }
 
-} // namespace layers
+}  // namespace layers
 
-} // namespace mozilla
+}  // namespace mozilla

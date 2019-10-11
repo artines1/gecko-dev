@@ -7,11 +7,11 @@
 #ifndef GFX_CLIENTTILEDPAINTEDLAYER_H
 #define GFX_CLIENTTILEDPAINTEDLAYER_H
 
-#include "ClientLayerManager.h"         // for ClientLayer, etc
-#include "Layers.h"                     // for PaintedLayer, etc
-#include "mozilla/RefPtr.h"             // for RefPtr
+#include "ClientLayerManager.h"  // for ClientLayer, etc
+#include "Layers.h"              // for PaintedLayer, etc
+#include "mozilla/RefPtr.h"      // for RefPtr
 #include "mozilla/layers/TiledContentClient.h"
-#include "nsRegion.h"                   // for nsIntRegion
+#include "nsRegion.h"  // for nsIntRegion
 
 namespace mozilla {
 namespace layers {
@@ -34,27 +34,26 @@ class SpecificLayerAttributes;
  *
  * There is no ContentClient for tiled layers. There is a ContentHost, however.
  */
-class ClientTiledPaintedLayer : public PaintedLayer,
-                                public ClientLayer
-{
+class ClientTiledPaintedLayer : public PaintedLayer, public ClientLayer {
   typedef PaintedLayer Base;
 
-public:
+ public:
   explicit ClientTiledPaintedLayer(ClientLayerManager* const aManager,
-                                  ClientLayerManager::PaintedLayerCreationHint aCreationHint = LayerManager::NONE);
+                                   ClientLayerManager::PaintedLayerCreationHint
+                                       aCreationHint = LayerManager::NONE);
 
-protected:
-  ~ClientTiledPaintedLayer();
+ protected:
+  virtual ~ClientTiledPaintedLayer();
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
+  void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
-public:
+ public:
   // Override name to distinguish it from ClientPaintedLayer in layer dumps
-  virtual const char* Name() const override { return "TiledPaintedLayer"; }
+  const char* Name() const override { return "TiledPaintedLayer"; }
 
   // PaintedLayer
-  virtual Layer* AsLayer() override { return this; }
-  virtual void InvalidateRegion(const nsIntRegion& aRegion) override {
+  Layer* AsLayer() override { return this; }
+  void InvalidateRegion(const nsIntRegion& aRegion) override {
     mInvalidRegion.Add(aRegion);
     UpdateValidRegionAfterInvalidRegionChanged();
     if (!mLowPrecisionValidRegion.IsEmpty()) {
@@ -65,15 +64,14 @@ public:
   }
 
   // Shadow methods
-  virtual void FillSpecificAttributes(SpecificLayerAttributes& aAttrs) override;
-  virtual ShadowableLayer* AsShadowableLayer() override { return this; }
+  void FillSpecificAttributes(SpecificLayerAttributes& aAttrs) override;
+  ShadowableLayer* AsShadowableLayer() override { return this; }
 
-  virtual void RenderLayer() override;
+  void RenderLayer() override;
 
-  virtual void ClearCachedResources() override;
+  void ClearCachedResources() override;
 
-  virtual void HandleMemoryPressure() override
-  {
+  void HandleMemoryPressure() override {
     if (mContentClient) {
       mContentClient->HandleMemoryPressure();
     }
@@ -88,11 +86,11 @@ public:
                          LayerMetricsWrapper* aOutDisplayPortAncestor,
                          bool* aOutHasTransformAnimation);
 
-  virtual bool IsOptimizedFor(LayerManager::PaintedLayerCreationHint aCreationHint) override;
+  bool IsOptimizedFor(
+      LayerManager::PaintedLayerCreationHint aCreationHint) override;
 
-private:
-  ClientLayerManager* ClientManager()
-  {
+ private:
+  ClientLayerManager* ClientManager() {
     return static_cast<ClientLayerManager*>(mManager);
   }
 
@@ -146,7 +144,7 @@ private:
   BasicTiledLayerPaintData mPaintData;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

@@ -2,7 +2,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const TEST_PATH = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") + "meta_tags.html";
+const TEST_PATH =
+  getRootDirectory(gTestPath).replace(
+    "chrome://mochitests/content",
+    "https://example.com"
+  ) + "meta_tags.html";
 /**
  * This tests that with the page meta_tags.html, ContentMetaHandler.jsm parses
  * out the meta tags avilable and only stores the best one for description and
@@ -16,7 +20,11 @@ add_task(async function test_metadata() {
   // Wait until places has stored the page info
   const pageInfo = await waitForPageInfo(TEST_PATH);
   is(pageInfo.description, "og:description", "got the correct description");
-  is(pageInfo.previewImageURL.href, "https://test.com/og-image-secure-url.jpg", "got the correct preview image");
+  is(
+    pageInfo.previewImageURL.href,
+    "https://test.com/og-image-secure-url.jpg",
+    "got the correct preview image"
+  );
 
   BrowserTestUtils.removeTab(tab);
   await PlacesUtils.history.clear();
@@ -32,12 +40,16 @@ add_task(async function multiple_tabs() {
 
   // Add a background tab to cause another page to load *without* putting the
   // desired URL in a background tab, which results in its timers being throttled.
-  gBrowser.addTab();
+  BrowserTestUtils.addTab(gBrowser);
 
   // Wait until places has stored the page info
   const pageInfo = await waitForPageInfo(TEST_PATH);
   is(pageInfo.description, "og:description", "got the correct description");
-  is(pageInfo.previewImageURL.href, "https://test.com/og-image-secure-url.jpg", "got the correct preview image");
+  is(
+    pageInfo.previewImageURL.href,
+    "https://test.com/og-image-secure-url.jpg",
+    "got the correct preview image"
+  );
 
   BrowserTestUtils.removeTab(tab);
   BrowserTestUtils.removeTab(gBrowser.selectedTab);

@@ -2,18 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, print_function
-
 import json
 import os
 from distutils.spawn import find_executable
 
 import mozfile
-import mozpack.path as mozpath
-from mozpack.files import FileFinder
 from mozprocess import ProcessHandlerMixin
 
 from mozlint import result
+from mozlint.pathutils import expand_exclusions
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -48,6 +45,7 @@ def setup(python):
 
 
 def run_linter(python, paths, config, **lintargs):
+    log = lintargs['log']
     binary = find_executable(python)
     if not binary:
         # If we're in automation, this is fatal. Otherwise, the warning in the
@@ -56,26 +54,14 @@ def run_linter(python, paths, config, **lintargs):
             return 1
         return []
 
-    root = lintargs['root']
-    pattern = "**/*.py"
-    exclude = [mozpath.join(root, e) for e in lintargs.get('exclude', [])]
-    files = []
-    for path in paths:
-        path = mozpath.normsep(path)
-        if os.path.isfile(path):
-            files.append(path)
-            continue
-
-        ignore = [e[len(path):].lstrip('/') for e in exclude
-                  if mozpath.commonprefix((path, e)) == path]
-        finder = FileFinder(path, ignore=ignore)
-        files.extend([os.path.join(path, p) for p, f in finder.find(pattern)])
+    files = expand_exclusions(paths, config, lintargs['root'])
 
     with mozfile.NamedTemporaryFile(mode='w') as fh:
         fh.write('\n'.join(files))
         fh.flush()
 
         cmd = [binary, os.path.join(here, 'check_compat.py'), fh.name]
+        log.debug("Command: {}".format(' '.join(cmd)))
 
         proc = PyCompatProcess(config, cmd)
         proc.run()
@@ -87,7 +73,7 @@ def run_linter(python, paths, config, **lintargs):
     return results
 
 
-def setuppy2(root):
+def setuppy2(**lintargs):
     return setup('python2')
 
 
@@ -95,7 +81,7 @@ def lintpy2(*args, **kwargs):
     return run_linter('python2', *args, **kwargs)
 
 
-def setuppy3(root):
+def setuppy3(**lintargs):
     return setup('python3')
 
 

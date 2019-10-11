@@ -5,22 +5,61 @@
 
 "use strict";
 
-function run_test() {
-  Assert.ok(!Services.search.isInitialized, "search isn't initialized yet");
-
-  run_next_test();
-}
-
 // Check that current engine matches with US searchDefault from list.json
 add_task(async function test_searchDefaultEngineUS() {
-  Services.prefs.setCharPref("browser.search.region", "US");
+  useTestEngineConfig();
 
-  await asyncInit();
+  Services.prefs.setCharPref(SearchUtils.BROWSER_SEARCH_PREF + "region", "US");
+
+  await AddonTestUtils.promiseStartupManager();
+  await Services.search.init();
 
   Assert.ok(Services.search.isInitialized, "search initialized");
 
-  Assert.equal(Services.search.currentEngine.name,
-               getDefaultEngineName(true), "expected US default search engine");
+  Assert.equal(
+    Services.search.defaultEngine.name,
+    getDefaultEngineName(true),
+    "Should have the expected engine as default."
+  );
+  Assert.equal(
+    Services.search.originalDefaultEngine.name,
+    getDefaultEngineName(true),
+    "Should have the expected engine as the original"
+  );
+
+  // First with the pref off to check using the existing values.
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
+    false
+  );
+
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    Services.search.defaultEngine.name,
+    "Should have the normal default engine when separate private browsing is off."
+  );
+  Assert.equal(
+    Services.search.originalPrivateDefaultEngine.name,
+    Services.search.originalDefaultEngine.name,
+    "Should have the normal original engine when separate private browsing is off."
+  );
+
+  // Then with the pref on.
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
+    true
+  );
+
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    getDefaultEngineName(true, true),
+    "Should have the private default engine when separate private browsing is on."
+  );
+  Assert.equal(
+    Services.search.originalPrivateDefaultEngine.name,
+    getDefaultEngineName(true, true),
+    "Should have the original private engine set correctly when separate private browsing is on."
+  );
 
   Services.prefs.clearUserPref("browser.search.region");
 });

@@ -6,20 +6,16 @@
 
 #include "nsTArray.h"
 #include "gtest/gtest.h"
+#include "mozilla/ArrayUtils.h"
 
 using namespace mozilla;
 
 namespace TestTArray {
 
-struct Copyable
-{
-  Copyable()
-    : mDestructionCounter(nullptr)
-  {
-  }
+struct Copyable {
+  Copyable() : mDestructionCounter(nullptr) {}
 
-  ~Copyable()
-  {
+  ~Copyable() {
     if (mDestructionCounter) {
       (*mDestructionCounter)++;
     }
@@ -31,47 +27,37 @@ struct Copyable
   uint32_t* mDestructionCounter;
 };
 
-struct Movable
-{
-  Movable()
-    : mDestructionCounter(nullptr)
-  {
-  }
+struct Movable {
+  Movable() : mDestructionCounter(nullptr) {}
 
-  ~Movable()
-  {
+  ~Movable() {
     if (mDestructionCounter) {
       (*mDestructionCounter)++;
     }
   }
 
-  Movable(Movable&& aOther)
-    : mDestructionCounter(aOther.mDestructionCounter)
-  {
+  Movable(Movable&& aOther) : mDestructionCounter(aOther.mDestructionCounter) {
     aOther.mDestructionCounter = nullptr;
   }
 
   uint32_t* mDestructionCounter;
 };
 
-} // namespace TestTArray
+}  // namespace TestTArray
 
-template<>
-struct nsTArray_CopyChooser<TestTArray::Copyable>
-{
+template <>
+struct nsTArray_CopyChooser<TestTArray::Copyable> {
   typedef nsTArray_CopyWithConstructors<TestTArray::Copyable> Type;
 };
 
-template<>
-struct nsTArray_CopyChooser<TestTArray::Movable>
-{
+template <>
+struct nsTArray_CopyChooser<TestTArray::Movable> {
   typedef nsTArray_CopyWithConstructors<TestTArray::Movable> Type;
 };
 
 namespace TestTArray {
 
-const nsTArray<int>& DummyArray()
-{
+static const nsTArray<int>& DummyArray() {
   static nsTArray<int> sArray;
   if (sArray.IsEmpty()) {
     const int data[] = {4, 1, 2, 8};
@@ -83,8 +69,7 @@ const nsTArray<int>& DummyArray()
 // This returns an invalid nsTArray with a huge length in order to test that
 // fallible operations actually fail.
 #ifdef DEBUG
-const nsTArray<int>& FakeHugeArray()
-{
+static const nsTArray<int>& FakeHugeArray() {
   static nsTArray<int> sArray;
   if (sArray.IsEmpty()) {
     sArray.AppendElement();
@@ -140,13 +125,13 @@ TEST(TArray, AssignmentOperatorSelfAssignment)
   ASSERT_EQ(DummyArray(), array);
 
 #if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wself-move"
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wself-move"
 #endif
-  array = std::move(array); // self-move
+  array = std::move(array);  // self-move
   ASSERT_EQ(DummyArray(), array);
 #if defined(__clang__)
-#pragma clang diagnostic pop
+#  pragma clang diagnostic pop
 #endif
 }
 
@@ -211,6 +196,85 @@ TEST(TArray, CopyOverlappingBackwards)
   }
 }
 
+namespace {
+
+class E {
+ public:
+  E() : mA(-1), mB(-2) { constructCount++; }
+  E(int a, int b) : mA(a), mB(b) { constructCount++; }
+  E(E&& aRhs) : mA(aRhs.mA), mB(aRhs.mB) {
+    aRhs.mA = 0;
+    aRhs.mB = 0;
+    moveCount++;
+  }
+
+  E& operator=(E&& aRhs) {
+    mA = aRhs.mA;
+    aRhs.mA = 0;
+    mB = aRhs.mB;
+    aRhs.mB = 0;
+    moveCount++;
+    return *this;
+  }
+
+  int a() const { return mA; }
+  int b() const { return mB; }
+
+  E(const E&) = delete;
+  E& operator=(const E&) = delete;
+
+  static size_t constructCount;
+  static size_t moveCount;
+
+ private:
+  int mA;
+  int mB;
+};
+
+size_t E::constructCount = 0;
+size_t E::moveCount = 0;
+
+}  // namespace
+
+TEST(TArray, Emplace)
+{
+  nsTArray<E> array;
+  array.SetCapacity(20);
+
+  ASSERT_EQ(array.Length(), 0u);
+
+  for (int i = 0; i < 10; i++) {
+    E s(i, i * i);
+    array.AppendElement(std::move(s));
+  }
+
+  ASSERT_EQ(array.Length(), 10u);
+  ASSERT_EQ(E::constructCount, 10u);
+  ASSERT_EQ(E::moveCount, 10u);
+
+  for (int i = 10; i < 20; i++) {
+    array.EmplaceBack(i, i * i);
+  }
+
+  ASSERT_EQ(array.Length(), 20u);
+  ASSERT_EQ(E::constructCount, 20u);
+  ASSERT_EQ(E::moveCount, 10u);
+
+  for (int i = 0; i < 20; i++) {
+    ASSERT_EQ(array[i].a(), i);
+    ASSERT_EQ(array[i].b(), i * i);
+  }
+
+  array.EmplaceBack();
+
+  ASSERT_EQ(array.Length(), 21u);
+  ASSERT_EQ(E::constructCount, 21u);
+  ASSERT_EQ(E::moveCount, 10u);
+
+  ASSERT_EQ(array[20].a(), -1);
+  ASSERT_EQ(array[20].b(), -2);
+}
+
 TEST(TArray, UnorderedRemoveElements)
 {
   // When removing an element from the end of the array, it can be removed in
@@ -219,10 +283,10 @@ TEST(TArray, UnorderedRemoveElements)
   // [ 1, 2, 3 ] => [ 1, 2 ]
   //         ^
   {
-    nsTArray<int> array{ 1, 2, 3 };
+    nsTArray<int> array{1, 2, 3};
     array.UnorderedRemoveElementAt(2);
 
-    nsTArray<int> goal{ 1, 2 };
+    nsTArray<int> goal{1, 2};
     ASSERT_EQ(array, goal);
   }
 
@@ -334,7 +398,7 @@ TEST(TArray, UnorderedRemoveElements)
 TEST(TArray, RemoveFromEnd)
 {
   {
-    nsTArray<int> array{1,2,3,4};
+    nsTArray<int> array{1, 2, 3, 4};
     ASSERT_EQ(array.PopLastElement(), 4);
     array.RemoveLastElement();
     ASSERT_EQ(array.PopLastElement(), 2);
@@ -343,4 +407,40 @@ TEST(TArray, RemoveFromEnd)
   }
 }
 
-} // namespace TestTArray
+TEST(TArray, ConvertIteratorToConstIterator)
+{
+  nsTArray<int> array{1, 2, 3, 4};
+
+  nsTArray<int>::const_iterator it = array.begin();
+  ASSERT_EQ(array.cbegin(), it);
+}
+
+TEST(TArray, RemoveElementAt_ByIterator)
+{
+  nsTArray<int> array{1, 2, 3, 4};
+  const auto it = std::find(array.begin(), array.end(), 3);
+  const auto itAfter = array.RemoveElementAt(it);
+
+  // Based on the implementation of the iterator, we could compare it and
+  // itAfter, but we should not rely on such implementation details.
+
+  ASSERT_EQ(2, std::distance(array.cbegin(), itAfter));
+  const nsTArray<int> expected{1, 2, 4};
+  ASSERT_EQ(expected, array);
+}
+
+TEST(TArray, RemoveElementsAt_ByIterator)
+{
+  nsTArray<int> array{1, 2, 3, 4};
+  const auto it = std::find(array.begin(), array.end(), 3);
+  const auto itAfter = array.RemoveElementsAt(it, array.end());
+
+  // Based on the implementation of the iterator, we could compare it and
+  // itAfter, but we should not rely on such implementation details.
+
+  ASSERT_EQ(2, std::distance(array.cbegin(), itAfter));
+  const nsTArray<int> expected{1, 2};
+  ASSERT_EQ(expected, array);
+}
+
+}  // namespace TestTArray

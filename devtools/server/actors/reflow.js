@@ -24,11 +24,11 @@
  *   These dedicated classes are used by the LayoutChangesObserver.
  */
 
-const {Ci} = require("chrome");
+const { Ci } = require("chrome");
 const ChromeUtils = require("ChromeUtils");
 const protocol = require("devtools/shared/protocol");
 const EventEmitter = require("devtools/shared/event-emitter");
-const {reflowSpec} = require("devtools/shared/specs/reflow");
+const { reflowSpec } = require("devtools/shared/specs/reflow");
 
 /**
  * The reflow actor tracks reflows and emits events about them.
@@ -80,7 +80,7 @@ exports.ReflowActor = protocol.ActorClassWithSpec(reflowSpec, {
     if (this._isStarted) {
       this.emit("reflows", reflows);
     }
-  }
+  },
 });
 
 /**
@@ -151,13 +151,13 @@ Observable.prototype = {
     }
   },
 
-  _onWindowReady: function({window}) {
+  _onWindowReady: function({ window }) {
     if (this.isObserving) {
       this._startListeners([window]);
     }
   },
 
-  _onWindowDestroyed: function({window}) {
+  _onWindowDestroyed: function({ window }) {
     if (this.isObserving) {
       this._stopListeners([window]);
     }
@@ -176,7 +176,7 @@ Observable.prototype = {
    */
   notifyCallback: function(...args) {
     this.isObserving && this.callback && this.callback.apply(null, args);
-  }
+  },
 };
 
 /**
@@ -232,7 +232,10 @@ function LayoutChangesObserver(targetActor) {
   // For now, just the reflow observer, but later we can add markupMutation,
   // styleSheetChanges and styleRuleChanges
   this.reflowObserver = new ReflowObserver(this.targetActor, this._onReflow);
-  this.resizeObserver = new WindowResizeObserver(this.targetActor, this._onResize);
+  this.resizeObserver = new WindowResizeObserver(
+    this.targetActor,
+    this._onResize
+  );
 
   EventEmitter.decorate(this);
 }
@@ -319,8 +322,10 @@ LayoutChangesObserver.prototype = {
       this.hasResized = false;
     }
 
-    this.eventLoopTimer = this._setTimeout(this._startEventLoop,
-      this.EVENT_BATCHING_DELAY);
+    this.eventLoopTimer = this._setTimeout(
+      this._startEventLoop,
+      this.EVENT_BATCHING_DELAY
+    );
   },
 
   _stopEventLoop: function() {
@@ -353,7 +358,7 @@ LayoutChangesObserver.prototype = {
     this.reflows.push({
       start: start,
       end: end,
-      isInterruptible: isInterruptible
+      isInterruptible: isInterruptible,
     });
   },
 
@@ -368,7 +373,7 @@ LayoutChangesObserver.prototype = {
     }
 
     this.hasResized = true;
-  }
+  },
 };
 
 /**
@@ -390,7 +395,7 @@ function getLayoutChangesObserver(targetActor) {
     observer: obs,
     // counting references allows to stop the observer when no targetActor owns an
     // instance.
-    refCounting: 1
+    refCounting: 1,
   });
   obs.start();
   return obs;
@@ -454,8 +459,10 @@ class ReflowObserver extends Observable {
   }
 }
 
-ReflowObserver.prototype.QueryInterface = ChromeUtils
-  .generateQI([Ci.nsIReflowObserver, Ci.nsISupportsWeakReference]);
+ReflowObserver.prototype.QueryInterface = ChromeUtils.generateQI([
+  Ci.nsIReflowObserver,
+  Ci.nsISupportsWeakReference,
+]);
 
 /**
  * Reports window resize events on the targetActor's windows.
@@ -466,7 +473,11 @@ ReflowObserver.prototype.QueryInterface = ChromeUtils
 class WindowResizeObserver extends Observable {
   constructor(targetActor, callback) {
     super(targetActor, callback);
+
+    this.onNavigate = this.onNavigate.bind(this);
     this.onResize = this.onResize.bind(this);
+
+    this.targetActor.on("navigate", this.onNavigate);
   }
 
   _startListeners() {
@@ -477,8 +488,19 @@ class WindowResizeObserver extends Observable {
     this.listenerTarget.removeEventListener("resize", this.onResize);
   }
 
+  onNavigate() {
+    if (this.isObserving) {
+      this._stopListeners();
+      this._startListeners();
+    }
+  }
+
   onResize() {
     this.notifyCallback();
+  }
+
+  destroy() {
+    this.targetActor.off("navigate", this.onNavigate);
   }
 
   get listenerTarget() {

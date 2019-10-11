@@ -21,7 +21,7 @@ var paymentRequest = {
     window.addEventListener("keydown", this);
 
     this.domReadyPromise = new Promise(function dcl(resolve) {
-      window.addEventListener("DOMContentLoaded", resolve, {once: true});
+      window.addEventListener("DOMContentLoaded", resolve, { once: true });
     }).then(this.handleEvent.bind(this));
 
     // This scope is now ready to listen to the initialization data
@@ -65,10 +65,13 @@ var paymentRequest = {
     log.debug("sendMessageToChrome:", messageType, messageID, detail);
     let event = new CustomEvent("paymentContentToChrome", {
       bubbles: true,
-      detail: Object.assign({
-        messageType,
-        messageID,
-      }, detail),
+      detail: Object.assign(
+        {
+          messageType,
+          messageID,
+        },
+        detail
+      ),
     });
     document.dispatchEvent(event);
     return messageID;
@@ -82,15 +85,18 @@ var paymentRequest = {
     debuggingConsole.hidden = !debuggingConsole.hidden;
   },
 
-  onChromeToContent({detail}) {
-    let {messageType} = detail;
+  onChromeToContent({ detail }) {
+    let { messageType } = detail;
     log.debug("onChromeToContent:", messageType);
 
     switch (messageType) {
       case "responseSent": {
+        let { request } = document
+          .querySelector("payment-dialog")
+          .requestStore.getState();
         document.querySelector("payment-dialog").requestStore.setState({
           changesPrevented: true,
-          completionState: "processing",
+          request: Object.assign({}, request, { completeStatus: "processing" }),
         });
         break;
       }
@@ -107,8 +113,7 @@ var paymentRequest = {
 
   onPaymentRequestLoad() {
     log.debug("onPaymentRequestLoad");
-    window.addEventListener("unload", this, {once: true});
-    this.sendMessageToChrome("paymentDialogReady");
+    window.addEventListener("unload", this, { once: true });
 
     // Automatically show the debugging console if loaded with a truthy `debug` query parameter.
     if (new URLSearchParams(location.search).get("debug")) {
@@ -125,50 +130,59 @@ var paymentRequest = {
     log.debug("onShowPaymentRequest, isPrivate?", detail.isPrivate);
 
     let paymentDialog = document.querySelector("payment-dialog");
-    let hasSavedAddresses = Object.keys(detail.savedAddresses).length != 0;
-    let hasSavedCards = Object.keys(detail.savedBasicCards).length != 0;
-    let shippingRequested = detail.request.paymentOptions.requestShipping;
     let state = {
       request: detail.request,
       savedAddresses: detail.savedAddresses,
       savedBasicCards: detail.savedBasicCards,
+      // Temp records can exist upon a reload during development.
+      tempAddresses: detail.tempAddresses,
+      tempBasicCards: detail.tempBasicCards,
       isPrivate: detail.isPrivate,
       page: {
         id: "payment-summary",
       },
     };
 
+    let hasSavedAddresses = !!Object.keys(this.getAddresses(state)).length;
+    let hasSavedCards = !!Object.keys(this.getBasicCards(state)).length;
+    let shippingRequested = state.request.paymentOptions.requestShipping;
+
     // Onboarding wizard flow.
-    if (!hasSavedAddresses && (shippingRequested || !hasSavedCards)) {
+    if (!hasSavedAddresses && shippingRequested) {
       state.page = {
-        id: "address-page",
+        id: "shipping-address-page",
         onboardingWizard: true,
       };
 
-      state["address-page"] = {
-        addressFields: null,
+      state["shipping-address-page"] = {
         guid: null,
       };
+    } else if (!hasSavedAddresses && !hasSavedCards) {
+      state.page = {
+        id: "billing-address-page",
+        onboardingWizard: true,
+      };
 
-      if (shippingRequested) {
-        Object.assign(state["address-page"], {
-          selectedStateKey: ["selectedShippingAddress"],
-          title: paymentDialog.dataset.shippingAddressTitleAdd,
-        });
-      } else {
-        Object.assign(state["address-page"], {
-          selectedStateKey: ["basic-card-page", "billingAddressGUID"],
-          title: paymentDialog.dataset.billingAddressTitleAdd,
-        });
-      }
+      state["billing-address-page"] = {
+        guid: null,
+      };
     } else if (!hasSavedCards) {
       state.page = {
         id: "basic-card-page",
         onboardingWizard: true,
       };
+      state["basic-card-page"] = {
+        selectedStateKey: "selectedPaymentCard",
+      };
     }
 
-    paymentDialog.setStateFromParent(state);
+    await paymentDialog.setStateFromParent(state);
+
+    this.sendMessageToChrome("paymentDialogReady");
+  },
+
+  openPreferences() {
+    this.sendMessageToChrome("openPreferences");
   },
 
   cancel() {
@@ -183,12 +197,20 @@ var paymentRequest = {
     this.sendMessageToChrome("closeDialog");
   },
 
+  changePaymentMethod(data) {
+    this.sendMessageToChrome("changePaymentMethod", data);
+  },
+
   changeShippingAddress(data) {
     this.sendMessageToChrome("changeShippingAddress", data);
   },
 
   changeShippingOption(data) {
     this.sendMessageToChrome("changeShippingOption", data);
+  },
+
+  changePayerAddress(data) {
+    this.sendMessageToChrome("changePayerAddress", data);
   },
 
   /**
@@ -208,14 +230,20 @@ var paymentRequest = {
         record,
       });
 
-      window.addEventListener("paymentChromeToContent", function onMsg({detail}) {
-        if (detail.messageType != "updateAutofillRecord:Response"
-            || detail.messageID != messageID) {
+      window.addEventListener("paymentChromeToContent", function onMsg({
+        detail,
+      }) {
+        if (
+          detail.messageType != "updateAutofillRecord:Response" ||
+          detail.messageID != messageID
+        ) {
           return;
         }
         log.debug("updateAutofillRecord: response:", detail);
         window.removeEventListener("paymentChromeToContent", onMsg);
-        document.querySelector("payment-dialog").setStateFromParent(detail.stateChange);
+        document
+          .querySelector("payment-dialog")
+          .setStateFromParent(detail.stateChange);
         if (detail.error) {
           reject(detail);
         } else {
@@ -227,24 +255,38 @@ var paymentRequest = {
 
   /**
    * @param {object} state object representing the UI state
-   * @param {string} methodID (GUID) uniquely identifying the selected payment method
+   * @param {string} selectedMethodID (GUID) uniquely identifying the selected payment method
    * @returns {object?} the applicable modifier for the payment method
    */
-  getModifierForPaymentMethod(state, methodID) {
-    let method = state.savedBasicCards[methodID] || null;
-    if (method && method.methodName !== "basic-card") {
-      throw new Error(`${method.methodName} (${methodID}) is not a supported payment method`);
+  getModifierForPaymentMethod(state, selectedMethodID) {
+    let basicCards = this.getBasicCards(state);
+    let selectedMethod = basicCards[selectedMethodID] || null;
+    if (selectedMethod && selectedMethod.methodName !== "basic-card") {
+      throw new Error(
+        `${selectedMethod.methodName} (${selectedMethodID}) ` +
+          `is not a supported payment method`
+      );
     }
     let modifiers = state.request.paymentDetails.modifiers;
-    if (!modifiers || !modifiers.length) {
+    if (!selectedMethod || !modifiers || !modifiers.length) {
       return null;
     }
-    let modifier = modifiers.find(m => {
+    let appliedModifier = modifiers.find(modifier => {
       // take the first matching modifier
-      // TODO (bug 1429198): match on supportedTypes and supportedNetworks
-      return m.supportedMethods == "basic-card";
+      if (
+        modifier.supportedMethods &&
+        modifier.supportedMethods != selectedMethod.methodName
+      ) {
+        return false;
+      }
+      let supportedNetworks =
+        (modifier.data && modifier.data.supportedNetworks) || [];
+      return (
+        !supportedNetworks.length ||
+        supportedNetworks.includes(selectedMethod["cc-type"])
+      );
     });
-    return modifier || null;
+    return appliedModifier || null;
   },
 
   /**
@@ -255,7 +297,10 @@ var paymentRequest = {
   getTotalItem(state) {
     let methodID = state.selectedPaymentCard;
     if (methodID) {
-      let modifier = paymentRequest.getModifierForPaymentMethod(state, methodID);
+      let modifier = paymentRequest.getModifierForPaymentMethod(
+        state,
+        methodID
+      );
       if (modifier && modifier.hasOwnProperty("total")) {
         return modifier.total;
       }
@@ -268,14 +313,41 @@ var paymentRequest = {
     window.removeEventListener("paymentChromeToContent", this);
   },
 
+  _sortObjectsByTimeLastUsed(objects) {
+    let sortedValues = Object.values(objects).sort((a, b) => {
+      let aLastUsed = a.timeLastUsed || a.timeLastModified;
+      let bLastUsed = b.timeLastUsed || b.timeLastModified;
+      return bLastUsed - aLastUsed;
+    });
+    let sortedObjects = {};
+    for (let obj of sortedValues) {
+      sortedObjects[obj.guid] = obj;
+    }
+    return sortedObjects;
+  },
+
   getAddresses(state) {
-    let addresses = Object.assign({}, state.savedAddresses, state.tempAddresses);
-    return addresses;
+    let addresses = Object.assign(
+      {},
+      state.savedAddresses,
+      state.tempAddresses
+    );
+    return this._sortObjectsByTimeLastUsed(addresses);
   },
 
   getBasicCards(state) {
     let cards = Object.assign({}, state.savedBasicCards, state.tempBasicCards);
-    return cards;
+    return this._sortObjectsByTimeLastUsed(cards);
+  },
+
+  maybeCreateFieldErrorElement(container) {
+    let span = container.querySelector(".error-text");
+    if (!span) {
+      span = document.createElement("span");
+      span.className = "error-text";
+      container.appendChild(span);
+    }
+    return span;
   },
 };
 

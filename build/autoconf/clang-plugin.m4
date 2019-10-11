@@ -36,7 +36,11 @@ if test -n "$ENABLE_CLANG_PLUGIN"; then
     dnl For some reason the llvm-config downloaded from clang.llvm.org for clang3_8
     dnl produces a -isysroot flag for a sysroot which might not ship when passed
     dnl --cxxflags. We use sed to remove this argument so that builds work on OSX
-    LLVM_CXXFLAGS=`$LLVMCONFIG --cxxflags | sed -e 's/-isysroot [[^ ]]*//'`
+    dnl
+    dnl For a similar reason, we remove any -gcc-toolchain arguments, since the
+    dnl directories specified by such arguments might not exist on the current
+    dnl machine.
+    LLVM_CXXFLAGS=`$LLVMCONFIG --cxxflags | sed -e 's/-isysroot [[^ ]]*//' -e 's/-gcc-toolchain [[^ ]]*//'`
 
     LLVM_LDFLAGS=`$LLVMCONFIG --ldflags | tr '\n' ' '`
 
@@ -57,7 +61,7 @@ if test -n "$ENABLE_CLANG_PLUGIN"; then
         dnl version that what our build machines have installed.
         LLVM_LDFLAGS=`echo "$LLVM_LDFLAGS" | sed -E 's/-L[[^ ]]+\/clang\/lib//'`
     elif test "${HOST_OS_ARCH}" = "WINNT"; then
-        CLANG_LDFLAGS="clang.lib clangASTMatchers.lib"
+        CLANG_LDFLAGS="clangASTMatchers.lib clang.lib"
     else
         CLANG_LDFLAGS="-lclangASTMatchers"
     fi
@@ -99,7 +103,7 @@ if test -n "$ENABLE_CLANG_PLUGIN"; then
     dnl middle of the 3.8 cycle, our CLANG_VERSION_FULL is impossible to use
     dnl correctly, so we have to detect this at configure time.
     AC_CACHE_CHECK(for new ASTMatcher API,
-                   ac_cv_have_new_ASTMatcher_api,
+                   ac_cv_have_new_ASTMatcher_names,
         [
             AC_LANG_SAVE
             AC_LANG_CPLUSPLUS

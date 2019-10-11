@@ -29,10 +29,22 @@ add_task(async function test() {
     }
     PlacesObservers.addListener(["page-visited"], onVisits);
   });
-  gBrowser.selectedBrowser.loadURI(TEST_URL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, TEST_URL);
   await promiseVisit;
 
-  is(await PlacesTestUtils.fieldInDB(TEST_URL, "frecency"), frecency, "Frecency should be unchanged");
-  is(await PlacesTestUtils.fieldInDB(TEST_URL, "hidden"), 0, "Page should not be hidden");
-  is(await PlacesTestUtils.fieldInDB(TEST_URL, "typed"), 0, "page should not be marked as typed");
+  is(
+    await PlacesTestUtils.fieldInDB(TEST_URL, "frecency"),
+    frecency,
+    "Frecency should be unchanged"
+  );
+  is(
+    await PlacesTestUtils.fieldInDB(TEST_URL, "hidden"),
+    0,
+    "Page should not be hidden"
+  );
+  is(
+    await PlacesTestUtils.fieldInDB(TEST_URL, "typed"),
+    0,
+    "page should not be marked as typed"
+  );
 });

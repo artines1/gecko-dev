@@ -4,10 +4,11 @@
 
 "use strict";
 
-const TEST_HOSTNAME = "https://example.com";
+const TEST_ORIGIN = "https://example.com";
 
 // Test with a page that only has a form within an iframe, not in the top-level document
-const IFRAME_PAGE_PATH = "/browser/toolkit/components/passwordmgr/test/browser/form_basic_iframe.html";
+const IFRAME_PAGE_PATH =
+  "/browser/toolkit/components/passwordmgr/test/browser/form_basic_iframe.html";
 
 /**
  * Initialize logins needed for the tests and disable autofill
@@ -15,6 +16,7 @@ const IFRAME_PAGE_PATH = "/browser/toolkit/components/passwordmgr/test/browser/f
  */
 add_task(async function test_initialize() {
   Services.prefs.setBoolPref("signon.autofillForms", false);
+  Services.prefs.setBoolPref("signon.schemeUpgrades", true);
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref("signon.autofillForms");
     Services.prefs.clearUserPref("signon.schemeUpgrades");
@@ -28,73 +30,153 @@ add_task(async function test_initialize() {
  * Check if the password field is correctly filled when it's in an iframe.
  */
 add_task(async function test_context_menu_iframe_fill() {
-  Services.prefs.setBoolPref("signon.schemeUpgrades", true);
-  await BrowserTestUtils.withNewTab({
-    gBrowser,
-    url: TEST_HOSTNAME + IFRAME_PAGE_PATH
-  }, async function(browser) {
-    function getPasswordInput() {
-      let frame = content.document.getElementById("test-iframe");
-      return frame.contentDocument.getElementById("form-basic-password");
-    }
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      url: TEST_ORIGIN + IFRAME_PAGE_PATH,
+    },
+    async function(browser) {
+      await openPasswordContextMenu(
+        browser,
+        "#form-basic-password",
+        null,
+        browser.browsingContext.getChildren()[0]
+      );
 
-    let contextMenuShownPromise = BrowserTestUtils.waitForEvent(window, "popupshown");
-    let eventDetails = {type: "contextmenu", button: 2};
+      let popupMenu = document.getElementById("fill-login-popup");
 
-    // To click at the right point we have to take into account the iframe offset.
-    // Synthesize a right mouse click over the password input element.
-    BrowserTestUtils.synthesizeMouseAtCenter(getPasswordInput, eventDetails, browser);
-    await contextMenuShownPromise;
+      // Stores the original value of username
+      function promiseFrameInputValue(name) {
+        return SpecialPowers.spawn(
+          browser.browsingContext.getChildren()[0],
+          [name],
+          function(inputname) {
+            return content.document.getElementById(inputname).value;
+          }
+        );
+      }
+      let usernameOriginalValue = await promiseFrameInputValue(
+        "form-basic-username"
+      );
 
-    // Synthesize a mouse click over the fill login menu header.
-    let popupHeader = document.getElementById("fill-login");
-    let popupShownPromise = BrowserTestUtils.waitForEvent(popupHeader, "popupshown");
-    EventUtils.synthesizeMouseAtCenter(popupHeader, {});
-    await popupShownPromise;
+      // Execute the command of the first login menuitem found at the context menu.
+      let passwordChangedPromise = SpecialPowers.spawn(
+        browser.browsingContext.getChildren()[0],
+        [],
+        function(inputname) {
+          return new Promise(resolve => {
+            let passwordInput = content.document.getElementById(
+              "form-basic-password"
+            );
+            // Cannot pass resolve directly to the event listener, as then
+            // spawn will try to return the non-serializable event passed to the listener
+            // and generate an error.
+            passwordInput.addEventListener(
+              "input",
+              () => {
+                resolve();
+              },
+              { once: true }
+            );
+          });
+        }
+      );
 
-    let popupMenu = document.getElementById("fill-login-popup");
-
-    // Stores the original value of username
-    function promiseFrameInputValue(name) {
-      return ContentTask.spawn(browser, name, function(inputname) {
-        let iframe = content.document.getElementById("test-iframe");
-        let input = iframe.contentDocument.getElementById(inputname);
-        return input.value;
+      // Wait a tick for SpecialPowers.spawn to add the input listener.
+      await new Promise(resolve => {
+        SimpleTest.executeSoon(resolve);
       });
+
+      let firstLoginItem = popupMenu.getElementsByClassName(
+        "context-login-item"
+      )[0];
+      firstLoginItem.doCommand();
+
+      await passwordChangedPromise;
+
+      // Find the used login by it's username.
+      let login = getLoginFromUsername(firstLoginItem.label);
+      let passwordValue = await promiseFrameInputValue("form-basic-password");
+      is(login.password, passwordValue, "Password filled and correct.");
+
+      let usernameNewValue = await promiseFrameInputValue(
+        "form-basic-username"
+      );
+      is(
+        usernameOriginalValue,
+        usernameNewValue,
+        "Username value was not changed."
+      );
+
+      let contextMenu = document.getElementById("contentAreaContextMenu");
+      contextMenu.hidePopup();
     }
-    let usernameOriginalValue = await promiseFrameInputValue("form-basic-username");
+  );
+});
 
-    // Execute the command of the first login menuitem found at the context menu.
-    let passwordChangedPromise = ContentTask.spawn(browser, null, async function() {
-      let frame = content.document.getElementById("test-iframe");
-      let passwordInput = frame.contentDocument.getElementById("form-basic-password");
-      await ContentTaskUtils.waitForEvent(passwordInput, "input");
-    });
+/**
+ * Check that the login context menu items don't appear on an opaque origin.
+ */
+add_task(async function test_context_menu_iframe_sandbox() {
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      url: TEST_ORIGIN + IFRAME_PAGE_PATH,
+    },
+    async function(browser) {
+      await openPasswordContextMenu(
+        browser,
+        "#form-basic-password",
+        function checkDisabled() {
+          let popupHeader = document.getElementById("fill-login");
+          ok(
+            popupHeader.disabled,
+            "Check that the Fill Login menu item is disabled"
+          );
+          return false;
+        },
+        browser.browsingContext.getChildren()[1]
+      );
+      let contextMenu = document.getElementById("contentAreaContextMenu");
+      contextMenu.hidePopup();
+    }
+  );
+});
 
-    let firstLoginItem = popupMenu.getElementsByClassName("context-login-item")[0];
-    firstLoginItem.doCommand();
+/**
+ * Check that the login context menu item appears for sandbox="allow-same-origin"
+ */
+add_task(async function test_context_menu_iframe_sandbox_same_origin() {
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      url: TEST_ORIGIN + IFRAME_PAGE_PATH,
+    },
+    async function(browser) {
+      await openPasswordContextMenu(
+        browser,
+        "#form-basic-password",
+        function checkDisabled() {
+          let popupHeader = document.getElementById("fill-login");
+          ok(
+            !popupHeader.disabled,
+            "Check that the Fill Login menu item is disabled"
+          );
+          return false;
+        },
+        browser.browsingContext.getChildren()[2]
+      );
 
-    await passwordChangedPromise;
-
-    // Find the used login by it's username.
-    let login = getLoginFromUsername(firstLoginItem.label);
-    let passwordValue = await promiseFrameInputValue("form-basic-password");
-    is(login.password, passwordValue, "Password filled and correct.");
-
-    let usernameNewValue = await promiseFrameInputValue("form-basic-username");
-    is(usernameOriginalValue,
-       usernameNewValue,
-       "Username value was not changed.");
-
-    let contextMenu = document.getElementById("contentAreaContextMenu");
-    contextMenu.hidePopup();
-  });
+      let contextMenu = document.getElementById("contentAreaContextMenu");
+      contextMenu.hidePopup();
+    }
+  );
 });
 
 /**
  * Search for a login by it's username.
  *
- * Only unique login/hostname combinations should be used at this test.
+ * Only unique login/origin combinations should be used at this test.
  */
 function getLoginFromUsername(username) {
   return loginList().find(login => login.username == username);
@@ -110,33 +192,33 @@ function getLoginFromUsername(username) {
 function loginList() {
   return [
     LoginTestUtils.testData.formLogin({
-      hostname: "https://example.com",
-      formSubmitURL: "https://example.com",
+      origin: "https://example.com",
+      formActionOrigin: "https://example.com",
       username: "username",
       password: "password",
     }),
     // Same as above but HTTP in order to test de-duping.
     LoginTestUtils.testData.formLogin({
-      hostname: "http://example.com",
-      formSubmitURL: "http://example.com",
+      origin: "http://example.com",
+      formActionOrigin: "http://example.com",
       username: "username",
       password: "password",
     }),
     LoginTestUtils.testData.formLogin({
-      hostname: "http://example.com",
-      formSubmitURL: "http://example.com",
+      origin: "http://example.com",
+      formActionOrigin: "http://example.com",
       username: "username1",
       password: "password1",
     }),
     LoginTestUtils.testData.formLogin({
-      hostname: "https://example.com",
-      formSubmitURL: "https://example.com",
+      origin: "https://example.com",
+      formActionOrigin: "https://example.com",
       username: "username2",
       password: "password2",
     }),
     LoginTestUtils.testData.formLogin({
-      hostname: "http://example.org",
-      formSubmitURL: "http://example.org",
+      origin: "http://example.org",
+      formActionOrigin: "http://example.org",
       username: "username-cross-origin",
       password: "password-cross-origin",
     }),

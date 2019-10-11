@@ -6,21 +6,23 @@ package org.mozilla.gecko.media;
 
 import org.mozilla.gecko.util.HardwareCodecCapabilityUtils;
 
+import android.annotation.TargetApi;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo.CodecCapabilities;
 import android.media.MediaCrypto;
 import android.media.MediaFormat;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
-import android.util.Log;
 import android.view.Surface;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+@TargetApi(Build.VERSION_CODES.LOLLIPOP)
 /* package */ final class LollipopAsyncCodec implements AsyncCodec {
     private final MediaCodec mCodec;
 
@@ -88,7 +90,11 @@ import java.nio.ByteBuffer;
 
             private void onError(final MediaCodec.CodecException e) {
                 e.printStackTrace();
-                notify(obtainMessage(MSG_ERROR, e.getErrorCode()));
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    notify(obtainMessage(MSG_ERROR, e.getErrorCode()));
+                } else {
+                    notify(obtainMessage(MSG_ERROR, e.getLocalizedMessage()));
+                }
             }
         }
 
@@ -184,9 +190,9 @@ import java.nio.ByteBuffer;
     }
 
     @Override
-    public void setRates(final int newBitRate) {
+    public void setBitrate(final int bps) {
         final Bundle params = new Bundle();
-        params.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, newBitRate * 1000);
+        params.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, bps);
         mCodec.setParameters(params);
     }
 

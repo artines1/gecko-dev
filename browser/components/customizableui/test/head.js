@@ -9,11 +9,17 @@ var tmp = {};
 ChromeUtils.import("resource://gre/modules/Promise.jsm", tmp);
 ChromeUtils.import("resource:///modules/CustomizableUI.jsm", tmp);
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm", tmp);
-ChromeUtils.import("resource://testing-common/CustomizableUITestUtils.jsm", tmp);
-var {Promise, CustomizableUI, AppConstants, CustomizableUITestUtils} = tmp;
+ChromeUtils.import(
+  "resource://testing-common/CustomizableUITestUtils.jsm",
+  tmp
+);
+var { Promise, CustomizableUI, AppConstants, CustomizableUITestUtils } = tmp;
 
 var EventUtils = {};
-Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+Services.scriptloader.loadSubScript(
+  "chrome://mochikit/content/tests/SimpleTest/EventUtils.js",
+  EventUtils
+);
 
 /**
  * Instance of CustomizableUITestUtils for the current browser window.
@@ -21,16 +27,22 @@ Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/
 var gCUITestUtils = new CustomizableUITestUtils(window);
 
 Services.prefs.setBoolPref("browser.uiCustomization.skipSourceNodeCheck", true);
-registerCleanupFunction(() => Services.prefs.clearUserPref("browser.uiCustomization.skipSourceNodeCheck"));
+registerCleanupFunction(() =>
+  Services.prefs.clearUserPref("browser.uiCustomization.skipSourceNodeCheck")
+);
 
-var {synthesizeDragStart, synthesizeDrop} = EventUtils;
+var {
+  synthesizeDragStart,
+  synthesizeDrop,
+  synthesizeMouseAtCenter,
+} = EventUtils;
 
 const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 const kForceOverflowWidthPx = 300;
 
 function createDummyXULButton(id, label, win = window) {
-  let btn = document.createElementNS(kNSXUL, "toolbarbutton");
+  let btn = win.document.createElementNS(kNSXUL, "toolbarbutton");
   btn.id = id;
   btn.setAttribute("label", label || id);
   btn.className = "toolbarbutton-1 chromeclass-toolbar-additional";
@@ -47,9 +59,10 @@ function createToolbarWithPlacements(id, placements = []) {
   tb.setAttribute("customizable", "true");
   CustomizableUI.registerArea(id, {
     type: CustomizableUI.TYPE_TOOLBAR,
-    defaultPlacements: placements
+    defaultPlacements: placements,
   });
   gNavToolbox.appendChild(tb);
+  CustomizableUI.registerToolbarNode(tb);
   return tb;
 }
 
@@ -90,6 +103,7 @@ function createOverflowableToolbarWithPlacements(id, placements) {
   tb.setAttribute("overflowbutton", chevron.id);
 
   gNavToolbox.appendChild(tb);
+  CustomizableUI.registerToolbarNode(tb);
   return tb;
 }
 
@@ -100,8 +114,9 @@ function removeCustomToolbars() {
     let tb = document.getElementById(toolbarId);
     if (tb.hasAttribute("overflowpanel")) {
       let panel = document.getElementById(tb.getAttribute("overflowpanel"));
-      if (panel)
+      if (panel) {
         panel.remove();
+      }
     }
     tb.remove();
   }
@@ -118,7 +133,10 @@ function isInDevEdition() {
 
 function removeNonReleaseButtons(areaPanelPlacements) {
   if (isInDevEdition() && areaPanelPlacements.includes("developer-button")) {
-    areaPanelPlacements.splice(areaPanelPlacements.indexOf("developer-button"), 1);
+    areaPanelPlacements.splice(
+      areaPanelPlacements.indexOf("developer-button"),
+      1
+    );
   }
 }
 
@@ -134,20 +152,37 @@ function assertAreaPlacements(areaId, expectedPlacements) {
 function placementArraysEqual(areaId, actualPlacements, expectedPlacements) {
   info("Actual placements: " + actualPlacements.join(", "));
   info("Expected placements: " + expectedPlacements.join(", "));
-  is(actualPlacements.length, expectedPlacements.length,
-     "Area " + areaId + " should have " + expectedPlacements.length + " items.");
+  is(
+    actualPlacements.length,
+    expectedPlacements.length,
+    "Area " + areaId + " should have " + expectedPlacements.length + " items."
+  );
   let minItems = Math.min(expectedPlacements.length, actualPlacements.length);
   for (let i = 0; i < minItems; i++) {
     if (typeof expectedPlacements[i] == "string") {
-      is(actualPlacements[i], expectedPlacements[i],
-         "Item " + i + " in " + areaId + " should match expectations.");
+      is(
+        actualPlacements[i],
+        expectedPlacements[i],
+        "Item " + i + " in " + areaId + " should match expectations."
+      );
     } else if (expectedPlacements[i] instanceof RegExp) {
-      ok(expectedPlacements[i].test(actualPlacements[i]),
-         "Item " + i + " (" + actualPlacements[i] + ") in " +
-         areaId + " should match " + expectedPlacements[i]);
+      ok(
+        expectedPlacements[i].test(actualPlacements[i]),
+        "Item " +
+          i +
+          " (" +
+          actualPlacements[i] +
+          ") in " +
+          areaId +
+          " should match " +
+          expectedPlacements[i]
+      );
     } else {
-      ok(false, "Unknown type of expected placement passed to " +
-                " assertAreaPlacements. Is your test broken?");
+      ok(
+        false,
+        "Unknown type of expected placement passed to " +
+          " assertAreaPlacements. Is your test broken?"
+      );
     }
   }
 }
@@ -162,33 +197,52 @@ function todoAssertAreaPlacements(areaId, expectedPlacements) {
     } else if (expectedPlacements[i] instanceof RegExp) {
       isPassing = isPassing && expectedPlacements[i].test(actualPlacements[i]);
     } else {
-      ok(false, "Unknown type of expected placement passed to " +
-                " assertAreaPlacements. Is your test broken?");
+      ok(
+        false,
+        "Unknown type of expected placement passed to " +
+          " assertAreaPlacements. Is your test broken?"
+      );
     }
   }
-  todo(isPassing, "The area placements for " + areaId +
-                  " should equal the expected placements.");
+  todo(
+    isPassing,
+    "The area placements for " +
+      areaId +
+      " should equal the expected placements."
+  );
 }
 
 function getAreaWidgetIds(areaId) {
   return CustomizableUI.getWidgetIdsInArea(areaId);
 }
 
-function simulateItemDrag(aToDrag, aTarget, aEvent = {}) {
+function simulateItemDrag(aToDrag, aTarget, aEvent = {}, aOffset = 2) {
   let ev = aEvent;
   if (ev == "end" || ev == "start") {
     let win = aTarget.ownerGlobal;
     const dwu = win.windowUtils;
     let bounds = dwu.getBoundsWithoutFlushing(aTarget);
     if (ev == "end") {
-      ev = {clientX: bounds.right - 2, clientY: bounds.bottom - 2};
+      ev = {
+        clientX: bounds.right - aOffset,
+        clientY: bounds.bottom - aOffset,
+      };
     } else {
-      ev = {clientX: bounds.left + 2, clientY: bounds.top + 2};
+      ev = { clientX: bounds.left + aOffset, clientY: bounds.top + aOffset };
     }
   }
   ev._domDispatchOnly = true;
-  synthesizeDrop(aToDrag.parentNode, aTarget, null, null,
-                 aToDrag.ownerGlobal, aTarget.ownerGlobal, ev);
+  synthesizeDrop(
+    aToDrag.parentNode,
+    aTarget,
+    null,
+    null,
+    aToDrag.ownerGlobal,
+    aTarget.ownerGlobal,
+    ev
+  );
+  // Ensure dnd suppression is cleared.
+  synthesizeMouseAtCenter(aTarget, { type: "mouseup" }, aTarget.ownerGlobal);
 }
 
 function endCustomizing(aWindow = window) {
@@ -197,12 +251,17 @@ function endCustomizing(aWindow = window) {
   }
   return new Promise(resolve => {
     function onCustomizationEnds() {
-      aWindow.gNavToolbox.removeEventListener("aftercustomization", onCustomizationEnds);
+      aWindow.gNavToolbox.removeEventListener(
+        "aftercustomization",
+        onCustomizationEnds
+      );
       resolve();
     }
-    aWindow.gNavToolbox.addEventListener("aftercustomization", onCustomizationEnds);
+    aWindow.gNavToolbox.addEventListener(
+      "aftercustomization",
+      onCustomizationEnds
+    );
     aWindow.gCustomizeMode.exit();
-
   });
 }
 
@@ -212,7 +271,10 @@ function startCustomizing(aWindow = window) {
   }
   return new Promise(resolve => {
     function onCustomizing() {
-      aWindow.gNavToolbox.removeEventListener("customizationready", onCustomizing);
+      aWindow.gNavToolbox.removeEventListener(
+        "customizationready",
+        onCustomizing
+      );
       resolve();
     }
     aWindow.gNavToolbox.addEventListener("customizationready", onCustomizing);
@@ -224,8 +286,8 @@ function promiseObserverNotified(aTopic) {
   return new Promise(resolve => {
     Services.obs.addObserver(function onNotification(subject, topic, data) {
       Services.obs.removeObserver(onNotification, topic);
-        resolve({subject, data});
-      }, aTopic);
+      resolve({ subject, data });
+    }, aTopic);
   });
 }
 
@@ -240,20 +302,27 @@ function openAndLoadWindow(aOptions, aWaitForDelayedStartup = false) {
         Services.obs.removeObserver(onDS, "browser-delayed-startup-finished");
         resolve(win);
       }, "browser-delayed-startup-finished");
-
     } else {
-      win.addEventListener("load", function() {
-        resolve(win);
-      }, {once: true});
+      win.addEventListener(
+        "load",
+        function() {
+          resolve(win);
+        },
+        { once: true }
+      );
     }
   });
 }
 
 function promiseWindowClosed(win) {
   return new Promise(resolve => {
-    win.addEventListener("unload", function() {
-      resolve();
-    }, {once: true});
+    win.addEventListener(
+      "unload",
+      function() {
+        resolve();
+      },
+      { once: true }
+    );
     win.close();
   });
 }
@@ -387,69 +456,53 @@ function promiseTabLoadEvent(aTab, aURL) {
 function promiseAttributeMutation(aNode, aAttribute, aFilterFn) {
   return new Promise((resolve, reject) => {
     info("waiting for mutation of attribute '" + aAttribute + "'.");
-    let obs = new MutationObserver((mutations) => {
+    let obs = new MutationObserver(mutations => {
       for (let mut of mutations) {
         let attr = mut.attributeName;
         let newValue = mut.target.getAttribute(attr);
         if (aFilterFn(newValue)) {
-          ok(true, "mutation occurred: attribute '" + attr + "' changed to '" + newValue + "' from '" + mut.oldValue + "'.");
+          ok(
+            true,
+            "mutation occurred: attribute '" +
+              attr +
+              "' changed to '" +
+              newValue +
+              "' from '" +
+              mut.oldValue +
+              "'."
+          );
           obs.disconnect();
           resolve();
         } else {
-          info("Ignoring mutation that produced value " + newValue + " because of filter.");
+          info(
+            "Ignoring mutation that produced value " +
+              newValue +
+              " because of filter."
+          );
         }
       }
     });
-    obs.observe(aNode, {attributeFilter: [aAttribute]});
+    obs.observe(aNode, { attributeFilter: [aAttribute] });
   });
 }
 
 function popupShown(aPopup) {
-  return promisePopupEvent(aPopup, "shown");
+  return BrowserTestUtils.waitForPopupEvent(aPopup, "shown");
 }
 
 function popupHidden(aPopup) {
-  return promisePopupEvent(aPopup, "hidden");
-}
-
-/**
- * Returns a Promise that resolves when aPopup fires an event of type
- * aEventType. Times out and rejects after 20 seconds.
- *
- * @param aPopup the popup to monitor for events.
- * @param aEventSuffix the _suffix_ for the popup event type to watch for.
- *
- * Example usage:
- *   let popupShownPromise = promisePopupEvent(somePopup, "shown");
- *   // ... something that opens a popup
- *   yield popupShownPromise;
- *
- *  let popupHiddenPromise = promisePopupEvent(somePopup, "hidden");
- *  // ... something that hides a popup
- *  yield popupHiddenPromise;
- */
-function promisePopupEvent(aPopup, aEventSuffix) {
-  return new Promise(resolve => {
-    let eventType = "popup" + aEventSuffix;
-
-    function onPopupEvent(e) {
-      aPopup.removeEventListener(eventType, onPopupEvent);
-      resolve();
-    }
-
-    aPopup.addEventListener(eventType, onPopupEvent);
-  });
+  return BrowserTestUtils.waitForPopupEvent(aPopup, "hidden");
 }
 
 // This is a simpler version of the context menu check that
 // exists in contextmenu_common.js.
 function checkContextMenu(aContextMenu, aExpectedEntries, aWindow = window) {
-  let childNodes = [...aContextMenu.childNodes];
+  let children = [...aContextMenu.children];
   // Ignore hidden nodes:
-  childNodes = childNodes.filter((n) => !n.hidden);
+  children = children.filter(n => !n.hidden);
 
-  for (let i = 0; i < childNodes.length; i++) {
-    let menuitem = childNodes[i];
+  for (let i = 0; i < children.length; i++) {
+    let menuitem = children[i];
     try {
       if (aExpectedEntries[i][0] == "---") {
         is(menuitem.localName, "menuseparator", "menuseparator expected");
@@ -457,13 +510,22 @@ function checkContextMenu(aContextMenu, aExpectedEntries, aWindow = window) {
       }
 
       let selector = aExpectedEntries[i][0];
-      ok(menuitem.matches(selector), "menuitem should match " + selector + " selector");
+      ok(
+        menuitem.matches(selector),
+        "menuitem should match " + selector + " selector"
+      );
       let commandValue = menuitem.getAttribute("command");
-      let relatedCommand = commandValue ? aWindow.document.getElementById(commandValue) : null;
-      let menuItemDisabled = relatedCommand ?
-                               relatedCommand.getAttribute("disabled") == "true" :
-                               menuitem.getAttribute("disabled") == "true";
-      is(menuItemDisabled, !aExpectedEntries[i][1], "disabled state for " + selector);
+      let relatedCommand = commandValue
+        ? aWindow.document.getElementById(commandValue)
+        : null;
+      let menuItemDisabled = relatedCommand
+        ? relatedCommand.getAttribute("disabled") == "true"
+        : menuitem.getAttribute("disabled") == "true";
+      is(
+        menuItemDisabled,
+        !aExpectedEntries[i][1],
+        "disabled state for " + selector
+      );
     } catch (e) {
       ok(false, "Exception when checking context menu: " + e);
     }
@@ -471,16 +533,15 @@ function checkContextMenu(aContextMenu, aExpectedEntries, aWindow = window) {
 }
 
 function waitForOverflowButtonShown(win = window) {
+  info("Waiting for overflow button to show");
   let ov = win.document.getElementById("nav-bar-overflow-button");
-  let icon = win.document.getAnonymousElementByAttribute(ov, "class", "toolbarbutton-icon");
-  return waitForElementShown(icon);
+  return waitForElementShown(ov.icon);
 }
 function waitForElementShown(element) {
-  let win = element.ownerGlobal;
-  let dwu = win.windowUtils;
   return BrowserTestUtils.waitForCondition(() => {
-    info("Waiting for overflow button to have non-0 size");
-    let bounds = dwu.getBoundsWithoutFlushing(element);
-    return bounds.width > 0 && bounds.height > 0;
+    info("Checking if element has non-0 size");
+    // We intentionally flush layout to ensure the element is actually shown.
+    let rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   });
 }

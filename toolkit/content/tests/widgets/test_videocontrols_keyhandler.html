@@ -2,8 +2,8 @@
 <html>
 <head>
   <title>Video controls test - KeyHandler</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -19,9 +19,9 @@
   SimpleTest.waitForExplicitFinish();
   const video = document.getElementById("video");
 
-  const playButton = getAnonElementWithinVideoByAttribute(video, "anonid", "playButton");
-  const scrubber = getAnonElementWithinVideoByAttribute(video, "anonid", "scrubber");
-  const volumeStack = getAnonElementWithinVideoByAttribute(video, "anonid", "volumeStack");
+  const playButton = getElementWithinVideo(video, "playButton");
+  const scrubber = getElementWithinVideo(video, "scrubber");
+  const volumeStack = getElementWithinVideo(video, "volumeStack");
 
   // Setup video
   tests.push(done => {

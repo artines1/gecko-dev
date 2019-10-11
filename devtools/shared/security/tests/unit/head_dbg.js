@@ -5,13 +5,22 @@
 
 /* exported defer, DebuggerClient, initTestDebuggerServer */
 
-const { require } =
-  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { loader, require } = ChromeUtils.import(
+  "resource://devtools/shared/Loader.jsm"
+);
 const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const xpcInspector = require("xpcInspector");
-const { DebuggerServer } = require("devtools/server/main");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
+// We need to require lazily since will be crashed if we load SocketListener too early
+// in xpc shell test due to SocketListener loads PSM module.
+loader.lazyRequireGetter(
+  this,
+  "SocketListener",
+  "devtools/shared/security/socket",
+  true
+);
 
 // We do not want to log packets by default, because in some tests,
 // we can be sending large amounts of data. The test harness has
@@ -50,9 +59,16 @@ var listener = {
     let string;
     try {
       message.QueryInterface(Ci.nsIScriptError);
-      dump(message.sourceName + ":" + message.lineNumber + ": " +
-           scriptErrorFlagsToKind(message.flags) + ": " +
-           message.errorMessage + "\n");
+      dump(
+        message.sourceName +
+          ":" +
+          message.lineNumber +
+          ": " +
+          scriptErrorFlagsToKind(message.flags) +
+          ": " +
+          message.errorMessage +
+          "\n"
+      );
       string = message.errorMessage;
     } catch (ex) {
       // Be a little paranoid with message, as the whole goal here is to lose
@@ -73,7 +89,7 @@ var listener = {
     if (!(message.flags & Ci.nsIScriptError.strictFlag)) {
       info("head_dbg.js got console message: " + string + "\n");
     }
-  }
+  },
 };
 
 Services.console.registerListener(listener);

@@ -18,7 +18,6 @@ if CONFIG['OS_ARCH'] == 'Darwin' and CONFIG['NIGHTLY_BUILD']:
         'HashTable.cpp',
         'ipc/Channel.cpp',
         'ipc/ChildIPC.cpp',
-        'ipc/ChildNavigation.cpp',
         'ipc/ChildProcess.cpp',
         'ipc/JSControl.cpp',
         'ipc/ParentForwarding.cpp',
@@ -26,14 +25,13 @@ if CONFIG['OS_ARCH'] == 'Darwin' and CONFIG['NIGHTLY_BUILD']:
         'ipc/ParentIPC.cpp',
         'Lock.cpp',
         'MemorySnapshot.cpp',
+        'MiddlemanCall.cpp',
         'ProcessRecordReplay.cpp',
         'ProcessRedirectDarwin.cpp',
         'ProcessRewind.cpp',
         'Thread.cpp',
         'ThreadSnapshot.cpp',
-        'Trigger.cpp',
         'ValueIndex.cpp',
-        'WeakPointer.cpp',
     ]
     SOURCES += [
         # ProcessRedirect includes udis86 directly and will not compile if the
@@ -49,6 +47,8 @@ LOCAL_INCLUDES += [
     '!/ipc/ipdl/_ipdlheaders',
     '/ipc/chromium/src',
     '/js/xpconnect/src',
+    '/toolkit/crashreporter/breakpad-client',
+    '/toolkit/crashreporter/google-breakpad/src',
 ]
 
 FINAL_LIBRARY = 'xul'

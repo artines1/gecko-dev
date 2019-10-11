@@ -23,7 +23,10 @@ self.onmessage = e => {
     }
     ok(threw, "Constructor shouldn't be usable");
   } catch (ex) {
-    ok(false, "Unexpected error inside worker:\n" + ex.toString() + "\n" + ex.stack);
+    ok(
+      false,
+      "Unexpected error inside worker:\n" + ex.toString() + "\n" + ex.stack
+    );
   } finally {
     done();
   }
@@ -31,12 +34,12 @@ self.onmessage = e => {
 
 // Proxy assertions to the main thread.
 function ok(val, msg) {
-  console.log("ok(" + !!val + ", \"" + msg + "\")");
+  console.log("ok(" + !!val + ', "' + msg + '")');
   self.postMessage({
     type: "assertion",
     passed: !!val,
     msg,
-    stack: Error().stack
+    stack: Error().stack,
   });
 }
 
@@ -44,6 +47,6 @@ function ok(val, msg) {
 function done() {
   console.log("done()");
   self.postMessage({
-    type: "done"
+    type: "done",
   });
 }

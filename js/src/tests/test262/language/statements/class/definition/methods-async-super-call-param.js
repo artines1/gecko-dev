@@ -1,3 +1,4 @@
+// |reftest| async
 // Copyright 2016 Microsoft, Inc. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -7,6 +8,7 @@ esid: pending
 description: >
   Super calls work in the parameter list of async methods
 flags: [async]
+features: [async-functions]
 ---*/
 
 class A {

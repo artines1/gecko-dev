@@ -1,8 +1,8 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* A vector of pointers space-optimized for a small number of elements. */
 
@@ -10,6 +10,7 @@
 #define mozilla_SmallPointerArray_h
 
 #include "mozilla/Assertions.h"
+#include "mozilla/PodOperations.h"
 
 #include <algorithm>
 #include <iterator>
@@ -19,7 +20,7 @@
 namespace mozilla {
 
 // Array class for situations where a small number of NON-NULL elements (<= 2)
-// is expected, a large number of elements must be accomodated if necessary,
+// is expected, a large number of elements must be accommodated if necessary,
 // and the size of the class must be minimal. Typical vector implementations
 // will fulfill the first two requirements by simply adding inline storage
 // alongside the rest of their member variables. While this strategy works,
@@ -33,23 +34,31 @@ namespace mozilla {
 // The minimum (inline) size is 2 * sizeof(void*).
 //
 // Any modification of the array invalidates any outstanding iterators.
-template<typename T>
-class SmallPointerArray
-{
-public:
-  SmallPointerArray()
-  {
+template <typename T>
+class SmallPointerArray {
+ public:
+  SmallPointerArray() {
     // List-initialization would be nicer, but it only lets you initialize the
     // first union member.
     mArray[0].mValue = nullptr;
     mArray[1].mVector = nullptr;
   }
 
-  ~SmallPointerArray()
-  {
+  ~SmallPointerArray() {
     if (!first()) {
       delete maybeVector();
     }
+  }
+
+  SmallPointerArray(SmallPointerArray&& aOther) {
+    PodCopy(mArray, aOther.mArray, 2);
+    aOther.mArray[0].mValue = nullptr;
+    aOther.mArray[1].mVector = nullptr;
+  }
+
+  SmallPointerArray& operator=(SmallPointerArray&& aOther) {
+    std::swap(mArray, aOther.mArray);
+    return *this;
   }
 
   void Clear() {
@@ -91,7 +100,7 @@ public:
       return;
     }
 
-    auto* vec = new std::vector<T*>({ first(), second(), aElement });
+    auto* vec = new std::vector<T*>({first(), second(), aElement});
     first() = nullptr;
     new (&mArray[1].mVector) std::vector<T*>*(vec);
   }
@@ -151,8 +160,7 @@ public:
     return false;
   }
 
-  size_t Length() const
-  {
+  size_t Length() const {
     if (first()) {
       return second() ? 2 : 1;
     }
@@ -163,6 +171,8 @@ public:
 
     return 0;
   }
+
+  bool IsEmpty() const { return Length() == 0; }
 
   T* ElementAt(size_t aIndex) const {
     MOZ_ASSERT(aIndex < Length());
@@ -175,31 +185,20 @@ public:
     return (*vec)[aIndex];
   }
 
-  T* operator[](size_t aIndex) const
-  {
-    return ElementAt(aIndex);
-  }
+  T* operator[](size_t aIndex) const { return ElementAt(aIndex); }
 
   using iterator = T**;
   using const_iterator = const T**;
 
   // Methods for range-based for loops. Manipulation invalidates these.
-  iterator begin() {
-    return beginInternal();
-  }
-  const_iterator begin() const {
-    return beginInternal();
-  }
+  iterator begin() { return beginInternal(); }
+  const_iterator begin() const { return beginInternal(); }
   const_iterator cbegin() const { return begin(); }
-  iterator end() {
-    return beginInternal() + Length();
-  }
-  const_iterator end() const {
-    return beginInternal() + Length();
-  }
+  iterator end() { return beginInternal() + Length(); }
+  const_iterator end() const { return beginInternal() + Length(); }
   const_iterator cend() const { return end(); }
 
-private:
+ private:
   T** beginInternal() const {
     if (first()) {
       static_assert(sizeof(T*) == sizeof(Element),
@@ -222,9 +221,7 @@ private:
 
   // Accessors for |mArray| element union arms.
 
-  T*& first() const {
-    return const_cast<T*&>(mArray[0].mValue);
-  }
+  T*& first() const { return const_cast<T*&>(mArray[0].mValue); }
 
   T*& second() const {
     MOZ_ASSERT(first(), "first() must be non-null to have a T* second pointer");
@@ -268,6 +265,6 @@ private:
   } mArray[2];
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_SmallPointerArray_h
+#endif  // mozilla_SmallPointerArray_h

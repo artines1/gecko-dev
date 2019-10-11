@@ -67,8 +67,6 @@
                 "./src/net/nr_resolver.h",
                 "./src/net/nr_socket_wrapper.c",
                 "./src/net/nr_socket_wrapper.h",
-                "./src/net/nr_proxy_tunnel.c",
-                "./src/net/nr_proxy_tunnel.h",
                 "./src/net/nr_socket.c",
                 "./src/net/nr_socket.h",
                 #"./src/net/nr_socket_local.c",
@@ -207,11 +205,14 @@
               # Windows, clang-cl build
               [ 'clang_cl == 1', {
                 'cflags_mozilla': [
-                    '-Wno-error', # workaround for bug 1090497
                     '-Xclang',
                     '-Wall',
+                    '-Xclang',
                     '-Wno-parentheses',
+                    '-Wno-pointer-sign',
                     '-Wno-strict-prototypes',
+                    '-Xclang',
+                    '-Wno-unused-function',
                     '-Wmissing-prototypes',
                     '-Wno-format',
                     '-Wno-format-security',

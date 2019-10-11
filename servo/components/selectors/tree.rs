@@ -1,25 +1,30 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Traits that nodes must implement. Breaks the otherwise-cyclic dependency
 //! between layout and style.
 
-use attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
-use matching::{ElementSelectorFlags, MatchingContext};
-use parser::SelectorImpl;
-use servo_arc::NonZeroPtrMut;
+use crate::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
+use crate::matching::{ElementSelectorFlags, MatchingContext};
+use crate::parser::SelectorImpl;
 use std::fmt::Debug;
+use std::ptr::NonNull;
 
-/// Opaque representation of an Element, for identity comparisons. We use
-/// NonZeroPtrMut to get the NonZero optimization.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct OpaqueElement(NonZeroPtrMut<()>);
+/// Opaque representation of an Element, for identity comparisons.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct OpaqueElement(NonNull<()>);
+
+unsafe impl Send for OpaqueElement {}
 
 impl OpaqueElement {
     /// Creates a new OpaqueElement from an arbitrarily-typed pointer.
-    pub fn new<T>(ptr: *const T) -> Self {
-        OpaqueElement(NonZeroPtrMut::new(ptr as *const () as *mut ()))
+    pub fn new<T>(ptr: &T) -> Self {
+        unsafe {
+            OpaqueElement(NonNull::new_unchecked(
+                ptr as *const T as *const () as *mut (),
+            ))
+        }
     }
 }
 
@@ -42,8 +47,12 @@ pub trait Element: Sized + Clone + Debug {
     ///
     /// This is guaranteed to be called in a pseudo-element.
     fn pseudo_element_originating_element(&self) -> Option<Self> {
+        debug_assert!(self.is_pseudo_element());
         self.parent_element()
     }
+
+    /// Whether we're matching on a pseudo-element.
+    fn is_pseudo_element(&self) -> bool;
 
     /// Skips non-element nodes
     fn prev_sibling_element(&self) -> Option<Self>;
@@ -53,10 +62,13 @@ pub trait Element: Sized + Clone + Debug {
 
     fn is_html_element_in_html_document(&self) -> bool;
 
-    fn local_name(&self) -> &<Self::Impl as SelectorImpl>::BorrowedLocalName;
+    fn has_local_name(&self, local_name: &<Self::Impl as SelectorImpl>::BorrowedLocalName) -> bool;
 
     /// Empty string for no namespace
-    fn namespace(&self) -> &<Self::Impl as SelectorImpl>::BorrowedNamespaceUrl;
+    fn has_namespace(&self, ns: &<Self::Impl as SelectorImpl>::BorrowedNamespaceUrl) -> bool;
+
+    /// Whether this element and the `other` element have the same local name and namespace.
+    fn is_same_type(&self, other: &Self) -> bool;
 
     fn attr_matches(
         &self,
@@ -104,6 +116,8 @@ pub trait Element: Sized + Clone + Debug {
         name: &<Self::Impl as SelectorImpl>::ClassName,
         case_sensitivity: CaseSensitivity,
     ) -> bool;
+
+    fn is_part(&self, name: &<Self::Impl as SelectorImpl>::PartName) -> bool;
 
     /// Returns whether this element matches `:empty`.
     ///

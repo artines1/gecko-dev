@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from setuptools import setup, find_packages
 
 PACKAGE_NAME = 'awsy'
@@ -17,7 +19,7 @@ setup(
     license='MPL 1.1/GPL 2.0/LGPL 2.1',
     packages=find_packages(),
     zip_safe=False,
-    install_requires=["marionette_harness"],
+    install_requires=["marionette_harness", "PyYaml"],
     classifiers=['Development Status :: 4 - Beta',
                  'Environment :: Console',
                  'Intended Audience :: Developers',

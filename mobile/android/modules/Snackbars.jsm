@@ -6,7 +6,11 @@
 
 var EXPORTED_SYMBOLS = ["Snackbars"];
 
-ChromeUtils.defineModuleGetter(this, "EventDispatcher", "resource://gre/modules/Messaging.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "EventDispatcher",
+  "resource://gre/modules/Messaging.jsm"
+);
 
 const LENGTH_INDEFINITE = -2;
 const LENGTH_LONG = 0;
@@ -18,7 +22,6 @@ var Snackbars = {
   LENGTH_SHORT: LENGTH_SHORT,
 
   show: function(aMessage, aDuration, aOptions) {
-
     // Takes care of the deprecated toast calls
     if (typeof aDuration === "string") {
       [aDuration, aOptions] = migrateToastIfNeeded(aDuration, aOptions);
@@ -41,10 +44,13 @@ var Snackbars = {
         msg.action.label = aOptions.action.label;
       }
 
-      EventDispatcher.instance.sendRequestForResult(msg)
+      EventDispatcher.instance
+        .sendRequestForResult(msg)
         .then(result => aOptions.action.callback())
         .catch(result => {
-          if (result === null) {
+          if (aOptions.action.rejection) {
+            aOptions.action.rejection(result);
+          } else if (result === null) {
             /* The snackbar was dismissed without executing the callback, nothing to do here. */
           } else {
             Cu.reportError(result);
@@ -53,7 +59,7 @@ var Snackbars = {
     } else {
       EventDispatcher.instance.sendRequest(msg);
     }
-  }
+  },
 };
 
 function migrateToastIfNeeded(aDuration, aOptions) {

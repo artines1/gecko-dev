@@ -7,9 +7,9 @@
 #ifndef mozilla_layers_APZInputBridge_h
 #define mozilla_layers_APZInputBridge_h
 
-#include "APZUtils.h"                   // for APZWheelAction
-#include "mozilla/EventForwards.h"      // for WidgetInputEvent, nsEventStatus
-#include "Units.h"                      // for LayoutDeviceIntPoint
+#include "APZUtils.h"               // for APZWheelAction
+#include "mozilla/EventForwards.h"  // for WidgetInputEvent, nsEventStatus
+#include "Units.h"                  // for LayoutDeviceIntPoint
 
 namespace mozilla {
 
@@ -21,28 +21,20 @@ class APZInputBridgeParent;
 struct ScrollableLayerGuid;
 
 /**
- * This class lives in the main process, and is accessed via the controller
- * thread (which is the process main thread for desktop, and the Java UI
- * thread for Android). This class exposes a synchronous API to deliver
- * incoming input events to APZ and modify them in-place to unapply the APZ
- * async transform. If there is a GPU process, then this class does sync IPC
- * calls over to the GPU process in order to accomplish this. Otherwise,
- * APZCTreeManager overrides and implements these methods directly.
+ * Represents the outcome of APZ receiving and processing an input event.
+ * This is returned from APZInputBridge::ReceiveInputEvent() and related APIs.
  */
-class APZInputBridge {
-public:
+struct APZEventResult {
   /**
-   * General handler for incoming input events. Manipulates the frame metrics
-   * based on what type of input it is. For example, a PinchGestureEvent will
-   * cause scaling. This should only be called externally to this class, and
-   * must be called on the controller thread.
+   * Creates a default result with a status of eIgnore, no block ID, and empty
+   * target guid.
+   */
+  APZEventResult();
+
+  /**
+   * A status flag indicated how APZ handled the event.
+   * The interpretation of each value is as follows:
    *
-   * This function transforms |aEvent| to have its coordinates in DOM space.
-   * This is so that the event can be passed through the DOM and content can
-   * handle them. The event may need to be converted to a WidgetInputEvent
-   * by the caller if it wants to do this.
-   *
-   * The following values may be returned by this function:
    * nsEventStatus_eConsumeNoDefault is returned to indicate the
    *   APZ is consuming this event and the caller should discard the event with
    *   extreme prejudice. The exact scenarios under which this is returned is
@@ -58,17 +50,57 @@ public:
    *   is because we cannot always know at the time of event delivery whether
    *   the event will be used or not. So we err on the side of sending
    *   CONSUMED when we are uncertain.
+   */
+  nsEventStatus mStatus;
+  /**
+   * The guid of the APZC this event was delivered to.
+   */
+  ScrollableLayerGuid mTargetGuid;
+  /**
+   * If this event started or was added to an input block, the id of that
+   * input block, otherwise InputBlockState::NO_BLOCK_ID.
+   */
+  uint64_t mInputBlockId;
+  /**
+   * True if the event is targeting a region with non-passive APZ-aware
+   * listeners, that is, a region where we need to dispatch the event to Gecko
+   * to see if a listener will prevent-default it.
+   * Notes:
+   *   1) This is currently only set for touch events.
+   *   2) For non-WebRender, this will have some false positives; it will
+   *      be set in some cases where we need to dispatch the event to Gecko
+   *      before handling for other reasons than APZ-aware listeners.
+   */
+  bool mHitRegionWithApzAwareListeners;
+};
+
+/**
+ * This class lives in the main process, and is accessed via the controller
+ * thread (which is the process main thread for desktop, and the Java UI
+ * thread for Android). This class exposes a synchronous API to deliver
+ * incoming input events to APZ and modify them in-place to unapply the APZ
+ * async transform. If there is a GPU process, then this class does sync IPC
+ * calls over to the GPU process in order to accomplish this. Otherwise,
+ * APZCTreeManager overrides and implements these methods directly.
+ */
+class APZInputBridge {
+ public:
+  /**
+   * General handler for incoming input events. Manipulates the frame metrics
+   * based on what type of input it is. For example, a PinchGestureEvent will
+   * cause scaling. This should only be called externally to this class, and
+   * must be called on the controller thread.
+   *
+   * This function transforms |aEvent| to have its coordinates in DOM space.
+   * This is so that the event can be passed through the DOM and content can
+   * handle them. The event may need to be converted to a WidgetInputEvent
+   * by the caller if it wants to do this.
    *
    * @param aEvent input event object; is modified in-place
-   * @param aOutTargetGuid returns the guid of the apzc this event was
-   * delivered to. May be null.
-   * @param aOutInputBlockId returns the id of the input block that this event
-   * was added to, if that was the case. May be null.
+   * @return The result of processing the event. Refer to the documentation of
+   * APZEventResult and its field.
    */
-  virtual nsEventStatus ReceiveInputEvent(
-      InputData& aEvent,
-      ScrollableLayerGuid* aOutTargetGuid,
-      uint64_t* aOutInputBlockId) = 0;
+  virtual APZEventResult ReceiveInputEvent(InputData& aEvent) = 0;
 
   /**
    * WidgetInputEvent handler. Transforms |aEvent| (which is assumed to be an
@@ -86,37 +118,34 @@ public:
    *
    * See documentation for other ReceiveInputEvent above.
    */
-  nsEventStatus ReceiveInputEvent(
-      WidgetInputEvent& aEvent,
-      ScrollableLayerGuid* aOutTargetGuid,
-      uint64_t* aOutInputBlockId);
+  APZEventResult ReceiveInputEvent(WidgetInputEvent& aEvent);
 
   // Returns the kind of wheel event action, if any, that will be (or was)
   // performed by APZ. If this returns true, the event must not perform a
   // synchronous scroll.
   //
   // Even if this returns Nothing(), all wheel events in APZ-aware widgets must
-  // be sent through APZ so they are transformed correctly for TabParent.
+  // be sent through APZ so they are transformed correctly for BrowserParent.
   static Maybe<APZWheelAction> ActionForWheelEvent(WidgetWheelEvent* aEvent);
 
-protected:
+ protected:
   friend class APZInputBridgeParent;
 
-  // Methods to help process WidgetInputEvents (or manage conversion to/from InputData)
+  // Methods to help process WidgetInputEvents (or manage conversion to/from
+  // InputData)
 
-  virtual void ProcessUnhandledEvent(
-      LayoutDeviceIntPoint* aRefPoint,
-      ScrollableLayerGuid* aOutTargetGuid,
-      uint64_t* aOutFocusSequenceNumber) = 0;
+  virtual void ProcessUnhandledEvent(LayoutDeviceIntPoint* aRefPoint,
+                                     ScrollableLayerGuid* aOutTargetGuid,
+                                     uint64_t* aOutFocusSequenceNumber,
+                                     LayersId* aOutLayersId) = 0;
 
-  virtual void UpdateWheelTransaction(
-      LayoutDeviceIntPoint aRefPoint,
-      EventMessage aEventMessage) = 0;
+  virtual void UpdateWheelTransaction(LayoutDeviceIntPoint aRefPoint,
+                                      EventMessage aEventMessage) = 0;
 
-  virtual ~APZInputBridge() { }
+  virtual ~APZInputBridge() = default;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // mozilla_layers_APZInputBridge_h
+#endif  // mozilla_layers_APZInputBridge_h

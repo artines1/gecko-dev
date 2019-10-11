@@ -14,6 +14,7 @@ EXPORTS += [
 ]
 
 EXPORTS.mozilla.dom += [
+    'MerchantValidationEvent.h',
     'PaymentAddress.h',
     'PaymentMethodChangeEvent.h',
     'PaymentRequest.h',
@@ -24,18 +25,21 @@ EXPORTS.mozilla.dom += [
 
 UNIFIED_SOURCES += [
     'BasicCardPayment.cpp',
-    'PaymentActionRequest.cpp',
+    'MerchantValidationEvent.cpp',
     'PaymentActionResponse.cpp',
     'PaymentAddress.cpp',
     'PaymentMethodChangeEvent.cpp',
     'PaymentRequest.cpp',
     'PaymentRequestData.cpp',
     'PaymentRequestManager.cpp',
-    'PaymentRequestModule.cpp',
     'PaymentRequestService.cpp',
     'PaymentRequestUpdateEvent.cpp',
     'PaymentRequestUtils.cpp',
     'PaymentResponse.cpp',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')

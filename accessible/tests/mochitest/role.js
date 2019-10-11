@@ -37,6 +37,7 @@ const ROLE_FOOTER = nsIAccessibleRole.ROLE_FOOTER;
 const ROLE_FOOTNOTE = nsIAccessibleRole.ROLE_FOOTNOTE;
 const ROLE_FLAT_EQUATION = nsIAccessibleRole.ROLE_FLAT_EQUATION;
 const ROLE_FORM = nsIAccessibleRole.ROLE_FORM;
+const ROLE_FORM_LANDMARK = nsIAccessibleRole.ROLE_FORM_LANDMARK;
 const ROLE_GRAPHIC = nsIAccessibleRole.ROLE_GRAPHIC;
 const ROLE_GRID_CELL = nsIAccessibleRole.ROLE_GRID_CELL;
 const ROLE_GROUPING = nsIAccessibleRole.ROLE_GROUPING;
@@ -153,8 +154,9 @@ function testRole(aAccOrElmOrID, aRole) {
  */
 function getRole(aAccOrElmOrID) {
   var acc = getAccessible(aAccOrElmOrID);
-  if (!acc)
+  if (!acc) {
     return -1;
+  }
 
   var role = -1;
   try {
@@ -171,8 +173,9 @@ function getRole(aAccOrElmOrID) {
  */
 function isRole(aIdentifier, aRole, aMsg) {
   var role = getRole(aIdentifier);
-  if (role == -1)
+  if (role == -1) {
     return;
+  }
 
   if (role == aRole) {
     ok(true, aMsg);

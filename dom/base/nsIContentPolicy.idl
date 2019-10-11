@@ -23,7 +23,7 @@ typedef unsigned long nsContentPolicyType;
  * by launching a dialog to prompt the user for something).
  */
 
-[scriptable,uuid(caad4f1f-d047-46ac-ae9d-dc598e4fb91b)]
+[scriptable, uuid(caad4f1f-d047-46ac-ae9d-dc598e4fb91b)]
 interface nsIContentPolicy : nsISupports
 {
   /**
@@ -345,6 +345,36 @@ interface nsIContentPolicy : nsISupports
    * Indicates a speculative connection.
    */
   const nsContentPolicyType TYPE_SPECULATIVE = 44;
+
+  /**
+   * Indicates an internal constant for ES6 module scripts
+   * loaded through script elements or an import statement.
+   *
+   * This will be mapped to TYPE_SCRIPT before being passed
+   * to content policy implementations.
+   */
+  const nsContentPolicyType TYPE_INTERNAL_MODULE = 45;
+
+  /**
+   * Indicates an internal constant for *preloaded* ES6 module scripts
+   * loaded through script elements or an import statement.
+   *
+   * This will be mapped to TYPE_SCRIPT before being passed
+   * to content policy implementations.
+   */
+  const nsContentPolicyType TYPE_INTERNAL_MODULE_PRELOAD = 46;
+
+  /**
+   * Indicates a DTD loaded by an XML document the URI of which could
+   * not be mapped to a known local DTD.
+   */
+  const nsContentPolicyType TYPE_INTERNAL_DTD = 47;
+
+  /**
+   * Indicates a TYPE_INTERNAL_DTD which will not be blocked no matter
+   * what principal is being loaded from.
+   */
+  const nsContentPolicyType TYPE_INTERNAL_FORCE_ALLOWED_DTD = 48;
 
   /* When adding new content types, please update nsContentBlocker,
    * NS_CP_ContentTypeName, nsCSPContext, CSP_ContentTypeToDirective,

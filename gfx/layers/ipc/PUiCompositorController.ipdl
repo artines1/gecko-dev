@@ -28,10 +28,11 @@ parent:
   // the compositor needs to pause/resume in lockstep with the application.
   sync Pause();
   sync Resume();
-  sync ResumeAndResize(int32_t aWidth, int32_t aHeight);
+  sync ResumeAndResize(int32_t aX, int32_t aY, int32_t aWidth, int32_t aHeight);
 
   async InvalidateAndRender();
   async MaxToolbarHeight(int32_t aHeight);
+  async FixedBottomOffset(int32_t aOffset);
   async Pinned(bool aPinned, int32_t aReason);
   async ToolbarAnimatorMessageFromUI(int32_t aMessage);
   async DefaultClearColor(uint32_t aColor);

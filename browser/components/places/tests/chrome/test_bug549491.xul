@@ -10,20 +10,21 @@
                  type="text/css"?>
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
-<?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/tree-icons.css"?>
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="549491: 'The root node is never visible' exception when details of the root node are modified "
         onload="runTest();">
 
   <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+          src="chrome://browser/content/places/places-tree.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
   <script type="application/javascript" src="head.js" />
 
   <body xmlns="http://www.w3.org/1999/xhtml" />
 
   <tree id="tree"
-        type="places"
+        is="places-tree"
         flatList="true"
         flex="1">
     <treecols>

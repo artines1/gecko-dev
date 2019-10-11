@@ -11,10 +11,6 @@ function NetMonitorPanel(iframeWindow, toolbox) {
 
 NetMonitorPanel.prototype = {
   async open() {
-    if (!this.toolbox.target.isRemote) {
-      await this.toolbox.target.makeRemote();
-    }
-
     // Reuse an existing Network monitor API object if available.
     // It could have been created for WE API before Net panel opens.
     const api = await this.toolbox.getNetMonitorAPI();
@@ -24,6 +20,7 @@ NetMonitorPanel.prototype = {
     await app.bootstrap({
       toolbox: this.toolbox,
       document: this.panelWin.document,
+      win: this.panelWin,
     });
 
     // Ready to go!
@@ -33,10 +30,9 @@ NetMonitorPanel.prototype = {
     return this;
   },
 
-  async destroy() {
-    await this.panelWin.Netmonitor.destroy();
+  destroy() {
+    this.panelWin.Netmonitor.destroy();
     this.emit("destroyed");
-    return this;
   },
 };
 

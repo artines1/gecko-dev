@@ -6,19 +6,26 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-ChromeUtils.defineModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
-ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
-                                  "resource://gre/modules/ExtensionSettingsStore.jsm");
-
-XPCOMUtils.defineLazyPreferenceGetter(this, "contentBlockingUiEnabled",
-                                      "browser.contentblocking.ui.enabled");
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "BrowserUtils",
+  "resource://gre/modules/BrowserUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "DeferredTask",
+  "resource://gre/modules/DeferredTask.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ExtensionSettingsStore",
+  "resource://gre/modules/ExtensionSettingsStore.jsm"
+);
 
 const PREF_SETTING_TYPE = "prefs";
 const PROXY_KEY = "proxy.settings";
@@ -42,36 +49,34 @@ const API_PROXY_PREFS = [
 
 let extensionControlledContentIds = {
   "privacy.containers": "browserContainersExtensionContent",
-  "homepage_override": "browserHomePageExtensionContent",
-  "newTabURL": "browserNewTabExtensionContent",
-  "defaultSearch": "browserDefaultSearchExtensionContent",
+  homepage_override: "browserHomePageExtensionContent",
+  newTabURL: "browserNewTabExtensionContent",
+  webNotificationsDisabled: "browserNotificationsPermissionExtensionContent",
+  defaultSearch: "browserDefaultSearchExtensionContent",
   "proxy.settings": "proxyExtensionContent",
   get "websites.trackingProtectionMode"() {
     return {
-      button: contentBlockingUiEnabled ?
-        "contentBlockingTrackingProtectionExtensionContentButton" :
-        "trackingProtectionExtensionContentButton",
-      section: contentBlockingUiEnabled ?
-        "contentBlockingTrackingProtectionExtensionContentLabel" :
-        "trackingProtectionExtensionContentLabel",
+      button: "contentBlockingDisableTrackingProtectionExtension",
+      section: "contentBlockingTrackingProtectionExtensionContentLabel",
     };
-  }
+  },
 };
 
 const extensionControlledL10nKeys = {
-  "homepage_override": "homepage-override",
-  "newTabURL": "new-tab-url",
-  "defaultSearch": "default-search",
+  homepage_override: "homepage-override",
+  newTabURL: "new-tab-url",
+  webNotificationsDisabled: "web-notifications",
+  defaultSearch: "default-search",
   "privacy.containers": "privacy-containers",
-  "websites.trackingProtectionMode": "websites-tracking-protection-mode",
+  "websites.trackingProtectionMode": "websites-content-blocking-all-trackers",
   "proxy.settings": "proxy-config",
 };
 
 let extensionControlledIds = {};
 
 /**
-  * Check if a pref is being managed by an extension.
-  */
+ * Check if a pref is being managed by an extension.
+ */
 async function getControllingExtensionInfo(type, settingName) {
   await ExtensionSettingsStore.initialize();
   return ExtensionSettingsStore.getSetting(type, settingName);
@@ -80,9 +85,9 @@ async function getControllingExtensionInfo(type, settingName) {
 function getControllingExtensionEls(settingName) {
   let idInfo = extensionControlledContentIds[settingName];
   let section = document.getElementById(idInfo.section || idInfo);
-  let button = idInfo.button ?
-    document.getElementById(idInfo.button) :
-    section.querySelector("button");
+  let button = idInfo.button
+    ? document.getElementById(idInfo.button)
+    : section.querySelector("button");
   return {
     section,
     button,
@@ -92,8 +97,7 @@ function getControllingExtensionEls(settingName) {
 
 async function getControllingExtension(type, settingName) {
   let info = await getControllingExtensionInfo(type, settingName);
-  let addon = info && info.id
-    && await AddonManager.getAddonByID(info.id);
+  let addon = info && info.id && (await AddonManager.getAddonByID(info.id));
   return addon;
 }
 
@@ -110,9 +114,11 @@ async function handleControllingExtension(type, settingName) {
     showControllingExtension(settingName, addon);
   } else {
     let elements = getControllingExtensionEls(settingName);
-    if (extensionControlledIds[settingName]
-        && !document.hidden
-        && elements.button) {
+    if (
+      extensionControlledIds[settingName] &&
+      !document.hidden &&
+      elements.button
+    ) {
       showEnableExtensionMessage(settingName);
     } else {
       hideControllingExtension(settingName);
@@ -125,14 +131,20 @@ async function handleControllingExtension(type, settingName) {
 
 function settingNameToL10nID(settingName) {
   if (!extensionControlledL10nKeys.hasOwnProperty(settingName)) {
-    throw new Error(`Unknown extension controlled setting name: ${settingName}`);
+    throw new Error(
+      `Unknown extension controlled setting name: ${settingName}`
+    );
   }
   return `extension-controlled-${extensionControlledL10nKeys[settingName]}`;
 }
 
-
 /**
  * Set the localization data for the description of the controlling extension.
+ *
+ * The function alters the inner DOM structure of the fragment to, depending
+ * on the `addon` argument, remove the `<img/>` element or ensure it's
+ * set to the correct src.
+ * This allows Fluent DOM Overlays to localize the fragment.
  *
  * @param elem {Element}
  *        <description> element to be annotated
@@ -145,25 +157,35 @@ function settingNameToL10nID(settingName) {
  *        element.
  */
 function setControllingExtensionDescription(elem, addon, settingName) {
-  // Remove the old content from the description.
-  while (elem.firstChild) {
-    elem.firstChild.remove();
-  }
-
+  const existingImg = elem.querySelector("img");
   if (addon === null) {
+    // If the element has an image child element,
+    // remove it.
+    if (existingImg) {
+      existingImg.remove();
+    }
     document.l10n.setAttributes(elem, settingName);
     return;
   }
 
-  let image = document.createElementNS("http://www.w3.org/1999/xhtml", "img");
   const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
-  image.setAttribute("src", addon.iconURL || defaultIcon);
-  image.setAttribute("data-l10n-name", "icon");
-  image.classList.add("extension-controlled-icon");
-  elem.appendChild(image);
+  const src = addon.iconURL || defaultIcon;
+
+  if (!existingImg) {
+    // If an element doesn't have an image child
+    // node, add it.
+    let image = document.createElementNS("http://www.w3.org/1999/xhtml", "img");
+    image.setAttribute("src", src);
+    image.setAttribute("data-l10n-name", "icon");
+    image.classList.add("extension-controlled-icon");
+    elem.appendChild(image);
+  } else if (existingImg.getAttribute("src") !== src) {
+    existingImg.setAttribute("src", src);
+  }
+
   const l10nId = settingNameToL10nID(settingName);
   document.l10n.setAttributes(elem, l10nId, {
-    name: addon.name
+    name: addon.name,
   });
 }
 
@@ -223,14 +245,17 @@ function showEnableExtensionMessage(settingName) {
     img.className = "extension-controlled-icon";
     return img;
   };
-  let label = document.createElement("label");
-  let addonIcon = icon("chrome://mozapps/skin/extensions/extensionGeneric-16.svg", "addons-icon");
+  let label = document.createXULElement("label");
+  let addonIcon = icon(
+    "chrome://mozapps/skin/extensions/extensionGeneric-16.svg",
+    "addons-icon"
+  );
   let toolbarIcon = icon("chrome://browser/skin/menu.svg", "menu-icon");
   label.appendChild(addonIcon);
   label.appendChild(toolbarIcon);
   document.l10n.setAttributes(label, "extension-controlled-enable");
   elements.description.appendChild(label);
-  let dismissButton = document.createElement("image");
+  let dismissButton = document.createXULElement("image");
   dismissButton.setAttribute("class", "extension-controlled-icon close-icon");
   dismissButton.addEventListener("click", function dismissHandler() {
     hideControllingExtension(settingName);
@@ -241,7 +266,7 @@ function showEnableExtensionMessage(settingName) {
 
 function makeDisableControllingExtension(type, settingName) {
   return async function disableExtension() {
-    let {id} = await getControllingExtensionInfo(type, settingName);
+    let { id } = await getControllingExtensionInfo(type, settingName);
     let addon = await AddonManager.getAddonByID(id);
     await addon.disable();
   };

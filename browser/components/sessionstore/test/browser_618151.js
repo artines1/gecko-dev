@@ -4,14 +4,15 @@
 
 const stateBackup = ss.getBrowserState();
 const testState = {
-  windows: [{
-    tabs: [
-      { entries: [{ url: "about:blank", triggeringPrincipal_base64 }] },
-      { entries: [{ url: "about:mozilla", triggeringPrincipal_base64 }] }
-    ]
-  }]
+  windows: [
+    {
+      tabs: [
+        { entries: [{ url: "about:blank", triggeringPrincipal_base64 }] },
+        { entries: [{ url: "about:mozilla", triggeringPrincipal_base64 }] },
+      ],
+    },
+  ],
 };
-
 
 function test() {
   /** Test for Bug 618151 - Overwriting state can lead to unrestored tabs **/
@@ -26,10 +27,8 @@ function runNextTest() {
   if (tests.length) {
     // Enumerate windows and close everything but our primary window. We can't
     // use waitForFocus() because apparently it's buggy. See bug 599253.
-    var windowsEnum = Services.wm.getEnumerator("navigator:browser");
     let closeWinPromises = [];
-    while (windowsEnum.hasMoreElements()) {
-      var currentWindow = windowsEnum.getNext();
+    for (let currentWindow of Services.wm.getEnumerator("navigator:browser")) {
       if (currentWindow != window) {
         closeWinPromises.push(BrowserTestUtils.closeWindow(currentWindow));
       }
@@ -53,9 +52,13 @@ function test_setup() {
   }
 
   gBrowser.tabContainer.addEventListener("SSTabRestored", onSSTabRestored);
-  ss.setTabState(gBrowser.tabs[1], JSON.stringify({
-    entries: [{ url: "http://example.org", triggeringPrincipal_base64 }],
-    extData: { foo: "bar" } }));
+  ss.setTabState(
+    gBrowser.tabs[1],
+    JSON.stringify({
+      entries: [{ url: "http://example.org", triggeringPrincipal_base64 }],
+      extData: { foo: "bar" },
+    })
+  );
 }
 
 function test_hang() {

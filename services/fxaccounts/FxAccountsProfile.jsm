@@ -14,22 +14,31 @@
 
 var EXPORTED_SYMBOLS = ["FxAccountsProfile"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
-ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { ON_PROFILE_CHANGE_NOTIFICATION, log } = ChromeUtils.import(
+  "resource://gre/modules/FxAccountsCommon.js"
+);
+const { fxAccounts } = ChromeUtils.import(
+  "resource://gre/modules/FxAccounts.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "FxAccountsProfileClient",
-  "resource://gre/modules/FxAccountsProfileClient.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "FxAccountsProfileClient",
+  "resource://gre/modules/FxAccountsProfileClient.jsm"
+);
 
 var FxAccountsProfile = function(options = {}) {
   this._currentFetchPromise = null;
   this._cachedAt = 0; // when we saved the cached version.
   this._isNotifying = false; // are we sending a notification?
-  this.fxa = options.fxa || fxAccounts;
-  this.client = options.profileClient || new FxAccountsProfileClient({
-    fxa: this.fxa,
-    serverURL: options.profileServerUrl,
-  });
+  this.fxai = options.fxai || fxAccounts._internal;
+  this.client =
+    options.profileClient ||
+    new FxAccountsProfileClient({
+      fxai: this.fxai,
+      serverURL: options.profileServerUrl,
+    });
 
   // An observer to invalidate our _cachedAt optimization. We use a weak-ref
   // just incase this.tearDown isn't called in some cases.
@@ -56,7 +65,7 @@ this.FxAccountsProfile.prototype = {
   },
 
   tearDown() {
-    this.fxa = null;
+    this.fxai = null;
     this.client = null;
     Services.obs.removeObserver(this, ON_PROFILE_CHANGE_NOTIFICATION);
   },
@@ -68,28 +77,39 @@ this.FxAccountsProfile.prototype = {
   },
 
   // Cache fetched data and send out a notification so that UI can update.
-  async _cacheProfile(response) {
-    const profile = response.body;
-    const userData = await this.fxa.getSignedInUser();
-    if (profile.uid != userData.uid) {
-      throw new Error("The fetched profile does not correspond with the current account.");
-    }
-    let profileCache = {
-      profile,
-      etag: response.etag
-    };
-    await this.fxa.setProfileCache(profileCache);
-    if (profile.email != userData.email) {
-      await this.fxa.handleEmailUpdated(profile.email);
-    }
-    log.debug("notifying profile changed for user ${uid}", userData);
-    this._notifyProfileChange(userData.uid);
-    return profile;
+  _cacheProfile(response) {
+    return this.fxai.withCurrentAccountState(async state => {
+      const profile = response.body;
+      const userData = await state.getUserAccountData();
+      if (profile.uid != userData.uid) {
+        throw new Error(
+          "The fetched profile does not correspond with the current account."
+        );
+      }
+      let profileCache = {
+        profile,
+        etag: response.etag,
+      };
+      await state.updateUserAccountData({ profileCache });
+      if (profile.email != userData.email) {
+        await this.fxai._handleEmailUpdated(profile.email);
+      }
+      log.debug("notifying profile changed for user ${uid}", userData);
+      this._notifyProfileChange(userData.uid);
+      return profile;
+    });
+  },
+
+  async _getProfileCache() {
+    let data = await this.fxai.currentAccountState.getUserAccountData([
+      "profileCache",
+    ]);
+    return data ? data.profileCache : null;
   },
 
   async _fetchAndCacheProfileInternal() {
     try {
-      const profileCache = await this.fxa.getProfileCache();
+      const profileCache = await this._getProfileCache();
       const etag = profileCache ? profileCache.etag : null;
       const response = await this.client.fetchProfile(etag);
 
@@ -116,7 +136,7 @@ this.FxAccountsProfile.prototype = {
   // fetch the latest profile data in the background. After data is fetched a
   // notification will be sent out if the profile has changed.
   async getProfile() {
-    const profileCache = await this.fxa.getProfileCache();
+    const profileCache = await this._getProfileCache();
     if (!profileCache) {
       // fetch and cache it in the background.
       this._fetchAndCacheProfile().catch(err => {
@@ -137,7 +157,7 @@ this.FxAccountsProfile.prototype = {
   },
 
   QueryInterface: ChromeUtils.generateQI([
-      Ci.nsIObserver,
-      Ci.nsISupportsWeakReference,
+    Ci.nsIObserver,
+    Ci.nsISupportsWeakReference,
   ]),
 };

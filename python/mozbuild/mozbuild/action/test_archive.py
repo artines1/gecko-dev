@@ -32,10 +32,11 @@ import buildconfig
 STAGE = mozpath.join(buildconfig.topobjdir, 'dist', 'test-stage')
 
 TEST_HARNESS_BINS = [
-    'BadCertServer',
+    'BadCertAndPinningServer',
+    'DelegatedCredentialsServer',
     'GenerateOCSPResponse',
     'OCSPStaplingServer',
-    'SymantecSanctionsServer',
+    'SanctionsTestServer',
     'SmokeDMD',
     'certutil',
     'crashinject',
@@ -102,6 +103,7 @@ ARCHIVE_FILES = {
             'pattern': '**',
             'ignore': [
                 'cppunittest/**',
+                'condprof/**',
                 'gtest/**',
                 'mochitest/**',
                 'reftest/**',
@@ -110,6 +112,7 @@ ARCHIVE_FILES = {
                 'awsy/**',
                 'web-platform/**',
                 'xpcshell/**',
+                'updater-dep/**',
             ],
         },
         {
@@ -137,7 +140,9 @@ ARCHIVE_FILES = {
             'source': buildconfig.topsrcdir,
             'base': '',
             'manifests': [
+                'dom/media/test/marionette/manifest.ini',
                 'testing/marionette/harness/marionette_harness/tests/unit-tests.ini',
+                'gfx/tests/marionette/manifest.ini'
             ],
             # We also need the manifests and harness_unit tests
             'pattern': 'testing/marionette/harness/marionette_harness/tests/**',
@@ -161,6 +166,12 @@ ARCHIVE_FILES = {
             'base': '',
             'pattern': 'testing/firefox-ui/tests',
             'dest': 'firefox-ui/tests',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'toolkit/components/telemetry/tests/marionette',
+            'pattern': '/**',
+            'dest': 'telemetry/marionette',
         },
         {
             'source': buildconfig.topsrcdir,
@@ -219,6 +230,12 @@ ARCHIVE_FILES = {
             'base': 'testing/web-platform/tests/tools/wptserve',
             'pattern': '**',
             'dest': 'tools/wptserve',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/web-platform/tests/tools/third_party',
+            'pattern': '**',
+            'dest': 'tools/wpt_third_party',
         },
         {
             'source': buildconfig.topsrcdir,
@@ -296,7 +313,15 @@ ARCHIVE_FILES = {
             'base': 'build/pgo/certs',
             'pattern': '**',
             'dest': 'certs',
-        }
+        },
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'build/unix/elfhack',
+            'patterns': [
+                'elfhack%s' % buildconfig.substs['BIN_SUFFIX'],
+            ],
+            'dest': 'bin',
+        },
     ],
     'cppunittest': [
         {
@@ -381,6 +406,36 @@ ARCHIVE_FILES = {
             'base': 'testing',
             'pattern': 'mozharness/**',
         },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/manifestparser',
+            'pattern': 'manifestparser/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozfile',
+            'pattern': 'mozfile/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozinfo',
+            'pattern': 'mozinfo/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozprocess',
+            'pattern': 'mozprocess/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/python/six',
+            'pattern': 'six.py',
+            'dest': 'mozharness',
+        },
     ],
     'reftest': [
         {
@@ -402,7 +457,19 @@ ARCHIVE_FILES = {
                 'testing/crashtest/crashtests.list',
             ],
             'dest': 'reftest/tests',
-        }
+        },
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'dist/xpi-stage',
+            'pattern': 'reftest/**',
+            'dest': 'reftest'
+        },
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'dist/xpi-stage',
+            'pattern': 'specialpowers/**',
+            'dest': 'reftest'
+        },
     ],
     'talos': [
         {
@@ -421,6 +488,37 @@ ARCHIVE_FILES = {
             'base': 'third_party/webkit/PerformanceTests',
             'pattern': '**',
             'dest': 'talos/talos/tests/webkit/PerformanceTests/',
+        },
+    ],
+    'condprof': [
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing',
+            'pattern': 'condprofile/**',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozfile',
+            'pattern': '**',
+            'dest': 'condprofile/mozfile',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozprofile',
+            'pattern': '**',
+            'dest': 'condprofile/mozprofile',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozdevice',
+            'pattern': '**',
+            'dest': 'condprofile/mozdevice',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/python/virtualenv',
+            'pattern': '**',
+            'dest': 'condprofile/virtualenv',
         },
     ],
     'raptor': [
@@ -486,9 +584,9 @@ ARCHIVE_FILES = {
                 'head.js',
                 'mach_test_package_commands.py',
                 'moz-http2/**',
-                'moz-spdy/**',
                 'node-http2/**',
-                'node-spdy/**',
+                'node-ip/**',
+                'dns-packet/**',
                 'remotexpcshelltests.py',
                 'runxpcshelltests.py',
                 'xpcshellcommandline.py',
@@ -511,6 +609,27 @@ ARCHIVE_FILES = {
             'base': 'build',
             'pattern': 'automation.py',
             'dest': 'xpcshell',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/profiles',
+            'pattern': '**',
+            'dest': 'xpcshell/profile_data',
+        },
+    ],
+    'updater-dep': [
+        {
+            'source': buildconfig.topobjdir,
+            'base': '_tests/updater-dep',
+            'pattern': '**',
+            'dest': 'updater-dep',
+        },
+        # Required by the updater on Linux
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'config/external/sqlite',
+            'pattern': 'libmozsqlite3.so',
+            'dest': 'updater-dep',
         },
     ],
 }
@@ -536,6 +655,31 @@ if buildconfig.substs.get('MOZ_ASAN') and buildconfig.substs.get('CLANG_CL'):
     ARCHIVE_FILES['common'].append(asan_dll)
 
 
+if buildconfig.substs.get('commtopsrcdir'):
+    commtopsrcdir = buildconfig.substs.get('commtopsrcdir')
+    mozharness_comm = {
+        'source': commtopsrcdir,
+        'base': 'mozharness',
+        'pattern': '**',
+        'dest': 'mozharness/configs'
+    }
+    ARCHIVE_FILES['mozharness'].append(mozharness_comm)
+    marionette_comm = {
+        'source': commtopsrcdir,
+        'base': '',
+        'manifest': 'testing/marionette/unit-tests.ini',
+        'dest': 'marionette/tests/comm',
+    }
+    ARCHIVE_FILES['common'].append(marionette_comm)
+    thunderbirdinstance = {
+        'source': commtopsrcdir,
+        'base': 'testing/marionette',
+        'pattern': 'thunderbirdinstance.py',
+        'dest': 'marionette/client/marionette_driver',
+    }
+    ARCHIVE_FILES['common'].append(thunderbirdinstance)
+
+
 # "common" is our catch all archive and it ignores things from other archives.
 # Verify nothing sneaks into ARCHIVE_FILES without a corresponding exclusion
 # rule in the "common" archive.
@@ -545,7 +689,7 @@ for k, v in ARCHIVE_FILES.items():
         continue
 
     ignores = set(itertools.chain(*(e.get('ignore', [])
-                                  for e in ARCHIVE_FILES['common'])))
+                                    for e in ARCHIVE_FILES['common'])))
 
     if not any(p.startswith('%s/' % k) for p in ignores):
         raise Exception('"common" ignore list probably should contain %s' % k)
@@ -610,7 +754,7 @@ def find_files(archive):
         if manifest:
             manifests.append(manifest)
         if manifests:
-            dirs = find_manifest_dirs(buildconfig.topsrcdir, manifests)
+            dirs = find_manifest_dirs(os.path.join(source, base), manifests)
             patterns.extend({'{}/**'.format(d) for d in dirs})
 
         ignore = list(entry.get('ignore', []))
@@ -620,7 +764,7 @@ def find_files(archive):
             '**/*.pyc',
         ])
 
-        if archive != 'common' and base.startswith('_tests'):
+        if archive not in ('common', 'updater-dep') and base.startswith('_tests'):
             # We may have generated_harness_files to exclude from this entry.
             for path in generated_harness_files:
                 if path.startswith(base):
@@ -709,7 +853,7 @@ def main(argv):
             create_tar_gz_from_files(fh, files, compresslevel=5)
             file_count = len(files)
         elif out_file.endswith('.zip'):
-            with JarWriter(fileobj=fh, optimize=False, compress_level=5) as writer:
+            with JarWriter(fileobj=fh, compress_level=5) as writer:
                 for p, f in res:
                     writer.add(p.encode('utf-8'), f.read(), mode=f.mode,
                                skip_duplicates=True)

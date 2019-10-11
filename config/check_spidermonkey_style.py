@@ -35,7 +35,7 @@
 #   isolation, but don't try to do any order checking between such blocks.
 # ----------------------------------------------------------------------------
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
 import difflib
 import os
@@ -50,19 +50,19 @@ ignored_js_src_dirs = [
     'js/src/devtools/',          # auxiliary stuff
     'js/src/editline/',          # imported code
     'js/src/gdb/',               # auxiliary stuff
-    'js/src/vtune/'              # imported code
+    'js/src/vtune/',             # imported code
+    'js/src/zydis/',             # imported code
 ]
 
 # We ignore #includes of these files, because they don't follow the usual rules.
 included_inclnames_to_ignore = set([
     'ffi.h',                    # generated in ctypes/libffi/
-    'devtools/sharkctl.h',      # we ignore devtools/ in general
     'devtools/Instruments.h',   # we ignore devtools/ in general
     'double-conversion/double-conversion.h',  # strange MFBT case
     'javascript-trace.h',       # generated in $OBJDIR if HAVE_DTRACE is defined
     'frontend/ReservedWordsGenerated.h',  # generated in $OBJDIR
     'gc/StatsPhasesGenerated.h',         # generated in $OBJDIR
-    'gc/StatsPhasesGenerated.cpp',       # generated in $OBJDIR
+    'gc/StatsPhasesGenerated.inc',       # generated in $OBJDIR
     'jit/LOpcodes.h',           # generated in $OBJDIR
     'jit/MOpcodes.h',           # generated in $OBJDIR
     'jscustomallocator.h',      # provided by embedders;  allowed to be missing
@@ -84,37 +84,46 @@ included_inclnames_to_ignore = set([
     'prtypes.h',                # NSPR
     'selfhosted.out.h',         # generated in $OBJDIR
     'shellmoduleloader.out.h',  # generated in $OBJDIR
-    'unicode/timezone.h',       # ICU
+    'unicode/basictz.h',        # ICU
+    'unicode/locid.h',          # ICU
     'unicode/plurrule.h',       # ICU
+    'unicode/putil.h',          # ICU
+    'unicode/timezone.h',       # ICU
     'unicode/ucal.h',           # ICU
     'unicode/uchar.h',          # ICU
     'unicode/uclean.h',         # ICU
     'unicode/ucol.h',           # ICU
     'unicode/udat.h',           # ICU
+    'unicode/udata.h',          # ICU
     'unicode/udatpg.h',         # ICU
     'unicode/udisplaycontext.h',  # ICU
     'unicode/uenum.h',          # ICU
+    'unicode/ufieldpositer.h',  # ICU
+    'unicode/uformattedvalue.h',  # ICU
     'unicode/uloc.h',           # ICU
     'unicode/unistr.h',         # ICU
     'unicode/unorm2.h',         # ICU
     'unicode/unum.h',           # ICU
+    'unicode/unumberformatter.h',  # ICU
     'unicode/unumsys.h',        # ICU
     'unicode/upluralrules.h',   # ICU
     'unicode/ureldatefmt.h',    # ICU
+    'unicode/ures.h',           # ICU
     'unicode/ustring.h',        # ICU
     'unicode/utypes.h',         # ICU
-    'vtune/VTuneWrapper.h'      # VTune
+    'unicode/uversion.h',       # ICU
+    'vtune/VTuneWrapper.h',     # VTune
+    'zydis/ZydisAPI.h',         # Zydis
 ])
 
 # These files have additional constraints on where they are #included, so we
 # ignore #includes of them when checking #include ordering.
 oddly_ordered_inclnames = set([
     'ctypes/typedefs.h',        # Included multiple times in the body of ctypes/CTypes.h
-    'frontend/BinSource-auto.h',  # Included in the body of frontend/BinSource.h
     # Included in the body of frontend/TokenStream.h
     'frontend/ReservedWordsGenerated.h',
     'gc/StatsPhasesGenerated.h',         # Included in the body of gc/Statistics.h
-    'gc/StatsPhasesGenerated.cpp',       # Included in the body of gc/Statistics.cpp
+    'gc/StatsPhasesGenerated.inc',       # Included in the body of gc/Statistics.cpp
     'psapi.h',                  # Must be included after "util/Windows.h" on Windows
     'machine/endian.h',         # Must be included after <sys/types.h> on BSD
     'winbase.h',                # Must precede other system headers(?)
@@ -130,9 +139,6 @@ oddly_ordered_inclnames = set([
 # - This script has been broken somehow.
 #
 expected_output = '''\
-js/src/tests/style/BadIncludes2.h:1: error:
-    vanilla header includes an inline-header file "tests/style/BadIncludes2-inl.h"
-
 js/src/tests/style/BadIncludes.h:3: error:
     the file includes itself
 
@@ -147,6 +153,9 @@ js/src/tests/style/BadIncludes.h:8: error:
 js/src/tests/style/BadIncludes.h:10: error:
     "stdio.h" is included using the wrong path;
     did you forget a prefix, or is the file not yet committed?
+
+js/src/tests/style/BadIncludes2.h:1: error:
+    vanilla header includes an inline-header file "tests/style/BadIncludes2-inl.h"
 
 js/src/tests/style/BadIncludesOrder-inl.h:5:6: error:
     "vm/JSScript-inl.h" should be included after "vm/Interpreter-inl.h"
@@ -244,7 +253,6 @@ def check_style(enable_fixup):
     #
     # Examples (filename -> inclname)
     # - "mfbt/Attributes.h"         -> "mozilla/Attributes.h"
-    # - "mfbt/decimal/Decimal.h     -> "mozilla/Decimal.h"
     # - "mozglue/misc/TimeStamp.h   -> "mozilla/TimeStamp.h"
     # - "memory/mozalloc/mozalloc.h -> "mozilla/mozalloc.h"
     # - "js/public/Vector.h"        -> "js/Vector.h"
@@ -303,7 +311,7 @@ def check_style(enable_fixup):
         edges[inclname] = set()
 
     # Process all the JS files.
-    for filename in js_names.keys():
+    for filename in sorted(js_names.keys()):
         inclname = js_names[filename]
         file_kind = FileKind.get(filename)
         if file_kind == FileKind.C or file_kind == FileKind.CPP or \

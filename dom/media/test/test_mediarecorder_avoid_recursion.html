@@ -1,7 +1,7 @@
 <html>
 <head>
   <title>MediaRecorder infinite recursion with requestData() calls in "dataavailable" event</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   <script type="text/javascript" src="manifest.js"></script>
   <script type="text/javascript" src="gUM_support.js"></script>
@@ -30,8 +30,8 @@ async function startTest() {
       // no more requestData() to prevent busy main thread from starving
       // the encoding thread
       if (count == 30) {
-        info("stream.stop");
-        stream.stop();
+        info("track.stop");
+        stream.getTracks()[0].stop();
       } else if (count < 30 && mediaRecorder.state == 'recording') {
         info("requestData again");
         mediaRecorder.requestData();

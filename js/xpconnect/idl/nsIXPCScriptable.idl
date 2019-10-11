@@ -14,10 +14,6 @@
 
 #include "js/TypeDecls.h"
 
-struct JSFreeOp;
-namespace js {
-struct Class;
-}
 %}
 
 interface nsIXPConnectWrappedNative;
@@ -27,9 +23,8 @@ interface nsIXPConnectWrappedNative;
 [ptr] native JSValPtr(JS::Value);
 [ptr] native JSFreeOpPtr(JSFreeOp);
 [ref] native JSCallArgsRef(const JS::CallArgs);
-[ref] native JSAutoIdVector(JS::AutoIdVector);
-[ptr] native jsClassPtr(const js::Class);
 [ptr] native JSClassPtr(const JSClass);
+      native JSMutableHandleIdVector(JS::MutableHandleIdVector);
 
 %{ C++
     // nsIXPCScriptable flags (only 32 bits available!). They are defined via
@@ -63,12 +58,11 @@ interface nsIXPConnectWrappedNative;
  * boolean to PR_TRUE before making the call.  Implementations may skip writing
  * to *_retval unless they want to return PR_FALSE.
  */
-[uuid(19b70b26-7c3f-437f-a04a-2a8f9e28b617)]
+[builtinclass, uuid(19b70b26-7c3f-437f-a04a-2a8f9e28b617)]
 interface nsIXPCScriptable : nsISupports
 {
     readonly attribute AUTF8String className;
     [notxpcom,nostdcall] uint32_t getScriptableFlags();
-    [notxpcom,nostdcall] jsClassPtr getClass();
     [notxpcom,nostdcall] JSClassPtr getJSClass();
 
     void   preCreate(in nsISupports nativeObj, in JSContextPtr cx,
@@ -79,7 +73,8 @@ interface nsIXPCScriptable : nsISupports
 
     boolean newEnumerate(in nsIXPConnectWrappedNative wrapper,
                         in JSContextPtr cx, in JSObjectPtr obj,
-                        in JSAutoIdVector properties);
+                        in JSMutableHandleIdVector properties,
+                        in boolean enumerableOnly);
 
     boolean resolve(in nsIXPConnectWrappedNative wrapper,
                     in JSContextPtr cx, in JSObjectPtr obj, in jsid id,

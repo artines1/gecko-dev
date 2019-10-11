@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf8">
   <title>Test for cached messages</title>
-  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript" src="common.js"></script>
   <!-- Any copyright is dedicated to the Public Domain.
      - http://creativecommons.org/publicdomain/zero/1.0/ -->
@@ -97,8 +97,10 @@ function doConsoleCalls() {
 
 <script class="testbody" type="text/javascript">
 SimpleTest.waitForExplicitFinish();
-var {ConsoleServiceListener, ConsoleAPIListener} =
-  require("devtools/server/actors/webconsole/listeners");
+var {ConsoleServiceListener} =
+  require("devtools/server/actors/webconsole/listeners/console-service");
+var {ConsoleAPIListener} =
+  require("devtools/server/actors/webconsole/listeners/console-api");
 
 let consoleAPIListener, consoleServiceListener;
 let consoleAPICalls = 0;
@@ -151,8 +153,8 @@ function checkConsoleAPICache() {
 }
 
 function onAttach1(state, response) {
-  state.client.getCachedMessages(["ConsoleAPI"],
-                                  onCachedConsoleAPI.bind(null, state));
+  state.client.getCachedMessages(["ConsoleAPI"])
+    .then(onCachedConsoleAPI.bind(null, state));
 }
 
 function onCachedConsoleAPI(state, response) {
@@ -189,8 +191,8 @@ function testPageErrors() {
 }
 
 function onAttach2(state, response) {
-  state.client.getCachedMessages(["PageError"],
-                                  onCachedPageErrors.bind(null, state));
+  state.client.getCachedMessages(["PageError"])
+    .then(onCachedPageErrors.bind(null, state));
 }
 
 function onCachedPageErrors(state, response) {

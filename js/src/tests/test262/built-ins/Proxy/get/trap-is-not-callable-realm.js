@@ -2,7 +2,6 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-proxy-object-internal-methods-and-internal-slots-get-p-receiver
-es6id: 9.5.8
 description: >
   Throws if trap is not callable (honoring the Realm of the current execution
   context)
@@ -15,7 +14,7 @@ info: |
     7.3.9 GetMethod (O, P)
 
     5. If IsCallable(func) is false, throw a TypeError exception.
-features: [cross-realm]
+features: [cross-realm, Proxy]
 ---*/
 
 var OProxy = $262.createRealm().global.Proxy;

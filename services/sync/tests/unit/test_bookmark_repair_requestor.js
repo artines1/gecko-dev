@@ -1,6 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
-ChromeUtils.import("resource://services-sync/bookmark_repair.js");
+const { BookmarkRepairRequestor } = ChromeUtils.import(
+  "resource://services-sync/bookmark_repair.js"
+);
 
 function makeClientRecord(id, fields = {}) {
   return {
@@ -56,12 +58,17 @@ class MockService {
 }
 
 function checkState(expected) {
-  equal(Services.prefs.getCharPref("services.sync.repairs.bookmarks.state"), expected);
+  equal(
+    Services.prefs.getCharPref("services.sync.repairs.bookmarks.state"),
+    expected
+  );
 }
 
 function checkRepairFinished() {
   try {
-    let state = Services.prefs.getCharPref("services.sync.repairs.bookmarks.state");
+    let state = Services.prefs.getCharPref(
+      "services.sync.repairs.bookmarks.state"
+    );
     ok(false, state);
   } catch (ex) {
     ok(true, "no repair preference exists");
@@ -82,17 +89,17 @@ function NewBookmarkRepairRequestor(mockService) {
 }
 
 add_task(async function test_requestor_no_clients() {
-  let mockService = new MockService({ });
+  let mockService = new MockService({});
   let requestor = NewBookmarkRepairRequestor(mockService);
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
 
@@ -100,31 +107,35 @@ add_task(async function test_requestor_no_clients() {
   // there are no clients, so we should end up in "finished" (which we need to
   // check via telemetry)
   deepEqual(mockService._recordedEvents, [
-    { object: "repair",
+    {
+      object: "repair",
       method: "started",
       value: undefined,
       extra: { flowID, numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "finished",
       value: undefined,
       extra: { flowID, numIDs: 4 },
-    }
+    },
   ]);
 });
 
 add_task(async function test_requestor_one_client_no_response() {
-  let mockService = new MockService({ "client-a": makeClientRecord("client-a") });
+  let mockService = new MockService({
+    "client-a": makeClientRecord("client-a"),
+  });
   let requestor = NewBookmarkRepairRequestor(mockService);
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
   await requestor.startRepairs(validationInfo, flowID);
@@ -151,41 +162,47 @@ add_task(async function test_requestor_one_client_no_response() {
 
   checkRepairFinished();
   deepEqual(mockService._recordedEvents, [
-    { object: "repair",
+    {
+      object: "repair",
       method: "started",
       value: undefined,
       extra: { flowID, numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "finished",
       value: undefined,
       extra: { flowID, numIDs: 4 },
-    }
+    },
   ]);
 });
 
 add_task(async function test_requestor_one_client_no_sync() {
-  let mockService = new MockService({ "client-a": makeClientRecord("client-a") });
+  let mockService = new MockService({
+    "client-a": makeClientRecord("client-a"),
+  });
   let requestor = NewBookmarkRepairRequestor(mockService);
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
   await requestor.startRepairs(validationInfo, flowID);
@@ -203,42 +220,48 @@ add_task(async function test_requestor_one_client_no_sync() {
   // We should be finished as we gave up in disgust.
   checkRepairFinished();
   deepEqual(mockService._recordedEvents, [
-    { object: "repair",
+    {
+      object: "repair",
       method: "started",
       value: undefined,
       extra: { flowID, numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "abandon",
       value: "silent",
       extra: { flowID, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "finished",
       value: undefined,
       extra: { flowID, numIDs: 4 },
-    }
+    },
   ]);
 });
 
 add_task(async function test_requestor_latest_client_used() {
   let mockService = new MockService({
-    "client-early": makeClientRecord("client-early", { serverLastModified: Date.now() - 10 }),
-    "client-late": makeClientRecord("client-late", { serverLastModified: Date.now() }),
+    "client-early": makeClientRecord("client-early", {
+      serverLastModified: Date.now() - 10,
+    }),
+    "client-late": makeClientRecord("client-late", {
+      serverLastModified: Date.now(),
+    }),
   });
   let requestor = NewBookmarkRepairRequestor(mockService);
   let validationInfo = {
     problems: {
-      missingChildren: [
-        { parent: "x", child: "a" },
-      ],
+      missingChildren: [{ parent: "x", child: "a" }],
       orphans: [],
-    }
+    },
   };
   await requestor.startRepairs(validationInfo, Utils.makeGUID());
   // the repair command should be outgoing to the most-recent client.
@@ -257,12 +280,12 @@ add_task(async function test_requestor_client_vanishes() {
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
   await requestor.startRepairs(validationInfo, flowID);
@@ -293,36 +316,42 @@ add_task(async function test_requestor_client_vanishes() {
   // We should be finished as we got all our IDs.
   checkRepairFinished();
   deepEqual(mockService._recordedEvents, [
-    { object: "repair",
+    {
+      object: "repair",
       method: "started",
       value: undefined,
       extra: { flowID, numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "abandon",
       value: "missing",
       extra: { flowID, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-b" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "response",
       value: "upload",
       extra: { flowID, deviceID: "client-b", numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "finished",
       value: undefined,
       extra: { flowID, numIDs: 0 },
-    }
+    },
   ]);
 });
 
@@ -335,12 +364,12 @@ add_task(async function test_requestor_success_responses() {
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
   await requestor.startRepairs(validationInfo, flowID);
@@ -376,36 +405,42 @@ add_task(async function test_requestor_success_responses() {
   // We should be finished as we got all our IDs.
   checkRepairFinished();
   deepEqual(mockService._recordedEvents, [
-    { object: "repair",
+    {
+      object: "repair",
       method: "started",
       value: undefined,
       extra: { flowID, numIDs: 4 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 4, deviceID: "client-a" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "response",
       value: "upload",
       extra: { flowID, deviceID: "client-a", numIDs: 2 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "request",
       value: "upload",
       extra: { flowID, numIDs: 2, deviceID: "client-b" },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "response",
       value: "upload",
       extra: { flowID, deviceID: "client-b", numIDs: 2 },
     },
-    { object: "repair",
+    {
+      object: "repair",
       method: "finished",
       value: undefined,
       extra: { flowID, numIDs: 0 },
-    }
+    },
   ]);
 });
 
@@ -417,30 +452,48 @@ add_task(async function test_client_suitability() {
     "client-d": makeClientRecord("client-c", { version: "54.0a1" }),
   });
   let requestor = NewBookmarkRepairRequestor(mockService);
-  ok(requestor._isSuitableClient(mockService.clientsEngine.remoteClient("client-a")));
-  ok(!requestor._isSuitableClient(mockService.clientsEngine.remoteClient("client-b")));
-  ok(!requestor._isSuitableClient(mockService.clientsEngine.remoteClient("client-c")));
-  ok(requestor._isSuitableClient(mockService.clientsEngine.remoteClient("client-d")));
+  ok(
+    requestor._isSuitableClient(
+      mockService.clientsEngine.remoteClient("client-a")
+    )
+  );
+  ok(
+    !requestor._isSuitableClient(
+      mockService.clientsEngine.remoteClient("client-b")
+    )
+  );
+  ok(
+    !requestor._isSuitableClient(
+      mockService.clientsEngine.remoteClient("client-c")
+    )
+  );
+  ok(
+    requestor._isSuitableClient(
+      mockService.clientsEngine.remoteClient("client-d")
+    )
+  );
 });
 
 add_task(async function test_requestor_already_repairing_at_start() {
-  let mockService = new MockService({ });
+  let mockService = new MockService({});
   let requestor = NewBookmarkRepairRequestor(mockService);
   requestor.anyClientsRepairing = () => true;
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
 
-  ok(!(await requestor.startRepairs(validationInfo, flowID)),
-     "Shouldn't start repairs");
+  ok(
+    !(await requestor.startRepairs(validationInfo, flowID)),
+    "Shouldn't start repairs"
+  );
   equal(mockService._recordedEvents.length, 1);
   equal(mockService._recordedEvents[0].method, "aborted");
 });
@@ -449,18 +502,18 @@ add_task(async function test_requestor_already_repairing_continue() {
   let clientB = makeClientRecord("client-b");
   let mockService = new MockService({
     "client-a": makeClientRecord("client-a"),
-    "client-b": clientB
+    "client-b": clientB,
   });
   let requestor = NewBookmarkRepairRequestor(mockService);
   let validationInfo = {
     problems: {
       missingChildren: [
-        {parent: "x", child: "a"},
-        {parent: "x", child: "b"},
-        {parent: "x", child: "c"}
+        { parent: "x", child: "a" },
+        { parent: "x", child: "b" },
+        { parent: "x", child: "c" },
       ],
       orphans: [],
-    }
+    },
   };
   let flowID = Utils.makeGUID();
   await requestor.startRepairs(validationInfo, flowID);
@@ -480,32 +533,36 @@ add_task(async function test_requestor_already_repairing_continue() {
   };
 
   // and another client also started a request
-  clientB.commands = [{
-    args: [{ collection: "bookmarks", flowID: "asdf" }],
-    command: "repairRequest",
-  }];
-
+  clientB.commands = [
+    {
+      args: [{ collection: "bookmarks", flowID: "asdf" }],
+      command: "repairRequest",
+    },
+  ];
 
   await requestor.continueRepairs(response);
 
   // We should have aborted now
   checkRepairFinished();
   const expected = [
-    { method: "started",
+    {
+      method: "started",
       object: "repair",
       value: undefined,
       extra: { flowID, numIDs: "4" },
     },
-    { method: "request",
+    {
+      method: "request",
       object: "repair",
       value: "upload",
       extra: { flowID, numIDs: "4", deviceID: "client-a" },
     },
-    { method: "aborted",
+    {
+      method: "aborted",
       object: "repair",
       value: undefined,
       extra: { flowID, numIDs: "4", reason: "other clients repairing" },
-    }
+    },
   ];
 
   deepEqual(mockService._recordedEvents, expected);

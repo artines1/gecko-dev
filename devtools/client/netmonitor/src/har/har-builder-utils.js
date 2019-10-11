@@ -7,7 +7,7 @@
 /**
  * Currently supported HAR version.
  */
-const HAR_VERSION = "1.1";
+const HAR_VERSION = "1.2";
 
 function buildHarLog(appInfo) {
   return {
@@ -15,15 +15,15 @@ function buildHarLog(appInfo) {
       version: HAR_VERSION,
       creator: {
         name: appInfo.name,
-        version: appInfo.version
+        version: appInfo.version,
       },
       browser: {
         name: appInfo.name,
-        version: appInfo.version
+        version: appInfo.version,
       },
       pages: [],
       entries: [],
-    }
+    },
   };
 }
 

@@ -4,35 +4,62 @@
 "use strict";
 
 // React
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { div } = require("devtools/client/shared/vendor/react-dom-factories");
 
 const { L10N } = require("../utils/l10n");
 const Accessible = createFactory(require("./Accessible"));
+const Accordion = createFactory(
+  require("devtools/client/shared/components/Accordion")
+);
+const Checks = createFactory(require("./Checks"));
 
 // Component that is responsible for rendering accessible panel's sidebar.
 class RightSidebar extends Component {
+  static get propTypes() {
+    return {
+      accessibilityWalker: PropTypes.object.isRequired,
+    };
+  }
+
   /**
    * Render the sidebar component.
    * @returns Sidebar React component.
    */
   render() {
-    const headerID = "accessibility-right-sidebar-header";
-    return (
-      div({
+    const propertiesHeaderID = "accessibility-properties-header";
+    const checksHeaderID = "accessibility-checks-header";
+    const { accessibilityWalker } = this.props;
+    return div(
+      {
         className: "right-sidebar",
-        role: "presentation"
+        role: "presentation",
       },
-        div({
-          className: "_header",
-          id: headerID,
-          role: "heading"
-        }, L10N.getStr("accessibility.properties")),
-        div({
-          className: "_content accessible",
-          role: "presentation"
-        }, Accessible({ labelledby: headerID }))
-      )
+      Accordion({
+        items: [
+          {
+            className: "checks",
+            component: Checks({ labelledby: checksHeaderID }),
+            header: L10N.getStr("accessibility.checks"),
+            labelledby: checksHeaderID,
+            opened: true,
+          },
+          {
+            className: "accessible",
+            component: Accessible({
+              accessibilityWalker,
+              labelledby: propertiesHeaderID,
+            }),
+            header: L10N.getStr("accessibility.properties"),
+            labelledby: propertiesHeaderID,
+            opened: true,
+          },
+        ],
+      })
     );
   }
 }

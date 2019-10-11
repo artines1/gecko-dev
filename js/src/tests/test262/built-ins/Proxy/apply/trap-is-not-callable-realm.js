@@ -2,11 +2,10 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-proxy-object-internal-methods-and-internal-slots-call-thisargument-argumentslist
-es6id: 9.5.13
 description: >
   Throws if trap is not callable (honoring the Realm of the current execution
   context)
-features: [cross-realm]
+features: [cross-realm, Proxy]
 ---*/
 
 var OProxy = $262.createRealm().global.Proxy;

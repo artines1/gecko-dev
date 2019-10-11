@@ -13,15 +13,13 @@
 namespace mozilla {
 namespace layers {
 
-class RemoteCompositorSession final : public CompositorSession
-{
-public:
-  RemoteCompositorSession(nsBaseWidget* aWidget,
-                          CompositorBridgeChild* aChild,
+class RemoteCompositorSession final : public CompositorSession {
+ public:
+  RemoteCompositorSession(nsBaseWidget* aWidget, CompositorBridgeChild* aChild,
                           CompositorWidgetDelegate* aWidgetDelegate,
                           APZCTreeManagerChild* aAPZ,
                           const LayersId& aRootLayerTreeId);
-  ~RemoteCompositorSession() override;
+  virtual ~RemoteCompositorSession();
 
   CompositorBridgeParent* GetInProcessBridge() const override;
   void SetContentController(GeckoContentController* aController) override;
@@ -32,13 +30,12 @@ public:
 
   void NotifySessionLost();
 
-private:
-  nsBaseWidget* mWidget;
+ private:
   RefPtr<APZCTreeManagerChild> mAPZ;
   RefPtr<GeckoContentController> mContentController;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // include_mozilla_gfx_ipc_RemoteCompositorSession_h
+#endif  // include_mozilla_gfx_ipc_RemoteCompositorSession_h

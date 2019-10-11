@@ -1,26 +1,26 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A data structure to efficiently index structs containing selectors by local
 //! name, ids and hash.
 
-use {Atom, LocalName, Namespace, WeakAtom};
-use applicable_declarations::ApplicableDeclarationList;
-use context::QuirksMode;
-use dom::TElement;
+use crate::applicable_declarations::ApplicableDeclarationList;
+use crate::context::QuirksMode;
+use crate::dom::TElement;
+use crate::hash::map as hash_map;
+use crate::hash::{HashMap, HashSet};
+use crate::rule_tree::{CascadeLevel, ShadowCascadeOrder};
+use crate::selector_parser::SelectorImpl;
+use crate::stylist::Rule;
+use crate::{Atom, LocalName, Namespace, WeakAtom};
 use fallible::FallibleVec;
-use hash::{HashMap, HashSet};
-use hash::map as hash_map;
 use hashglobe::FailedAllocationError;
 use precomputed_hash::PrecomputedHash;
-use rule_tree::{CascadeLevel, ShadowCascadeOrder};
-use selector_parser::SelectorImpl;
 use selectors::matching::{matches_selector, ElementSelectorFlags, MatchingContext};
 use selectors::parser::{Combinator, Component, SelectorIter};
 use smallvec::SmallVec;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
-use stylist::Rule;
 
 /// A hasher implementation that doesn't hash anything, because it expects its
 /// input to be a suitable u32 hash.
@@ -182,10 +182,6 @@ impl SelectorMap<Rule> {
 
         let quirks_mode = context.quirks_mode();
 
-        // At the end, we're going to sort the rules that we added, so remember
-        // where we began.
-        let init_len = matching_rules_list.len();
-
         if rule_hash_target.is_root() {
             SelectorMap::get_matching_rules(
                 element,
@@ -259,14 +255,10 @@ impl SelectorMap<Rule> {
             cascade_level,
             shadow_cascade_order,
         );
-
-        // Sort only the rules we just added.
-        matching_rules_list[init_len..]
-            .sort_unstable_by_key(|block| (block.specificity, block.source_order()));
     }
 
     /// Adds rules in `rules` that match `element` to the `matching_rules` list.
-    fn get_matching_rules<E, F>(
+    pub(crate) fn get_matching_rules<E, F>(
         element: E,
         rules: &[Rule],
         matching_rules: &mut ApplicableDeclarationList,
@@ -287,7 +279,9 @@ impl SelectorMap<Rule> {
                 context,
                 flags_setter,
             ) {
-                matching_rules.push(rule.to_applicable_declaration_block(cascade_level, shadow_cascade_order));
+                matching_rules.push(
+                    rule.to_applicable_declaration_block(cascade_level, shadow_cascade_order),
+                );
             }
         }
     }
@@ -305,10 +299,12 @@ impl<T: SelectorMapEntry> SelectorMap<T> {
 
         let vector = match find_bucket(entry.selector()) {
             Bucket::Root => &mut self.root,
-            Bucket::ID(id) => self.id_hash
+            Bucket::ID(id) => self
+                .id_hash
                 .try_entry(id.clone(), quirks_mode)?
                 .or_insert_with(SmallVec::new),
-            Bucket::Class(class) => self.class_hash
+            Bucket::Class(class) => self
+                .class_hash
                 .try_entry(class.clone(), quirks_mode)?
                 .or_insert_with(SmallVec::new),
             Bucket::LocalName { name, lower_name } => {
@@ -333,7 +329,8 @@ impl<T: SelectorMapEntry> SelectorMap<T> {
                     .try_entry(name.clone())?
                     .or_insert_with(SmallVec::new)
             },
-            Bucket::Namespace(url) => self.namespace_hash
+            Bucket::Namespace(url) => self
+                .namespace_hash
                 .try_entry(url.clone())?
                 .or_insert_with(SmallVec::new),
             Bucket::Universal => &mut self.other,
@@ -490,8 +487,9 @@ fn specific_bucket_for<'a>(component: &'a Component<SelectorImpl>) -> Bucket<'a>
             name: &selector.name,
             lower_name: &selector.lower_name,
         },
-        Component::Namespace(_, ref url) |
-        Component::DefaultNamespace(ref url) => Bucket::Namespace(url),
+        Component::Namespace(_, ref url) | Component::DefaultNamespace(ref url) => {
+            Bucket::Namespace(url)
+        },
         // ::slotted(..) isn't a normal pseudo-element, so we can insert it on
         // the rule hash normally without much problem. For example, in a
         // selector like:
@@ -534,7 +532,7 @@ fn find_bucket<'a>(mut iter: SelectorIter<'a, SelectorImpl>) -> Bucket<'a> {
                 Bucket::Root => return new_bucket,
                 Bucket::ID(..) => {
                     current_bucket = new_bucket;
-                }
+                },
                 Bucket::Class(..) => {
                     if !matches!(current_bucket, Bucket::ID(..)) {
                         current_bucket = new_bucket;
@@ -549,7 +547,7 @@ fn find_bucket<'a>(mut iter: SelectorIter<'a, SelectorImpl>) -> Bucket<'a> {
                     if matches!(current_bucket, Bucket::Universal) {
                         current_bucket = new_bucket;
                     }
-                }
+                },
                 Bucket::Universal => {},
             }
         }

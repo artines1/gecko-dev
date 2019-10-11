@@ -26,7 +26,6 @@ Editor Action Listener interface to outside world
  * nsIDocumentObserver.
  */
 [scriptable, uuid(b22907b1-ee93-11d2-8d50-000064657374)]
-
 interface nsIEditActionListener : nsISupports
 {
   /**
@@ -35,7 +34,7 @@ interface nsIEditActionListener : nsISupports
    * @param aNewNode  The DOM Node that was created.
    * @param aResult   The result of the create node operation.
    */
-  void DidCreateNode(in DOMString aTag,
+  void DidCreateNode(in AString aTag,
                      in Node aNewNode,
                      in nsresult aResult);
 
@@ -87,7 +86,7 @@ interface nsIEditActionListener : nsISupports
    */
   void DidInsertText(in CharacterData       aTextNode,
                      in long                aOffset,
-                     in DOMString           aString,
+                     in AString             aString,
                      in nsresult            aResult);
 
   /**

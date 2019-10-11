@@ -6,7 +6,10 @@
 
 const PREF = "reader.parse-on-load.enabled";
 
-const TEST_PATH = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "http://example.com");
+const TEST_PATH = getRootDirectory(gTestPath).replace(
+  "chrome://mochitests/content",
+  "http://example.com"
+);
 
 var readerButton = document.getElementById("reader-mode-button");
 
@@ -21,7 +24,7 @@ add_task(async function() {
   // Enable the reader mode button.
   Services.prefs.setBoolPref(PREF, true);
 
-  let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
+  let tab = (gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser));
   gBrowser.pinTab(tab);
 
   let initialTabsCount = gBrowser.tabs.length;
@@ -29,7 +32,7 @@ add_task(async function() {
   // Point tab to a test page that is reader-able.
   let url = TEST_PATH + "readerModeArticle.html";
   await promiseTabLoadEvent(tab, url);
-  await promiseWaitForCondition(() => !readerButton.hidden);
+  await TestUtils.waitForCondition(() => !readerButton.hidden);
 
   readerButton.click();
   await promiseTabLoadEvent(tab);
@@ -37,7 +40,10 @@ add_task(async function() {
   // Ensure no new tabs are opened when exiting reader mode in a pinned tab
   is(gBrowser.tabs.length, initialTabsCount, "No additional tabs were opened.");
 
-  let pageShownPromise = BrowserTestUtils.waitForContentEvent(tab.linkedBrowser, "pageshow");
+  let pageShownPromise = BrowserTestUtils.waitForContentEvent(
+    tab.linkedBrowser,
+    "pageshow"
+  );
   readerButton.click();
   await pageShownPromise;
   // Ensure no new tabs are opened when exiting reader mode in a pinned tab

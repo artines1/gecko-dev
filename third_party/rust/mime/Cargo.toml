@@ -12,26 +12,12 @@
 
 [package]
 name = "mime"
-version = "0.2.6"
-authors = ["Sean McArthur <sean.monstar@gmail.com>"]
+version = "0.3.13"
+authors = ["Sean McArthur <sean@seanmonstar.com>"]
 description = "Strongly Typed Mimes"
-documentation = "http://hyperium.github.io/mime.rs"
+documentation = "https://docs.rs/mime"
 keywords = ["mime", "media-extensions", "media-types"]
-license = "MIT"
-repository = "https://github.com/hyperium/mime.rs"
-[dependencies.heapsize]
-version = ">=0.2.0, <0.4"
-optional = true
-
-[dependencies.log]
-version = "0.3"
-
-[dependencies.serde]
-version = ">=0.7, <0.9"
-optional = true
-[dev-dependencies.serde_json]
-version = ">=0.7, <0.9"
-
-[features]
-heap_size = ["heapsize"]
-nightly = []
+license = "MIT/Apache-2.0"
+repository = "https://github.com/hyperium/mime"
+[dependencies.unicase]
+version = "2.0"

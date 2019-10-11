@@ -15,26 +15,21 @@ namespace dom {
 
 class AudioContext;
 
-class AudioScheduledSourceNode : public AudioNode
-{
-public:
-  JSObject* WrapObject(JSContext* aCx,
-                       JS::Handle<JSObject*> aGivenProto) override;
-
+class AudioScheduledSourceNode : public AudioNode {
+ public:
   virtual void Start(double aWhen, ErrorResult& aRv) = 0;
   virtual void Stop(double aWhen, ErrorResult& aRv) = 0;
 
   IMPL_EVENT_HANDLER(ended)
 
-protected:
-  AudioScheduledSourceNode(AudioContext* aContext,
-                           uint32_t aChannelCount,
+ protected:
+  AudioScheduledSourceNode(AudioContext* aContext, uint32_t aChannelCount,
                            ChannelCountMode aChannelCountMode,
                            ChannelInterpretation aChannelInterpretation);
   virtual ~AudioScheduledSourceNode() = default;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

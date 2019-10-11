@@ -7,14 +7,14 @@ var _WORKINGDIR_ = null;
 var _OS_ = null;
 
 var Components = {
-  classes: { },
-  interfaces: { },
+  classes: {},
+  interfaces: {},
   stack: {
-    caller: null
+    caller: null,
   },
   utils: {
-    import() { }
-  }
+    import() {},
+  },
 };
 
 function do_throw(message, stack) {
@@ -29,8 +29,7 @@ var Assert = {
       var text = "Assert.notEqual failed";
       try {
         text += ": " + left + " == " + right;
-      } catch (e) {
-      }
+      } catch (e) {}
       do_throw(text, stack);
     }
   },
@@ -40,15 +39,14 @@ var Assert = {
       var text = "Assert.equal failed";
       try {
         text += ": " + left + " != " + right;
-      } catch (e) {
-      }
+      } catch (e) {}
       do_throw(text, stack);
     }
   },
 
   ok(condition, stack) {
     this.equal(condition, true, stack);
-  }
+  },
 };
 
 function info(text) {
@@ -72,7 +70,7 @@ FileFaker.prototype = {
   },
   append(leaf) {
     this._path = this._path + "/" + leaf;
-  }
+  },
 };
 
 function do_get_file(path, allowNonexistent) {
@@ -84,10 +82,11 @@ function do_get_file(path, allowNonexistent) {
   let bits = path.split("/");
   for (let i = 0; i < bits.length; i++) {
     if (bits[i]) {
-      if (bits[i] == "..")
+      if (bits[i] == "..") {
         lf = lf.parent;
-      else
+      } else {
         lf.append(bits[i]);
+      }
     }
   }
   return lf;

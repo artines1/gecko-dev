@@ -14,8 +14,6 @@ body {
 
 .title {
   background-image: url("chrome://global/skin/icons/blocked.svg");
-  fill: currentColor;
-  -moz-context-properties: fill;
 }
 
 .title-text {
@@ -24,7 +22,8 @@ body {
 
 .button-container button {
   background-color: transparent;
-  color: white;
+  /* !important overrides the common.css button color */
+  color: white !important;
   border: 1px solid white;
   margin-inline-end: 0;
   margin-top: 1.5em;
@@ -39,7 +38,7 @@ body {
 }
 
 #goBackButton {
-  color: black;
+  color: black !important;
   background-color: white;
 }
 

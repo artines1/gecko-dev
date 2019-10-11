@@ -13,38 +13,32 @@
 namespace mozilla {
 namespace layers {
 
-class APZInputBridgeChild : public PAPZInputBridgeChild
-                          , public APZInputBridge
-{
-  NS_INLINE_DECL_REFCOUNTING(APZInputBridgeChild)
+class APZInputBridgeChild : public PAPZInputBridgeChild, public APZInputBridge {
+  NS_INLINE_DECL_REFCOUNTING(APZInputBridgeChild, final)
 
-public:
+ public:
   APZInputBridgeChild();
   void Destroy();
 
-  nsEventStatus ReceiveInputEvent(
-      InputData& aEvent,
-      ScrollableLayerGuid* aOutTargetGuid,
-      uint64_t* aOutInputBlockId) override;
+  APZEventResult ReceiveInputEvent(InputData& aEvent) override;
 
-protected:
-  void ProcessUnhandledEvent(
-      LayoutDeviceIntPoint* aRefPoint,
-      ScrollableLayerGuid* aOutTargetGuid,
-      uint64_t* aOutFocusSequenceNumber) override;
+ protected:
+  void ProcessUnhandledEvent(LayoutDeviceIntPoint* aRefPoint,
+                             ScrollableLayerGuid* aOutTargetGuid,
+                             uint64_t* aOutFocusSequenceNumber,
+                             LayersId* aOutLayersId) override;
 
-  void UpdateWheelTransaction(
-      LayoutDeviceIntPoint aRefPoint,
-      EventMessage aEventMessage) override;
+  void UpdateWheelTransaction(LayoutDeviceIntPoint aRefPoint,
+                              EventMessage aEventMessage) override;
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual ~APZInputBridgeChild();
 
-private:
+ private:
   bool mDestroyed;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // mozilla_layers_APZInputBridgeChild_h
+#endif  // mozilla_layers_APZInputBridgeChild_h

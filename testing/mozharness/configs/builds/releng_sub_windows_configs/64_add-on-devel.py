@@ -4,8 +4,6 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'check-test',
-#        'update',
     ],
     'stage_platform': 'win64-add-on-devel',
     #### 64 bit build specific #####

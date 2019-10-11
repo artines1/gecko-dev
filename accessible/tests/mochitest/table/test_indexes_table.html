@@ -8,8 +8,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -24,7 +23,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [0, 1, 2],
         [3, 4, 5],
         [6, 7, 7],
-        [6, 8, 9]
+        [6, 8, 9],
       ];
 
       testTableIndexes("table", idxes);
@@ -35,7 +34,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [0, 1, 2],
         [3, 4, 5],
         [6, 7, 7],
-        [6, 8, 9]
+        [6, 8, 9],
       ];
 
       testTableIndexes("tableborder", idxes);
@@ -46,7 +45,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [ 0,  1,  2,  2,  3,  4,  5,  6],
         [ 7,  8,  9, 10, 11, 12, 13,  6],
         [14, 15, 15, 16, 17, 18, 19,  6],
-        [20, 15, 15, 21, 22, 18, 23,  6]
+        [20, 15, 15, 21, 22, 18, 23,  6],
       ];
 
       testTableIndexes("table2", idxes);
@@ -57,7 +56,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [0, 1, 2],
         [3, 4, 5],
         [6, 7, 7],
-        [6, 8, 9]
+        [6, 8, 9],
       ];
 
       testTableIndexes("tableinsane1", idxes);
@@ -67,7 +66,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
       idxes = [
         [-1, -1, -1],
         [-1, -1, -1],
-        [ 0,  1,  2]
+        [ 0,  1,  2],
       ];
 
       testTableIndexes("tableinsane2", idxes);
@@ -76,7 +75,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
       // tableinsane3 (cell holes)
       idxes = [
         [0, 1, -1],
-        [2, 3,  4]
+        [2, 3,  4],
       ];
 
       testTableIndexes("tableinsane3", idxes);
@@ -86,7 +85,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
       idxes = [
         [0,  1, 2],
         [3, -1, 2],
-        [4,  5, 2]
+        [4,  5, 2],
       ];
 
       testTableIndexes("tableinsane3.2", idxes);
@@ -99,7 +98,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [ 3,  4,  5],
         [ 6,  6,  7],
         [ 8, -1,  7],
-        [ 9,  9,  9]
+        [ 9,  9,  9],
       ];
       testTableIndexes("tableinsane4", idxes);
 
@@ -111,7 +110,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [ 3,  4,  5, -1, -1],
         [ 6,  7,  -1,  -1,  -1],
         [ 6,  8,  9, -1, -1],
-        [ 6, 10,  9, 11, 12]
+        [ 6, 10,  9, 11, 12],
       ];
       testTableIndexes("tableinsane5", idxes);
 
@@ -123,9 +122,33 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
         [ 3,  4,  5, -1, -1],
         [ 6,  6,  7, -1, -1],
         [ 8,  9,  7, -1, -1],
-        [ 10, 9,  7, 11, 12]
+        [ 10, 9,  7, 11, 12],
       ];
       testTableIndexes("tableinsane6", idxes);
+
+      // ////////////////////////////////////////////////////////////////////////
+      // Table with a cell that has display: block; style
+      idxes = [
+        [0, 1],
+      ];
+      testTableIndexes("tablewithcelldisplayblock", idxes);
+
+      // ////////////////////////////////////////////////////////////////////////
+      // A table with a cell that has display: block; and a cell with colspan.
+      // This makes us fall back to the ARIAGridCellAccessible implementation.
+      idxes = [
+        [0, 0, 1],
+      ];
+      testTableIndexes("tablewithcolspanandcelldisplayblock", idxes);
+
+      // ////////////////////////////////////////////////////////////////////////
+      // A table with all elements being display:block, including a row group.
+      // This makes us fall back to the ARIAGridRowAccessible, and we must
+      // make sure the index is 0. Crazy example from Gmail.
+      idxes = [
+        [0],
+      ];
+      testTableIndexes("tablealldisplayblock", idxes);
 
       SimpleTest.finish();
     }
@@ -405,5 +428,27 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=410052
     </tbody>
   </table>
 
+  <table id="tablewithcelldisplayblock">
+    <tr>
+      <th>a</th>
+      <td style="display: block;">b</td>
+    </tr>
+  </table>
+
+  <table id="tablewithcolspanandcelldisplayblock">
+    <tr>
+      <th colspan="2">a</th>
+      <td style="display: block;" >b</td>
+    </tr>
+  </table>
+
+  <table id="tablealldisplayblock" style="display:block;">
+    <tbody style="display:block;">
+      <tr style="display:block;">
+        <td style="display:block;">text</td>
+      </tr>
+    </tbody>
+  </table>
+  
 </body>
 </html>

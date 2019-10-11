@@ -2,12 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, print_function, unicode_literals
-
 import argparse
+import copy
 import os
 
 from mozbuild.base import (
+    BuildEnvironmentNotFoundException,
     MachCommandBase,
 )
 
@@ -20,11 +20,35 @@ from mach.decorators import (
 
 
 here = os.path.abspath(os.path.dirname(__file__))
+EXCLUSION_FILES = [
+    os.path.join('tools', 'rewriting', 'Generated.txt'),
+    os.path.join('tools', 'rewriting', 'ThirdPartyPaths.txt'),
+]
+GLOBAL_EXCLUDES = [
+    'node_modules',
+    'tools/lint/test/files',
+]
 
 
 def setup_argument_parser():
     from mozlint import cli
     return cli.MozlintParser()
+
+
+def get_global_excludes(topsrcdir):
+    # exclude misc paths
+    excludes = GLOBAL_EXCLUDES[:]
+
+    # exclude top level paths that look like objdirs
+    excludes.extend([name for name in os.listdir(topsrcdir)
+                     if name.startswith('obj') and os.path.isdir(name)])
+
+    for path in EXCLUSION_FILES:
+        # exclude third party paths
+        with open(os.path.join(topsrcdir, path), 'r') as fh:
+            excludes.extend([f.strip() for f in fh.readlines()])
+
+    return excludes
 
 
 @CommandProvider
@@ -36,11 +60,23 @@ class MachCommands(MachCommandBase):
         parser=setup_argument_parser)
     def lint(self, *runargs, **lintargs):
         """Run linters."""
-        from mozlint import cli
-        lintargs.setdefault('root', self.topsrcdir)
-        lintargs['exclude'] = ['obj*', 'tools/lint/test/files']
-        cli.SEARCH_PATHS.append(here)
         self._activate_virtualenv()
+        from mozlint import cli, parser
+
+        try:
+            buildargs = {}
+            buildargs['substs'] = copy.deepcopy(dict(self.substs))
+            buildargs['defines'] = copy.deepcopy(dict(self.defines))
+            buildargs['topobjdir'] = self.topobjdir
+            lintargs.update(buildargs)
+        except BuildEnvironmentNotFoundException:
+            pass
+
+        lintargs.setdefault('root', self.topsrcdir)
+        lintargs['exclude'] = get_global_excludes(lintargs['root'])
+        cli.SEARCH_PATHS.append(here)
+        for path in EXCLUSION_FILES:
+            parser.GLOBAL_SUPPORT_FILES.append(os.path.join(self.topsrcdir, path))
         return cli.run(*runargs, **lintargs)
 
     @Command('eslint', category='devenv',

@@ -85,6 +85,17 @@ def ChromeRunner(*args, **kwargs):
     return BlinkRuntimeRunner(*args, **kwargs)
 
 
+def ChromiumRunner(*args, **kwargs):
+    """
+    Create a desktop Google Chromium runner.
+
+    :param binary: Path to Chromium binary.
+    :param cmdargs: Arguments to pass into the binary.
+    """
+    kwargs['app_ctx'] = get_app_context('chromium')()
+    return BlinkRuntimeRunner(*args, **kwargs)
+
+
 def FennecEmulatorRunner(avd='mozemulator-4.3',
                          adb_path=None,
                          avd_home=None,
@@ -101,7 +112,7 @@ def FennecEmulatorRunner(avd='mozemulator-4.3',
         Typically obtained via tooltool: either 'mozemulator-4.3' or 'mozemulator-x86'.
         Defaults to 'mozemulator-4.3'
     :param avd_home: Path to avd parent directory
-    :param logdir: Path to save logfiles such as logcat and qemu output.
+    :param logdir: Path to save logfiles such as qemu output.
     :param serial: Serial of emulator to connect to as seen in `adb devices`.
         Defaults to the first entry in `adb devices`.
     :param binary: Path to emulator binary.
@@ -125,6 +136,7 @@ def FennecEmulatorRunner(avd='mozemulator-4.3',
 
 runners = {
     'chrome': ChromeRunner,
+    'chromium': ChromiumRunner,
     'default': Runner,
     'firefox': FirefoxRunner,
     'fennec': FennecEmulatorRunner,

@@ -5,11 +5,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+    'accessibility',
     'addon',
-    'canvas',
+    'descriptors',
     'emulation',
     'highlighters',
     'inspector',
+    'network-monitor',
     'object',
     'replay',
     'targets',
@@ -19,67 +21,55 @@ DIRS += [
 ]
 
 DevToolsModules(
-    'accessibility-parent.js',
-    'accessibility.js',
     'actor-registry.js',
     'animation-type-longhand.js',
     'animation.js',
     'array-buffer.js',
     'breakpoint.js',
-    'call-watcher.js',
-    'canvas.js',
+    'changes.js',
     'common.js',
     'css-properties.js',
-    'csscoverage.js',
     'device.js',
     'emulation.js',
     'environment.js',
     'errordocs.js',
     'frame.js',
     'framerate.js',
-    'gcli.js',
     'heap-snapshot-file.js',
     'highlighters.css',
     'highlighters.js',
     'layout.js',
+    'manifest.js',
     'memory.js',
-    'network-event.js',
-    'network-monitor.js',
     'object.js',
     'pause-scoped.js',
     'perf.js',
     'performance-recording.js',
     'performance.js',
     'preference.js',
-    'pretty-print-worker.js',
     'process.js',
     'promises.js',
     'reflow.js',
     'root.js',
+    'screenshot.js',
     'source.js',
     'storage.js',
     'string.js',
     'styles.js',
     'stylesheets.js',
     'thread.js',
-    'timeline.js',
-    'webaudio.js',
     'webbrowser.js',
     'webconsole.js',
-    'webgl.js',
 )
 
 with Files('animation.js'):
-    BUG_COMPONENT = ('DevTools', 'Animation Inspector')
+    BUG_COMPONENT = ('DevTools', 'Inspector: Animations')
 
 with Files('breakpoint.js'):
     BUG_COMPONENT = ('DevTools', 'Debugger')
 
 with Files('css-properties.js'):
-    BUG_COMPONENT = ('DevTools', 'CSS Rules Inspector')
-
-with Files('csscoverage.js'):
-    BUG_COMPONENT = ('DevTools', 'Graphics Commandline and Toolbar')
+    BUG_COMPONENT = ('DevTools', 'Inspector: Rules')
 
 with Files('memory.js'):
     BUG_COMPONENT = ('DevTools', 'Memory')
@@ -96,11 +86,5 @@ with Files('storage.js'):
 with Files('stylesheets.js'):
     BUG_COMPONENT = ('DevTools', 'Style Editor')
 
-with Files('webaudio.js'):
-    BUG_COMPONENT = ('DevTools', 'Web Audio Editor')
-
 with Files('webconsole.js'):
     BUG_COMPONENT = ('DevTools', 'Console')
-
-with Files('webgl.js'):
-    BUG_COMPONENT = ('DevTools', 'WebGL Shader Editor')

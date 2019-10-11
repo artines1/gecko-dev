@@ -5,12 +5,14 @@
 """
 Runs the reftest test harness.
 """
+from __future__ import print_function
 
 import copy
 import json
 import multiprocessing
 import os
 import platform
+import posixpath
 import re
 import shutil
 import signal
@@ -38,14 +40,16 @@ import mozrunner
 from manifestparser import TestManifest, filters as mpf
 from mozrunner.utils import get_stack_fixer_function, test_environment
 from mozscreenshot import printstatus, dump_screen
+from six import reraise, string_types
+from six.moves import range
 
 try:
     from marionette_driver.addons import Addons
     from marionette_harness import Marionette
-except ImportError, e:
+except ImportError as e:  # noqa
     # Defer ImportError until attempt to use Marionette
     def reraise(*args, **kwargs):
-        raise(e)
+        raise(e)  # noqa
     Marionette = reraise
 
 from output import OutputHandler, ReftestFormatter
@@ -107,12 +111,12 @@ class ReftestThread(threading.Thread):
 
     def run(self):
         with printLock:
-            print "Starting thread with", self.cmdargs
+            print("Starting thread with", self.cmdargs)
             sys.stdout.flush()
         process = subprocess.Popen(self.cmdargs, stdout=subprocess.PIPE)
         for chunk in self.chunkForMergedOutput(process.stdout):
             with printLock:
-                print chunk,
+                print(chunk,)
                 sys.stdout.flush()
         self.retcode = process.wait()
 
@@ -191,7 +195,7 @@ class ReftestResolver(object):
             found = True
             while not os.path.exists(os.path.join(dirname, default_manifest)):
                 dirname, suffix = os.path.split(dirname)
-                pathname = os.path.join(suffix, pathname)
+                pathname = posixpath.join(suffix, pathname)
                 if os.path.dirname(dirname) == dirname:
                     found = False
                     break
@@ -233,6 +237,7 @@ class RefTest(object):
     def __init__(self, suite):
         update_mozinfo()
         self.lastTestSeen = None
+        self.lastTest = None
         self.haveDumpedScreen = False
         self.resolver = self.resolver_cls()
         self.log = None
@@ -356,6 +361,7 @@ class RefTest(object):
         prefs['reftest.focusFilterMode'] = options.focusFilterMode
         prefs['reftest.logLevel'] = options.log_tbpl_level or 'info'
         prefs['reftest.suite'] = options.suite
+        prefs['gfx.font_rendering.ahem_antialias_none'] = True
 
         # Set tests to run or manifests to parse.
         if tests:
@@ -396,13 +402,13 @@ class RefTest(object):
 
         # Enable tracing output for detailed failures in case of
         # failing connection attempts, and hangs (bug 1397201)
-        prefs["marionette.log.level"] = "TRACE"
+        prefs["marionette.log.level"] = "Trace"
 
         # Third, set preferences passed in via the command line.
         for v in options.extraPrefs:
             thispref = v.split('=')
             if len(thispref) < 2:
-                print "Error: syntax error in --setpref=" + v
+                print("Error: syntax error in --setpref=" + v)
                 sys.exit(1)
             prefs[thispref[0]] = thispref[1].strip()
 
@@ -436,16 +442,28 @@ class RefTest(object):
             else:
                 browserEnv["ASAN_OPTIONS"] = "detect_leaks=0"
 
+        # Set environment defaults for jstestbrowser. Keep in sync with the
+        # defaults used in js/src/tests/lib/tests.py.
+        if options.suite == "jstestbrowser":
+            browserEnv["TZ"] = "PST8PDT"
+            browserEnv["LC_ALL"] = "en_US.UTF-8"
+
         for v in options.environment:
             ix = v.find("=")
             if ix <= 0:
-                print "Error: syntax error in --setenv=" + v
+                print("Error: syntax error in --setenv=" + v)
                 return None
             browserEnv[v[:ix]] = v[ix + 1:]
 
         # Enable leaks detection to its own log file.
         self.leakLogFile = os.path.join(profileDir, "runreftest_leaks.log")
         browserEnv["XPCOM_MEM_BLOAT_LOG"] = self.leakLogFile
+
+        if options.enable_webrender:
+            browserEnv["MOZ_WEBRENDER"] = "1"
+            browserEnv["MOZ_ACCELERATED"] = "1"
+        else:
+            browserEnv["MOZ_WEBRENDER"] = "0"
         return browserEnv
 
     def cleanup(self, profileDir):
@@ -461,6 +479,13 @@ class RefTest(object):
 
         self._populate_logger(options)
 
+        # options.log has done its work, in _populate_logger; remove it so that
+        # options can be deepcopied. An alternative would be to modify
+        # mozlog.structuredlog.StructuredLogger to support copy.deepcopy,
+        # https://docs.python.org/2.7/library/copy.html
+        if hasattr(options, 'log'):
+            delattr(options, 'log')
+
         # Number of times to repeat test(s) when running with --repeat
         VERIFY_REPEAT = 10
         # Number of times to repeat test(s) when running test in separate browser
@@ -475,7 +500,7 @@ class RefTest(object):
 
         def step2():
             stepOptions = copy.deepcopy(options)
-            for i in xrange(VERIFY_REPEAT_SINGLE_BROWSER):
+            for i in range(VERIFY_REPEAT_SINGLE_BROWSER):
                 result = self.runTests(tests, stepOptions)
                 if result != 0:
                     break
@@ -492,7 +517,7 @@ class RefTest(object):
         def step4():
             stepOptions = copy.deepcopy(options)
             stepOptions.environment.append("MOZ_CHAOSMODE=3")
-            for i in xrange(VERIFY_REPEAT_SINGLE_BROWSER):
+            for i in range(VERIFY_REPEAT_SINGLE_BROWSER):
                 result = self.runTests(tests, stepOptions)
                 if result != 0:
                     break
@@ -634,11 +659,12 @@ class RefTest(object):
                     threadMatches.group('total') if threadMatches else 0)
                 summaryObj['total'] += amount
 
-        print 'REFTEST INFO | Result summary:'
+        print('REFTEST INFO | Result summary:')
         for (summaryObj, (text, categories)) in zip(summaryObjects, summaryLines):
             details = ', '.join(["%d %s" % (summaryObj[attribute], description) for (
                 attribute, description) in categories])
-            print 'REFTEST INFO | ' + text + ': ' + str(summaryObj['total']) + ' (' + details + ')'
+            print('REFTEST INFO | ' + text + ': ' + str(summaryObj['total']) +
+                  ' (' + details + ')')
 
         return int(any(t.retcode != 0 for t in threads))
 
@@ -721,11 +747,18 @@ class RefTest(object):
 
         def record_last_test(message):
             """Records the last test seen by this harness for the benefit of crash logging."""
+            def testid(test):
+                if " " in test:
+                    return test.split(" ")[0]
+                return test
+
             if message['action'] == 'test_start':
-                if " " in message['test']:
-                    self.lastTestSeen = message['test'].split(" ")[0]
+                self.lastTestSeen = testid(message['test'])
+            elif message['action'] == 'test_end':
+                if self.lastTest and message['test'] == self.lastTest:
+                    self.lastTestSeen = "Last test finished"
                 else:
-                    self.lastTestSeen = message['test']
+                    self.lastTestSeen = '{} (finished)'.format(testid(message['test']))
 
         self.log.add_handler(record_last_test)
 
@@ -736,7 +769,7 @@ class RefTest(object):
             'processOutputLine': [self.outputHandler],
         }
 
-        if mozinfo.isWin:
+        if mozinfo.isWin or mozinfo.isMac:
             # Prevents log interleaving on Windows at the expense of losing
             # true log order. See bug 798300 and bug 1324961 for more details.
             kp_kwargs['processStderrLine'] = [self.outputHandler]
@@ -814,7 +847,7 @@ class RefTest(object):
 
         if marionette_exception is not None:
             exc, value, tb = marionette_exception
-            raise exc, value, tb
+            raise reraise(exc, value, tb)
 
         self.log.info("Process mode: {}".format('e10s' if options.e10s else 'non-e10s'))
         return status
@@ -856,6 +889,11 @@ class RefTest(object):
                                                       options.debuggerInteractive)
 
         def run(**kwargs):
+            if kwargs.get('tests'):
+                self.lastTest = kwargs['tests'][-1]['identifier']
+                if not isinstance(self.lastTest, string_types):
+                    self.lastTest = ' '.join(self.lastTest)
+
             status = self.runApp(
                 options,
                 manifests=manifests,

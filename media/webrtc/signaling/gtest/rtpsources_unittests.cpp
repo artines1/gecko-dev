@@ -6,12 +6,11 @@
 using namespace mozilla;
 
 namespace test {
-class RtpSourcesTest : public ::testing::Test
-{
-using RtpSourceHistory = RtpSourceObserver::RtpSourceHistory;
-using RtpSourceEntry = mozilla::RtpSourceObserver::RtpSourceEntry;
-public:
+class RtpSourcesTest : public ::testing::Test {
+  using RtpSourceHistory = RtpSourceObserver::RtpSourceHistory;
+  using RtpSourceEntry = mozilla::RtpSourceObserver::RtpSourceEntry;
 
+ public:
   // History Tests
 
   // Test init happens as expected
@@ -31,27 +30,21 @@ public:
     const uint8_t audioLevel = 10;
     const int64_t jitter = 10;
     RtpSourceHistory history;
-    const int64_t times[] = {100,
-                             120,
-                             140,
-                             160,
-                             180,
-                             200,
-                             220};
+    const int64_t times[] = {100, 120, 140, 160, 180, 200, 220};
     const size_t numEntries = sizeof(times) / sizeof(times[0]);
     for (auto i : times) {
       history.Insert(i, i + jitter, hasAudioLevel, audioLevel);
-     }
-     ASSERT_EQ(history.mDetailedHistory.size(), numEntries);
-     for (auto i : times) {
-       auto entry = history.FindClosestNotAfter(i + jitter);
-       ASSERT_NE(entry, nullptr);
-       if (entry) {
-         EXPECT_EQ(entry->jitterAdjustedTimestamp, i + jitter);
-         EXPECT_EQ(entry->hasAudioLevel, hasAudioLevel);
-         EXPECT_EQ(entry->audioLevel, audioLevel);
-       }
-     }
+    }
+    ASSERT_EQ(history.mDetailedHistory.size(), numEntries);
+    for (auto i : times) {
+      auto entry = history.FindClosestNotAfter(i + jitter);
+      ASSERT_NE(entry, nullptr);
+      if (entry) {
+        EXPECT_EQ(entry->jitterAdjustedTimestamp, i + jitter);
+        EXPECT_EQ(entry->hasAudioLevel, hasAudioLevel);
+        EXPECT_EQ(entry->audioLevel, audioLevel);
+      }
+    }
   }
 
   // Tests inserting before the jitter window, in long term history.
@@ -153,7 +146,6 @@ public:
     EXPECT_EQ(history.mLatestEviction.jitterAdjustedTimestamp, time1);
     EXPECT_EQ(history.mLatestEviction.hasAudioLevel, true);
     EXPECT_EQ(history.mLatestEviction.audioLevel, 2);
-
   }
 
   // Packets have a maximum audio level of 127
@@ -246,16 +238,16 @@ public:
   // Observer a header with a single Csrc
   void TestObserveOneCsrc() {
     RtpSourceObserver observer;
-    webrtc::WebRtcRTPHeader header;
+    webrtc::RTPHeader header;
     constexpr unsigned int ssrc = 857265;
     constexpr unsigned int csrc = 3268365;
     constexpr int64_t timestamp = 10000;
     constexpr int64_t jitter = 0;
 
-    header.header.ssrc = ssrc;
-    header.header.numCSRCs = 1;
-    header.header.arrOfCSRCs[0] = csrc;
-    observer.OnRtpPacket(&header, timestamp, jitter);
+    header.ssrc = ssrc;
+    header.numCSRCs = 1;
+    header.arrOfCSRCs[0] = csrc;
+    observer.OnRtpPacket(header, timestamp, jitter);
 
     // One for the SSRC, one for the CSRC
     EXPECT_EQ(observer.mRtpSources.size(), static_cast<size_t>(2));
@@ -272,8 +264,7 @@ public:
       }
       if (entry.mSource == csrc) {
         csrcFound = true;
-        EXPECT_EQ(entry.mSourceType,
-                  dom::RTCRtpSourceEntryType::Contributing);
+        EXPECT_EQ(entry.mSourceType, dom::RTCRtpSourceEntryType::Contributing);
       }
     }
     EXPECT_TRUE(ssrcFound);
@@ -283,18 +274,18 @@ public:
   // Observer a header with two CSRCs
   void TestObserveTwoCsrcs() {
     RtpSourceObserver observer;
-    webrtc::WebRtcRTPHeader header;
+    webrtc::RTPHeader header;
     constexpr unsigned int ssrc = 239485;
     constexpr unsigned int csrc0 = 3425;
     constexpr unsigned int csrc1 = 36457;
     constexpr int64_t timestamp = 10000;
     constexpr int64_t jitter = 0;
 
-    header.header.ssrc = ssrc;
-    header.header.numCSRCs = 2;
-    header.header.arrOfCSRCs[0] = csrc0;
-    header.header.arrOfCSRCs[1] = csrc1;
-    observer.OnRtpPacket(&header, timestamp, jitter);
+    header.ssrc = ssrc;
+    header.numCSRCs = 2;
+    header.arrOfCSRCs[0] = csrc0;
+    header.arrOfCSRCs[1] = csrc1;
+    observer.OnRtpPacket(header, timestamp, jitter);
 
     // One for the SSRC, two for the CSRCs
     EXPECT_EQ(observer.mRtpSources.size(), static_cast<size_t>(3));
@@ -312,13 +303,11 @@ public:
       }
       if (entry.mSource == csrc0) {
         csrc0Found = true;
-        EXPECT_EQ(entry.mSourceType,
-                  dom::RTCRtpSourceEntryType::Contributing);
+        EXPECT_EQ(entry.mSourceType, dom::RTCRtpSourceEntryType::Contributing);
       }
       if (entry.mSource == csrc1) {
         csrc1Found = true;
-        EXPECT_EQ(entry.mSourceType,
-                  dom::RTCRtpSourceEntryType::Contributing);
+        EXPECT_EQ(entry.mSourceType, dom::RTCRtpSourceEntryType::Contributing);
       }
     }
     EXPECT_TRUE(ssrcFound);
@@ -329,16 +318,15 @@ public:
   // Observer a header with a CSRC with audio level extension
   void TestObserveCsrcWithAudioLevel() {
     RtpSourceObserver observer;
-    webrtc::WebRtcRTPHeader header;
+    webrtc::RTPHeader header;
   }
-
 };
 
 TEST_F(RtpSourcesTest, TestInitState) { TestInitState(); }
 TEST_F(RtpSourcesTest, TestInsertIntoJitterWindow) {
   TestInsertIntoJitterWindow();
 }
-TEST_F(RtpSourcesTest, TestAgeIntoLongTerm){ TestAgeIntoLongTerm(); }
+TEST_F(RtpSourcesTest, TestAgeIntoLongTerm) { TestAgeIntoLongTerm(); }
 TEST_F(RtpSourcesTest, TestInsertIntoLongTerm) { TestInsertIntoLongTerm(); }
 TEST_F(RtpSourcesTest, TestMaximumAudioLevel) { TestMaximumAudioLevel(); }
 TEST_F(RtpSourcesTest, TestEmptyPrune) { TestEmptyPrune(); }
@@ -349,4 +337,4 @@ TEST_F(RtpSourcesTest, TestObserveTwoCsrcs) { TestObserveTwoCsrcs(); }
 TEST_F(RtpSourcesTest, TestObserveCsrcWithAudioLevel) {
   TestObserveCsrcWithAudioLevel();
 }
-}
+}  // namespace test

@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
 from collections import defaultdict
 from copy import deepcopy
@@ -78,7 +78,10 @@ class MozbuildWriter(object):
             self.write('\n')
             self.write(self.indent + key)
             self.write(' += [\n    ' + self.indent)
-            self.write((',\n    ' + self.indent).join(alphabetical_sorted(self.mb_serialize(v) for v in value)))
+            self.write(
+                (',\n    ' + self.indent).join(
+                    alphabetical_sorted(self.mb_serialize(v) for v in value))
+                )
             self.write('\n')
             self.write_ln(']')
 
@@ -112,7 +115,6 @@ class MozbuildWriter(object):
                 if not wrote_ln:
                     self.write_ln("%s[%s] = %s" % subst_vals)
 
-
     def write_condition(self, values):
         def mk_condition(k, v):
             if not v:
@@ -138,7 +140,7 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(gn_result, config, sandbox_vars, input_vars):
+def filter_gn_config(gn_result, config, sandbox_vars, input_vars, gn_target):
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
     gn_out = {
@@ -156,7 +158,7 @@ def filter_gn_config(gn_result, config, sandbox_vars, input_vars):
 
     mozbuild_args = {k: config.substs.get(k) for k in gn_mozbuild_vars}
     gn_out['mozbuild_args'] = mozbuild_args
-    all_deps = find_deps(gn_result['targets'], "//:default")
+    all_deps = find_deps(gn_result['targets'], gn_target)
 
     for target_fullname in all_deps:
         raw_spec = gn_result['targets'][target_fullname]
@@ -275,9 +277,9 @@ def process_gn_config(gn_config, srcdir, config, output, non_unified_sources,
             context_attrs['LOCAL_INCLUDES'] += [include]
 
         context_attrs['ASFLAGS'] = spec.get('asflags_mozilla', [])
-        if use_defines_in_asflags and defines:
-            context_attrs['ASFLAGS'] += ['-D' + d for d in defines]
-        flags = [f for f in spec.get('cflags', []) if f in mozilla_flags]
+        if use_defines_in_asflags and context_attrs['DEFINES']:
+            context_attrs['ASFLAGS'] += ['-D' + d for d in context_attrs['DEFINES']]
+        flags = [_f for _f in spec.get('cflags', []) if _f in mozilla_flags]
         if flags:
             suffix_map = {
                 '.c': 'CFLAGS',
@@ -432,7 +434,6 @@ def write_mozbuild(config, srcdir, output, non_unified_sources, gn_config_files,
             mb.write('\n')
             mb.write(generated_header)
 
-            all_attr_sets = [attrs for _, attrs in configs]
             all_args = [args for args, _ in configs]
 
             # Start with attributes that will be a part of the mozconfig
@@ -502,7 +503,7 @@ def write_mozbuild(config, srcdir, output, non_unified_sources, gn_config_files,
 
 
 def generate_gn_config(config, srcdir, output, non_unified_sources, gn_binary,
-                       input_variables, sandbox_variables):
+                       input_variables, sandbox_variables, gn_target):
 
     def str_for_arg(v):
         if v in (True, False):
@@ -519,13 +520,12 @@ def generate_gn_config(config, srcdir, output, non_unified_sources, gn_binary,
     print("Running \"%s\"" % ' '.join(gen_args), file=sys.stderr)
     subprocess.check_call(gen_args, cwd=srcdir, stderr=subprocess.STDOUT)
 
-
     gn_config_file = mozpath.join(out_dir, 'project.json')
 
     with open(gn_config_file, 'r') as fh:
         gn_out = json.load(fh)
         gn_out = filter_gn_config(gn_out, config, sandbox_variables,
-                                  input_variables)
+                                  input_variables, gn_target)
 
     os.remove(gn_config_file)
 
@@ -546,7 +546,8 @@ class GnConfigGenBackend(BuildBackend):
             generate_gn_config(obj.config, mozpath.join(obj.srcdir, obj.target_dir),
                                mozpath.join(obj.objdir, obj.target_dir),
                                obj.non_unified_sources, gn_binary,
-                               obj.gn_input_variables, obj.gn_sandbox_variables)
+                               obj.gn_input_variables, obj.gn_sandbox_variables,
+                               obj.gn_target)
         return True
 
     def consume_finished(self):

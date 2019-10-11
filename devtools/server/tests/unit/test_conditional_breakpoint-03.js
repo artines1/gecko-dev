@@ -5,49 +5,61 @@
 "use strict";
 
 /**
- * Check conditional breakpoint when condition throws and make sure it pauses
+ * If pauseOnExceptions is checked, when condition throws,
+ * make sure conditional breakpoint pauses.
  */
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
+var gThreadFront;
 
 function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-conditional-breakpoint");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-conditional-breakpoint",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_simple_breakpoint();
-                           });
+    attachTestTabAndResume(gClient, "test-conditional-breakpoint", function(
+      response,
+      targetFront,
+      threadFront
+    ) {
+      gThreadFront = threadFront;
+      test_simple_breakpoint();
+    });
   });
   do_test_pending();
 }
 
 function test_simple_breakpoint() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    const source = gThreadClient.source(packet.frame.where.source);
-    source.setBreakpoint({
-      line: 3,
-      condition: "throw new Error()"
-    }).then(function([response, bpClient]) {
-      gThreadClient.addOneTimeListener("paused", function(event, packet) {
-        // Check the return value.
-        Assert.equal(packet.why.type, "breakpointConditionThrown");
-        Assert.equal(packet.frame.where.line, 3);
+  gThreadFront.once("paused", async function(packet) {
+    const source = await getSourceById(gThreadFront, packet.frame.where.actor);
 
-        // Remove the breakpoint.
-        bpClient.remove(function(response) {
-          gThreadClient.resume(function() {
-            finishClient(gClient);
-          });
-        });
+    gThreadFront.pauseOnExceptions(true, false);
+    const location = { sourceUrl: source.url, line: 3 };
+    gThreadFront.setBreakpoint(location, { condition: "throw new Error()" });
+    gThreadFront.once("paused", async function(packet) {
+      // Check the return value.
+      Assert.equal(packet.why.type, "exception");
+      Assert.equal(packet.frame.where.line, 1);
+
+      // Step over twice.
+      await stepOver(gThreadFront);
+      packet = await stepOver(gThreadFront);
+
+      // Check the return value.
+      Assert.equal(packet.why.type, "breakpointConditionThrown");
+      Assert.equal(packet.frame.where.line, 3);
+
+      // Remove the breakpoint.
+      gThreadFront.removeBreakpoint(location);
+
+      gThreadFront.resume().then(function() {
+        finishClient(gClient);
       });
-      // Continue until the breakpoint is hit.
-      gThreadClient.resume();
     });
+
+    // Continue until the breakpoint is hit.
+    gThreadFront.resume();
   });
 
   /* eslint-disable */

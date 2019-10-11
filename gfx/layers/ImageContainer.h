@@ -7,25 +7,26 @@
 #ifndef GFX_IMAGECONTAINER_H
 #define GFX_IMAGECONTAINER_H
 
-#include <stdint.h>                     // for uint32_t, uint8_t, uint64_t
-#include <sys/types.h>                  // for int32_t
+#include <stdint.h>     // for uint32_t, uint8_t, uint64_t
+#include <sys/types.h>  // for int32_t
 #include "gfxTypes.h"
-#include "ImageTypes.h"                 // for ImageFormat, etc
-#include "mozilla/Assertions.h"         // for MOZ_ASSERT_HELPER2
-#include "mozilla/Mutex.h"              // for Mutex
-#include "mozilla/RecursiveMutex.h"     // for RecursiveMutex, etc
-#include "mozilla/TimeStamp.h"          // for TimeStamp
-#include "mozilla/gfx/Point.h"          // For IntSize
+#include "ImageTypes.h"                  // for ImageFormat, etc
+#include "mozilla/Assertions.h"          // for MOZ_ASSERT_HELPER2
+#include "mozilla/Mutex.h"               // for Mutex
+#include "mozilla/RecursiveMutex.h"      // for RecursiveMutex, etc
+#include "mozilla/TimeStamp.h"           // for TimeStamp
+#include "mozilla/gfx/Point.h"           // For IntSize
+#include "mozilla/gfx/Types.h"           // For ColorDepth
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend, etc
 #include "mozilla/layers/CompositorTypes.h"
-#include "mozilla/mozalloc.h"           // for operator delete, etc
-#include "nsAutoPtr.h"                  // for nsRefPtr, nsAutoArrayPtr, etc
-#include "nsAutoRef.h"                  // for nsCountedRef
-#include "nsCOMPtr.h"                   // for already_AddRefed
-#include "nsDebug.h"                    // for NS_ASSERTION
-#include "nsISupportsImpl.h"            // for Image::Release, etc
-#include "nsRect.h"                     // for mozilla::gfx::IntRect
-#include "nsTArray.h"                   // for nsTArray
+#include "mozilla/mozalloc.h"  // for operator delete, etc
+#include "nsAutoPtr.h"         // for nsRefPtr, nsAutoArrayPtr, etc
+#include "nsAutoRef.h"         // for nsCountedRef
+#include "nsCOMPtr.h"          // for already_AddRefed
+#include "nsDebug.h"           // for NS_ASSERTION
+#include "nsISupportsImpl.h"   // for Image::Release, etc
+#include "nsRect.h"            // for mozilla::gfx::IntRect
+#include "nsTArray.h"          // for nsTArray
 #include "mozilla/Atomics.h"
 #include "mozilla/WeakPtr.h"
 #include "nsThreadUtils.h"
@@ -51,22 +52,19 @@ class nsMainThreadSourceSurfaceRef;
 
 template <>
 class nsAutoRefTraits<nsMainThreadSourceSurfaceRef> {
-public:
+ public:
   typedef mozilla::gfx::SourceSurface* RawRef;
 
   /**
    * The XPCOM event that will do the actual release on the main thread.
    */
   class SurfaceReleaser : public mozilla::Runnable {
-  public:
+   public:
     explicit SurfaceReleaser(RawRef aRef)
-      : mozilla::Runnable(
-          "nsAutoRefTraits<nsMainThreadSourceSurfaceRef>::SurfaceReleaser")
-      , mRef(aRef)
-    {
-    }
-    NS_IMETHOD Run() override
-    {
+        : mozilla::Runnable(
+              "nsAutoRefTraits<nsMainThreadSourceSurfaceRef>::SurfaceReleaser"),
+          mRef(aRef) {}
+    NS_IMETHOD Run() override {
       mRef->Release();
       return NS_OK;
     }
@@ -74,8 +72,7 @@ public:
   };
 
   static RawRef Void() { return nullptr; }
-  static void Release(RawRef aRawRef)
-  {
+  static void Release(RawRef aRawRef) {
     if (NS_IsMainThread()) {
       aRawRef->Release();
       return;
@@ -83,8 +80,7 @@ public:
     nsCOMPtr<nsIRunnable> runnable = new SurfaceReleaser(aRawRef);
     NS_DispatchToMainThread(runnable);
   }
-  static void AddRef(RawRef aRawRef)
-  {
+  static void AddRef(RawRef aRawRef) {
     NS_ASSERTION(NS_IsMainThread(),
                  "Can only add a reference on the main thread");
     aRawRef->AddRef();
@@ -94,25 +90,21 @@ public:
 class nsOwningThreadSourceSurfaceRef;
 
 template <>
-class nsAutoRefTraits<nsOwningThreadSourceSurfaceRef>
-{
-public:
+class nsAutoRefTraits<nsOwningThreadSourceSurfaceRef> {
+ public:
   typedef mozilla::gfx::SourceSurface* RawRef;
 
   /**
    * The XPCOM event that will do the actual release on the creation thread.
    */
-  class SurfaceReleaser : public mozilla::Runnable
-  {
-  public:
+  class SurfaceReleaser : public mozilla::Runnable {
+   public:
     explicit SurfaceReleaser(RawRef aRef)
-      : mozilla::Runnable(
-          "nsAutoRefTraits<nsOwningThreadSourceSurfaceRef>::SurfaceReleaser")
-      , mRef(aRef)
-    {
-    }
-    NS_IMETHOD Run() override
-    {
+        : mozilla::Runnable(
+              "nsAutoRefTraits<nsOwningThreadSourceSurfaceRef>::"
+              "SurfaceReleaser"),
+          mRef(aRef) {}
+    NS_IMETHOD Run() override {
       mRef->Release();
       return NS_OK;
     }
@@ -120,8 +112,7 @@ public:
   };
 
   static RawRef Void() { return nullptr; }
-  void Release(RawRef aRawRef)
-  {
+  void Release(RawRef aRawRef) {
     MOZ_ASSERT(mOwningEventTarget);
     if (mOwningEventTarget->IsOnCurrentThread()) {
       aRawRef->Release();
@@ -130,14 +121,13 @@ public:
     nsCOMPtr<nsIRunnable> runnable = new SurfaceReleaser(aRawRef);
     mOwningEventTarget->Dispatch(runnable, nsIThread::DISPATCH_NORMAL);
   }
-  void AddRef(RawRef aRawRef)
-  {
+  void AddRef(RawRef aRawRef) {
     MOZ_ASSERT(!mOwningEventTarget);
     mOwningEventTarget = mozilla::GetCurrentThreadSerialEventTarget();
     aRawRef->AddRef();
   }
 
-private:
+ private:
   nsCOMPtr<nsISerialEventTarget> mOwningEventTarget;
 };
 
@@ -153,7 +143,6 @@ typedef void* HANDLE;
 
 namespace mozilla {
 
-
 namespace layers {
 
 class ImageClient;
@@ -161,6 +150,7 @@ class ImageCompositeNotification;
 class ImageContainer;
 class ImageContainerChild;
 class SharedPlanarYCbCrImage;
+class SharedSurfacesAnimation;
 class PlanarYCbCrImage;
 class TextureClient;
 class KnowsCompositor;
@@ -168,12 +158,12 @@ class NVImage;
 #ifdef XP_WIN
 class D3D11YCbCrRecycleAllocator;
 #endif
+class SurfaceDescriptorBuffer;
 
-struct ImageBackendData
-{
-  virtual ~ImageBackendData() {}
+struct ImageBackendData {
+  virtual ~ImageBackendData() = default;
 
-protected:
+ protected:
   ImageBackendData() {}
 };
 
@@ -200,30 +190,24 @@ class MacIOSurfaceImage;
  * When resampling an Image, only pixels within the buffer should be
  * sampled. For example, cairo images should be sampled in EXTEND_PAD mode.
  */
-class Image
-{
+class Image {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Image)
 
-public:
+ public:
   ImageFormat GetFormat() const { return mFormat; }
   void* GetImplData() const { return mImplData; }
 
   virtual gfx::IntSize GetSize() const = 0;
-  virtual gfx::IntPoint GetOrigin() const
-  {
-    return gfx::IntPoint(0, 0);
-  }
-  virtual gfx::IntRect GetPictureRect() const
-  {
-    return gfx::IntRect(GetOrigin().x, GetOrigin().y, GetSize().width, GetSize().height);
+  virtual gfx::IntPoint GetOrigin() const { return gfx::IntPoint(0, 0); }
+  virtual gfx::IntRect GetPictureRect() const {
+    return gfx::IntRect(GetOrigin().x, GetOrigin().y, GetSize().width,
+                        GetSize().height);
   }
 
-  ImageBackendData* GetBackendData(LayersBackend aBackend)
-  {
+  ImageBackendData* GetBackendData(LayersBackend aBackend) {
     return mBackendData[aBackend];
   }
-  void SetBackendData(LayersBackend aBackend, ImageBackendData* aData)
-  {
+  void SetBackendData(LayersBackend aBackend, ImageBackendData* aData) {
     mBackendData[aBackend] = aData;
   }
 
@@ -233,14 +217,11 @@ public:
 
   virtual bool IsValid() const { return true; }
 
-  virtual uint8_t* GetBuffer() const { return nullptr; }
-
   /**
    * For use with the TextureForwarder only (so that the later can
    * synchronize the TextureClient with the TextureHost).
    */
-  virtual TextureClient* GetTextureClient(KnowsCompositor* aForwarder)
-  {
+  virtual TextureClient* GetTextureClient(KnowsCompositor* aKnowsCompositor) {
     return nullptr;
   }
 
@@ -256,20 +237,17 @@ public:
 
   virtual NVImage* AsNVImage() { return nullptr; }
 
-protected:
-  Image(void* aImplData, ImageFormat aFormat) :
-    mImplData(aImplData),
-    mSerial(++sSerialCounter),
-    mFormat(aFormat)
-  {}
+ protected:
+  Image(void* aImplData, ImageFormat aFormat)
+      : mImplData(aImplData), mSerial(++sSerialCounter), mFormat(aFormat) {}
 
   // Protected destructor, to discourage deletion outside of Release():
-  virtual ~Image() {}
+  virtual ~Image() = default;
 
   mozilla::EnumeratedArray<mozilla::layers::LayersBackend,
                            mozilla::layers::LayersBackend::LAYERS_LAST,
                            nsAutoPtr<ImageBackendData>>
-    mBackendData;
+      mBackendData;
 
   void* mImplData;
   int32_t mSerial;
@@ -285,26 +263,24 @@ protected:
  * and we must avoid creating a reference loop between an ImageContainer and
  * its active image.
  */
-class BufferRecycleBin final
-{
+class BufferRecycleBin final {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(BufferRecycleBin)
 
-  //typedef mozilla::gl::GLContext GLContext;
+  // typedef mozilla::gl::GLContext GLContext;
 
-public:
+ public:
   BufferRecycleBin();
 
   void RecycleBuffer(mozilla::UniquePtr<uint8_t[]> aBuffer, uint32_t aSize);
   // Returns a recycled buffer of the right size, or allocates a new buffer.
   mozilla::UniquePtr<uint8_t[]> GetBuffer(uint32_t aSize);
   virtual void ClearRecycledBuffers();
-private:
+
+ private:
   typedef mozilla::Mutex Mutex;
 
   // Private destructor, to discourage deletion outside of Release():
-  ~BufferRecycleBin()
-  {
-  }
+  ~BufferRecycleBin() {}
 
   // This protects mRecycledBuffers, mRecycledBufferSize, mRecycledTextures
   // and mRecycledTextureSizes
@@ -333,32 +309,31 @@ private:
  * wrapper.
  */
 
-class ImageFactory
-{
+class ImageFactory {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ImageFactory)
-protected:
+ protected:
   friend class ImageContainer;
 
   ImageFactory() {}
-  virtual ~ImageFactory() {}
+  virtual ~ImageFactory() = default;
 
   virtual RefPtr<PlanarYCbCrImage> CreatePlanarYCbCrImage(
-    const gfx::IntSize& aScaleHint,
-    BufferRecycleBin *aRecycleBin);
+      const gfx::IntSize& aScaleHint, BufferRecycleBin* aRecycleBin);
 };
 
 // Used to notify ImageContainer::NotifyComposite()
-class ImageContainerListener final
-{
+class ImageContainerListener final {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ImageContainerListener)
 
-public:
+ public:
   explicit ImageContainerListener(ImageContainer* aImageContainer);
 
   void NotifyComposite(const ImageCompositeNotification& aNotification);
+  void NotifyDropped(uint32_t aDropped);
   void ClearImageContainer();
   void DropImageClient();
-private:
+
+ private:
   typedef mozilla::Mutex Mutex;
 
   ~ImageContainerListener();
@@ -384,18 +359,17 @@ private:
  * SetCurrentImages sends a message through the ImageBridge to the compositor
  * thread to update the image, without going through the main thread or
  * a layer transaction.
- * The ImageContainer uses a shared memory block containing a cross-process mutex
- * to communicate with the compositor thread. SetCurrentImage synchronously
- * updates the shared state to point to the new image and the old image
- * is immediately released (not true in Normal or Asynchronous modes).
+ * The ImageContainer uses a shared memory block containing a cross-process
+ * mutex to communicate with the compositor thread. SetCurrentImage
+ * synchronously updates the shared state to point to the new image and the old
+ * image is immediately released (not true in Normal or Asynchronous modes).
  */
-class ImageContainer final : public SupportsWeakPtr<ImageContainer>
-{
+class ImageContainer final : public SupportsWeakPtr<ImageContainer> {
   friend class ImageContainerChild;
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ImageContainer)
 
-public:
+ public:
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(ImageContainer)
 
   enum Mode { SYNCHRONOUS = 0x0, ASYNCHRONOUS = 0x01 };
@@ -411,22 +385,22 @@ public:
    */
   explicit ImageContainer(const CompositableHandle& aHandle);
 
-  typedef uint32_t FrameID;
-  typedef uint32_t ProducerID;
+  typedef ContainerFrameID FrameID;
+  typedef ContainerProducerID ProducerID;
 
   RefPtr<PlanarYCbCrImage> CreatePlanarYCbCrImage();
 
   // Factory methods for shared image types.
   RefPtr<SharedRGBImage> CreateSharedRGBImage();
 
-  struct NonOwningImage
-  {
+  struct NonOwningImage {
     explicit NonOwningImage(Image* aImage = nullptr,
                             TimeStamp aTimeStamp = TimeStamp(),
-                            FrameID aFrameID = 0,
-                            ProducerID aProducerID = 0)
-      : mImage(aImage), mTimeStamp(aTimeStamp), mFrameID(aFrameID),
-        mProducerID(aProducerID) {}
+                            FrameID aFrameID = 0, ProducerID aProducerID = 0)
+        : mImage(aImage),
+          mTimeStamp(aTimeStamp),
+          mFrameID(aFrameID),
+          mProducerID(aProducerID) {}
     Image* mImage;
     TimeStamp mTimeStamp;
     FrameID mFrameID;
@@ -543,8 +517,8 @@ public:
 
   /**
    * Returns the size of the image in pixels.
-   * Can be called on any thread. This method takes mRecursiveMutex when accessing
-   * thread-shared state.
+   * Can be called on any thread. This method takes mRecursiveMutex when
+   * accessing thread-shared state.
    */
   gfx::IntSize GetCurrentSize();
 
@@ -559,24 +533,22 @@ public:
 
   const gfx::IntSize& GetScaleHint() const { return mScaleHint; }
 
-  void SetTransformHint(const gfx::Matrix& aTransformHint) { mTransformHint = aTransformHint; }
+  void SetTransformHint(const gfx::Matrix& aTransformHint) {
+    mTransformHint = aTransformHint;
+  }
 
   const gfx::Matrix& GetTransformHint() const { return mTransformHint; }
 
-  void SetImageFactory(ImageFactory *aFactory)
-  {
+  void SetImageFactory(ImageFactory* aFactory) {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     mImageFactory = aFactory ? aFactory : new ImageFactory();
   }
 
-  ImageFactory* GetImageFactory() const
-  {
-    return mImageFactory;
-  }
+  ImageFactory* GetImageFactory() const { return mImageFactory; }
 
 #ifdef XP_WIN
   D3D11YCbCrRecycleAllocator* GetD3D11YCbCrRecycleAllocator(
-    KnowsCompositor* aAllocator);
+      KnowsCompositor* aAllocator);
 #endif
 
   /**
@@ -587,8 +559,7 @@ public:
    * Returns 0 if the composited image had a null timestamp, or if no
    * image has been composited yet.
    */
-  TimeDuration GetPaintDelay()
-  {
+  TimeDuration GetPaintDelay() {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mPaintDelay;
   }
@@ -597,8 +568,7 @@ public:
    * Returns the number of images which have been contained in this container
    * and painted at least once.  Can be called from any thread.
    */
-  uint32_t GetPaintCount()
-  {
+  uint32_t GetPaintCount() {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mPaintCount;
   }
@@ -611,16 +581,12 @@ public:
    * frameID is not the same as the entry's.
    * Every expired image that is never composited is counted as dropped.
    */
-  uint32_t GetDroppedImageCount()
-  {
-    RecursiveMutexAutoLock lock(mRecursiveMutex);
-    return mDroppedImageCount;
-  }
+  uint32_t GetDroppedImageCount() { return mDroppedImageCount; }
 
   void NotifyComposite(const ImageCompositeNotification& aNotification);
+  void NotifyDropped(uint32_t aDropped);
 
-  ImageContainerListener* GetImageContainerListener()
-  {
+  ImageContainerListener* GetImageContainerListener() {
     return mNotifyCompositeListener;
   }
 
@@ -638,7 +604,13 @@ public:
 
   void DropImageClient();
 
-private:
+  SharedSurfacesAnimation* GetSharedSurfacesAnimation() const {
+    return mSharedAnimation;
+  }
+
+  SharedSurfacesAnimation* EnsureSharedSurfacesAnimation();
+
+ private:
   typedef mozilla::RecursiveMutex RecursiveMutex;
 
   // Private destructor, to discourage deletion outside of Release():
@@ -675,8 +647,8 @@ private:
   // See GetPaintDelay. Accessed only with mRecursiveMutex held.
   TimeDuration mPaintDelay;
 
-  // See GetDroppedImageCount. Accessed only with mRecursiveMutex held.
-  uint32_t mDroppedImageCount;
+  // See GetDroppedImageCount.
+  mozilla::Atomic<uint32_t> mDroppedImageCount;
 
   // This is the image factory used by this container, layer managers using
   // this container can set an alternative image factory that will be used to
@@ -694,16 +666,16 @@ private:
   // 'unsuccessful' in this case only means that the ImageClient could not
   // be created, most likely because off-main-thread compositing is not enabled.
   // In this case the ImageContainer is perfectly usable, but it will forward
-  // frames to the compositor through transactions in the main thread rather than
-  // asynchronusly using the ImageBridge IPDL protocol.
+  // frames to the compositor through transactions in the main thread rather
+  // than asynchronusly using the ImageBridge IPDL protocol.
   RefPtr<ImageClient> mImageClient;
+
+  RefPtr<SharedSurfacesAnimation> mSharedAnimation;
 
   bool mIsAsync;
   CompositableHandle mAsyncContainerHandle;
 
-  nsTArray<FrameID> mFrameIDsNotYetComposited;
-  // ProducerID for last current image(s), including the frames in
-  // mFrameIDsNotYetComposited
+  // ProducerID for last current image(s)
   ProducerID mCurrentProducerID;
 
   RefPtr<ImageContainerListener> mNotifyCompositeListener;
@@ -711,22 +683,18 @@ private:
   static mozilla::Atomic<uint32_t> sGenerationCounter;
 };
 
-class AutoLockImage
-{
-public:
-  explicit AutoLockImage(ImageContainer *aContainer)
-  {
+class AutoLockImage {
+ public:
+  explicit AutoLockImage(ImageContainer* aContainer) {
     aContainer->GetCurrentImages(&mImages);
   }
 
   bool HasImage() const { return !mImages.IsEmpty(); }
-  Image* GetImage() const
-  {
+  Image* GetImage() const {
     return mImages.IsEmpty() ? nullptr : mImages[0].mImage.get();
   }
 
-  Image* GetImage(TimeStamp aTimeStamp) const
-  {
+  Image* GetImage(TimeStamp aTimeStamp) const {
     if (mImages.IsEmpty()) {
       return nullptr;
     }
@@ -742,47 +710,35 @@ public:
     return mImages[chosenIndex].mImage.get();
   }
 
-private:
-  AutoTArray<ImageContainer::OwningImage,4> mImages;
+ private:
+  AutoTArray<ImageContainer::OwningImage, 4> mImages;
 };
 
-struct PlanarYCbCrData
-{
+struct PlanarYCbCrData {
   // Luminance buffer
-  uint8_t* mYChannel;
-  int32_t mYStride;
-  gfx::IntSize mYSize;
-  int32_t mYSkip;
+  uint8_t* mYChannel = nullptr;
+  int32_t mYStride = 0;
+  gfx::IntSize mYSize = gfx::IntSize(0, 0);
+  int32_t mYSkip = 0;
   // Chroma buffers
-  uint8_t* mCbChannel;
-  uint8_t* mCrChannel;
-  int32_t mCbCrStride;
-  gfx::IntSize mCbCrSize;
-  int32_t mCbSkip;
-  int32_t mCrSkip;
+  uint8_t* mCbChannel = nullptr;
+  uint8_t* mCrChannel = nullptr;
+  int32_t mCbCrStride = 0;
+  gfx::IntSize mCbCrSize = gfx::IntSize(0, 0);
+  int32_t mCbSkip = 0;
+  int32_t mCrSkip = 0;
   // Picture region
-  uint32_t mPicX;
-  uint32_t mPicY;
-  gfx::IntSize mPicSize;
-  StereoMode mStereoMode;
-  YUVColorSpace mYUVColorSpace;
-  uint32_t mBitDepth;
+  uint32_t mPicX = 0;
+  uint32_t mPicY = 0;
+  gfx::IntSize mPicSize = gfx::IntSize(0, 0);
+  StereoMode mStereoMode = StereoMode::MONO;
+  gfx::ColorDepth mColorDepth = gfx::ColorDepth::COLOR_8;
+  gfx::YUVColorSpace mYUVColorSpace = gfx::YUVColorSpace::UNKNOWN;
+  gfx::ColorRange mColorRange = gfx::ColorRange::LIMITED;
 
-  gfx::IntRect GetPictureRect() const
-  {
-    return gfx::IntRect(mPicX, mPicY,
-                     mPicSize.width,
-                     mPicSize.height);
+  gfx::IntRect GetPictureRect() const {
+    return gfx::IntRect(mPicX, mPicY, mPicSize.width, mPicSize.height);
   }
-
-  PlanarYCbCrData()
-    : mYChannel(nullptr), mYStride(0), mYSize(0, 0), mYSkip(0)
-    , mCbChannel(nullptr), mCrChannel(nullptr)
-    , mCbCrStride(0), mCbCrSize(0, 0) , mCbSkip(0), mCrSkip(0)
-    , mPicX(0), mPicY(0), mPicSize(0, 0), mStereoMode(StereoMode::MONO)
-    , mYUVColorSpace(YUVColorSpace::BT601)
-    , mBitDepth(8)
-  {}
 };
 
 /****** Image subtypes for the different formats ******/
@@ -821,17 +777,13 @@ struct PlanarYCbCrData
  * |            |<->|
  *                mYSkip
  */
-class PlanarYCbCrImage : public Image
-{
-public:
+class PlanarYCbCrImage : public Image {
+ public:
   typedef PlanarYCbCrData Data;
 
-  enum
-  {
-    MAX_DIMENSION = 16384
-  };
+  enum { MAX_DIMENSION = 16384 };
 
-  virtual ~PlanarYCbCrImage() {}
+  virtual ~PlanarYCbCrImage() = default;
 
   /**
    * This makes a copy of the data buffers, in order to support functioning
@@ -869,8 +821,7 @@ public:
 
   PlanarYCbCrImage();
 
-  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
-  {
+  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
 
@@ -878,10 +829,20 @@ public:
 
   PlanarYCbCrImage* AsPlanarYCbCrImage() override { return this; }
 
-protected:
+  /**
+   * Build a SurfaceDescriptorBuffer with this image.  The provided
+   * SurfaceDescriptorBuffer must already have a valid MemoryOrShmem set
+   * with a capacity large enough to hold |GetDataSize|.
+   */
+  virtual nsresult BuildSurfaceDescriptorBuffer(
+      SurfaceDescriptorBuffer& aSdBuffer);
+
+ protected:
   already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
 
-  void SetOffscreenFormat(gfxImageFormat aFormat) { mOffscreenFormat = aFormat; }
+  void SetOffscreenFormat(gfxImageFormat aFormat) {
+    mOffscreenFormat = aFormat;
+  }
   gfxImageFormat GetOffscreenFormat() const;
 
   Data mData;
@@ -892,15 +853,15 @@ protected:
   uint32_t mBufferSize;
 };
 
-class RecyclingPlanarYCbCrImage: public PlanarYCbCrImage
-{
-public:
-  explicit RecyclingPlanarYCbCrImage(BufferRecycleBin *aRecycleBin) : mRecycleBin(aRecycleBin) {}
+class RecyclingPlanarYCbCrImage : public PlanarYCbCrImage {
+ public:
+  explicit RecyclingPlanarYCbCrImage(BufferRecycleBin* aRecycleBin)
+      : mRecycleBin(aRecycleBin) {}
   virtual ~RecyclingPlanarYCbCrImage();
   bool CopyData(const Data& aData) override;
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
-protected:
 
+ protected:
   /**
    * Return a buffer to store image data in.
    */
@@ -919,11 +880,10 @@ protected:
  * PlanarYCbCrData is able to express all the YUV family and so we keep use it
  * in NVImage.
  */
-class NVImage final : public Image
-{
+class NVImage final : public Image {
   typedef PlanarYCbCrData Data;
 
-public:
+ public:
   NVImage();
   virtual ~NVImage();
 
@@ -935,12 +895,11 @@ public:
   NVImage* AsNVImage() override;
 
   // Methods mimic layers::PlanarYCbCrImage.
-  bool SetData(const Data& aData) ;
+  bool SetData(const Data& aData);
   const Data* GetData() const;
   uint32_t GetBufferSize() const;
 
-protected:
-
+ protected:
   /**
    * Return a buffer to store image data in.
    */
@@ -954,36 +913,37 @@ protected:
 };
 
 /**
- * Currently, the data in a SourceSurfaceImage surface is treated as being in the
- * device output color space. This class is very simple as all backends
- * have to know about how to deal with drawing a cairo image.
+ * Currently, the data in a SourceSurfaceImage surface is treated as being in
+ * the device output color space. This class is very simple as all backends have
+ * to know about how to deal with drawing a cairo image.
  */
-class SourceSurfaceImage final : public Image
-{
-public:
-  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override
-  {
+class SourceSurfaceImage final : public Image {
+ public:
+  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override {
     RefPtr<gfx::SourceSurface> surface(mSourceSurface);
     return surface.forget();
   }
 
-  void SetTextureFlags(TextureFlags aTextureFlags) { mTextureFlags = aTextureFlags; }
-  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
+  void SetTextureFlags(TextureFlags aTextureFlags) {
+    mTextureFlags = aTextureFlags;
+  }
+  TextureClient* GetTextureClient(KnowsCompositor* aKnowsCompositor) override;
 
   gfx::IntSize GetSize() const override { return mSize; }
 
-  SourceSurfaceImage(const gfx::IntSize& aSize, gfx::SourceSurface* aSourceSurface);
+  SourceSurfaceImage(const gfx::IntSize& aSize,
+                     gfx::SourceSurface* aSourceSurface);
   explicit SourceSurfaceImage(gfx::SourceSurface* aSourceSurface);
   virtual ~SourceSurfaceImage();
 
-private:
+ private:
   gfx::IntSize mSize;
   nsCountedRef<nsOwningThreadSourceSurfaceRef> mSourceSurface;
-  nsDataHashtable<nsUint32HashKey, RefPtr<TextureClient> >  mTextureClients;
+  nsDataHashtable<nsUint32HashKey, RefPtr<TextureClient>> mTextureClients;
   TextureFlags mTextureFlags;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

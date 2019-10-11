@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 
 import argparse
 import json
@@ -17,7 +21,7 @@ from os import environ as env
 from subprocess import Popen
 from threading import Timer
 
-Dirs = namedtuple('Dirs', ['scripts', 'js_src', 'source', 'tooltool'])
+Dirs = namedtuple('Dirs', ['scripts', 'js_src', 'source', 'tooltool', 'fetches'])
 
 
 def directories(pathmodule, cwd, fixup=lambda s: s):
@@ -26,7 +30,9 @@ def directories(pathmodule, cwd, fixup=lambda s: s):
     source = pathmodule.abspath(pathmodule.join(js_src, "..", ".."))
     tooltool = pathmodule.abspath(env.get('TOOLTOOL_CHECKOUT',
                                           pathmodule.join(source, "..", "..")))
-    return Dirs(scripts, js_src, source, tooltool)
+    fetches = pathmodule.abspath(env.get('MOZ_FETCHES_DIR',
+                                         pathmodule.join(source, "..", "..")))
+    return Dirs(scripts, js_src, source, tooltool, fetches)
 
 
 # Some scripts will be called with sh, which cannot use backslashed
@@ -105,7 +111,7 @@ POBJDIR = posixpath.join(PDIR.source, args.objdir)
 MAKE = env.get('MAKE', 'make')
 MAKEFLAGS = env.get('MAKEFLAGS', '-j6' + ('' if AUTOMATION else ' -s'))
 
-for d in ('scripts', 'js_src', 'source', 'tooltool'):
+for d in ('scripts', 'js_src', 'source', 'tooltool', 'fetches'):
     info("DIR.{name} = {dir}".format(name=d, dir=getattr(DIR, d)))
 
 
@@ -125,7 +131,6 @@ def set_vars_from_script(script, vars):
         parse_state = 'scanning'
     stdout = subprocess.check_output(['sh', '-x', '-c', script_text])
     tograb = vars[:]
-    originals = {}
     for line in stdout.splitlines():
         if parse_state == 'scanning':
             if line == 'VAR SETTINGS:':
@@ -140,18 +145,6 @@ def set_vars_from_script(script, vars):
                 if var in tograb:
                     env[var] = value
                     info("Setting %s = %s" % (var, value))
-                if var.startswith("ORIGINAL_"):
-                    originals[var[9:]] = value
-
-    # An added wrinkle: on Windows developer systems, the sourced script will
-    # blow away current settings for eg LIBS, to point to the ones that would
-    # be installed via automation. So we will append the original settings. (On
-    # an automation system, the original settings will be empty or point to
-    # nonexistent stuff.)
-    if platform.system() == 'Windows':
-        for var in vars:
-            if var in originals and len(originals[var]) > 0:
-                env[var] = "%s;%s" % (env[var], originals[var])
 
 
 def ensure_dir_exists(name, clobber=True, creation_marker_filename="CREATED-BY-AUTOSPIDER"):
@@ -237,8 +230,9 @@ info("using compiler '{}'".format(compiler))
 
 cxx = {'clang': 'clang++', 'gcc': 'g++', 'cl': 'cl'}.get(compiler)
 
-compiler_dir = env.get('GCCDIR', os.path.join(DIR.tooltool, compiler))
+compiler_dir = env.get('GCCDIR', os.path.join(DIR.fetches, compiler))
 info("looking for compiler under {}/".format(compiler_dir))
+compiler_libdir = None
 if os.path.exists(os.path.join(compiler_dir, 'bin', compiler)):
     env.setdefault('CC', os.path.join(compiler_dir, 'bin', compiler))
     env.setdefault('CXX', os.path.join(compiler_dir, 'bin', cxx))
@@ -246,19 +240,19 @@ if os.path.exists(os.path.join(compiler_dir, 'bin', compiler)):
         platlib = 'lib'
     else:
         platlib = 'lib64' if word_bits == 64 else 'lib'
-    env.setdefault('LD_LIBRARY_PATH', os.path.join(compiler_dir, platlib))
+    compiler_libdir = os.path.join(compiler_dir, platlib)
 else:
     env.setdefault('CC', compiler)
     env.setdefault('CXX', cxx)
 
 bindir = os.path.join(OBJDIR, 'dist', 'bin')
 env['LD_LIBRARY_PATH'] = ':'.join(
-    p for p in (bindir, env.get('LD_LIBRARY_PATH')) if p)
+    p for p in (bindir, compiler_libdir, env.get('LD_LIBRARY_PATH')) if p)
 
 for v in ('CC', 'CXX', 'LD_LIBRARY_PATH'):
     info("default {name} = {value}".format(name=v, value=env[v]))
 
-rust_dir = os.path.join(DIR.tooltool, 'rustc')
+rust_dir = os.path.join(DIR.fetches, 'rustc')
 if os.path.exists(os.path.join(rust_dir, 'bin', 'rustc')):
     env.setdefault('RUSTC', os.path.join(rust_dir, 'bin', 'rustc'))
     env.setdefault('CARGO', os.path.join(rust_dir, 'bin', 'cargo'))
@@ -276,16 +270,16 @@ elif platform.system() == 'Windows':
     if word_bits == 64:
         os.environ['USE_64BIT'] = '1'
     set_vars_from_script(posixpath.join(PDIR.scripts, 'winbuildenv.sh'),
-                         ['PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'CC', 'CXX',
+                         ['PATH', 'VC_PATH', 'DIA_SDK_PATH', 'CC', 'CXX',
                           'WINDOWSSDKDIR'])
 
 # Configure flags, based on word length and cross-compilation
 if word_bits == 32:
     if platform.system() == 'Windows':
-        CONFIGURE_ARGS += ' --target=i686-pc-mingw32 --host=i686-pc-mingw32'
+        CONFIGURE_ARGS += ' --target=i686-pc-mingw32'
     elif platform.system() == 'Linux':
         if not platform.machine().startswith('arm'):
-            CONFIGURE_ARGS += ' --target=i686-pc-linux --host=i686-pc-linux'
+            CONFIGURE_ARGS += ' --target=i686-pc-linux'
 
     # Add SSE2 support for x86/x64 architectures.
     if not platform.machine().startswith('arm'):
@@ -297,7 +291,7 @@ if word_bits == 32:
         env['CXXFLAGS'] = '{0} {1}'.format(env.get('CXXFLAGS', ''), sse_flags)
 else:
     if platform.system() == 'Windows':
-        CONFIGURE_ARGS += ' --target=x86_64-pc-mingw32 --host=x86_64-pc-mingw32'
+        CONFIGURE_ARGS += ' --target=x86_64-pc-mingw32'
 
 if platform.system() == 'Linux' and AUTOMATION:
     CONFIGURE_ARGS = '--enable-stdcxx-compat --disable-gold ' + CONFIGURE_ARGS
@@ -342,15 +336,19 @@ def run_command(command, check=False, **kwargs):
     return stdout, stderr, status
 
 
+# Replacement strings in environment variables.
+REPLACEMENTS = {
+    'DIR': DIR.scripts,
+    'TOOLTOOL_CHECKOUT': DIR.tooltool,
+    'MOZ_FETCHES_DIR': DIR.fetches,
+    'MOZ_UPLOAD_DIR': env['MOZ_UPLOAD_DIR'],
+    'OUTDIR': OUTDIR,
+}
+
 # Add in environment variable settings for this variant. Normally used to
 # modify the flags passed to the shell or to set the GC zeal mode.
 for k, v in variant.get('env', {}).items():
-    env[k.encode('ascii')] = v.encode('ascii').format(
-        DIR=DIR.scripts,
-        TOOLTOOL_CHECKOUT=DIR.tooltool,
-        MOZ_UPLOAD_DIR=env['MOZ_UPLOAD_DIR'],
-        OUTDIR=OUTDIR,
-    )
+    env[k.encode('ascii')] = v.encode('ascii').format(**REPLACEMENTS)
 
 if AUTOMATION:
     # Currently only supported on linux64.
@@ -402,7 +400,7 @@ if not args.nobuild:
     configure = os.path.join(DIR.js_src, 'configure')
     if need_updating_configure(configure):
         shutil.copyfile(configure + ".in", configure)
-        os.chmod(configure, 0755)
+        os.chmod(configure, 0o755)
 
     # Run configure
     if not args.noconf:
@@ -423,7 +421,7 @@ if not args.nobuild:
             'make',
             'recurse_syms',
             'MOZ_SOURCE_REPO=file://' + DIR.source,
-            'RUST_TARGET=0', 'RUSTC_COMMIT=0',
+            'RUSTC_COMMIT=0',
             'MOZ_CRASHREPORTER=1',
             'MOZ_AUTOMATION_BUILD_SYMBOLS=1',
         ], check=True)
@@ -459,6 +457,10 @@ elif platform.system() == 'Darwin':
     variant_platform = 'macosx64'
 else:
     variant_platform = 'other'
+
+# Override environment variant settings conditionally.
+for k, v in variant.get('conditional-env', {}).get(variant_platform, {}).items():
+    env[k.encode('ascii')] = v.encode('ascii').format(**REPLACEMENTS)
 
 # Skip any tests that are not run on this platform (or the 'all' platform).
 test_suites -= set(normalize_tests(variant.get('skip-tests', {}).get(variant_platform, [])))

@@ -5,43 +5,17 @@
 
 #include "gtest/gtest.h"
 #include "OpusTrackEncoder.h"
-#include "SineWaveGenerator.h"
+
+#include "AudioGenerator.h"
 
 using namespace mozilla;
 
-class AudioGenerator
-{
-public:
-  AudioGenerator(int32_t aChannels, int32_t aSampleRate)
-    : mGenerator(aSampleRate, 1000)
-    , mChannels(aChannels)
-  {}
-
-  void Generate(AudioSegment& aSegment, const int32_t& aSamples)
-  {
-    RefPtr<SharedBuffer> buffer = SharedBuffer::Create(aSamples * sizeof(int16_t));
-    int16_t* dest = static_cast<int16_t*>(buffer->Data());
-    mGenerator.generate(dest, aSamples);
-    AutoTArray<const int16_t*, 1> channels;
-    for (int32_t i = 0; i < mChannels; i++) {
-      channels.AppendElement(dest);
-    }
-    aSegment.AppendFrames(buffer.forget(), channels, aSamples, PRINCIPAL_HANDLE_NONE);
-  }
-
-private:
-  SineWaveGenerator mGenerator;
-  const int32_t mChannels;
-};
-
-class TestOpusTrackEncoder : public OpusTrackEncoder
-{
-public:
+class TestOpusTrackEncoder : public OpusTrackEncoder {
+ public:
   TestOpusTrackEncoder() : OpusTrackEncoder(90000) {}
 
   // Return true if it has successfully initialized the Opus encoder.
-  bool TestOpusRawCreation(int aChannels, int aSamplingRate)
-  {
+  bool TestOpusRawCreation(int aChannels, int aSamplingRate) {
     if (Init(aChannels, aSamplingRate) == NS_OK) {
       if (IsInitialized()) {
         return true;
@@ -53,15 +27,12 @@ public:
   // Return the sample rate of data to be fed to the Opus encoder, could be
   // re-sampled if it was not one of the Opus supported sampling rates.
   // Init() is expected to be called first.
-  int TestGetOutputSampleRate()
-  {
+  int TestGetOutputSampleRate() {
     return mInitialized ? GetOutputSampleRate() : 0;
   }
 };
 
-static bool
-TestOpusInit(int aChannels, int aSamplingRate)
-{
+static bool TestOpusInit(int aChannels, int aSamplingRate) {
   TestOpusTrackEncoder encoder;
   return encoder.TestOpusRawCreation(aChannels, aSamplingRate);
 }
@@ -178,9 +149,7 @@ TEST(OpusAudioTrackEncoder, Init)
   }
 }
 
-static int
-TestOpusResampler(int aChannels, int aSamplingRate)
-{
+static int TestOpusResampler(int aChannels, int aSamplingRate) {
   TestOpusTrackEncoder encoder;
   EXPECT_TRUE(encoder.TestOpusRawCreation(aChannels, aSamplingRate));
   return encoder.TestGetOutputSampleRate();
@@ -212,8 +181,7 @@ TEST(OpusAudioTrackEncoder, FetchMetadata)
   RefPtr<TrackMetadataBase> metadata = encoder.GetMetadata();
   ASSERT_EQ(TrackMetadataBase::METADATA_OPUS, metadata->GetKind());
 
-  RefPtr<OpusMetadata> opusMeta =
-    static_cast<OpusMetadata*>(metadata.get());
+  RefPtr<OpusMetadata> opusMeta = static_cast<OpusMetadata*>(metadata.get());
   EXPECT_EQ(channels, opusMeta->mChannels);
   EXPECT_EQ(sampleRate, opusMeta->mSamplingFrequency);
 }
@@ -231,17 +199,15 @@ TEST(OpusAudioTrackEncoder, FrameEncode)
   const int32_t samples = sampleRate * 5;
   generator.Generate(segment, samples);
 
-  encoder.SetStartOffset(0);
   encoder.AppendAudioSegment(std::move(segment));
-  encoder.AdvanceCurrentTime(samples);
 
-  EncodedFrameContainer container;
-  EXPECT_TRUE(NS_SUCCEEDED(encoder.GetEncodedTrack(container)));
+  nsTArray<RefPtr<EncodedFrame>> frames;
+  EXPECT_TRUE(NS_SUCCEEDED(encoder.GetEncodedTrack(frames)));
 
   // Verify that encoded data is 5 seconds long.
   uint64_t totalDuration = 0;
-  for (auto& frame : container.GetEncodedFrames()) {
-    totalDuration += frame->GetDuration();
+  for (auto& frame : frames) {
+    totalDuration += frame->mDuration;
   }
   // 44100 as used above gets resampled to 48000 for opus.
   const uint64_t five = 48000 * 5;

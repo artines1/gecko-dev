@@ -7,7 +7,6 @@ include('/media/webrtc/webrtc.mozbuild')
 
 EXPORTS += [
     'nsIIPCSerializableInputStream.h',
-    'nsIIPCSerializableURI.h',
 ]
 
 EXPORTS.mozilla.ipc += [
@@ -17,6 +16,7 @@ EXPORTS.mozilla.ipc += [
     'BrowserProcessSubThread.h',
     'ByteBuf.h',
     'CrashReporterClient.h',
+    'CrashReporterHelper.h',
     'CrashReporterHost.h',
     'CrashReporterMetadataShmem.h',
     'CrossProcessMutex.h',
@@ -27,6 +27,10 @@ EXPORTS.mozilla.ipc += [
     'FileDescriptorSetParent.h',
     'FileDescriptorUtils.h',
     'GeckoChildProcessHost.h',
+    'IdleSchedulerChild.h',
+    'IdleSchedulerParent.h',
+    'InProcessChild.h',
+    'InProcessParent.h',
     'InputStreamUtils.h',
     'IOThreadChild.h',
     'IPCStreamAlloc.h',
@@ -45,6 +49,7 @@ EXPORTS.mozilla.ipc += [
     'Shmem.h',
     'TaskFactory.h',
     'Transport.h',
+    'TransportSecurityInfoUtils.h',
     'URIUtils.h',
     'WindowsMessageLoop.h',
 ]
@@ -147,6 +152,9 @@ UNIFIED_SOURCES += [
     'CrashReporterMetadataShmem.cpp',
     'FileDescriptor.cpp',
     'FileDescriptorUtils.cpp',
+    'IdleSchedulerChild.cpp',
+    'IdleSchedulerParent.cpp',
+    'InProcessImpl.cpp',
     'InputStreamUtils.cpp',
     'IPCMessageUtils.cpp',
     'IPCStreamChild.cpp',
@@ -158,11 +166,13 @@ UNIFIED_SOURCES += [
     'MessageLink.cpp',
     'MessagePump.cpp',
     'ProcessChild.cpp',
+    'ProcessUtils_common.cpp',
     'ProtocolUtils.cpp',
     'ScopedXREEmbed.cpp',
     'SharedMemory.cpp',
     'Shmem.cpp',
     'StringUtil.cpp',
+    'TransportSecurityInfoUtils.cpp',
     'URIUtils.cpp',
 ]
 
@@ -184,18 +194,13 @@ else:
         'GeckoChildProcessHost.cpp',
     ]
 
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-    # This is intended as a temporary hack to support building with VS2015.
-    # 'reinterpret_cast': conversion from 'DWORD' to 'HANDLE' of greater size
-    SOURCES['BackgroundChildImpl.cpp'].flags += ['-wd4312']
-    SOURCES['BackgroundParentImpl.cpp'].flags += ['-wd4312']
-
 LOCAL_INCLUDES += [
     '/caps',
     '/dom/broadcastchannel',
     '/dom/indexedDB',
     '/dom/storage',
     '/media/webrtc/trunk',
+    '/media/webrtc/trunk/webrtc',
     '/xpcom/build',
 ]
 
@@ -207,6 +212,8 @@ IPDL_SOURCES = [
     'PBackgroundTest.ipdl',
     'PChildToParentStream.ipdl',
     'PFileDescriptorSet.ipdl',
+    'PIdleScheduler.ipdl',
+    'PInProcess.ipdl',
     'PParentToChildStream.ipdl',
     'ProtocolTypes.ipdlh',
     'URIParams.ipdlh',
@@ -216,6 +223,7 @@ LOCAL_INCLUDES += [
     '/dom/ipc',
     '/toolkit/crashreporter',
     '/toolkit/xre',
+    '/xpcom/base',
     '/xpcom/threads',
 ]
 
@@ -223,8 +231,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-for var in ('MOZ_CHILD_PROCESS_NAME', 'MOZ_CHILD_PROCESS_BUNDLE',
-            'DLL_PREFIX', 'DLL_SUFFIX'):
+for var in ('MOZ_CHILD_PROCESS_NAME', 'MOZ_CHILD_PROCESS_BUNDLE'):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
 if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':

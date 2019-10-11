@@ -9,6 +9,7 @@
 
 #include "MediaDecoder.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/dom/MediaDebugInfoBinding.h"
 
 namespace mozilla {
 
@@ -19,15 +20,13 @@ namespace dom {
 
 class MediaSource;
 
-} // namespace dom
+}  // namespace dom
 
 DDLoggedTypeDeclNameAndBase(MediaSourceDecoder, MediaDecoder);
 
-class MediaSourceDecoder
-  : public MediaDecoder
-  , public DecoderDoctorLifeLogger<MediaSourceDecoder>
-{
-public:
+class MediaSourceDecoder : public MediaDecoder,
+                           public DecoderDoctorLifeLogger<MediaSourceDecoder> {
+ public:
   explicit MediaSourceDecoder(MediaDecoderInit& aInit);
 
   nsresult Load(nsIPrincipal* aPrincipal);
@@ -47,18 +46,17 @@ public:
   void SetInitialDuration(int64_t aDuration);
   void SetMediaSourceDuration(double aDuration);
 
-  MediaSourceDemuxer* GetDemuxer()
-  {
-    return mDemuxer;
-  }
+  MediaSourceDemuxer* GetDemuxer() { return mDemuxer; }
 
   already_AddRefed<nsIPrincipal> GetCurrentPrincipal() override;
 
+  bool HadCrossOriginRedirects() override;
+
   bool IsTransportSeekable() override { return true; }
 
-  // Returns a string describing the state of the MediaSource internal
+  // Returns a structure describing the state of the MediaSource internal
   // buffered data. Used for debugging purposes.
-  void GetMozDebugReaderData(nsACString& aString) override;
+  void GetDebugInfo(dom::MediaSourceDecoderDebugInfo& aInfo);
 
   void AddSizeOfResources(ResourceSizes* aSizes) override;
 
@@ -72,7 +70,7 @@ public:
   // source. Main thread only.
   void NotifyDataArrived();
 
-private:
+ private:
   MediaDecoderStateMachine* CreateStateMachine();
   void DoSetMediaSourceDuration(double aDuration);
   media::TimeInterval ClampIntervalToEnd(const media::TimeInterval& aInterval);
@@ -89,6 +87,6 @@ private:
   bool mEnded;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif /* MOZILLA_MEDIASOURCEDECODER_H_ */

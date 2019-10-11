@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -21,7 +20,7 @@ const TEST_URI = `
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view} = await openRuleView();
+  const { inspector, view } = await openRuleView();
   const highlighters = view.highlighters;
 
   await selectNode("#grid", inspector);
@@ -45,5 +44,5 @@ add_task(async function() {
   info("Check the grid highlighter and grid toggle button are hidden.");
   gridToggle = container.querySelector(".ruleview-grid");
   ok(!gridToggle, "Grid highlighter toggle is not visible.");
-  ok(!highlighters.gridHighlighterShown, "No CSS grid highlighter is shown.");
+  ok(!highlighters.gridHighlighters.size, "No CSS grid highlighter is shown.");
 });

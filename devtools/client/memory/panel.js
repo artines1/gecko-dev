@@ -5,7 +5,6 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-const { MemoryFront } = require("devtools/shared/fronts/memory");
 const { Cu } = require("chrome");
 const HeapAnalysesClient = require("devtools/shared/heapsnapshot/HeapAnalysesClient");
 
@@ -13,10 +12,12 @@ function MemoryPanel(iframeWindow, toolbox) {
   this.panelWin = iframeWindow;
   this._toolbox = toolbox;
 
-  const { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+  const { BrowserLoader } = Cu.import(
+    "resource://devtools/client/shared/browser-loader.js"
+  );
   const browserRequire = BrowserLoader({
     baseURI: "resource://devtools/client/memory/",
-    window: this.panelWin
+    window: this.panelWin,
   }).require;
   this.initializer = browserRequire("devtools/client/memory/initializer");
 
@@ -31,11 +32,7 @@ MemoryPanel.prototype = {
 
     this.panelWin.gToolbox = this._toolbox;
     this.panelWin.gTarget = this.target;
-
-    const rootForm = await this.target.root;
-    this.panelWin.gFront = new MemoryFront(this.target.client,
-                                           this.target.form,
-                                           rootForm);
+    this.panelWin.gFront = await this.target.getFront("memory");
     this.panelWin.gHeapAnalysesClient = new HeapAnalysesClient();
 
     await this.panelWin.gFront.attach();
@@ -55,26 +52,23 @@ MemoryPanel.prototype = {
     return this._toolbox.target;
   },
 
-  async destroy() {
+  destroy() {
     // Make sure this panel is not already destroyed.
-    if (this._destroyer) {
-      return this._destroyer;
+    if (this._destroyed) {
+      return;
     }
+    this._destroyed = true;
 
-    await this.panelWin.gFront.detach();
+    this.initializer.destroy();
 
-    this._destroyer = this.initializer.destroy().then(() => {
-      // Destroy front to ensure packet handler is removed from client
-      this.panelWin.gFront.destroy();
-      this.panelWin.gHeapAnalysesClient.destroy();
-      this.panelWin = null;
-      this._opening = null;
-      this.isReady = false;
-      this.emit("destroyed");
-    });
-
-    return this._destroyer;
-  }
+    // Destroy front to ensure packet handler is removed from client
+    this.panelWin.gFront.destroy();
+    this.panelWin.gHeapAnalysesClient.destroy();
+    this.panelWin = null;
+    this._opening = null;
+    this.isReady = false;
+    this.emit("destroyed");
+  },
 };
 
 exports.MemoryPanel = MemoryPanel;

@@ -1,3 +1,9 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #include "RtpSourceObserver.h"
 #include "nsThreadUtils.h"
 #include "webrtc/system_wrappers/include/clock.h"
@@ -7,9 +13,7 @@ namespace mozilla {
 
 using EntryType = dom::RTCRtpSourceEntryType;
 
-double
-RtpSourceObserver::RtpSourceEntry::ToLinearAudioLevel() const
-{
+double RtpSourceObserver::RtpSourceEntry::ToLinearAudioLevel() const {
   // Spec indicates that a value of 127 should be set to 0
   if (audioLevel == 127) {
     return 0;
@@ -18,32 +22,27 @@ RtpSourceObserver::RtpSourceEntry::ToLinearAudioLevel() const
   return std::pow(10, -static_cast<double>(audioLevel) / 20);
 }
 
-RtpSourceObserver::RtpSourceObserver() :
-  mMaxJitterWindow(0),
-  mLevelGuard("RtpSourceObserver::mLevelGuard") {}
+RtpSourceObserver::RtpSourceObserver()
+    : mMaxJitterWindow(0), mLevelGuard("RtpSourceObserver::mLevelGuard") {}
 
-void
-RtpSourceObserver::OnRtpPacket(const webrtc::WebRtcRTPHeader* aHeader,
-                                     const int64_t aTimestamp,
-                                     const uint32_t aJitter)
-{
-  auto& header = aHeader->header;
+void RtpSourceObserver::OnRtpPacket(const webrtc::RTPHeader& aHeader,
+                                    const int64_t aTimestamp,
+                                    const uint32_t aJitter) {
   MutexAutoLock lock(mLevelGuard);
   {
-    mMaxJitterWindow = std::max(mMaxJitterWindow,
-                                static_cast<int64_t>(aJitter) * 2);
+    mMaxJitterWindow =
+        std::max(mMaxJitterWindow, static_cast<int64_t>(aJitter) * 2);
     const auto jitterAdjusted = aTimestamp + aJitter;
-    auto& hist = mRtpSources[GetKey(header.ssrc, EntryType::Synchronization)];
+    auto& hist = mRtpSources[GetKey(aHeader.ssrc, EntryType::Synchronization)];
     hist.Prune(aTimestamp);
     // ssrc-audio-level handling
-    hist.Insert(aTimestamp, jitterAdjusted,
-                header.extension.hasAudioLevel,
-                header.extension.audioLevel);
+    hist.Insert(aTimestamp, jitterAdjusted, aHeader.extension.hasAudioLevel,
+                aHeader.extension.audioLevel);
 
     // csrc-audio-level handling
-    const auto& list = header.extension.csrcAudioLevels;
-    for (uint8_t i = 0; i < header.numCSRCs; i++) {
-      const uint32_t& csrc = header.arrOfCSRCs[i];
+    const auto& list = aHeader.extension.csrcAudioLevels;
+    for (uint8_t i = 0; i < aHeader.numCSRCs; i++) {
+      const uint32_t& csrc = aHeader.arrOfCSRCs[i];
       auto& hist = mRtpSources[GetKey(csrc, EntryType::Contributing)];
       hist.Prune(aTimestamp);
       bool hasLevel = i < list.numAudioLevels;
@@ -53,10 +52,9 @@ RtpSourceObserver::OnRtpPacket(const webrtc::WebRtcRTPHeader* aHeader,
   }
 }
 
-void
-RtpSourceObserver::GetRtpSources(const int64_t aTimeNow,
-    nsTArray<dom::RTCRtpSourceEntry>& outSources) const
-{
+void RtpSourceObserver::GetRtpSources(
+    const int64_t aTimeNow,
+    nsTArray<dom::RTCRtpSourceEntry>& outSources) const {
   MutexAutoLock lock(mLevelGuard);
   outSources.Clear();
   for (const auto& it : mRtpSources) {
@@ -106,8 +104,7 @@ RtpSourceObserver::RtpSourceHistory::FindClosestNotAfter(int64_t aTime) const {
   return nullptr;
 }
 
-void
-RtpSourceObserver::RtpSourceHistory::Prune(const int64_t aTimeNow) {
+void RtpSourceObserver::RtpSourceHistory::Prune(const int64_t aTimeNow) {
   const auto aTimeT = aTimeNow - mMaxJitterWindow;
   const auto aTimePrehistory = aTimeNow - kHistoryWindow;
   bool found = false;
@@ -137,19 +134,15 @@ RtpSourceObserver::RtpSourceHistory::Prune(const int64_t aTimeNow) {
   }
 }
 
-void
-RtpSourceObserver::RtpSourceHistory::Insert(const int64_t aTimeNow,
-                                            const int64_t aTimestamp,
-                                            const bool aHasAudioLevel,
-                                            const uint8_t aAudioLevel)
-{
+void RtpSourceObserver::RtpSourceHistory::Insert(const int64_t aTimeNow,
+                                                 const int64_t aTimestamp,
+                                                 const bool aHasAudioLevel,
+                                                 const uint8_t aAudioLevel) {
   Insert(aTimeNow, aTimestamp).Update(aTimestamp, aHasAudioLevel, aAudioLevel);
 }
 
-RtpSourceObserver::RtpSourceEntry&
-RtpSourceObserver::RtpSourceHistory::Insert(const int64_t aTimeNow,
-                                            const int64_t aTimestamp)
-{
+RtpSourceObserver::RtpSourceEntry& RtpSourceObserver::RtpSourceHistory::Insert(
+    const int64_t aTimeNow, const int64_t aTimestamp) {
   // Time T is the oldest time inside the jitter window (now - jitter)
   // Time J is the newest time inside the jitter window (now + jitter)
   // Time x is the jitter adjusted entry time
@@ -160,10 +153,9 @@ RtpSourceObserver::RtpSourceHistory::Insert(const int64_t aTimeNow,
   //  |------Z-----|ABC| -> |------Z-----|ABC|
   if ((aTimestamp + kHistoryWindow) < aTimeNow ||
       aTimestamp < mLatestEviction.jitterAdjustedTimestamp) {
-    return mPrehistory; // A.K.A. /dev/null
+    return mPrehistory;  // A.K.A. /dev/null
   }
-  mMaxJitterWindow = std::max(mMaxJitterWindow,
-                              (aTimestamp - aTimeNow) * 2);
+  mMaxJitterWindow = std::max(mMaxJitterWindow, (aTimestamp - aTimeNow) * 2);
   const int64_t aTimeT = aTimeNow - mMaxJitterWindow;
   //           x  T   J
   // |------Z-----|ABC| -> |--------x---|ABC|
@@ -176,4 +168,4 @@ RtpSourceObserver::RtpSourceHistory::Insert(const int64_t aTimeNow,
   return mDetailedHistory[aTimestamp];
 }
 
-}
+}  // namespace mozilla

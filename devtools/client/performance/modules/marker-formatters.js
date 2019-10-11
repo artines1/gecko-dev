@@ -24,12 +24,14 @@ const JS_MARKER_MAP = {
   "javascript: URI": L10N.getStr("marker.label.javascript.jsURI"),
   // The difference between these two event handler markers are differences
   // in their WebIDL implementation, so distinguishing them is not necessary.
-  "EventHandlerNonNull": L10N.getStr("marker.label.javascript.eventHandler"),
-  "EventListener.handleEvent": L10N.getStr("marker.label.javascript.eventHandler"),
+  EventHandlerNonNull: L10N.getStr("marker.label.javascript.eventHandler"),
+  "EventListener.handleEvent": L10N.getStr(
+    "marker.label.javascript.eventHandler"
+  ),
   // These markers do not get L10N'd because they're JS names.
   "setInterval handler": "setInterval",
   "setTimeout handler": "setTimeout",
-  "FrameRequestCallback": "requestAnimationFrame",
+  FrameRequestCallback: "requestAnimationFrame",
 };
 
 /**
@@ -49,7 +51,7 @@ exports.Formatters = {
   StylesFields: function(marker) {
     if ("isAnimationOnly" in marker) {
       return {
-        [L10N.getStr("marker.field.isAnimationOnly")]: marker.isAnimationOnly
+        [L10N.getStr("marker.field.isAnimationOnly")]: marker.isAnimationOnly,
       };
     }
     return null;
@@ -93,9 +95,11 @@ exports.Formatters = {
 
   JSFields: function(marker) {
     if ("causeName" in marker && !JS_MARKER_MAP[marker.causeName]) {
-      const label = PREFS["show-platform-data"] ? marker.causeName : GECKO_SYMBOL;
+      const label = PREFS["show-platform-data"]
+        ? marker.causeName
+        : GECKO_SYMBOL;
       return {
-        [L10N.getStr("marker.field.causeName")]: label
+        [L10N.getStr("marker.field.causeName")]: label,
       };
     }
     return null;
@@ -139,7 +143,9 @@ exports.Formatters = {
       fields[L10N.getStr("marker.field.causeName")] = label;
     }
 
-    fields[L10N.getStr("marker.field.type")] = L10N.getStr("marker.nurseryCollection");
+    fields[L10N.getStr("marker.field.type")] = L10N.getStr(
+      "marker.nurseryCollection"
+    );
 
     return fields;
   },
@@ -147,7 +153,7 @@ exports.Formatters = {
   CycleCollectionFields: function(marker) {
     const label = marker.name.replace(/nsCycleCollector::/g, "");
     return {
-      [L10N.getStr("marker.field.type")]: label
+      [L10N.getStr("marker.field.type")]: label,
     };
   },
 
@@ -155,7 +161,7 @@ exports.Formatters = {
     if ("workerOperation" in marker) {
       const label = L10N.getStr(`marker.worker.${marker.workerOperation}`);
       return {
-        [L10N.getStr("marker.field.type")]: label
+        [L10N.getStr("marker.field.type")]: label,
       };
     }
     return null;
@@ -163,9 +169,11 @@ exports.Formatters = {
 
   MessagePortFields: function(marker) {
     if ("messagePortOperation" in marker) {
-      const label = L10N.getStr(`marker.messagePort.${marker.messagePortOperation}`);
+      const label = L10N.getStr(
+        `marker.messagePort.${marker.messagePortOperation}`
+      );
       return {
-        [L10N.getStr("marker.field.type")]: label
+        [L10N.getStr("marker.field.type")]: label,
       };
     }
     return null;
@@ -174,12 +182,12 @@ exports.Formatters = {
   /* Group 2 - User Controlled */
 
   ConsoleTimeFields: {
-    [L10N.getStr("marker.field.consoleTimerName")]: "causeName"
+    [L10N.getStr("marker.field.consoleTimerName")]: "causeName",
   },
 
   TimeStampFields: {
-    [L10N.getStr("marker.field.label")]: "causeName"
-  }
+    [L10N.getStr("marker.field.label")]: "causeName",
+  },
 };
 
 /**
@@ -191,7 +199,6 @@ exports.Formatters = {
  * @param string propName
  */
 exports.Formatters.labelForProperty = function(mainLabel, propName) {
-  return (marker = {}) => marker[propName]
-    ? `${mainLabel} (${marker[propName]})`
-    : mainLabel;
+  return (marker = {}) =>
+    marker[propName] ? `${mainLabel} (${marker[propName]})` : mainLabel;
 };

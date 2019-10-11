@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -21,7 +20,7 @@ const TEST_URI = `
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view} = await openRuleView();
+  const { inspector, view } = await openRuleView();
 
   // Mock the highlighter front.
   const HighlighterFront = {
@@ -31,7 +30,7 @@ add_task(async function() {
     },
     hide: function() {
       this.isShown = false;
-    }
+    },
   };
 
   // Inject the mock highlighter in the rule-view
@@ -55,24 +54,32 @@ add_task(async function() {
   info("With .node-1 still selected, click again on the .node-1 selector icon");
   icon = await getRuleViewSelectorHighlighterIcon(view, ".node-1");
   await clickSelectorIcon(icon, view);
-  ok(HighlighterFront.isShown,
-    "The highlighter is shown again since the clicked selector was different");
+  ok(
+    HighlighterFront.isShown,
+    "The highlighter is shown again since the clicked selector was different"
+  );
 
   info("Selecting .node-2");
   await selectNode(".node-2", inspector);
-  ok(HighlighterFront.isShown,
-    "The highlighter is still shown after selection");
+  ok(
+    HighlighterFront.isShown,
+    "The highlighter is still shown after selection"
+  );
 
   info("With .node-2 selected, click on the div selector icon");
   icon = await getRuleViewSelectorHighlighterIcon(view, "div");
   await clickSelectorIcon(icon, view);
-  ok(HighlighterFront.isShown,
-    "The highlighter is shown still since the selected was different");
+  ok(
+    HighlighterFront.isShown,
+    "The highlighter is shown still since the selected was different"
+  );
 
   info("Switching back to .node-1 and clicking on the div selector");
   await selectNode(".node-1", inspector);
   icon = await getRuleViewSelectorHighlighterIcon(view, "div");
   await clickSelectorIcon(icon, view);
-  ok(!HighlighterFront.isShown,
-    "The highlighter is hidden now that the same selector was clicked");
+  ok(
+    !HighlighterFront.isShown,
+    "The highlighter is hidden now that the same selector was clicked"
+  );
 });

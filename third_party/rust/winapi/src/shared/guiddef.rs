@@ -1,4 +1,3 @@
-// Copyright © 2016-2017 winapi-rs developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
@@ -6,7 +5,7 @@
 // except according to those terms.
 //! GUID definition
 use ctypes::{c_uchar, c_ulong, c_ushort};
-STRUCT!{struct GUID {
+STRUCT!{#[debug] struct GUID {
     Data1: c_ulong,
     Data2: c_ushort,
     Data3: c_ushort,

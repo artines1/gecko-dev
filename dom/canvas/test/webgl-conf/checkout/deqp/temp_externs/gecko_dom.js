@@ -507,6 +507,7 @@ Document.prototype.importNode = function(externalNode, deep) {};
 
 /** @param {string} uri */
 Document.prototype.load = function(uri) {};
+Document.prototype.loadOverlay;
 
 /**
  * @see https://developer.mozilla.org/en/DOM/document.open
@@ -559,14 +560,6 @@ Document.prototype.writeln = function(text) {};
 
 Document.prototype.ononline;
 Document.prototype.onoffline;
-
-// XUL
-/**
- * @see http://developer.mozilla.org/en/DOM/document.getBoxObjectFor
- * @return {BoxObject}
- * @nosideeffects
- */
-Document.prototype.getBoxObjectFor = function(element) {};
 
 // From:
 // http://lxr.mozilla.org/mozilla1.8/source/dom/public/idl/range/nsIDOMNSRange.idl
@@ -1074,27 +1067,6 @@ Plugin.prototype.length;
 
 /** @type {string} */
 Plugin.prototype.name;
-
-/** @constructor */
-function BoxObject() {}
-
-/** @type {Element} */
-BoxObject.prototype.element;
-
-/** @type {number} */
-BoxObject.prototype.screenX;
-
-/** @type {number} */
-BoxObject.prototype.screenY;
-
-/** @type {number} */
-BoxObject.prototype.x;
-
-/** @type {number} */
-BoxObject.prototype.y;
-
-/** @type {number} */
-BoxObject.prototype.width;
 
 
 /**

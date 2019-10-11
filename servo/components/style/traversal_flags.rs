@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Flags that control the traversal process.
 //!
@@ -16,15 +16,9 @@ bitflags! {
         /// Traverse and update all elements with CSS animations since
         /// @keyframes rules may have changed. Triggered by CSS rule changes.
         const ForCSSRuleChanges = 1 << 1;
-        /// A forgetful traversal ignores the previous state of the frame tree, and
-        /// thus does not compute damage or maintain other state describing the styles
-        /// pre-traversal. A forgetful traversal is usually the right thing if you
-        /// aren't going to do a post-traversal.
-        const Forgetful = 1 << 3;
-        /// Clears all the dirty bits on the elements traversed.
-        const ClearDirtyBits = 1 << 5;
-        /// Clears the animation-only dirty descendants bit in the subtree.
-        const ClearAnimationOnlyDirtyDescendants = 1 << 6;
+        /// The final animation-only traversal, which shouldn't really care about other
+        /// style changes anymore.
+        const FinalAnimationTraversal = 1 << 2;
         /// Allows the traversal to run in parallel if there are sufficient cores on
         /// the machine.
         const ParallelTraversal = 1 << 7;
@@ -40,7 +34,7 @@ bitflags! {
 #[cfg(feature = "gecko")]
 #[inline]
 pub fn assert_traversal_flags_match() {
-    use gecko_bindings::structs;
+    use crate::gecko_bindings::structs;
 
     macro_rules! check_traversal_flags {
         ( $( $a:ident => $b:path ),*, ) => {
@@ -58,10 +52,7 @@ pub fn assert_traversal_flags_match() {
     check_traversal_flags! {
         ServoTraversalFlags_AnimationOnly => TraversalFlags::AnimationOnly,
         ServoTraversalFlags_ForCSSRuleChanges => TraversalFlags::ForCSSRuleChanges,
-        ServoTraversalFlags_Forgetful => TraversalFlags::Forgetful,
-        ServoTraversalFlags_ClearDirtyBits => TraversalFlags::ClearDirtyBits,
-        ServoTraversalFlags_ClearAnimationOnlyDirtyDescendants =>
-            TraversalFlags::ClearAnimationOnlyDirtyDescendants,
+        ServoTraversalFlags_FinalAnimationTraversal => TraversalFlags::FinalAnimationTraversal,
         ServoTraversalFlags_ParallelTraversal => TraversalFlags::ParallelTraversal,
         ServoTraversalFlags_FlushThrottledAnimations => TraversalFlags::FlushThrottledAnimations,
     }

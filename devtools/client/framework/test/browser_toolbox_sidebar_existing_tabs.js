@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -7,7 +5,7 @@
 
 // Test that the sidebar widget auto-registers existing tabs.
 
-const {ToolSidebar} = require("devtools/client/framework/sidebar");
+const { ToolSidebar } = require("devtools/client/framework/sidebar");
 
 const testToolDefinition = {
   id: "testTool",
@@ -22,13 +20,13 @@ const testToolDefinition = {
       destroy: () => {},
       panelDoc: iframeWindow.document,
     });
-  }
+  },
 };
 
 add_task(async function() {
   const tab = await addTab("about:blank");
 
-  const target = TargetFactory.forTab(tab);
+  const target = await TargetFactory.forTab(tab);
 
   gDevTools.registerTool(testToolDefinition);
   const toolbox = await gDevTools.showToolbox(target, testToolDefinition.id);
@@ -48,14 +46,24 @@ add_task(async function() {
   info("Checking that the sidebar API works with existing tabs");
 
   sidebar.select("tab2");
-  is(tabbox.selectedTab, tabbox.querySelector("#tab2"),
-    "Existing tabs can be selected");
+  is(
+    tabbox.selectedTab,
+    tabbox.querySelector("#tab2"),
+    "Existing tabs can be selected"
+  );
 
   sidebar.select("tab1");
-  is(tabbox.selectedTab, tabbox.querySelector("#tab1"),
-    "Existing tabs can be selected");
+  is(
+    tabbox.selectedTab,
+    tabbox.querySelector("#tab1"),
+    "Existing tabs can be selected"
+  );
 
-  is(sidebar.getCurrentTabID(), "tab1", "getCurrentTabID returns the expected id");
+  is(
+    sidebar.getCurrentTabID(),
+    "tab1",
+    "getCurrentTabID returns the expected id"
+  );
 
   info("Removing a tab");
   sidebar.removeTab("tab2", "tabpanel2");

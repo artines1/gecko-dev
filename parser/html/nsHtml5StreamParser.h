@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,6 +11,7 @@
 #include "nsICharsetDetectionObserver.h"
 #include "nsHtml5MetaScanner.h"
 #include "mozilla/Encoding.h"
+#include "mozilla/JapaneseDetector.h"
 #include "nsHtml5TreeOpExecutor.h"
 #include "nsHtml5OwningUTF16Buffer.h"
 #include "nsIInputStream.h"
@@ -22,14 +23,11 @@
 #include "nsITimer.h"
 #include "nsICharsetDetector.h"
 #include "mozilla/dom/DocGroup.h"
+#include "mozilla/Buffer.h"
 
 class nsHtml5Parser;
 
-#define NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE 1024
-#define NS_HTML5_STREAM_PARSER_SNIFFING_BUFFER_SIZE 1024
-
-enum eParserMode
-{
+enum eParserMode {
   /**
    * Parse a document normally as HTML.
    */
@@ -61,8 +59,7 @@ enum eParserMode
   LOAD_AS_DATA
 };
 
-enum eBomState
-{
+enum eBomState {
   /**
    * BOM sniffing hasn't started.
    */
@@ -98,18 +95,20 @@ enum eBomState
   BOM_SNIFFING_OVER = 5
 };
 
-enum eHtml5StreamState
-{
+enum eHtml5StreamState {
   STREAM_NOT_STARTED = 0,
   STREAM_BEING_READ = 1,
   STREAM_ENDED = 2
 };
 
-class nsHtml5StreamParser final : public nsICharsetDetectionObserver
-{
-  template<typename T>
+class nsHtml5StreamParser final : public nsICharsetDetectionObserver {
+  template <typename T>
   using NotNull = mozilla::NotNull<T>;
   using Encoding = mozilla::Encoding;
+
+  const uint32_t SNIFFING_BUFFER_SIZE = 1024;
+  const uint32_t READ_BUFFER_SIZE = 1024;
+  const uint32_t LOCAL_FILE_UTF_8_BUFFER_SIZE = 1024 * 1024 * 4;  // 4 MB
 
   friend class nsHtml5RequestStopper;
   friend class nsHtml5DataAvailable;
@@ -117,29 +116,23 @@ class nsHtml5StreamParser final : public nsICharsetDetectionObserver
   friend class nsHtml5TimerKungFu;
   friend class nsHtml5StreamParserPtr;
 
-public:
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5StreamParser,
                                            nsICharsetDetectionObserver)
 
-  nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
-                      nsHtml5Parser* aOwner,
+  nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor, nsHtml5Parser* aOwner,
                       eParserMode aMode);
 
   // Methods that nsHtml5StreamListener calls
   nsresult CheckListenerChain();
 
-  nsresult OnStartRequest(nsIRequest* aRequest, nsISupports* aContext);
+  nsresult OnStartRequest(nsIRequest* aRequest);
 
-  nsresult OnDataAvailable(nsIRequest* aRequest,
-                           nsISupports* aContext,
-                           nsIInputStream* aInStream,
-                           uint64_t aSourceOffset,
-                           uint32_t aLength);
+  nsresult OnDataAvailable(nsIRequest* aRequest, nsIInputStream* aInStream,
+                           uint64_t aSourceOffset, uint32_t aLength);
 
-  nsresult OnStopRequest(nsIRequest* aRequest,
-                         nsISupports* aContext,
-                         nsresult status);
+  nsresult OnStopRequest(nsIRequest* aRequest, nsresult status);
 
   // nsICharsetDetectionObserver
   /**
@@ -157,6 +150,16 @@ public:
   // Not from an external interface
 
   /**
+   * Pass a buffer to the JapaneseDetector.
+   */
+  void FeedJapaneseDetector(mozilla::Span<const uint8_t> aBuffer, bool aLast);
+
+  /**
+   * Pass a buffer to the Japanese or Cyrillic detector as appropriate.
+   */
+  void FeedDetector(mozilla::Span<const uint8_t> aBuffer, bool aLast);
+
+  /**
    *  Call this method once you've created a parser, and want to instruct it
    *  about what charset to load
    *
@@ -164,8 +167,7 @@ public:
    *  @param   aCharsetSource the source of the charset
    */
   inline void SetDocumentCharset(NotNull<const Encoding*> aEncoding,
-                                 int32_t aSource)
-  {
+                                 int32_t aSource) {
     MOZ_ASSERT(mStreamState == STREAM_NOT_STARTED,
                "SetDocumentCharset called too late.");
     NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
@@ -173,8 +175,7 @@ public:
     mCharsetSource = aSource;
   }
 
-  inline void SetObserver(nsIRequestObserver* aObserver)
-  {
+  inline void SetObserver(nsIRequestObserver* aObserver) {
     NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
     mObserver = aObserver;
   }
@@ -187,16 +188,14 @@ public:
    * buffer has been exhausted.
    */
   void ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer,
-                            nsHtml5TreeBuilder* aTreeBuilder,
-                            bool aLastWasCR);
+                            nsHtml5TreeBuilder* aTreeBuilder, bool aLastWasCR);
 
   /**
    * Continues the stream parser if the charset switch failed.
    */
   void ContinueAfterFailedCharsetSwitch();
 
-  void Terminate()
-  {
+  void Terminate() {
     mozilla::MutexAutoLock autoLock(mTerminatedMutex);
     mTerminated = true;
   }
@@ -217,7 +216,7 @@ public:
    */
   void SetViewSourceTitle(nsIURI* aURL);
 
-private:
+ private:
   virtual ~nsHtml5StreamParser();
 
 #ifdef DEBUG
@@ -232,14 +231,12 @@ private:
    * avoid having a previous in-flight runnable cancel your Interrupt()
    * call on the other thread too soon.
    */
-  void Interrupt()
-  {
+  void Interrupt() {
     mozilla::MutexAutoLock autoLock(mTerminatedMutex);
     mInterrupted = true;
   }
 
-  void Uninterrupt()
-  {
+  void Uninterrupt() {
     NS_ASSERTION(IsParserThread(), "Wrong thread!");
     mTokenizerMutex.AssertCurrentThreadOwns();
     // Not acquiring mTerminatedMutex because mTokenizerMutex is already
@@ -257,23 +254,21 @@ private:
 
   void DoStopRequest();
 
-  void DoDataAvailable(const uint8_t* aBuffer, uint32_t aLength);
+  void DoDataAvailableBuffer(mozilla::Buffer<uint8_t>&& aBuffer);
+
+  void DoDataAvailable(mozilla::Span<const uint8_t> aBuffer);
 
   static nsresult CopySegmentsToParser(nsIInputStream* aInStream,
-                                       void* aClosure,
-                                       const char* aFromSegment,
-                                       uint32_t aToOffset,
-                                       uint32_t aCount,
+                                       void* aClosure, const char* aFromSegment,
+                                       uint32_t aToOffset, uint32_t aCount,
                                        uint32_t* aWriteCount);
 
-  bool IsTerminatedOrInterrupted()
-  {
+  bool IsTerminatedOrInterrupted() {
     mozilla::MutexAutoLock autoLock(mTerminatedMutex);
     return mTerminated || mInterrupted;
   }
 
-  bool IsTerminated()
-  {
+  bool IsTerminated() {
     mozilla::MutexAutoLock autoLock(mTerminatedMutex);
     return mTerminated;
   }
@@ -286,56 +281,44 @@ private:
   /**
    * Push bytes from network when there is no Unicode decoder yet
    */
-  nsresult SniffStreamBytes(const uint8_t* aFromSegment,
-                            uint32_t aCount,
-                            uint32_t* aWriteCount);
+  nsresult SniffStreamBytes(mozilla::Span<const uint8_t> aFromSegment);
 
   /**
    * Push bytes from network when there is a Unicode decoder already
    */
-  nsresult WriteStreamBytes(const uint8_t* aFromSegment,
-                            uint32_t aCount,
-                            uint32_t* aWriteCount);
+  nsresult WriteStreamBytes(mozilla::Span<const uint8_t> aFromSegment);
 
   /**
    * Check whether every other byte in the sniffing buffer is zero.
    */
-  void SniffBOMlessUTF16BasicLatin(const uint8_t* aFromSegment,
-                                   uint32_t aCountToSniffingLimit);
+  void SniffBOMlessUTF16BasicLatin(mozilla::Span<const uint8_t> aFromSegment);
+
+  /**
+   * Write the start of the stream to detector.
+   */
+  void FinalizeSniffingWithDetector(mozilla::Span<const uint8_t> aFromSegment,
+                                    uint32_t aCountToSniffingLimit, bool aEof);
 
   /**
    * <meta charset> scan failed. Try chardet if applicable. After this, the
    * the parser will have some encoding even if a last resolt fallback.
    *
-   * @param aFromSegment The current network buffer or null if the sniffing
-   *                     buffer is being flushed due to network stream ending.
-   * @param aCount       The number of bytes in aFromSegment (ignored if
-   *                     aFromSegment is null)
-   * @param aWriteCount  Return value for how many bytes got read from the
-   *                     buffer.
+   * @param aFromSegment The current network buffer
    * @param aCountToSniffingLimit The number of unfilled slots in
    *                              mSniffingBuffer
+   * @param aEof true iff called upon end of stream
    */
-  nsresult FinalizeSniffing(const uint8_t* aFromSegment,
-                            uint32_t aCount,
-                            uint32_t* aWriteCount,
-                            uint32_t aCountToSniffingLimit);
+  nsresult FinalizeSniffing(mozilla::Span<const uint8_t> aFromSegment,
+                            uint32_t aCountToSniffingLimit, bool aEof);
 
   /**
    * Set up the Unicode decoder and write the sniffing buffer into it
    * followed by the current network buffer.
    *
-   * @param aFromSegment The current network buffer or null if the sniffing
-   *                     buffer is being flushed due to network stream ending.
-   * @param aCount       The number of bytes in aFromSegment (ignored if
-   *                     aFromSegment is null)
-   * @param aWriteCount  Return value for how many bytes got read from the
-   *                     buffer.
+   * @param aFromSegment The current network buffer
    */
   nsresult SetupDecodingAndWriteSniffingBufferAndCurrentSegment(
-    const uint8_t* aFromSegment,
-    uint32_t aCount,
-    uint32_t* aWriteCount);
+      mozilla::Span<const uint8_t> aFromSegment);
 
   /**
    * Initialize the Unicode decoder, mark the BOM as the source and
@@ -346,6 +329,19 @@ private:
    *                            been swallowed)
    */
   nsresult SetupDecodingFromBom(NotNull<const Encoding*> aEncoding);
+
+  /**
+   * When speculatively decoding from file: URL as UTF-8, commit
+   * to UTF-8 as the non-speculative encoding and start processing
+   * the decoded data.
+   */
+  void CommitLocalFileToUTF8();
+
+  /**
+   * When speculatively decoding from file: URL as UTF-8, redecode
+   * using fallback and then continue normally with the fallback.
+   */
+  void ReDecodeLocalFile();
 
   /**
    * Become confident or resolve and encoding name to its preferred form.
@@ -386,6 +382,16 @@ private:
    * (Not the parser thread.)
    */
   nsresult DispatchToMain(already_AddRefed<nsIRunnable>&& aRunnable);
+
+  /**
+   * Notify any devtools listeners about content newly received for parsing.
+   */
+  inline void OnNewContent(mozilla::Span<const char16_t> aData);
+
+  /**
+   * Notify any devtools listeners after all parse content has been received.
+   */
+  inline void OnContentComplete();
 
   nsCOMPtr<nsIRequest> mRequest;
   nsCOMPtr<nsIRequestObserver> mObserver;
@@ -432,6 +438,11 @@ private:
   NotNull<const Encoding*> mEncoding;
 
   /**
+   * Whether the Cyrillic or Japanese detector should still be fed.
+   */
+  bool mFeedChardet;
+
+  /**
    * Whether reparse is forbidden
    */
   bool mReparseForbidden;
@@ -446,8 +457,9 @@ private:
    * The last buffer in the pending UTF-16 buffer queue
    */
   nsHtml5OwningUTF16Buffer*
-    mLastBuffer; // weak ref; always points to
-                 // a buffer of the size NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE
+      mLastBuffer;  // weak ref; always points to
+                    // a buffer of the size
+                    // NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE
 
   /**
    * The tree operation executor
@@ -520,6 +532,14 @@ private:
   uint32_t mSpeculationFailureCount;
 
   /**
+   * Number of bytes already buffered into mBufferedLocalFileData.
+   * Never counts above LOCAL_FILE_UTF_8_BUFFER_SIZE.
+   */
+  uint32_t mLocalFileBytesBuffered;
+
+  nsTArray<mozilla::Buffer<uint8_t>> mBufferedLocalFileData;
+
+  /**
    * True to terminate early; protected by mTerminatedMutex
    */
   bool mTerminated;
@@ -536,14 +556,14 @@ private:
   nsCOMPtr<nsIRunnable> mLoadFlusher;
 
   /**
-   * The chardet instance if chardet is enabled.
+   * The Cyrillic detector if enabled.
    */
   nsCOMPtr<nsICharsetDetector> mChardet;
 
   /**
-   * If false, don't push data to chardet.
+   * The Japanese detector.
    */
-  bool mFeedChardet;
+  mozilla::UniquePtr<mozilla::JapaneseDetector> mJapaneseDetector;
 
   /**
    * Whether the initial charset source was kCharsetFromParentFrame
@@ -551,6 +571,12 @@ private:
   bool mInitialEncodingWasFromParentFrame;
 
   bool mHasHadErrors;
+
+  /**
+   * If true, we are decoding a local file that lacks an encoding
+   * declaration as UTF-8 and we are not tokenizing yet.
+   */
+  bool mDecodingLocalFileAsUTF8;
 
   /**
    * Timer for flushing tree ops once in a while when not speculating.
@@ -578,6 +604,24 @@ private:
    * Whether the parser is doing a normal parse, view source or plain text.
    */
   eParserMode mMode;
+
+  /**
+   * Whether the parser should not sniff the content type.
+   */
+  bool mSkipContentSniffing;
+
+  /**
+   * If the associated docshell is being watched by the devtools, this is
+   * set to the URI associated with the parse. All parse data is sent to the
+   * devtools, along with this URI. This URI is cleared out after the parse has
+   * been marked as completed.
+   */
+  nsCOMPtr<nsIURI> mURIToSendToDevtools;
+
+  /**
+   * If content is being sent to the devtools, an encoded UUID for the parser.
+   */
+  nsString mUUIDForDevtools;
 };
 
-#endif // nsHtml5StreamParser_h
+#endif  // nsHtml5StreamParser_h

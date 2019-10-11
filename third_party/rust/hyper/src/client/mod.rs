@@ -1,746 +1,1018 @@
 //! HTTP Client
 //!
-//! # Usage
+//! There are two levels of APIs provided for construct HTTP clients:
 //!
-//! The `Client` API is designed for most people to make HTTP requests.
-//! It utilizes the lower level `Request` API.
+//! - The higher-level [`Client`](Client) type.
+//! - The lower-level [conn](conn) module.
 //!
-//! ## GET
+//! # Client
 //!
-//! ```no_run
-//! # use hyper::Client;
+//! The [`Client`](Client) is the main way to send HTTP requests to a server.
+//! The default `Client` provides these things on top of the lower-level API:
+//!
+//! - A default **connector**, able to resolve hostnames and connect to
+//!   destinations over plain-text TCP.
+//! - A **pool** of existing connections, allowing better performance when
+//!   making multiple requests to the same hostname.
+//! - Automatic setting of the `Host` header, based on the request `Uri`.
+//! - Automatic request **retries** when a pooled connection is closed by the
+//!   server before any bytes have been written.
+//!
+//! Many of these features can configured, by making use of
+//! [`Client::builder`](Client::builder).
+//!
+//! ## Example
+//!
+//! For a small example program simply fetching a URL, take a look at the
+//! [full client example](https://github.com/hyperium/hyper/blob/master/examples/client.rs).
+//!
+//! ```
+//! extern crate hyper;
+//!
+//! use hyper::Client;
+//! # #[cfg(feature = "runtime")]
+//! use hyper::rt::{self, Future, Stream};
+//!
+//! # #[cfg(feature = "runtime")]
+//! # fn fetch_httpbin() {
 //! let client = Client::new();
 //!
-//! let res = client.get("http://example.domain").send().unwrap();
-//! assert_eq!(res.status, hyper::Ok);
+//! let fut = client
+//!
+//!     // Make a GET /ip to 'http://httpbin.org'
+//!     .get("http://httpbin.org/ip".parse().unwrap())
+//!
+//!     // And then, if the request gets a response...
+//!     .and_then(|res| {
+//!         println!("status: {}", res.status());
+//!
+//!         // Concatenate the body stream into a single buffer...
+//!         // This returns a new future, since we must stream body.
+//!         res.into_body().concat2()
+//!     })
+//!
+//!     // And then, if reading the full body succeeds...
+//!     .and_then(|body| {
+//!         // The body is just bytes, but let's print a string...
+//!         let s = ::std::str::from_utf8(&body)
+//!             .expect("httpbin sends utf-8 JSON");
+//!
+//!         println!("body: {}", s);
+//!
+//!         // and_then requires we return a new Future, and it turns
+//!         // out that Result is a Future that is ready immediately.
+//!         Ok(())
+//!     })
+//!
+//!     // Map any errors that might have happened...
+//!     .map_err(|err| {
+//!         println!("error: {}", err);
+//!     });
+//!
+//! // A runtime is needed to execute our asynchronous code. In order to
+//! // spawn the future into the runtime, it should already have been
+//! // started and running before calling this code.
+//! rt::spawn(fut);
+//! # }
+//! # fn main () {}
 //! ```
-//!
-//! The returned value is a `Response`, which provides easy access to
-//! the `status`, the `headers`, and the response body via the `Read`
-//! trait.
-//!
-//! ## POST
-//!
-//! ```no_run
-//! # use hyper::Client;
-//! let client = Client::new();
-//!
-//! let res = client.post("http://example.domain")
-//!     .body("foo=bar")
-//!     .send()
-//!     .unwrap();
-//! assert_eq!(res.status, hyper::Ok);
-//! ```
-//!
-//! # Sync
-//!
-//! The `Client` implements `Sync`, so you can share it among multiple threads
-//! and make multiple requests simultaneously.
-//!
-//! ```no_run
-//! # use hyper::Client;
-//! use std::sync::Arc;
-//! use std::thread;
-//!
-//! // Note: an Arc is used here because `thread::spawn` creates threads that
-//! // can outlive the main thread, so we must use reference counting to keep
-//! // the Client alive long enough. Scoped threads could skip the Arc.
-//! let client = Arc::new(Client::new());
-//! let clone1 = client.clone();
-//! let clone2 = client.clone();
-//! thread::spawn(move || {
-//!     clone1.get("http://example.domain").send().unwrap();
-//! });
-//! thread::spawn(move || {
-//!     clone2.post("http://example.domain/post").body("foo=bar").send().unwrap();
-//! });
-//! ```
-use std::borrow::Cow;
-use std::default::Default;
-use std::io::{self, copy, Read};
-use std::fmt;
 
+use std::fmt;
+use std::mem;
+use std::sync::Arc;
 use std::time::Duration;
 
-use url::Url;
-use url::ParseError as UrlError;
+use futures::{Async, Future, Poll};
+use futures::future::{self, Either, Executor};
+use futures::sync::oneshot;
+use http::{Method, Request, Response, Uri, Version};
+use http::header::{HeaderValue, HOST};
+use http::uri::Scheme;
 
-use header::{Headers, Header, HeaderFormat};
-use header::{ContentLength, Host, Location};
-use method::Method;
-use net::{NetworkConnector, NetworkStream, SslClient};
-use Error;
+use body::{Body, Payload};
+use common::{lazy as hyper_lazy, Lazy};
+use self::connect::{Alpn, Connect, Connected, Destination};
+use self::pool::{Key as PoolKey, Pool, Poolable, Pooled, Reservation};
 
-use self::proxy::{Proxy, tunnel};
-use self::scheme::Scheme;
-pub use self::pool::Pool;
-pub use self::request::Request;
-pub use self::response::Response;
+#[cfg(feature = "runtime")] pub use self::connect::HttpConnector;
 
-mod proxy;
-pub mod pool;
-pub mod request;
-pub mod response;
+pub mod conn;
+pub mod connect;
+pub(crate) mod dispatch;
+mod pool;
+#[cfg(test)]
+mod tests;
 
-use http::Protocol;
-use http::h1::Http11Protocol;
-
-
-/// A Client to use additional features with Requests.
-///
-/// Clients can handle things such as: redirect policy, connection pooling.
-pub struct Client {
-    protocol: Box<Protocol + Send + Sync>,
-    redirect_policy: RedirectPolicy,
-    read_timeout: Option<Duration>,
-    write_timeout: Option<Duration>,
-    proxy: Option<(Scheme, Cow<'static, str>, u16)>
+/// A Client to make outgoing HTTP requests.
+pub struct Client<C, B = Body> {
+    config: Config,
+    conn_builder: conn::Builder,
+    connector: Arc<C>,
+    pool: Pool<PoolClient<B>>,
 }
 
-impl fmt::Debug for Client {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Client")
-           .field("redirect_policy", &self.redirect_policy)
-           .field("read_timeout", &self.read_timeout)
-           .field("write_timeout", &self.write_timeout)
-           .field("proxy", &self.proxy)
-           .finish()
+#[derive(Clone, Copy, Debug)]
+struct Config {
+    retry_canceled_requests: bool,
+    set_host: bool,
+    ver: Ver,
+}
+
+#[cfg(feature = "runtime")]
+impl Client<HttpConnector, Body> {
+    /// Create a new Client with the default config.
+    ///
+    /// # Note
+    ///
+    /// The default connector does **not** handle TLS. Speaking to `https`
+    /// destinations will require configuring a connector that implements TLS.
+    #[inline]
+    pub fn new() -> Client<HttpConnector, Body> {
+        Builder::default().build_http()
     }
 }
 
-impl Client {
-
-    /// Create a new Client.
-    pub fn new() -> Client {
-        Client::with_pool_config(Default::default())
+#[cfg(feature = "runtime")]
+impl Default for Client<HttpConnector, Body> {
+    fn default() -> Client<HttpConnector, Body> {
+        Client::new()
     }
+}
 
-    /// Create a new Client with a configured Pool Config.
-    pub fn with_pool_config(config: pool::Config) -> Client {
-        Client::with_connector(Pool::new(config))
+impl Client<(), Body> {
+    /// Configure a Client.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate hyper;
+    /// # #[cfg(feature  = "runtime")]
+    /// fn run () {
+    /// use hyper::Client;
+    ///
+    /// let client = Client::builder()
+    ///     .keep_alive(true)
+    ///     .build_http();
+    /// # let infer: Client<_, hyper::Body> = client;
+    /// # drop(infer);
+    /// # }
+    /// # fn main() {}
+    /// ```
+    #[inline]
+    pub fn builder() -> Builder {
+        Builder::default()
     }
+}
 
-    /// Create a Client with an HTTP proxy to a (host, port).
-    pub fn with_http_proxy<H>(host: H, port: u16) -> Client
-    where H: Into<Cow<'static, str>> {
-        let host = host.into();
-        let proxy = tunnel((Scheme::Http, host.clone(), port));
-        let mut client = Client::with_connector(Pool::with_connector(Default::default(), proxy));
-        client.proxy = Some((Scheme::Http, host, port));
-        client
-    }
+impl<C, B> Client<C, B>
+where C: Connect + Sync + 'static,
+      C::Transport: 'static,
+      C::Future: 'static,
+      B: Payload + Send + 'static,
+      B::Data: Send,
+{
 
-    /// Create a Client using a proxy with a custom connector and SSL client.
-    pub fn with_proxy_config<C, S>(proxy_config: ProxyConfig<C, S>) -> Client
-    where C: NetworkConnector + Send + Sync + 'static,
-          C::Stream: NetworkStream + Send + Clone,
-          S: SslClient<C::Stream> + Send + Sync + 'static {
-
-        let scheme = proxy_config.scheme;
-        let host = proxy_config.host;
-        let port = proxy_config.port;
-        let proxy = Proxy {
-            proxy: (scheme.clone(), host.clone(), port),
-            connector: proxy_config.connector,
-            ssl: proxy_config.ssl,
-        };
-
-        let mut client = match proxy_config.pool_config {
-            Some(pool_config) => Client::with_connector(Pool::with_connector(pool_config, proxy)),
-            None => Client::with_connector(proxy),
-        };
-        client.proxy = Some((scheme, host, port));
-        client
-    }
-
-    /// Create a new client with a specific connector.
-    pub fn with_connector<C, S>(connector: C) -> Client
-    where C: NetworkConnector<Stream=S> + Send + Sync + 'static, S: NetworkStream + Send {
-        Client::with_protocol(Http11Protocol::with_connector(connector))
-    }
-
-    /// Create a new client with a specific `Protocol`.
-    pub fn with_protocol<P: Protocol + Send + Sync + 'static>(protocol: P) -> Client {
-        Client {
-            protocol: Box::new(protocol),
-            redirect_policy: Default::default(),
-            read_timeout: None,
-            write_timeout: None,
-            proxy: None,
+    /// Send a `GET` request to the supplied `Uri`.
+    ///
+    /// # Note
+    ///
+    /// This requires that the `Payload` type have a `Default` implementation.
+    /// It *should* return an "empty" version of itself, such that
+    /// `Payload::is_end_stream` is `true`.
+    pub fn get(&self, uri: Uri) -> ResponseFuture
+    where
+        B: Default,
+    {
+        let body = B::default();
+        if !body.is_end_stream() {
+            warn!("default Payload used for get() does not return true for is_end_stream");
         }
+
+        let mut req = Request::new(body);
+        *req.uri_mut() = uri;
+        self.request(req)
     }
 
-    /// Set the RedirectPolicy.
-    pub fn set_redirect_policy(&mut self, policy: RedirectPolicy) {
-        self.redirect_policy = policy;
-    }
-
-    /// Set the read timeout value for all requests.
-    pub fn set_read_timeout(&mut self, dur: Option<Duration>) {
-        self.read_timeout = dur;
-    }
-
-    /// Set the write timeout value for all requests.
-    pub fn set_write_timeout(&mut self, dur: Option<Duration>) {
-        self.write_timeout = dur;
-    }
-
-    /// Build a Get request.
-    pub fn get<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Get, url)
-    }
-
-    /// Build a Head request.
-    pub fn head<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Head, url)
-    }
-
-    /// Build a Patch request.
-    pub fn patch<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Patch, url)
-    }
-
-    /// Build a Post request.
-    pub fn post<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Post, url)
-    }
-
-    /// Build a Put request.
-    pub fn put<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Put, url)
-    }
-
-    /// Build a Delete request.
-    pub fn delete<U: IntoUrl>(&self, url: U) -> RequestBuilder {
-        self.request(Method::Delete, url)
-    }
-
-
-    /// Build a new request using this Client.
-    pub fn request<U: IntoUrl>(&self, method: Method, url: U) -> RequestBuilder {
-        RequestBuilder {
-            client: self,
-            method: method,
-            url: url.into_url(),
-            body: None,
-            headers: None,
-        }
-    }
-}
-
-impl Default for Client {
-    fn default() -> Client { Client::new() }
-}
-
-/// Options for an individual Request.
-///
-/// One of these will be built for you if you use one of the convenience
-/// methods, such as `get()`, `post()`, etc.
-pub struct RequestBuilder<'a> {
-    client: &'a Client,
-    // We store a result here because it's good to keep RequestBuilder
-    // from being generic, but it is a nicer API to report the error
-    // from `send` (when other errors may be happening, so it already
-    // returns a `Result`). Why's it good to keep it non-generic? It
-    // stops downstream crates having to remonomorphise and recompile
-    // the code, which can take a while, since `send` is fairly large.
-    // (For an extreme example, a tiny crate containing
-    // `hyper::Client::new().get("x").send().unwrap();` took ~4s to
-    // compile with a generic RequestBuilder, but 2s with this scheme,)
-    url: Result<Url, UrlError>,
-    headers: Option<Headers>,
-    method: Method,
-    body: Option<Body<'a>>,
-}
-
-impl<'a> RequestBuilder<'a> {
-
-    /// Set a request body to be sent.
-    pub fn body<B: Into<Body<'a>>>(mut self, body: B) -> RequestBuilder<'a> {
-        self.body = Some(body.into());
-        self
-    }
-
-    /// Add additional headers to the request.
-    pub fn headers(mut self, headers: Headers) -> RequestBuilder<'a> {
-        self.headers = Some(headers);
-        self
-    }
-
-    /// Add an individual new header to the request.
-    pub fn header<H: Header + HeaderFormat>(mut self, header: H) -> RequestBuilder<'a> {
-        {
-            let headers = match self.headers {
-                Some(ref mut h) => h,
-                None => {
-                    self.headers = Some(Headers::new());
-                    self.headers.as_mut().unwrap()
-                }
-            };
-
-            headers.set(header);
-        }
-        self
-    }
-
-    /// Execute this request and receive a Response back.
-    pub fn send(self) -> ::Result<Response> {
-        let RequestBuilder { client, method, url, headers, body } = self;
-        let mut url = try!(url);
-        trace!("send method={:?}, url={:?}, client={:?}", method, url, client);
-
-        let can_have_body = match method {
-            Method::Get | Method::Head => false,
-            _ => true
+    /// Send a constructed Request using this Client.
+    pub fn request(&self, mut req: Request<B>) -> ResponseFuture {
+        let is_http_connect = req.method() == &Method::CONNECT;
+        match req.version() {
+            Version::HTTP_11 => (),
+            Version::HTTP_10 => if is_http_connect {
+                debug!("CONNECT is not allowed for HTTP/1.0");
+                return ResponseFuture::new(Box::new(future::err(::Error::new_user_unsupported_request_method())));
+            },
+            other => if self.config.ver != Ver::Http2 {
+                error!("Request has unsupported version \"{:?}\"", other);
+                return ResponseFuture::new(Box::new(future::err(::Error::new_user_unsupported_version())));
+            }
         };
 
-        let mut body = if can_have_body {
-            body
-        } else {
-            None
-        };
-
-        loop {
-            let mut req = {
-                let (host, port) = try!(get_host_and_port(&url));
-                let mut message = try!(client.protocol.new_message(&host, port, url.scheme()));
-                if url.scheme() == "http" && client.proxy.is_some() {
-                    message.set_proxied(true);
-                }
-
-                let mut h = Headers::new();
-                h.set(Host {
-                    hostname: host.to_owned(),
-                    port: Some(port),
-                });
-                if let Some(ref headers) = headers {
-                    h.extend(headers.iter());
-                }
-                let headers = h;
-                Request::with_headers_and_message(method.clone(), url.clone(), headers, message)
-            };
-
-            try!(req.set_write_timeout(client.write_timeout));
-            try!(req.set_read_timeout(client.read_timeout));
-
-            match (can_have_body, body.as_ref()) {
-                (true, Some(body)) => match body.size() {
-                    Some(size) => req.headers_mut().set(ContentLength(size)),
-                    None => (), // chunked, Request will add it automatically
-                },
-                (true, None) => req.headers_mut().set(ContentLength(0)),
-                _ => () // neither
+        let uri = req.uri().clone();
+        let domain = match (uri.scheme_part(), uri.authority_part()) {
+            (Some(scheme), Some(auth)) => {
+                format!("{}://{}", scheme, auth)
             }
-            let mut streaming = try!(req.start());
-            if let Some(mut rdr) = body.take() {
-                try!(copy(&mut rdr, &mut streaming));
-            }
-            let res = try!(streaming.send());
-            if !res.status.is_redirection() {
-                return Ok(res)
-            }
-            debug!("redirect code {:?} for {}", res.status, url);
-
-            let loc = {
-                // punching borrowck here
-                let loc = match res.headers.get::<Location>() {
-                    Some(&Location(ref loc)) => {
-                        Some(url.join(loc))
-                    }
-                    None => {
-                        debug!("no Location header");
-                        // could be 304 Not Modified?
-                        None
-                    }
+            (None, Some(auth)) if is_http_connect => {
+                let port = auth.port_part().unwrap();
+                let scheme = match port.as_str() {
+                    "443" => {
+                        set_scheme(req.uri_mut(), Scheme::HTTPS);
+                        "https"
+                    },
+                    _ => {
+                        set_scheme(req.uri_mut(), Scheme::HTTP);
+                        "http"
+                    },
                 };
-                match loc {
-                    Some(r) => r,
-                    None => return Ok(res)
+                format!("{}://{}", scheme, auth)
+            },
+            _ => {
+                debug!("Client requires absolute-form URIs, received: {:?}", uri);
+                return ResponseFuture::new(Box::new(future::err(::Error::new_user_absolute_uri_required())))
+            }
+        };
+
+        let pool_key = Arc::new(domain.to_string());
+        ResponseFuture::new(Box::new(self.retryably_send_request(req, pool_key)))
+    }
+
+    fn retryably_send_request(&self, req: Request<B>, pool_key: PoolKey) -> impl Future<Item=Response<Body>, Error=::Error> {
+        let client = self.clone();
+        let uri = req.uri().clone();
+
+        let mut send_fut = client.send_request(req, pool_key.clone());
+        future::poll_fn(move || loop {
+            match send_fut.poll() {
+                Ok(Async::Ready(resp)) => return Ok(Async::Ready(resp)),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(ClientError::Normal(err)) => return Err(err),
+                Err(ClientError::Canceled {
+                    connection_reused,
+                    mut req,
+                    reason,
+                }) => {
+                    if !client.config.retry_canceled_requests || !connection_reused {
+                        // if client disabled, don't retry
+                        // a fresh connection means we definitely can't retry
+                        return Err(reason);
+                    }
+
+                    trace!("unstarted request canceled, trying again (reason={:?})", reason);
+                    *req.uri_mut() = uri.clone();
+                    send_fut = client.send_request(req, pool_key.clone());
+                }
+            }
+        })
+    }
+
+    fn send_request(&self, mut req: Request<B>, pool_key: PoolKey) -> impl Future<Item=Response<Body>, Error=ClientError<B>> {
+        let conn = self.connection_for(req.uri().clone(), pool_key);
+
+        let set_host = self.config.set_host;
+        let executor = self.conn_builder.exec.clone();
+        conn.and_then(move |mut pooled| {
+            if pooled.is_http1() {
+                if set_host {
+                    let uri = req.uri().clone();
+                    req
+                        .headers_mut()
+                        .entry(HOST)
+                        .expect("HOST is always valid header name")
+                        .or_insert_with(|| {
+                            let hostname = uri.host().expect("authority implies host");
+                            if let Some(port) = uri.port_part() {
+                                let s = format!("{}:{}", hostname, port);
+                                HeaderValue::from_str(&s)
+                            } else {
+                                HeaderValue::from_str(hostname)
+                            }.expect("uri host is valid header value")
+                        });
+                }
+
+                // CONNECT always sends authority-form, so check it first...
+                if req.method() == &Method::CONNECT {
+                    authority_form(req.uri_mut());
+                } else if pooled.conn_info.is_proxied {
+                    absolute_form(req.uri_mut());
+                } else {
+                    origin_form(req.uri_mut());
+                };
+            } else if req.method() == &Method::CONNECT {
+                debug!("client does not support CONNECT requests over HTTP2");
+                return Either::A(future::err(ClientError::Normal(::Error::new_user_unsupported_request_method())));
+            }
+
+            let fut = pooled.send_request_retryable(req)
+                .map_err(ClientError::map_with_reused(pooled.is_reused()));
+
+            // If the Connector included 'extra' info, add to Response...
+            let extra_info = pooled.conn_info.extra.clone();
+            let fut = fut.map(move |mut res| {
+                if let Some(extra) = extra_info {
+                    extra.set(&mut res);
+                }
+                res
+            });
+
+            // As of futures@0.1.21, there is a race condition in the mpsc
+            // channel, such that sending when the receiver is closing can
+            // result in the message being stuck inside the queue. It won't
+            // ever notify until the Sender side is dropped.
+            //
+            // To counteract this, we must check if our senders 'want' channel
+            // has been closed after having tried to send. If so, error out...
+            if pooled.is_closed() {
+                return Either::B(Either::A(fut));
+            }
+
+            Either::B(Either::B(fut
+                .and_then(move |mut res| {
+                    // If pooled is HTTP/2, we can toss this reference immediately.
+                    //
+                    // when pooled is dropped, it will try to insert back into the
+                    // pool. To delay that, spawn a future that completes once the
+                    // sender is ready again.
+                    //
+                    // This *should* only be once the related `Connection` has polled
+                    // for a new request to start.
+                    //
+                    // It won't be ready if there is a body to stream.
+                    if pooled.is_http2() || !pooled.is_pool_enabled() || pooled.is_ready() {
+                        drop(pooled);
+                    } else if !res.body().is_end_stream() {
+                        let (delayed_tx, delayed_rx) = oneshot::channel();
+                        res.body_mut().delayed_eof(delayed_rx);
+                        let on_idle = future::poll_fn(move || {
+                            pooled.poll_ready()
+                        })
+                            .then(move |_| {
+                                // At this point, `pooled` is dropped, and had a chance
+                                // to insert into the pool (if conn was idle)
+                                drop(delayed_tx);
+                                Ok(())
+                            });
+
+                        if let Err(err) = executor.execute(on_idle) {
+                            // This task isn't critical, so just log and ignore.
+                            warn!("error spawning task to insert idle connection: {}", err);
+                        }
+                    } else {
+                        // There's no body to delay, but the connection isn't
+                        // ready yet. Only re-insert when it's ready
+                        let on_idle = future::poll_fn(move || {
+                            pooled.poll_ready()
+                        })
+                            .then(|_| Ok(()));
+
+                        if let Err(err) = executor.execute(on_idle) {
+                            // This task isn't critical, so just log and ignore.
+                            warn!("error spawning task to insert idle connection: {}", err);
+                        }
+                    }
+                    Ok(res)
+                })))
+        })
+    }
+
+    fn connection_for(&self, uri: Uri, pool_key: PoolKey)
+        -> impl Future<Item=Pooled<PoolClient<B>>, Error=ClientError<B>>
+    {
+        // This actually races 2 different futures to try to get a ready
+        // connection the fastest, and to reduce connection churn.
+        //
+        // - If the pool has an idle connection waiting, that's used
+        //   immediately.
+        // - Otherwise, the Connector is asked to start connecting to
+        //   the destination Uri.
+        // - Meanwhile, the pool Checkout is watching to see if any other
+        //   request finishes and tries to insert an idle connection.
+        // - If a new connection is started, but the Checkout wins after
+        //   (an idle connection becamse available first), the started
+        //   connection future is spawned into the runtime to complete,
+        //   and then be inserted into the pool as an idle connection.
+        let checkout = self.pool.checkout(pool_key.clone());
+        let connect = self.connect_to(uri, pool_key);
+
+        let executor = self.conn_builder.exec.clone();
+        checkout
+            // The order of the `select` is depended on below...
+            .select2(connect)
+            .map(move |either| match either {
+                // Checkout won, connect future may have been started or not.
+                //
+                // If it has, let it finish and insert back into the pool,
+                // so as to not waste the socket...
+                Either::A((checked_out, connecting)) => {
+                    // This depends on the `select` above having the correct
+                    // order, such that if the checkout future were ready
+                    // immediately, the connect future will never have been
+                    // started.
+                    //
+                    // If it *wasn't* ready yet, then the connect future will
+                    // have been started...
+                    if connecting.started() {
+                        let bg = connecting
+                            .map(|_pooled| {
+                                // dropping here should just place it in
+                                // the Pool for us...
+                            })
+                            .map_err(|err| {
+                                trace!("background connect error: {}", err);
+                            });
+                        // An execute error here isn't important, we're just trying
+                        // to prevent a waste of a socket...
+                        let _ = executor.execute(bg);
+                    }
+                    checked_out
+                },
+                // Connect won, checkout can just be dropped.
+                Either::B((connected, _checkout)) => {
+                    connected
+                },
+            })
+            .or_else(|either| match either {
+                // Either checkout or connect could get canceled:
+                //
+                // 1. Connect is canceled if this is HTTP/2 and there is
+                //    an outstanding HTTP/2 connecting task.
+                // 2. Checkout is canceled if the pool cannot deliver an
+                //    idle connection reliably.
+                //
+                // In both cases, we should just wait for the other future.
+                Either::A((err, connecting)) => {
+                    if err.is_canceled() {
+                        Either::A(Either::A(connecting.map_err(ClientError::Normal)))
+                    } else {
+                        Either::B(future::err(ClientError::Normal(err)))
+                    }
+                },
+                Either::B((err, checkout)) => {
+                    if err.is_canceled() {
+                        Either::A(Either::B(checkout.map_err(ClientError::Normal)))
+                    } else {
+                        Either::B(future::err(ClientError::Normal(err)))
+                    }
+                }
+            })
+    }
+
+    fn connect_to(&self, uri: Uri, pool_key: PoolKey)
+        -> impl Lazy<Item=Pooled<PoolClient<B>>, Error=::Error>
+    {
+        let executor = self.conn_builder.exec.clone();
+        let pool = self.pool.clone();
+        let mut conn_builder = self.conn_builder.clone();
+        let ver = self.config.ver;
+        let is_ver_h2 = ver == Ver::Http2;
+        let connector = self.connector.clone();
+        let dst = Destination {
+            uri,
+        };
+        hyper_lazy(move || {
+            // Try to take a "connecting lock".
+            //
+            // If the pool_key is for HTTP/2, and there is already a
+            // connection being estabalished, then this can't take a
+            // second lock. The "connect_to" future is Canceled.
+            let connecting = match pool.connecting(&pool_key, ver) {
+                Some(lock) => lock,
+                None => {
+                    let canceled = ::Error::new_canceled(Some("HTTP/2 connection in progress"));
+                    return Either::B(future::err(canceled));
                 }
             };
-            url = match loc {
-                Ok(u) => u,
-                Err(e) => {
-                    debug!("Location header had invalid URI: {:?}", e);
-                    return Ok(res);
+            Either::A(connector.connect(dst)
+                .map_err(::Error::new_connect)
+                .and_then(move |(io, connected)| {
+                    // If ALPN is h2 and we aren't http2_only already,
+                    // then we need to convert our pool checkout into
+                    // a single HTTP2 one.
+                    let connecting = if connected.alpn == Alpn::H2 && !is_ver_h2 {
+                        match connecting.alpn_h2(&pool) {
+                            Some(lock) => {
+                                trace!("ALPN negotiated h2, updating pool");
+                                lock
+                            },
+                            None => {
+                                // Another connection has already upgraded,
+                                // the pool checkout should finish up for us.
+                                let canceled = ::Error::new_canceled(Some("ALPN upgraded to HTTP/2"));
+                                return Either::B(future::err(canceled));
+                            }
+                        }
+                    } else {
+                        connecting
+                    };
+                    let is_h2 = is_ver_h2 || connected.alpn == Alpn::H2;
+                    Either::A(conn_builder
+                        .http2_only(is_h2)
+                        .handshake(io)
+                        .and_then(move |(tx, conn)| {
+                            let bg = executor.execute(conn.map_err(|e| {
+                                debug!("client connection error: {}", e)
+                            }));
+
+                            // This task is critical, so an execute error
+                            // should be returned.
+                            if let Err(err) = bg {
+                                warn!("error spawning critical client task: {}", err);
+                                return Either::A(future::err(err));
+                            }
+
+                            // Wait for 'conn' to ready up before we
+                            // declare this tx as usable
+                            Either::B(tx.when_ready())
+                        })
+                        .map(move |tx| {
+                            pool.pooled(connecting, PoolClient {
+                                conn_info: connected,
+                                tx: if is_h2 {
+                                    PoolTx::Http2(tx.into_http2())
+                                } else {
+                                    PoolTx::Http1(tx)
+                                },
+                            })
+                        }))
+                }))
+        })
+    }
+}
+
+impl<C, B> Clone for Client<C, B> {
+    fn clone(&self) -> Client<C, B> {
+        Client {
+            config: self.config.clone(),
+            conn_builder: self.conn_builder.clone(),
+            connector: self.connector.clone(),
+            pool: self.pool.clone(),
+        }
+    }
+}
+
+impl<C, B> fmt::Debug for Client<C, B> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Client")
+            .finish()
+    }
+}
+
+/// A `Future` that will resolve to an HTTP Response.
+#[must_use = "futures do nothing unless polled"]
+pub struct ResponseFuture {
+    inner: Box<Future<Item=Response<Body>, Error=::Error> + Send>,
+}
+
+impl ResponseFuture {
+    fn new(fut: Box<Future<Item=Response<Body>, Error=::Error> + Send>) -> Self {
+        Self {
+            inner: fut,
+        }
+    }
+}
+
+impl fmt::Debug for ResponseFuture {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.pad("Future<Response>")
+    }
+}
+
+impl Future for ResponseFuture {
+    type Item = Response<Body>;
+    type Error = ::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.inner.poll()
+    }
+}
+
+// FIXME: allow() required due to `impl Trait` leaking types to this lint
+#[allow(missing_debug_implementations)]
+struct PoolClient<B> {
+    conn_info: Connected,
+    tx: PoolTx<B>,
+}
+
+enum PoolTx<B> {
+    Http1(conn::SendRequest<B>),
+    Http2(conn::Http2SendRequest<B>),
+}
+
+impl<B> PoolClient<B> {
+    fn poll_ready(&mut self) -> Poll<(), ::Error> {
+        match self.tx {
+            PoolTx::Http1(ref mut tx) => tx.poll_ready(),
+            PoolTx::Http2(_) => Ok(Async::Ready(())),
+        }
+    }
+
+    fn is_http1(&self) -> bool {
+        !self.is_http2()
+    }
+
+    fn is_http2(&self) -> bool {
+        match self.tx {
+            PoolTx::Http1(_) => false,
+            PoolTx::Http2(_) => true,
+        }
+    }
+
+    fn is_ready(&self) -> bool {
+        match self.tx {
+            PoolTx::Http1(ref tx) => tx.is_ready(),
+            PoolTx::Http2(ref tx) => tx.is_ready(),
+        }
+    }
+
+    fn is_closed(&self) -> bool {
+        match self.tx {
+            PoolTx::Http1(ref tx) => tx.is_closed(),
+            PoolTx::Http2(ref tx) => tx.is_closed(),
+        }
+    }
+}
+
+impl<B: Payload + 'static> PoolClient<B> {
+    fn send_request_retryable(&mut self, req: Request<B>) -> impl Future<Item = Response<Body>, Error = (::Error, Option<Request<B>>)>
+    where
+        B: Send,
+    {
+        match self.tx {
+            PoolTx::Http1(ref mut tx) => Either::A(tx.send_request_retryable(req)),
+            PoolTx::Http2(ref mut tx) => Either::B(tx.send_request_retryable(req)),
+        }
+    }
+}
+
+impl<B> Poolable for PoolClient<B>
+where
+    B: Send + 'static,
+{
+    fn is_open(&self) -> bool {
+        match self.tx {
+            PoolTx::Http1(ref tx) => tx.is_ready(),
+            PoolTx::Http2(ref tx) => tx.is_ready(),
+        }
+    }
+
+    fn reserve(self) -> Reservation<Self> {
+        match self.tx {
+            PoolTx::Http1(tx) => {
+                Reservation::Unique(PoolClient {
+                    conn_info: self.conn_info,
+                    tx: PoolTx::Http1(tx),
+                })
+            },
+            PoolTx::Http2(tx) => {
+                let b = PoolClient {
+                    conn_info: self.conn_info.clone(),
+                    tx: PoolTx::Http2(tx.clone()),
+                };
+                let a = PoolClient {
+                    conn_info: self.conn_info,
+                    tx: PoolTx::Http2(tx),
+                };
+                Reservation::Shared(a, b)
+            }
+        }
+    }
+
+    fn can_share(&self) -> bool {
+        self.is_http2()
+    }
+}
+
+// FIXME: allow() required due to `impl Trait` leaking types to this lint
+#[allow(missing_debug_implementations)]
+enum ClientError<B> {
+    Normal(::Error),
+    Canceled {
+        connection_reused: bool,
+        req: Request<B>,
+        reason: ::Error,
+    }
+}
+
+impl<B> ClientError<B> {
+    fn map_with_reused(conn_reused: bool)
+        -> impl Fn((::Error, Option<Request<B>>)) -> Self
+    {
+        move |(err, orig_req)| {
+            if let Some(req) = orig_req {
+                ClientError::Canceled {
+                    connection_reused: conn_reused,
+                    reason: err,
+                    req,
                 }
-            };
-            match client.redirect_policy {
-                // separate branches because they can't be one
-                RedirectPolicy::FollowAll => (), //continue
-                RedirectPolicy::FollowIf(cond) if cond(&url) => (), //continue
-                _ => return Ok(res),
+            } else {
+                ClientError::Normal(err)
             }
         }
     }
 }
 
-/// An enum of possible body types for a Request.
-pub enum Body<'a> {
-    /// A Reader does not necessarily know it's size, so it is chunked.
-    ChunkedBody(&'a mut (Read + 'a)),
-    /// For Readers that can know their size, like a `File`.
-    SizedBody(&'a mut (Read + 'a), u64),
-    /// A String has a size, and uses Content-Length.
-    BufBody(&'a [u8] , usize),
+/// A marker to identify what version a pooled connection is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Ver {
+    Auto,
+    Http2,
 }
 
-impl<'a> Body<'a> {
-    fn size(&self) -> Option<u64> {
-        match *self {
-            Body::SizedBody(_, len) => Some(len),
-            Body::BufBody(_, len) => Some(len as u64),
-            _ => None
+fn origin_form(uri: &mut Uri) {
+    let path = match uri.path_and_query() {
+        Some(path) if path.as_str() != "/" => {
+            let mut parts = ::http::uri::Parts::default();
+            parts.path_and_query = Some(path.clone());
+            Uri::from_parts(parts).expect("path is valid uri")
+        },
+        _none_or_just_slash => {
+            debug_assert!(Uri::default() == "/");
+            Uri::default()
         }
-    }
-}
-
-impl<'a> Read for Body<'a> {
-    #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match *self {
-            Body::ChunkedBody(ref mut r) => r.read(buf),
-            Body::SizedBody(ref mut r, _) => r.read(buf),
-            Body::BufBody(ref mut r, _) => Read::read(r, buf),
-        }
-    }
-}
-
-impl<'a> Into<Body<'a>> for &'a [u8] {
-    #[inline]
-    fn into(self) -> Body<'a> {
-        Body::BufBody(self, self.len())
-    }
-}
-
-impl<'a> Into<Body<'a>> for &'a str {
-    #[inline]
-    fn into(self) -> Body<'a> {
-        self.as_bytes().into()
-    }
-}
-
-impl<'a> Into<Body<'a>> for &'a String {
-    #[inline]
-    fn into(self) -> Body<'a> {
-        self.as_bytes().into()
-    }
-}
-
-impl<'a, R: Read> From<&'a mut R> for Body<'a> {
-    #[inline]
-    fn from(r: &'a mut R) -> Body<'a> {
-        Body::ChunkedBody(r)
-    }
-}
-
-/// A helper trait to convert common objects into a Url.
-pub trait IntoUrl {
-    /// Consumes the object, trying to return a Url.
-    fn into_url(self) -> Result<Url, UrlError>;
-}
-
-impl IntoUrl for Url {
-    fn into_url(self) -> Result<Url, UrlError> {
-        Ok(self)
-    }
-}
-
-impl<'a> IntoUrl for &'a str {
-    fn into_url(self) -> Result<Url, UrlError> {
-        Url::parse(self)
-    }
-}
-
-impl<'a> IntoUrl for &'a String {
-    fn into_url(self) -> Result<Url, UrlError> {
-        Url::parse(self)
-    }
-}
-
-/// Proxy server configuration with a custom connector and TLS wrapper.
-pub struct ProxyConfig<C, S>
-where C: NetworkConnector + Send + Sync + 'static,
-      C::Stream: NetworkStream + Clone + Send,
-      S: SslClient<C::Stream> + Send + Sync + 'static {
-    scheme: Scheme,
-    host: Cow<'static, str>,
-    port: u16,
-    pool_config: Option<pool::Config>,
-    connector: C,
-    ssl: S,
-}
-
-impl<C, S> ProxyConfig<C, S>
-where C: NetworkConnector + Send + Sync + 'static,
-      C::Stream: NetworkStream + Clone + Send,
-      S: SslClient<C::Stream> + Send + Sync + 'static {
-
-    /// Create a new `ProxyConfig`.
-    #[inline]
-    pub fn new<H: Into<Cow<'static, str>>>(scheme: &str, host: H, port: u16, connector: C, ssl: S) -> ProxyConfig<C, S> {
-        ProxyConfig {
-            scheme: scheme.into(),
-            host: host.into(),
-            port: port,
-            pool_config: Some(pool::Config::default()),
-            connector: connector,
-            ssl: ssl,
-        }
-    }
-
-    /// Change the `pool::Config` for the proxy.
-    ///
-    /// Passing `None` disables the `Pool`.
-    ///
-    /// The default is enabled, with the default `pool::Config`.
-    pub fn set_pool_config(&mut self, pool_config: Option<pool::Config>) {
-        self.pool_config = pool_config;
-    }
-}
-
-/// Behavior regarding how to handle redirects within a Client.
-#[derive(Copy)]
-pub enum RedirectPolicy {
-    /// Don't follow any redirects.
-    FollowNone,
-    /// Follow all redirects.
-    FollowAll,
-    /// Follow a redirect if the contained function returns true.
-    FollowIf(fn(&Url) -> bool),
-}
-
-impl fmt::Debug for RedirectPolicy {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            RedirectPolicy::FollowNone => fmt.write_str("FollowNone"),
-            RedirectPolicy::FollowAll => fmt.write_str("FollowAll"),
-            RedirectPolicy::FollowIf(_) => fmt.write_str("FollowIf"),
-        }
-    }
-}
-
-// This is a hack because of upstream typesystem issues.
-impl Clone for RedirectPolicy {
-    fn clone(&self) -> RedirectPolicy {
-        *self
-    }
-}
-
-impl Default for RedirectPolicy {
-    fn default() -> RedirectPolicy {
-        RedirectPolicy::FollowAll
-    }
-}
-
-
-fn get_host_and_port(url: &Url) -> ::Result<(&str, u16)> {
-    let host = match url.host_str() {
-        Some(host) => host,
-        None => return Err(Error::Uri(UrlError::EmptyHost)),
     };
-    trace!("host={:?}", host);
-    let port = match url.port_or_known_default() {
-        Some(port) => port,
-        None => return Err(Error::Uri(UrlError::InvalidPort)),
-    };
-    trace!("port={:?}", port);
-    Ok((host, port))
+    *uri = path
 }
 
-mod scheme {
-
-    #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-    pub enum Scheme {
-        Http,
-        Https,
-        Other(String),
+fn absolute_form(uri: &mut Uri) {
+    debug_assert!(uri.scheme_part().is_some(), "absolute_form needs a scheme");
+    debug_assert!(uri.authority_part().is_some(), "absolute_form needs an authority");
+    // If the URI is to HTTPS, and the connector claimed to be a proxy,
+    // then it *should* have tunneled, and so we don't want to send
+    // absolute-form in that case.
+    if uri.scheme_part() == Some(&Scheme::HTTPS) {
+        origin_form(uri);
     }
+}
 
-    impl<'a> From<&'a str> for Scheme {
-        fn from(s: &'a str) -> Scheme {
-            match s {
-                "http" => Scheme::Http,
-                "https" => Scheme::Https,
-                s => Scheme::Other(String::from(s)),
+fn authority_form(uri: &mut Uri) {
+    if log_enabled!(::log::Level::Warn) {
+        if let Some(path) = uri.path_and_query() {
+            // `https://hyper.rs` would parse with `/` path, don't
+            // annoy people about that...
+            if path != "/" {
+                warn!(
+                    "HTTP/1.1 CONNECT request stripping path: {:?}",
+                    path
+                );
             }
         }
     }
+    *uri = match uri.authority_part() {
+        Some(auth) => {
+            let mut parts = ::http::uri::Parts::default();
+            parts.authority = Some(auth.clone());
+            Uri::from_parts(parts).expect("authority is valid")
+        },
+        None => {
+            unreachable!("authority_form with relative uri");
+        }
+    };
+}
 
-    impl AsRef<str> for Scheme {
-        fn as_ref(&self) -> &str {
-            match *self {
-                Scheme::Http => "http",
-                Scheme::Https => "https",
-                Scheme::Other(ref s) => s,
-            }
+fn set_scheme(uri: &mut Uri, scheme: Scheme) {
+    debug_assert!(uri.scheme_part().is_none(), "set_scheme expects no existing scheme");
+    let old = mem::replace(uri, Uri::default());
+    let mut parts: ::http::uri::Parts = old.into();
+    parts.scheme = Some(scheme);
+    parts.path_and_query = Some("/".parse().expect("slash is a valid path"));
+    *uri = Uri::from_parts(parts).expect("scheme is valid");
+}
+
+/// Builder for a Client
+#[derive(Clone)]
+pub struct Builder {
+    client_config: Config,
+    conn_builder: conn::Builder,
+    pool_config: pool::Config,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            client_config: Config {
+                retry_canceled_requests: true,
+                set_host: true,
+                ver: Ver::Auto,
+            },
+            conn_builder: conn::Builder::new(),
+            pool_config: pool::Config {
+                enabled: true,
+                keep_alive_timeout: Some(Duration::from_secs(90)),
+                max_idle_per_host: ::std::usize::MAX,
+            },
         }
     }
+}
 
+impl Builder {
+    /// Enable or disable keep-alive mechanics.
+    ///
+    /// Default is enabled.
+    #[inline]
+    pub fn keep_alive(&mut self, val: bool) -> &mut Self {
+        self.pool_config.enabled = val;
+        self
+    }
+
+    /// Set an optional timeout for idle sockets being kept-alive.
+    ///
+    /// Pass `None` to disable timeout.
+    ///
+    /// Default is 90 seconds.
+    #[inline]
+    pub fn keep_alive_timeout<D>(&mut self, val: D) -> &mut Self
+    where
+        D: Into<Option<Duration>>,
+    {
+        self.pool_config.keep_alive_timeout = val.into();
+        self
+    }
+
+    /// Set whether HTTP/1 connections should try to use vectored writes,
+    /// or always flatten into a single buffer.
+    ///
+    /// Note that setting this to false may mean more copies of body data,
+    /// but may also improve performance when an IO transport doesn't
+    /// support vectored writes well, such as most TLS implementations.
+    ///
+    /// Default is `true`.
+    #[inline]
+    pub fn http1_writev(&mut self, val: bool) -> &mut Self {
+        self.conn_builder.h1_writev(val);
+        self
+    }
+
+    /// Sets the exact size of the read buffer to *always* use.
+    ///
+    /// Default is an adaptive read buffer.
+    #[inline]
+    pub fn http1_read_buf_exact_size(&mut self, sz: usize) -> &mut Self {
+        self.conn_builder.h1_read_buf_exact_size(Some(sz));
+        self
+    }
+
+    /// Set whether HTTP/1 connections will write header names as title case at
+    /// the socket level.
+    ///
+    /// Note that this setting does not affect HTTP/2.
+    ///
+    /// Default is false.
+    pub fn http1_title_case_headers(&mut self, val: bool) -> &mut Self {
+        self.conn_builder.h1_title_case_headers(val);
+        self
+    }
+
+    /// Set whether the connection **must** use HTTP/2.
+    ///
+    /// The destination must either allow HTTP2 Prior Knowledge, or the
+    /// `Connect` should be configured to do use ALPN to upgrade to `h2`
+    /// as part of the connection process. This will not make the `Client`
+    /// utilize ALPN by itself.
+    ///
+    /// Note that setting this to true prevents HTTP/1 from being allowed.
+    ///
+    /// Default is false.
+    pub fn http2_only(&mut self, val: bool) -> &mut Self {
+        self.client_config.ver = if val {
+            Ver::Http2
+        } else {
+            Ver::Auto
+        };
+        self
+    }
+
+    /// Sets the maximum idle connection per host allowed in the pool.
+    ///
+    /// Default is `usize::MAX` (no limit).
+    pub fn max_idle_per_host(&mut self, max_idle: usize) -> &mut Self {
+        self.pool_config.max_idle_per_host = max_idle;
+        self
+    }
+
+    /// Set whether to retry requests that get disrupted before ever starting
+    /// to write.
+    ///
+    /// This means a request that is queued, and gets given an idle, reused
+    /// connection, and then encounters an error immediately as the idle
+    /// connection was found to be unusable.
+    ///
+    /// When this is set to `false`, the related `ResponseFuture` would instead
+    /// resolve to an `Error::Cancel`.
+    ///
+    /// Default is `true`.
+    #[inline]
+    pub fn retry_canceled_requests(&mut self, val: bool) -> &mut Self {
+        self.client_config.retry_canceled_requests = val;
+        self
+    }
+
+    /// Set whether to automatically add the `Host` header to requests.
+    ///
+    /// If true, and a request does not include a `Host` header, one will be
+    /// added automatically, derived from the authority of the `Uri`.
+    ///
+    /// Default is `true`.
+    #[inline]
+    pub fn set_host(&mut self, val: bool) -> &mut Self {
+        self.client_config.set_host = val;
+        self
+    }
+
+    /// Provide an executor to execute background `Connection` tasks.
+    pub fn executor<E>(&mut self, exec: E) -> &mut Self
+    where
+        E: Executor<Box<Future<Item=(), Error=()> + Send>> + Send + Sync + 'static,
+    {
+        self.conn_builder.executor(exec);
+        self
+    }
+
+    /// Builder a client with this configuration and the default `HttpConnector`.
+    #[cfg(feature = "runtime")]
+    pub fn build_http<B>(&self) -> Client<HttpConnector, B>
+    where
+        B: Payload + Send,
+        B::Data: Send,
+    {
+        let mut connector = HttpConnector::new(4);
+        if self.pool_config.enabled {
+            connector.set_keepalive(self.pool_config.keep_alive_timeout);
+        }
+        self.build(connector)
+    }
+
+    /// Combine the configuration of this builder with a connector to create a `Client`.
+    pub fn build<C, B>(&self, connector: C) -> Client<C, B>
+    where
+        C: Connect,
+        C::Transport: 'static,
+        C::Future: 'static,
+        B: Payload + Send,
+        B::Data: Send,
+    {
+        Client {
+            config: self.client_config,
+            conn_builder: self.conn_builder.clone(),
+            connector: Arc::new(connector),
+            pool: Pool::new(self.pool_config, &self.conn_builder.exec),
+        }
+    }
+}
+
+impl fmt::Debug for Builder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Builder")
+            .field("client_config", &self.client_config)
+            .field("conn_builder", &self.conn_builder)
+            .field("pool_config", &self.pool_config)
+            .finish()
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::io::Read;
-    use header::Server;
-    use http::h1::Http11Message;
-    use mock::{MockStream, MockSsl};
-    use super::{Client, RedirectPolicy};
-    use super::scheme::Scheme;
-    use super::proxy::Proxy;
-    use super::pool::Pool;
-    use url::Url;
-
-    mock_connector!(MockRedirectPolicy {
-        "http://127.0.0.1" =>       "HTTP/1.1 301 Redirect\r\n\
-                                     Location: http://127.0.0.2\r\n\
-                                     Server: mock1\r\n\
-                                     \r\n\
-                                    "
-        "http://127.0.0.2" =>       "HTTP/1.1 302 Found\r\n\
-                                     Location: https://127.0.0.3\r\n\
-                                     Server: mock2\r\n\
-                                     \r\n\
-                                    "
-        "https://127.0.0.3" =>      "HTTP/1.1 200 OK\r\n\
-                                     Server: mock3\r\n\
-                                     \r\n\
-                                    "
-    });
-
+mod unit_tests {
+    use super::*;
 
     #[test]
-    fn test_proxy() {
-        use super::pool::PooledStream;
-        type MessageStream = PooledStream<super::proxy::Proxied<MockStream, MockStream>>;
-        mock_connector!(ProxyConnector {
-            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
-        });
-        let tunnel = Proxy {
-            connector: ProxyConnector,
-            proxy: (Scheme::Http, "example.proxy".into(), 8008),
-            ssl: MockSsl,
-        };
-        let mut client = Client::with_connector(Pool::with_connector(Default::default(), tunnel));
-        client.proxy = Some((Scheme::Http, "example.proxy".into(), 8008));
-        let mut dump = vec![];
-        client.get("http://127.0.0.1/foo/bar").send().unwrap().read_to_end(&mut dump).unwrap();
-
-        let box_message = client.protocol.new_message("127.0.0.1", 80, "http").unwrap();
-        let message = box_message.downcast::<Http11Message>().unwrap();
-        let stream =  message.into_inner().downcast::<MessageStream>().unwrap().into_inner().into_normal().unwrap();
-
-        let s = ::std::str::from_utf8(&stream.write).unwrap();
-        let request_line = "GET http://127.0.0.1/foo/bar HTTP/1.1\r\n";
-        assert!(s.starts_with(request_line), "{:?} doesn't start with {:?}", s, request_line);
-        assert!(s.contains("Host: 127.0.0.1\r\n"));
+    fn set_relative_uri_with_implicit_path() {
+        let mut uri = "http://hyper.rs".parse().unwrap();
+        origin_form(&mut uri);
+        assert_eq!(uri.to_string(), "/");
     }
 
     #[test]
-    fn test_proxy_tunnel() {
-        use super::pool::PooledStream;
-        type MessageStream = PooledStream<super::proxy::Proxied<MockStream, MockStream>>;
+    fn test_origin_form() {
+        let mut uri = "http://hyper.rs/guides".parse().unwrap();
+        origin_form(&mut uri);
+        assert_eq!(uri.to_string(), "/guides");
 
-        mock_connector!(ProxyConnector {
-            b"HTTP/1.1 200 OK\r\n\r\n",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
-        });
-        let tunnel = Proxy {
-            connector: ProxyConnector,
-            proxy: (Scheme::Http, "example.proxy".into(), 8008),
-            ssl: MockSsl,
-        };
-        let mut client = Client::with_connector(Pool::with_connector(Default::default(), tunnel));
-        client.proxy = Some((Scheme::Http, "example.proxy".into(), 8008));
-        let mut dump = vec![];
-        client.get("https://127.0.0.1/foo/bar").send().unwrap().read_to_end(&mut dump).unwrap();
-
-        let box_message = client.protocol.new_message("127.0.0.1", 443, "https").unwrap();
-        let message = box_message.downcast::<Http11Message>().unwrap();
-        let stream = message.into_inner().downcast::<MessageStream>().unwrap().into_inner().into_tunneled().unwrap();
-
-        let s = ::std::str::from_utf8(&stream.write).unwrap();
-        let connect_line = "CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n";
-        assert_eq!(&s[..connect_line.len()], connect_line);
-
-        let s = &s[connect_line.len()..];
-        let request_line = "GET /foo/bar HTTP/1.1\r\n";
-        assert_eq!(&s[..request_line.len()], request_line);
-        assert!(s.contains("Host: 127.0.0.1\r\n"));
+        let mut uri = "http://hyper.rs/guides?foo=bar".parse().unwrap();
+        origin_form(&mut uri);
+        assert_eq!(uri.to_string(), "/guides?foo=bar");
     }
 
     #[test]
-    fn test_redirect_followall() {
-        let mut client = Client::with_connector(MockRedirectPolicy);
-        client.set_redirect_policy(RedirectPolicy::FollowAll);
+    fn test_absolute_form() {
+        let mut uri = "http://hyper.rs/guides".parse().unwrap();
+        absolute_form(&mut uri);
+        assert_eq!(uri.to_string(), "http://hyper.rs/guides");
 
-        let res = client.get("http://127.0.0.1").send().unwrap();
-        assert_eq!(res.headers.get(), Some(&Server("mock3".to_owned())));
+        let mut uri = "https://hyper.rs/guides".parse().unwrap();
+        absolute_form(&mut uri);
+        assert_eq!(uri.to_string(), "/guides");
     }
 
     #[test]
-    fn test_redirect_dontfollow() {
-        let mut client = Client::with_connector(MockRedirectPolicy);
-        client.set_redirect_policy(RedirectPolicy::FollowNone);
-        let res = client.get("http://127.0.0.1").send().unwrap();
-        assert_eq!(res.headers.get(), Some(&Server("mock1".to_owned())));
-    }
+    fn test_authority_form() {
+        extern crate pretty_env_logger;
+        let _ = pretty_env_logger::try_init();
 
-    #[test]
-    fn test_redirect_followif() {
-        fn follow_if(url: &Url) -> bool {
-            !url.as_str().contains("127.0.0.3")
-        }
-        let mut client = Client::with_connector(MockRedirectPolicy);
-        client.set_redirect_policy(RedirectPolicy::FollowIf(follow_if));
-        let res = client.get("http://127.0.0.1").send().unwrap();
-        assert_eq!(res.headers.get(), Some(&Server("mock2".to_owned())));
-    }
+        let mut uri = "http://hyper.rs".parse().unwrap();
+        authority_form(&mut uri);
+        assert_eq!(uri.to_string(), "hyper.rs");
 
-    mock_connector!(Issue640Connector {
-        b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n",
-        b"GET",
-        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n",
-        b"HEAD",
-        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n",
-        b"POST"
-    });
-
-    // see issue #640
-    #[test]
-    fn test_head_response_body_keep_alive() {
-        let client = Client::with_connector(Pool::with_connector(Default::default(), Issue640Connector));
-
-        let mut s = String::new();
-        client.get("http://127.0.0.1").send().unwrap().read_to_string(&mut s).unwrap();
-        assert_eq!(s, "GET");
-
-        let mut s = String::new();
-        client.head("http://127.0.0.1").send().unwrap().read_to_string(&mut s).unwrap();
-        assert_eq!(s, "");
-
-        let mut s = String::new();
-        client.post("http://127.0.0.1").send().unwrap().read_to_string(&mut s).unwrap();
-        assert_eq!(s, "POST");
-    }
-
-    #[test]
-    fn test_request_body_error_is_returned() {
-        mock_connector!(Connector {
-            b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n",
-            b"HELLO"
-        });
-
-        struct BadBody;
-
-        impl ::std::io::Read for BadBody {
-            fn read(&mut self, _buf: &mut [u8]) -> ::std::io::Result<usize> {
-                Err(::std::io::Error::new(::std::io::ErrorKind::Other, "BadBody read"))
-            }
-        }
-
-        let client = Client::with_connector(Connector);
-        let err = client.post("http://127.0.0.1").body(&mut BadBody).send().unwrap_err();
-        assert_eq!(err.to_string(), "BadBody read");
+        let mut uri = "hyper.rs".parse().unwrap();
+        authority_form(&mut uri);
+        assert_eq!(uri.to_string(), "hyper.rs");
     }
 }

@@ -3,20 +3,24 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* eslint no-dupe-keys:off */
+/* eslint-disable no-restricted-globals */
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.import("chrome://marionette/content/assert.js");
-const {element} = ChromeUtils.import("chrome://marionette/content/element.js", {});
+const { assert } = ChromeUtils.import("chrome://marionette/content/assert.js");
+const { element } = ChromeUtils.import(
+  "chrome://marionette/content/element.js"
+);
 const {
   InvalidArgumentError,
   MoveTargetOutOfBoundsError,
   UnsupportedOperationError,
-} = ChromeUtils.import("chrome://marionette/content/error.js", {});
-ChromeUtils.import("chrome://marionette/content/event.js");
-const {pprint} = ChromeUtils.import("chrome://marionette/content/format.js", {});
+} = ChromeUtils.import("chrome://marionette/content/error.js");
+const { event } = ChromeUtils.import("chrome://marionette/content/event.js");
+const { pprint } = ChromeUtils.import("chrome://marionette/content/format.js");
+const { Sleep } = ChromeUtils.import("chrome://marionette/content/sync.js");
 
 this.EXPORTED_SYMBOLS = ["action"];
 
@@ -52,10 +56,10 @@ const ACTIONS = {
 
 /** Map from normalized key value to UI Events modifier key name */
 const MODIFIER_NAME_LOOKUP = {
-  "Alt": "alt",
-  "Shift": "shift",
-  "Control": "ctrl",
-  "Meta": "meta",
+  Alt: "alt",
+  Shift: "shift",
+  Control: "ctrl",
+  Meta: "meta",
 };
 
 /** Map from raw key (codepoint) to normalized key value */
@@ -200,7 +204,7 @@ const KEY_CODE_LOOKUP = {
   "@": "Digit2",
   "#": "Digit3",
   "3": "Digit3",
-  "$": "Digit4",
+  $: "Digit4",
   "4": "Digit4",
   "%": "Digit5",
   "5": "Digit5",
@@ -234,60 +238,60 @@ const KEY_CODE_LOOKUP = {
   "\uE016": "Insert",
   "<": "IntlBackslash",
   ">": "IntlBackslash",
-  "A": "KeyA",
-  "a": "KeyA",
-  "B": "KeyB",
-  "b": "KeyB",
-  "C": "KeyC",
-  "c": "KeyC",
-  "D": "KeyD",
-  "d": "KeyD",
-  "E": "KeyE",
-  "e": "KeyE",
-  "F": "KeyF",
-  "f": "KeyF",
-  "G": "KeyG",
-  "g": "KeyG",
-  "H": "KeyH",
-  "h": "KeyH",
-  "I": "KeyI",
-  "i": "KeyI",
-  "J": "KeyJ",
-  "j": "KeyJ",
-  "K": "KeyK",
-  "k": "KeyK",
-  "L": "KeyL",
-  "l": "KeyL",
-  "M": "KeyM",
-  "m": "KeyM",
-  "N": "KeyN",
-  "n": "KeyN",
-  "O": "KeyO",
-  "o": "KeyO",
-  "P": "KeyP",
-  "p": "KeyP",
-  "Q": "KeyQ",
-  "q": "KeyQ",
-  "R": "KeyR",
-  "r": "KeyR",
-  "S": "KeyS",
-  "s": "KeyS",
-  "T": "KeyT",
-  "t": "KeyT",
-  "U": "KeyU",
-  "u": "KeyU",
-  "V": "KeyV",
-  "v": "KeyV",
-  "W": "KeyW",
-  "w": "KeyW",
-  "X": "KeyX",
-  "x": "KeyX",
-  "Y": "KeyY",
-  "y": "KeyY",
-  "Z": "KeyZ",
-  "z": "KeyZ",
+  A: "KeyA",
+  a: "KeyA",
+  B: "KeyB",
+  b: "KeyB",
+  C: "KeyC",
+  c: "KeyC",
+  D: "KeyD",
+  d: "KeyD",
+  E: "KeyE",
+  e: "KeyE",
+  F: "KeyF",
+  f: "KeyF",
+  G: "KeyG",
+  g: "KeyG",
+  H: "KeyH",
+  h: "KeyH",
+  I: "KeyI",
+  i: "KeyI",
+  J: "KeyJ",
+  j: "KeyJ",
+  K: "KeyK",
+  k: "KeyK",
+  L: "KeyL",
+  l: "KeyL",
+  M: "KeyM",
+  m: "KeyM",
+  N: "KeyN",
+  n: "KeyN",
+  O: "KeyO",
+  o: "KeyO",
+  P: "KeyP",
+  p: "KeyP",
+  Q: "KeyQ",
+  q: "KeyQ",
+  R: "KeyR",
+  r: "KeyR",
+  S: "KeyS",
+  s: "KeyS",
+  T: "KeyT",
+  t: "KeyT",
+  U: "KeyU",
+  u: "KeyU",
+  V: "KeyV",
+  v: "KeyV",
+  W: "KeyW",
+  w: "KeyW",
+  X: "KeyX",
+  x: "KeyX",
+  Y: "KeyY",
+  y: "KeyY",
+  Z: "KeyZ",
+  z: "KeyZ",
   "-": "Minus",
-  "_": "Minus",
+  _: "Minus",
   "\uE01A": "Numpad0",
   "\uE05C": "Numpad0",
   "\uE01B": "Numpad1",
@@ -321,7 +325,7 @@ const KEY_CODE_LOOKUP = {
   "\uE01F": "PageUp",
   ".": "Period",
   ">": "Period",
-  "\"": "Quote",
+  '"': "Quote",
   "'": "Quote",
   ":": "Semicolon",
   ";": "Semicolon",
@@ -365,9 +369,11 @@ action.PointerOrigin.get = function(obj) {
     assert.in(name, this, pprint`Unknown pointer-move origin: ${obj}`);
     origin = this[name];
   } else if (!element.isDOMElement(obj)) {
-    throw new InvalidArgumentError("Expected 'origin' to be undefined, " +
+    throw new InvalidArgumentError(
+      "Expected 'origin' to be undefined, " +
         '"viewport", "pointer", ' +
-        pprint`or an element, got: ${obj}`);
+        pprint`or an element, got: ${obj}`
+    );
   }
   return origin;
 };
@@ -463,10 +469,13 @@ class InputState {
     assert.in(type, ACTIONS, pprint`Unknown action type: ${type}`);
     let name = type == "none" ? "Null" : capitalize(type);
     if (name == "Pointer") {
-      if (!obj.pointerType &&
-          (!obj.parameters || !obj.parameters.pointerType)) {
+      if (
+        !obj.pointerType &&
+        (!obj.parameters || !obj.parameters.pointerType)
+      ) {
         throw new InvalidArgumentError(
-            pprint`Expected obj to have pointerType, got ${obj}`);
+          pprint`Expected obj to have pointerType, got ${obj}`
+        );
       }
       let pointerType = obj.pointerType || obj.parameters.pointerType;
       return new action.InputState[name](pointerType);
@@ -507,9 +516,10 @@ action.InputState.Key = class Key extends InputState {
       this[MODIFIER_NAME_LOOKUP[key]] = value;
     } else {
       throw new InvalidArgumentError(
-          "Expected 'key' to be one of " +
+        "Expected 'key' to be one of " +
           Object.keys(MODIFIER_NAME_LOOKUP) +
-          pprint`, got ${key}`);
+          pprint`, got ${key}`
+      );
     }
   }
 
@@ -576,8 +586,10 @@ action.InputState.Pointer = class Pointer extends InputState {
   constructor(subtype) {
     super();
     this.pressed = new Set();
-    assert.defined(subtype,
-        pprint`Expected subtype to be defined, got ${subtype}`);
+    assert.defined(
+      subtype,
+      pprint`Expected subtype to be defined, got ${subtype}`
+    );
     this.subtype = action.PointerType.get(subtype);
     this.x = 0;
     this.y = 0;
@@ -611,7 +623,7 @@ action.InputState.Pointer = class Pointer extends InputState {
     return this.pressed.add(button);
   }
 
-   /**
+  /**
    * Remove |button| from the set of pressed buttons.
    *
    * @param {number} button
@@ -685,13 +697,17 @@ action.Action = class {
     let subtype = actionItem.type;
     if (!subtypes.has(subtype)) {
       throw new InvalidArgumentError(
-          `Unknown subtype for ${type} action: ${subtype}`);
+        `Unknown subtype for ${type} action: ${subtype}`
+      );
     }
 
     let item = new action.Action(id, type, subtype);
     if (type === "pointer") {
-      action.processPointerAction(id,
-          action.PointerParameters.fromJSON(actionSequence.parameters), item);
+      action.processPointerAction(
+        id,
+        action.PointerParameters.fromJSON(actionSequence.parameters),
+        item
+      );
     }
 
     switch (item.subtype) {
@@ -701,35 +717,45 @@ action.Action = class {
         // TODO countGraphemes
         // TODO key.value could be a single code point like "\uE012"
         // (see rawKey) or "grapheme cluster"
-        assert.string(key,
-            "Expected 'value' to be a string that represents single code point " +
-            pprint`or grapheme cluster, got ${key}`);
+        assert.string(
+          key,
+          "Expected 'value' to be a string that represents single code point " +
+            pprint`or grapheme cluster, got ${key}`
+        );
         item.value = key;
         break;
 
       case action.PointerDown:
       case action.PointerUp:
-        assert.positiveInteger(actionItem.button,
-            pprint`Expected 'button' (${actionItem.button}) to be >= 0`);
+        assert.positiveInteger(
+          actionItem.button,
+          pprint`Expected 'button' (${actionItem.button}) to be >= 0`
+        );
         item.button = actionItem.button;
         break;
 
       case action.PointerMove:
         item.duration = actionItem.duration;
         if (typeof item.duration != "undefined") {
-          assert.positiveInteger(item.duration,
-              pprint`Expected 'duration' (${item.duration}) to be >= 0`);
+          assert.positiveInteger(
+            item.duration,
+            pprint`Expected 'duration' (${item.duration}) to be >= 0`
+          );
         }
         item.origin = action.PointerOrigin.get(actionItem.origin);
         item.x = actionItem.x;
         if (typeof item.x != "undefined") {
-          assert.integer(item.x,
-              pprint`Expected 'x' (${item.x}) to be an Integer`);
+          assert.integer(
+            item.x,
+            pprint`Expected 'x' (${item.x}) to be an Integer`
+          );
         }
         item.y = actionItem.y;
         if (typeof item.y != "undefined") {
-          assert.integer(item.y,
-              pprint`Expected 'y' (${item.y}) to be an Integer`);
+          assert.integer(
+            item.y,
+            pprint`Expected 'y' (${item.y}) to be an Integer`
+          );
         }
         break;
 
@@ -741,7 +767,8 @@ action.Action = class {
         if (typeof item.duration != "undefined") {
           // eslint-disable-next-line
           assert.positiveInteger(item.duration,
-              pprint`Expected 'duration' (${item.duration}) to be >= 0`);
+            pprint`Expected 'duration' (${item.duration}) to be >= 0`
+          );
         }
         break;
     }
@@ -771,8 +798,10 @@ action.Chain = class extends Array {
    *     If <var>actions</var> is not an Array.
    */
   static fromJSON(actions) {
-    assert.array(actions,
-        pprint`Expected 'actions' to be an array, got ${actions}`);
+    assert.array(
+      actions,
+      pprint`Expected 'actions' to be an array, got ${actions}`
+    );
 
     let actionsByTick = new action.Chain();
     for (let actionSequence of actions) {
@@ -781,7 +810,7 @@ action.Chain = class extends Array {
       let inputSourceActions = action.Sequence.fromJSON(actionSequence);
       for (let i = 0; i < inputSourceActions.length; i++) {
         // new tick
-        if (actionsByTick.length < (i + 1)) {
+        if (actionsByTick.length < i + 1) {
           actionsByTick.push([]);
         }
         actionsByTick[i].push(inputSourceActions[i]);
@@ -821,16 +850,18 @@ action.Sequence = class extends Array {
     assert.string(id, pprint`Expected 'id' to be a string, got ${id}`);
     let actionItems = actionSequence.actions;
     assert.array(
-        actionItems,
-        "Expected 'actionSequence.actions' to be an array, " +
-        pprint`got ${actionSequence.actions}`);
+      actionItems,
+      "Expected 'actionSequence.actions' to be an array, " +
+        pprint`got ${actionSequence.actions}`
+    );
 
     if (!action.inputStateMap.has(id)) {
       action.inputStateMap.set(id, inputSourceState);
     } else if (!action.inputStateMap.get(id).is(inputSourceState)) {
       throw new InvalidArgumentError(
-          `Expected ${id} to be mapped to ${inputSourceState}, ` +
-          `got ${action.inputStateMap.get(id)}`);
+        `Expected ${id} to be mapped to ${inputSourceState}, ` +
+          `got ${action.inputStateMap.get(id)}`
+      );
     }
 
     let actions = new action.Sequence();
@@ -891,20 +922,26 @@ action.PointerParameters = class {
  *     <code>act.type</code> or <code>pointerParams.pointerType</code>.
  */
 action.processPointerAction = function(id, pointerParams, act) {
-  if (action.inputStateMap.has(id) &&
-      action.inputStateMap.get(id).type !== act.type) {
+  if (
+    action.inputStateMap.has(id) &&
+    action.inputStateMap.get(id).type !== act.type
+  ) {
     throw new InvalidArgumentError(
-        `Expected 'id' ${id} to be mapped to InputState whose type is ` +
+      `Expected 'id' ${id} to be mapped to InputState whose type is ` +
         action.inputStateMap.get(id).type +
-        pprint` , got ${act.type}`);
+        pprint` , got ${act.type}`
+    );
   }
   let pointerType = pointerParams.pointerType;
-  if (action.inputStateMap.has(id) &&
-      action.inputStateMap.get(id).subtype !== pointerType) {
+  if (
+    action.inputStateMap.has(id) &&
+    action.inputStateMap.get(id).subtype !== pointerType
+  ) {
     throw new InvalidArgumentError(
-        `Expected 'id' ${id} to be mapped to InputState whose subtype is ` +
+      `Expected 'id' ${id} to be mapped to InputState whose subtype is ` +
         action.inputStateMap.get(id).subtype +
-        pprint` , got ${pointerType}`);
+        pprint` , got ${pointerType}`
+    );
   }
   act.pointerType = pointerParams.pointerType;
 };
@@ -913,7 +950,7 @@ action.processPointerAction = function(id, pointerParams, act) {
 action.Key = class {
   constructor(rawKey) {
     this.key = NORMALIZED_KEY_LOOKUP[rawKey] || rawKey;
-    this.code =  KEY_CODE_LOOKUP[rawKey];
+    this.code = KEY_CODE_LOOKUP[rawKey];
     this.location = KEY_LOCATION_LOOKUP[rawKey] || 0;
     this.altKey = false;
     this.shiftKey = false;
@@ -972,7 +1009,7 @@ action.Mouse = class {
  * @param {action.Chain} chain
  *     Actions grouped by tick; each element in |chain| is a sequence of
  *     actions for one tick.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  * @param {boolean=} [specCompatPointerOrigin=true] specCompatPointerOrigin
  *     Flag to turn off the WebDriver spec conforming pointer origin
@@ -983,15 +1020,16 @@ action.Mouse = class {
  * @return {Promise}
  *     Promise for dispatching all actions in |chain|.
  */
-action.dispatch = function(chain, window, specCompatPointerOrigin = true) {
+action.dispatch = function(chain, win, specCompatPointerOrigin = true) {
   action.specCompatPointerOrigin = specCompatPointerOrigin;
 
   let chainEvents = (async () => {
     for (let tickActions of chain) {
       await action.dispatchTickActions(
-          tickActions,
-          action.computeTickDuration(tickActions),
-          window);
+        tickActions,
+        action.computeTickDuration(tickActions),
+        win
+      );
     }
   })();
   return chainEvents;
@@ -1012,14 +1050,14 @@ action.dispatch = function(chain, window, specCompatPointerOrigin = true) {
  *     List of actions for one tick.
  * @param {number} tickDuration
  *     Duration in milliseconds of this tick.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise for dispatching all tick-actions and pending DOM events.
  */
-action.dispatchTickActions = function(tickActions, tickDuration, window) {
-  let pendingEvents = tickActions.map(toEvents(tickDuration, window));
+action.dispatchTickActions = function(tickActions, tickDuration, win) {
+  let pendingEvents = tickActions.map(toEvents(tickDuration, win));
   return Promise.all(pendingEvents);
 };
 
@@ -1035,8 +1073,9 @@ action.dispatchTickActions = function(tickActions, tickDuration, window) {
 action.computeTickDuration = function(tickActions) {
   let max = 0;
   for (let a of tickActions) {
-    let affectsWallClockTime = a.subtype == action.Pause ||
-        (a.type == "pointer" && a.subtype == action.PointerMove);
+    let affectsWallClockTime =
+      a.subtype == action.Pause ||
+      (a.type == "pointer" && a.subtype == action.PointerMove);
     if (affectsWallClockTime && a.duration) {
       max = Math.max(a.duration, max);
     }
@@ -1058,9 +1097,8 @@ action.computeTickDuration = function(tickActions) {
  * @return {Map.<string, number>}
  *     x and y coordinates of pointer destination.
  */
-action.computePointerDestination = function(
-    a, inputState, center = undefined) {
-  let {x, y} = a;
+action.computePointerDestination = function(a, inputState, center = undefined) {
+  let { x, y } = a;
   switch (a.origin) {
     case action.PointerOrigin.Viewport:
       break;
@@ -1076,7 +1114,7 @@ action.computePointerDestination = function(
       x += center.x;
       y += center.y;
   }
-  return {"x": x, "y": y};
+  return { x, y };
 };
 
 /**
@@ -1084,33 +1122,32 @@ action.computePointerDestination = function(
  *
  * @param {number} tickDuration
  *     Duration in milliseconds of this tick.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {function(action.Action): Promise}
  *     Function that takes an action and returns a Promise for dispatching
  *     the event that corresponds to that action.
  */
-function toEvents(tickDuration, window) {
+function toEvents(tickDuration, win) {
   return a => {
     let inputState = action.inputStateMap.get(a.id);
 
     switch (a.subtype) {
       case action.KeyUp:
-        return dispatchKeyUp(a, inputState, window);
+        return dispatchKeyUp(a, inputState, win);
 
       case action.KeyDown:
-        return dispatchKeyDown(a, inputState, window);
+        return dispatchKeyDown(a, inputState, win);
 
       case action.PointerDown:
-        return dispatchPointerDown(a, inputState, window);
+        return dispatchPointerDown(a, inputState, win);
 
       case action.PointerUp:
-        return dispatchPointerUp(a, inputState, window);
+        return dispatchPointerUp(a, inputState, win);
 
       case action.PointerMove:
-        return dispatchPointerMove(
-            a, inputState, tickDuration, window);
+        return dispatchPointerMove(a, inputState, tickDuration, win);
 
       case action.PointerCancel:
         throw new UnsupportedOperationError();
@@ -1130,14 +1167,14 @@ function toEvents(tickDuration, window) {
  *     Action to dispatch.
  * @param {action.InputState} inputState
  *     Input state for this action's input source.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise to dispatch at least a keydown event, and keypress if
  *     appropriate.
  */
-function dispatchKeyDown(a, inputState, window) {
+function dispatchKeyDown(a, inputState, win) {
   return new Promise(resolve => {
     let keyEvent = new action.Key(a.value);
     keyEvent.repeat = inputState.isPressed(keyEvent.key);
@@ -1147,9 +1184,9 @@ function dispatchKeyDown(a, inputState, window) {
     }
 
     // Append a copy of |a| with keyUp subtype
-    action.inputsToCancel.push(Object.assign({}, a, {subtype: action.KeyUp}));
+    action.inputsToCancel.push(Object.assign({}, a, { subtype: action.KeyUp }));
     keyEvent.update(inputState);
-    event.sendKeyDown(a.value, keyEvent, window);
+    event.sendKeyDown(a.value, keyEvent, win);
 
     resolve();
   });
@@ -1162,13 +1199,13 @@ function dispatchKeyDown(a, inputState, window) {
  *     Action to dispatch.
  * @param {action.InputState} inputState
  *     Input state for this action's input source.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise to dispatch a keyup event.
  */
-function dispatchKeyUp(a, inputState, window) {
+function dispatchKeyUp(a, inputState, win) {
   return new Promise(resolve => {
     let keyEvent = new action.Key(a.value);
 
@@ -1183,7 +1220,7 @@ function dispatchKeyUp(a, inputState, window) {
     inputState.release(keyEvent.key);
     keyEvent.update(inputState);
 
-    event.sendKeyUp(a.value, keyEvent, window);
+    event.sendKeyUp(a.value, keyEvent, win);
     resolve();
   });
 }
@@ -1196,13 +1233,13 @@ function dispatchKeyUp(a, inputState, window) {
  *     Action to dispatch.
  * @param {action.InputState} inputState
  *     Input state for this action's input source.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise to dispatch at least a pointerdown event.
  */
-function dispatchPointerDown(a, inputState, window) {
+function dispatchPointerDown(a, inputState, win) {
   return new Promise(resolve => {
     if (inputState.isPressed(a.button)) {
       resolve();
@@ -1211,7 +1248,7 @@ function dispatchPointerDown(a, inputState, window) {
 
     inputState.press(a.button);
     // Append a copy of |a| with pointerUp subtype
-    let copy = Object.assign({}, a, {subtype: action.PointerUp});
+    let copy = Object.assign({}, a, { subtype: action.PointerUp });
     action.inputsToCancel.push(copy);
 
     switch (inputState.subtype) {
@@ -1219,34 +1256,40 @@ function dispatchPointerDown(a, inputState, window) {
         let mouseEvent = new action.Mouse("mousedown", a.button);
         mouseEvent.update(inputState);
         if (mouseEvent.ctrlKey) {
-          if (Services.appinfo.OS !== "WINNT") {
+          if (Services.appinfo.OS === "Darwin") {
             mouseEvent.button = 2;
             event.DoubleClickTracker.resetClick();
           }
         } else if (event.DoubleClickTracker.isClicked()) {
-          mouseEvent = Object.assign({},
-              mouseEvent, {clickCount: 2});
+          mouseEvent = Object.assign({}, mouseEvent, { clickCount: 2 });
         }
         event.synthesizeMouseAtPoint(
+          inputState.x,
+          inputState.y,
+          mouseEvent,
+          win
+        );
+        if (
+          event.MouseButton.isSecondary(a.button) ||
+          (mouseEvent.ctrlKey && Services.appinfo.OS === "Darwin")
+        ) {
+          let contextMenuEvent = Object.assign({}, mouseEvent, {
+            type: "contextmenu",
+          });
+          event.synthesizeMouseAtPoint(
             inputState.x,
             inputState.y,
-            mouseEvent,
-            window);
-        if (event.MouseButton.isSecondary(a.button) ||
-            mouseEvent.ctrlKey && Services.appinfo.OS !== "WINNT") {
-          let contextMenuEvent = Object.assign({},
-              mouseEvent, {type: "contextmenu"});
-          event.synthesizeMouseAtPoint(
-              inputState.x,
-              inputState.y,
-              contextMenuEvent,
-              window);
+            contextMenuEvent,
+            win
+          );
         }
         break;
 
       case action.PointerType.Pen:
       case action.PointerType.Touch:
-        throw new UnsupportedOperationError("Only 'mouse' pointer type is supported");
+        throw new UnsupportedOperationError(
+          "Only 'mouse' pointer type is supported"
+        );
 
       default:
         throw new TypeError(`Unknown pointer type: ${inputState.subtype}`);
@@ -1264,13 +1307,13 @@ function dispatchPointerDown(a, inputState, window) {
  *     Action to dispatch.
  * @param {action.InputState} inputState
  *     Input state for this action's input source.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise to dispatch at least a pointerup event.
  */
-function dispatchPointerUp(a, inputState, window) {
+function dispatchPointerUp(a, inputState, win) {
   return new Promise(resolve => {
     if (!inputState.isPressed(a.button)) {
       resolve();
@@ -1284,16 +1327,21 @@ function dispatchPointerUp(a, inputState, window) {
         let mouseEvent = new action.Mouse("mouseup", a.button);
         mouseEvent.update(inputState);
         if (event.DoubleClickTracker.isClicked()) {
-          mouseEvent = Object.assign({},
-              mouseEvent, {clickCount: 2});
+          mouseEvent = Object.assign({}, mouseEvent, { clickCount: 2 });
         }
         event.synthesizeMouseAtPoint(
-            inputState.x, inputState.y, mouseEvent, window);
+          inputState.x,
+          inputState.y,
+          mouseEvent,
+          win
+        );
         break;
 
       case action.PointerType.Pen:
       case action.PointerType.Touch:
-        throw new UnsupportedOperationError("Only 'mouse' pointer type is supported");
+        throw new UnsupportedOperationError(
+          "Only 'mouse' pointer type is supported"
+        );
 
       default:
         throw new TypeError(`Unknown pointer type: ${inputState.subtype}`);
@@ -1316,14 +1364,14 @@ function dispatchPointerUp(a, inputState, window) {
  *     Action to dispatch.
  * @param {action.InputState} inputState
  *     Input state for this action's input source.
- * @param {WindowProxy} window
+ * @param {WindowProxy} win
  *     Current window global.
  *
  * @return {Promise}
  *     Promise to dispatch at least one pointermove event, as well as
  *     mousemove events as appropriate.
  */
-function dispatchPointerMove(a, inputState, tickDuration, window) {
+function dispatchPointerMove(a, inputState, tickDuration, win) {
   const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   // interval between pointermove increments in ms, based on common vsync
   const fps60 = 17;
@@ -1332,21 +1380,23 @@ function dispatchPointerMove(a, inputState, tickDuration, window) {
     const start = Date.now();
     const [startX, startY] = [inputState.x, inputState.y];
 
-    let coords = getElementCenter(a.origin, window);
+    let coords = getElementCenter(a.origin, win);
     let target = action.computePointerDestination(a, inputState, coords);
     const [targetX, targetY] = [target.x, target.y];
 
-    if (!inViewPort(targetX, targetY, window)) {
+    if (!inViewPort(targetX, targetY, win)) {
       throw new MoveTargetOutOfBoundsError(
-          `(${targetX}, ${targetY}) is out of bounds of viewport ` +
-          `width (${window.innerWidth}) ` +
-          `and height (${window.innerHeight})`);
+        `(${targetX}, ${targetY}) is out of bounds of viewport ` +
+          `width (${win.innerWidth}) ` +
+          `and height (${win.innerHeight})`
+      );
     }
 
-    const duration = typeof a.duration == "undefined" ? tickDuration : a.duration;
+    const duration =
+      typeof a.duration == "undefined" ? tickDuration : a.duration;
     if (duration === 0) {
       // move pointer to destination in one step
-      performOnePointerMove(inputState, targetX, targetY, window);
+      performOnePointerMove(inputState, targetX, targetY, win);
       resolve();
       return;
     }
@@ -1357,17 +1407,19 @@ function dispatchPointerMove(a, inputState, tickDuration, window) {
     let intermediatePointerEvents = (async () => {
       // wait |fps60| ms before performing first incremental pointer move
       await new Promise(resolveTimer =>
-          timer.initWithCallback(resolveTimer, fps60, ONE_SHOT));
+        timer.initWithCallback(resolveTimer, fps60, ONE_SHOT)
+      );
 
       let durationRatio = Math.floor(Date.now() - start) / duration;
       const epsilon = fps60 / duration / 10;
-      while ((1 - durationRatio) > epsilon) {
+      while (1 - durationRatio > epsilon) {
         let x = Math.floor(durationRatio * distanceX + startX);
         let y = Math.floor(durationRatio * distanceY + startY);
-        performOnePointerMove(inputState, x, y, window);
+        performOnePointerMove(inputState, x, y, win);
         // wait |fps60| ms before performing next pointer move
         await new Promise(resolveTimer =>
-            timer.initWithCallback(resolveTimer, fps60, ONE_SHOT));
+          timer.initWithCallback(resolveTimer, fps60, ONE_SHOT)
+        );
 
         durationRatio = Math.floor(Date.now() - start) / duration;
       }
@@ -1375,12 +1427,14 @@ function dispatchPointerMove(a, inputState, tickDuration, window) {
 
     // perform last pointer move after all incremental moves are resolved and
     // durationRatio is close enough to 1
-    intermediatePointerEvents.then(() => {
-      performOnePointerMove(inputState, targetX, targetY, window);
-      resolve();
-    }).catch(err => {
-      reject(err);
-    });
+    intermediatePointerEvents
+      .then(() => {
+        performOnePointerMove(inputState, targetX, targetY, win);
+        resolve();
+      })
+      .catch(err => {
+        reject(err);
+      });
   });
 }
 
@@ -1399,7 +1453,9 @@ function performOnePointerMove(inputState, targetX, targetY, win) {
 
     case action.PointerType.Pen:
     case action.PointerType.Touch:
-      throw new UnsupportedOperationError("Only 'mouse' pointer type is supported");
+      throw new UnsupportedOperationError(
+        "Only 'mouse' pointer type is supported"
+      );
 
     default:
       throw new TypeError(`Unknown pointer type: ${inputState.subtype}`);
@@ -1410,8 +1466,8 @@ function performOnePointerMove(inputState, targetX, targetY, win) {
 }
 
 /**
- * Dispatch a pause action equivalent waiting for |a.duration|
- * milliseconds, or a default time interval of |tickDuration|.
+ * Dispatch a pause action equivalent waiting for `a.duration`
+ * milliseconds, or a default time interval of `tickDuration`.
  *
  * @param {action.Action} a
  *     Action to dispatch.
@@ -1422,11 +1478,8 @@ function performOnePointerMove(inputState, targetX, targetY, win) {
  *     Promise that is resolved after the specified time interval.
  */
 function dispatchPause(a, tickDuration) {
-  const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
-  let duration = typeof a.duration == "undefined" ? tickDuration : a.duration;
-  return new Promise(resolve =>
-      timer.initWithCallback(resolve, duration, Ci.nsITimer.TYPE_ONE_SHOT)
-  );
+  let ms = typeof a.duration == "undefined" ? tickDuration : a.duration;
+  return Sleep(ms);
 }
 
 // helpers
@@ -1443,10 +1496,10 @@ function inViewPort(x, y, win) {
   return !(x < 0 || y < 0 || x > win.innerWidth || y > win.innerHeight);
 }
 
-function getElementCenter(el, window) {
+function getElementCenter(el, win) {
   if (element.isDOMElement(el)) {
     if (action.specCompatPointerOrigin) {
-      return element.getInViewCentrePoint(el.getClientRects()[0], window);
+      return element.getInViewCentrePoint(el.getClientRects()[0], win);
     }
     return element.coordinates(el);
   }

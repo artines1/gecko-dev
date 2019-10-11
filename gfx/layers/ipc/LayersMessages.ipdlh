@@ -7,7 +7,6 @@
 
 include LayersSurfaces;
 include protocol PCompositorBridge;
-include protocol PRenderFrame;
 include protocol PTexture;
 
 include "gfxipc/ShadowLayerUtils.h";
@@ -20,6 +19,7 @@ using struct mozilla::gfx::Color from "mozilla/gfx/2D.h";
 using struct mozilla::gfx::Point3D from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntPoint from "mozilla/gfx/Point.h";
 using class mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
+using nscolor from "nsColor.h";
 using nscoord from "nsCoord.h";
 using struct nsRect from "nsRect.h";
 using struct nsPoint from "nsPoint.h";
@@ -27,13 +27,14 @@ using class mozilla::TimeDuration from "mozilla/TimeStamp.h";
 using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
 using mozilla::ScreenRotation from "mozilla/WidgetUtils.h";
 using nsCSSPropertyID from "nsCSSPropertyID.h";
-using mozilla::dom::ScreenOrientationInternal from "mozilla/dom/ScreenOrientation.h";
+using hal::ScreenOrientation from "mozilla/HalScreenConfiguration.h";
 using struct mozilla::layers::TextureInfo from "mozilla/layers/CompositorTypes.h";
 using mozilla::LayerMargin from "Units.h";
 using mozilla::LayerPoint from "Units.h";
 using mozilla::LayerCoord from "Units.h";
 using mozilla::LayerSize from "Units.h";
 using mozilla::LayerRect from "Units.h";
+using mozilla::LayerIntRect from "Units.h";
 using mozilla::LayerIntRegion from "Units.h";
 using mozilla::ParentLayerIntRect from "Units.h";
 using mozilla::LayoutDeviceIntRect from "Units.h";
@@ -43,16 +44,17 @@ using mozilla::layers::EventRegionsOverride from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::DiagnosticTypes from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::FocusTarget from "mozilla/layers/FocusTarget.h";
 using struct mozilla::layers::ScrollMetadata from "FrameMetrics.h";
-using mozilla::layers::FrameMetrics::ViewID from "FrameMetrics.h";
+using mozilla::layers::ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using mozilla::layers::LayersBackend from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::MaybeLayerClip from "FrameMetrics.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::CompositionPayload from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::SimpleLayerAttributes from "mozilla/layers/LayerAttributes.h";
 using mozilla::CrossProcessSemaphoreHandle from "mozilla/ipc/CrossProcessSemaphore.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
+using mozilla::VsyncId from "mozilla/VsyncDispatcher.h";
 
 namespace mozilla {
 namespace layers {
@@ -60,7 +62,7 @@ namespace layers {
 struct TargetConfig {
   IntRect naturalBounds;
   ScreenRotation rotation;
-  ScreenOrientationInternal orientation;
+  ScreenOrientation orientation;
   nsIntRegion clearRegion;
 };
 
@@ -96,19 +98,13 @@ struct CubicBezierFunction {
 
 struct StepFunction {
   int steps;
-  // 1 = nsTimingFunction::StepStart, 2 = nsTimingFunction::StepEnd
-  int type;
-};
-
-struct FramesFunction {
-  int frames;
+  uint8_t type; // Converted from StyleStepPosition.
 };
 
 union TimingFunction {
   null_t;
   CubicBezierFunction;
   StepFunction;
-  FramesFunction;
 };
 
 // Send the angle with units rather than sending all angles in radians
@@ -145,6 +141,13 @@ struct Translation {
   float z;
 };
 
+union Rotate {
+  // null_t represents |rotate: none|.
+  null_t;
+  Rotation;
+  Rotation3D;
+};
+
 union TransformFunction {
   Perspective;
   RotationX;
@@ -160,14 +163,13 @@ union TransformFunction {
   TransformMatrix;
 };
 
-union MaybeTimeDuration {
-  null_t;
-  TimeDuration;
-};
-
 union Animatable {
   null_t;
   float;
+  nscolor;
+  Rotate;
+  Scale;
+  Translation;
   TransformFunction[];
 };
 
@@ -197,18 +199,13 @@ struct TransformData {
   bool hasPerspectiveParent;
 };
 
-union AnimationData {
-  null_t;
-  TransformData;
-};
-
 struct Animation {
   // The zero time of this Animation's timeline. May be null if isNotPlaying is
   // true.
   TimeStamp originTime;
   // The start time is relative to the originTime. This allows us to represent
   // start times in the distant past that cannot be expressed using a TimeStamp.
-  MaybeTimeDuration startTime;
+  TimeDuration? startTime;
   TimeDuration delay;
   TimeDuration endDelay;
   // The value of the animation's current time at the moment it was sent to the
@@ -236,7 +233,7 @@ struct Animation {
   // This uses dom::FillMode.
   uint8_t fillMode;
   nsCSSPropertyID property;
-  AnimationData data;
+  TransformData? data;
   float playbackRate;
   // When performing an asynchronous update to the playbackRate, |playbackRate|
   // above is the updated playbackRate while |previousPlaybackRate| is the
@@ -253,6 +250,11 @@ struct Animation {
   // True if the animation has a fixed current time (e.g. paused and
   // forward-filling animations).
   bool isNotPlaying;
+  // True if this is not an animating property. For some transform-like
+  // properties, we just send their baseStyles for merging with other animating
+  // properties. In this case, we don't have animation information on this
+  // property, and so don't need to do interpolation.
+  bool isNotAnimating;
   // The base style that animations should composite with. This is only set for
   // animations with a composite mode of additive or accumulate, and only for
   // the first animation in the set (i.e. the animation that is lowest in the
@@ -291,7 +293,6 @@ struct ContainerLayerAttributes {
   float inheritedXScale;
   float inheritedYScale;
   float presShellResolution;
-  bool scaleToResolution;
 };
 
 struct GlyphArray
@@ -305,6 +306,7 @@ struct CanvasLayerAttributes    { SamplingFilter samplingFilter; IntRect bounds;
 struct RefLayerAttributes {
   LayersId id;
   EventRegionsOverride eventRegionsOverride;
+  LayerIntRect remoteDocumentRect;
 };
 struct ImageLayerAttributes     { SamplingFilter samplingFilter; IntSize scaleToSize; ScaleMode scaleMode; };
 
@@ -355,7 +357,7 @@ struct OpWindowOverlayChanged { };
 struct ShmemSection {
   Shmem shmem;
   uint32_t offset;
-  size_t size;
+  uint32_t size;
 };
 
 struct CrossProcessSemaphoreDescriptor {
@@ -369,14 +371,9 @@ union ReadLockDescriptor {
   null_t;
 };
 
-union MaybeTexture {
-  PTexture;
-  null_t;
-};
-
 struct TexturedTileDescriptor {
   PTexture texture;
-  MaybeTexture textureOnWhite;
+  PTexture? textureOnWhite;
   IntRect updateRect;
   bool readLocked;
   bool readLockedOnWhite;
@@ -450,11 +447,6 @@ struct OpUseComponentAlphaTextures {
   PTexture textureOnWhite;
   bool readLockedBlack;
   bool readLockedWhite;
-};
-
-union MaybeRegion {
-  nsIntRegion;
-  null_t;
 };
 
 struct OpNotifyNotUsed {
@@ -560,18 +552,22 @@ struct TransactionInfo
   bool scheduleComposite;
   uint32_t paintSequenceNumber;
   bool isRepeatTransaction;
+  VsyncId vsyncId;
+  TimeStamp vsyncStart;
   TimeStamp refreshStart;
   TimeStamp transactionStart;
+  bool containsSVG;
+  nsCString url;
   TimeStamp fwdTime;
-};
-
-union MaybeTransform {
-  Matrix4x4;
-  void_t;
+  /* This provides some timing information on any content that is meant to be
+   * presented during this transaction.
+   */
+  CompositionPayload[] payload;
 };
 
 union OMTAValue {
   null_t;
+  nscolor;
   float;
   Matrix4x4;
 };

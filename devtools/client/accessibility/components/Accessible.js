@@ -6,27 +6,54 @@
 /* global EVENTS, gTelemetry, gToolbox */
 
 // React & Redux
-const { createFactory, Component } = require("devtools/client/shared/vendor/react");
-const { div, span } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  createFactory,
+  Component,
+} = require("devtools/client/shared/vendor/react");
+const {
+  div,
+  span,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 
-const { TREE_ROW_HEIGHT, ORDERED_PROPS, ACCESSIBLE_EVENTS, VALUE_FLASHING_DURATION } =
-  require("../constants");
+const {
+  TREE_ROW_HEIGHT,
+  ORDERED_PROPS,
+  ACCESSIBLE_EVENTS,
+  VALUE_FLASHING_DURATION,
+} = require("../constants");
 const { L10N } = require("../utils/l10n");
-const {flashElementOn, flashElementOff} =
-      require("devtools/client/inspector/markup/utils");
+const {
+  flashElementOn,
+  flashElementOff,
+} = require("devtools/client/inspector/markup/utils");
 const { updateDetails } = require("../actions/details");
+const { select, unhighlight } = require("../actions/accessibles");
 
-const Tree = createFactory(require("devtools/client/shared/components/VirtualizedTree"));
+const Tree = createFactory(
+  require("devtools/client/shared/components/VirtualizedTree")
+);
 // Reps
 const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
-const { Rep, ElementNode } = REPS;
+const { Rep, ElementNode, Accessible: AccessibleRep, Obj } = REPS;
 
-loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+const {
+  translateNodeFrontToGrip,
+} = require("devtools/client/inspector/shared/utils");
 
-const TELEMETRY_NODE_INSPECTED_COUNT = "devtools.accessibility.node_inspected_count";
+loader.lazyRequireGetter(
+  this,
+  "openContentLink",
+  "devtools/client/shared/link",
+  true
+);
+
+const TELEMETRY_NODE_INSPECTED_COUNT =
+  "devtools.accessibility.node_inspected_count";
+
+const TREE_DEPTH_PADDING_INCREMENT = 20;
 
 class AccessiblePropertyClass extends Component {
   static get propTypes() {
@@ -34,15 +61,19 @@ class AccessiblePropertyClass extends Component {
       accessible: PropTypes.string,
       object: PropTypes.any,
       focused: PropTypes.bool,
-      children: PropTypes.func
+      children: PropTypes.func,
     };
   }
 
   componentDidUpdate({ object: prevObject, accessible: prevAccessible }) {
     const { accessible, object, focused } = this.props;
     // Fast check if row is focused or if the value did not update.
-    if (focused || accessible !== prevAccessible || prevObject === object ||
-        (object && prevObject && typeof object === "object")) {
+    if (
+      focused ||
+      accessible !== prevAccessible ||
+      prevObject === object ||
+      (object && prevObject && typeof object === "object")
+    ) {
       return;
     }
 
@@ -76,7 +107,10 @@ class Accessible extends Component {
       DOMNode: PropTypes.object,
       items: PropTypes.array,
       labelledby: PropTypes.string.isRequired,
-      parents: PropTypes.object
+      parents: PropTypes.object,
+      relations: PropTypes.object,
+      supports: PropTypes.object,
+      accessibilityWalker: PropTypes.object.isRequired,
     };
   }
 
@@ -85,7 +119,8 @@ class Accessible extends Component {
 
     this.state = {
       expanded: new Set(),
-      focused: null
+      active: null,
+      focused: null,
     };
 
     this.onAccessibleInspected = this.onAccessibleInspected.bind(this);
@@ -94,7 +129,10 @@ class Accessible extends Component {
   }
 
   componentWillMount() {
-    window.on(EVENTS.NEW_ACCESSIBLE_FRONT_INSPECTED, this.onAccessibleInspected);
+    window.on(
+      EVENTS.NEW_ACCESSIBLE_FRONT_INSPECTED,
+      this.onAccessibleInspected
+    );
   }
 
   componentWillReceiveProps({ accessible }) {
@@ -113,7 +151,10 @@ class Accessible extends Component {
   }
 
   componentWillUnmount() {
-    window.off(EVENTS.NEW_ACCESSIBLE_FRONT_INSPECTED, this.onAccessibleInspected);
+    window.off(
+      EVENTS.NEW_ACCESSIBLE_FRONT_INSPECTED,
+      this.onAccessibleInspected
+    );
 
     const { accessible } = this.props;
     if (accessible) {
@@ -128,11 +169,16 @@ class Accessible extends Component {
     }
   }
 
-  update() {
-    const { dispatch, accessible } = this.props;
-    if (gToolbox) {
-      dispatch(updateDetails(gToolbox.walker, accessible));
+  async update() {
+    const { dispatch, accessible, supports } = this.props;
+    if (!accessible.actorID) {
+      return;
     }
+
+    const domWalker = (await accessible.targetFront.getFront("inspector"))
+      .walker;
+
+    dispatch(updateDetails(domWalker, accessible, supports));
   }
 
   setExpanded(item, isExpanded) {
@@ -147,20 +193,56 @@ class Accessible extends Component {
     this.setState({ expanded });
   }
 
-  showHighlighter(nodeFront) {
+  async showHighlighter(nodeFront) {
     if (!gToolbox) {
       return;
     }
 
-    gToolbox.highlighterUtils.highlightNodeFront(nodeFront);
+    const { highlighterFront } = nodeFront;
+    await highlighterFront.highlight(nodeFront);
   }
 
-  hideHighlighter() {
+  async hideHighlighter(nodeFront) {
     if (!gToolbox) {
       return;
     }
 
-    gToolbox.highlighterUtils.unhighlight();
+    const { highlighterFront } = nodeFront;
+    await highlighterFront.unhighlight();
+  }
+
+  showAccessibleHighlighter(accessible) {
+    const { accessibilityWalker, dispatch } = this.props;
+    dispatch(unhighlight());
+
+    if (!accessible || !accessibilityWalker) {
+      return;
+    }
+
+    accessibilityWalker.highlightAccessible(accessible).catch(error => {
+      // Only report an error where there's still a toolbox. Ignore cases where toolbox is
+      // already destroyed.
+      if (gToolbox) {
+        console.error(error);
+      }
+    });
+  }
+
+  hideAccessibleHighlighter() {
+    const { accessibilityWalker, dispatch } = this.props;
+    dispatch(unhighlight());
+
+    if (!accessibilityWalker) {
+      return;
+    }
+
+    accessibilityWalker.unhighlight().catch(error => {
+      // Only report an error where there's still a toolbox. Ignore cases where toolbox is
+      // already destroyed.
+      if (gToolbox) {
+        console.error(error);
+      }
+    });
   }
 
   selectNode(nodeFront, reason = "accessibility") {
@@ -172,8 +254,26 @@ class Accessible extends Component {
       return;
     }
 
-    gToolbox.selectTool("inspector").then(() =>
-      gToolbox.selection.setNodeFront(nodeFront, reason));
+    gToolbox
+      .selectTool("inspector")
+      .then(() => gToolbox.selection.setNodeFront(nodeFront, reason));
+  }
+
+  async selectAccessible(accessible) {
+    const { accessibilityWalker, dispatch } = this.props;
+    if (!accessibilityWalker) {
+      return;
+    }
+
+    await dispatch(select(accessibilityWalker, accessible));
+
+    const { props } = this.refs;
+    if (props) {
+      props.refs.tree.blur();
+    }
+    await this.setState({ active: null, focused: null });
+
+    window.emit(EVENTS.NEW_ACCESSIBLE_FRONT_INSPECTED);
   }
 
   openLink(link, e) {
@@ -186,42 +286,66 @@ class Accessible extends Component {
       object,
       mode: MODE.TINY,
       title: "Object",
-      openLink: this.openLink
+      openLink: this.openLink,
     };
 
     if (isNode(object)) {
       valueProps.defaultRep = ElementNode;
-      valueProps.onDOMNodeMouseOut = () => this.hideHighlighter();
-      valueProps.onDOMNodeMouseOver = () => this.showHighlighter(this.props.DOMNode);
+      valueProps.onDOMNodeMouseOut = () =>
+        this.hideHighlighter(this.props.DOMNode);
+      valueProps.onDOMNodeMouseOver = () =>
+        this.showHighlighter(this.props.DOMNode);
       valueProps.onInspectIconClick = () => this.selectNode(this.props.DOMNode);
+    } else if (isAccessible(object)) {
+      const target = findAccessibleTarget(this.props.relations, object.actor);
+      valueProps.defaultRep = AccessibleRep;
+      valueProps.onAccessibleMouseOut = () => this.hideAccessibleHighlighter();
+      valueProps.onAccessibleMouseOver = () =>
+        this.showAccessibleHighlighter(target);
+      valueProps.onInspectIconClick = (obj, e) => {
+        e.stopPropagation();
+        this.selectAccessible(target);
+      };
+      valueProps.separatorText = "";
+    } else if (item.name === "relations") {
+      valueProps.defaultRep = Obj;
+    } else {
+      valueProps.noGrip = true;
     }
 
-    const classList = [ "node", "object-node" ];
+    const classList = ["node", "object-node"];
     if (focused) {
       classList.push("focused");
     }
 
+    const depthPadding = depth * TREE_DEPTH_PADDING_INCREMENT;
+
     return AccessibleProperty(
       { object, focused, accessible: this.props.accessible.actorID },
-      () => div({
-        className: classList.join(" "),
-        style: { paddingInlineStart: depth * 15 },
-        onClick: e => {
-          if (e.target.classList.contains("theme-twisty")) {
-            this.setExpanded(item, !expanded);
-          }
-        }
-      },
-        arrow,
-        span({ className: "object-label" }, item.name),
-        span({ className: "object-delimiter" }, ":"),
-        span({ className: "object-value" }, Rep(valueProps) || "")
-      )
+      () =>
+        div(
+          {
+            className: classList.join(" "),
+            style: {
+              paddingInlineStart: depthPadding,
+              inlineSize: `calc(var(--accessibility-properties-item-width) - ${depthPadding}px)`,
+            },
+            onClick: e => {
+              if (e.target.classList.contains("theme-twisty")) {
+                this.setExpanded(item, !expanded);
+              }
+            },
+          },
+          arrow,
+          span({ className: "object-label" }, item.name),
+          span({ className: "object-delimiter" }, ":"),
+          span({ className: "object-value" }, Rep(valueProps) || "")
+        )
     );
   }
 
   render() {
-    const { expanded, focused } = this.state;
+    const { expanded, active, focused } = this.state;
     const { items, parents, accessible, labelledby } = this.props;
 
     if (accessible) {
@@ -241,34 +365,63 @@ class Accessible extends Component {
             this.setState({ focused: item.path });
           }
         },
-        onActivate: ({ contents }) => {
-          if (isNode(contents)) {
-            this.selectNode(this.props.DOMNode, "accessibility-keyboard");
+        onActivate: item => {
+          if (item == null) {
+            this.setState({ active: null });
+          } else if (this.state.active !== item.path) {
+            this.setState({ active: item.path });
           }
         },
-        focused: findFocused(focused, items),
+        focused: findByPath(focused, items),
+        active: findByPath(active, items),
         renderItem: this.renderItem,
-        labelledby
+        labelledby,
       });
     }
 
-    return div({ className: "info" },
-               L10N.getStr("accessibility.accessible.notAvailable"));
+    return div(
+      { className: "info" },
+      L10N.getStr("accessibility.accessible.notAvailable")
+    );
   }
 }
 
 /**
- * Find currently focused item.
- * @param  {String} focused Key of the currently focused item.
- * @param  {Array}  items   Accessibility properties array.
- * @return {Object?}        Possibly found focused item.
+ * Match accessibility object from relations targets to the grip that's being activated.
+ * @param  {Object} relations  Object containing relations grouped by type and targets.
+ * @param  {String} actorID    Actor ID to match to the relation target.
+ * @return {Object}            Accessible front that matches the relation target.
  */
-const findFocused = (focused, items) => {
+const findAccessibleTarget = (relations, actorID) => {
+  for (const relationType in relations) {
+    let targets = relations[relationType];
+    targets = Array.isArray(targets) ? targets : [targets];
+    for (const target of targets) {
+      if (target.actorID === actorID) {
+        return target;
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Find an item based on a given path.
+ * @param  {String} path
+ *         Key of the item to be looked up.
+ * @param  {Array}  items
+ *         Accessibility properties array.
+ * @return {Object?}
+ *         Possibly found item.
+ */
+const findByPath = (path, items) => {
   for (const item of items) {
-    if (item.path === focused) {
+    if (item.path === path) {
       return item;
     }
-    const found = findFocused(focused, item.children);
+
+    const found = findByPath(path, item.children);
     if (found) {
       return found;
     }
@@ -284,37 +437,36 @@ const findFocused = (focused, items) => {
 const isNode = value => value && value.typeName === "domnode";
 
 /**
- * While waiting for a reps fix in https://github.com/devtools-html/reps/issues/92,
- * translate nodeFront to a grip-like object that can be used with an ElementNode rep.
+ * Check if a given property is an Accessible actor.
+ * @param  {Object?} value A property to check for being an Accessible.
+ * @return {Boolean}       A flag that indicates whether a property is an Accessible.
+ */
+const isAccessible = value => value && value.typeName === "accessible";
+
+/**
+ * While waiting for a reps fix in https://github.com/firefox-devtools/reps/issues/92,
+ * translate accessibleFront to a grip-like object that can be used with an Accessible
+ * rep.
  *
- * @params  {NodeFront} nodeFront
- *          The NodeFront for which we want to create a grip-like object.
+ * @params  {accessibleFront} accessibleFront
+ *          The AccessibleFront for which we want to create a grip-like object.
  * @returns {Object} a grip-like object that can be used with Reps.
  */
-const translateNodeFrontToGrip = nodeFront => {
-  const { attributes, actorID, typeName, nodeName, nodeType } = nodeFront;
+const translateAccessibleFrontToGrip = accessibleFront => ({
+  actor: accessibleFront.actorID,
+  typeName: accessibleFront.typeName,
+  preview: {
+    name: accessibleFront.name,
+    role: accessibleFront.role,
+    // All the grid containers are assumed to be in the Accessibility tree.
+    isConnected: true,
+  },
+});
 
-  // The main difference between NodeFront and grips is that attributes are treated as
-  // a map in grips and as an array in NodeFronts.
-  const attributesMap = {};
-  for (const { name, value } of attributes) {
-    attributesMap[name] = value;
-  }
-
-  return {
-    actor: actorID,
-    typeName,
-    preview: {
-      attributes: attributesMap,
-      attributesLength: attributes.length,
-      // All the grid containers are assumed to be in the DOM tree.
-      isConnected: true,
-      // nodeName is already lowerCased in Node grips
-      nodeName: nodeName.toLowerCase(),
-      nodeType
-    }
-  };
-};
+const translateNodeFrontToGripWrapper = nodeFront => ({
+  ...translateNodeFrontToGrip(nodeFront),
+  typeName: nodeFront.typeName,
+});
 
 /**
  * Build props ingestible by Tree component.
@@ -330,7 +482,9 @@ const makeItemsForDetails = (props, parentPath) =>
 
     if (contents) {
       if (isNode(contents)) {
-        contents = translateNodeFrontToGrip(contents);
+        contents = translateNodeFrontToGripWrapper(contents);
+      } else if (isAccessible(contents)) {
+        contents = translateAccessibleFrontToGrip(contents);
       } else if (Array.isArray(contents) || typeof contents === "object") {
         children = makeItemsForDetails(contents, path);
       }
@@ -339,7 +493,7 @@ const makeItemsForDetails = (props, parentPath) =>
     return { name, path, contents, children };
   });
 
-const makeParentMap = (items) => {
+const makeParentMap = items => {
   const map = new WeakMap();
 
   function _traverse(item) {
@@ -355,19 +509,32 @@ const makeParentMap = (items) => {
   return map;
 };
 
-const mapStateToProps = ({ details }) => {
-  const { accessible, DOMNode } = details;
+const mapStateToProps = ({ details, ui }) => {
+  const { accessible, DOMNode, relations } = details;
+  const { supports } = ui;
   if (!accessible || !DOMNode) {
     return {};
   }
 
-  const items = makeItemsForDetails(ORDERED_PROPS.reduce((props, key) => {
-    props[key] = key === "DOMNode" ? DOMNode : accessible[key];
-    return props;
-  }, {}), "");
+  const items = makeItemsForDetails(
+    ORDERED_PROPS.reduce((props, key) => {
+      if (key === "DOMNode") {
+        props.DOMNode = DOMNode;
+      } else if (key === "relations") {
+        if (supports.relations) {
+          props.relations = relations;
+        }
+      } else {
+        props[key] = accessible[key];
+      }
+
+      return props;
+    }, {}),
+    ""
+  );
   const parents = makeParentMap(items);
 
-  return { accessible, DOMNode, items, parents };
+  return { accessible, DOMNode, items, parents, relations, supports };
 };
 
 module.exports = connect(mapStateToProps)(Accessible);

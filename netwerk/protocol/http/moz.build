@@ -9,6 +9,7 @@ with Files('**'):
 
 XPIDL_SOURCES += [
     'nsIBackgroundChannelRegistrar.idl',
+    'nsIChildProcessChannelListener.idl',
     'nsIHttpActivityObserver.idl',
     'nsIHttpAuthenticableChannel.idl',
     'nsIHttpAuthenticator.idl',
@@ -37,6 +38,10 @@ EXPORTS += [
 EXPORTS.mozilla.net += [
     'AltDataOutputStreamChild.h',
     'AltDataOutputStreamParent.h',
+    'BackgroundChannelRegistrar.h',
+    'ClassifierDummyChannel.h',
+    'ClassifierDummyChannelChild.h',
+    'ClassifierDummyChannelParent.h',
     'HttpAuthUtils.h',
     'HttpBackgroundChannelChild.h',
     'HttpBackgroundChannelParent.h',
@@ -46,6 +51,7 @@ EXPORTS.mozilla.net += [
     'HttpInfo.h',
     'nsServerTiming.h',
     'NullHttpChannel.h',
+    'ParentChannelListener.h',
     'PHttpChannelParams.h',
     'PSpdyPush.h',
     'TimingStruct.h',
@@ -62,7 +68,11 @@ UNIFIED_SOURCES += [
     'ASpdySession.cpp',
     'BackgroundChannelRegistrar.cpp',
     'CacheControlParser.cpp',
+    'ClassifierDummyChannel.cpp',
+    'ClassifierDummyChannelChild.cpp',
+    'ClassifierDummyChannelParent.cpp',
     'ConnectionDiagnostics.cpp',
+    'DelayHttpChannelQueue.cpp',
     'Http2Compression.cpp',
     'Http2Push.cpp',
     'Http2Session.cpp',
@@ -73,8 +83,8 @@ UNIFIED_SOURCES += [
     'HttpBaseChannel.cpp',
     'HttpChannelChild.cpp',
     'HttpChannelParent.cpp',
-    'HttpChannelParentListener.cpp',
     'HttpInfo.cpp',
+    'HttpTrafficAnalyzer.cpp',
     'InterceptedChannel.cpp',
     'InterceptedHttpChannel.cpp',
     'nsCORSListenerProxy.cpp',
@@ -97,6 +107,8 @@ UNIFIED_SOURCES += [
     'nsServerTiming.cpp',
     'NullHttpChannel.cpp',
     'NullHttpTransaction.cpp',
+    'ParentChannelListener.cpp',
+    'QuicSocketControl.cpp',
     'TunnelUtils.cpp',
 ]
 
@@ -107,13 +119,9 @@ SOURCES += [
 
 IPDL_SOURCES += [
     'PAltDataOutputStream.ipdl',
+    'PClassifierDummyChannel.ipdl',
     'PHttpBackgroundChannel.ipdl',
     'PHttpChannel.ipdl',
-]
-
-EXTRA_JS_MODULES += [
-    'UserAgentOverrides.jsm',
-    'UserAgentUpdates.jsm',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -122,16 +130,19 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '/dom/base',
+    '/extensions/auth',
     '/netwerk/base',
     '/netwerk/cookie',
-    '/security/pkix/include',
+    '/netwerk/ipc',
+    '/netwerk/url-classifier',
 ]
 
-EXTRA_COMPONENTS += [
-    'UAOverridesBootstrapper.js',
-    'UAOverridesBootstrapper.manifest',
-    'WellKnownOpportunisticUtils.js',
-    'WellKnownOpportunisticUtils.manifest',
+EXTRA_JS_MODULES += [
+    'WellKnownOpportunisticUtils.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 if CONFIG['OS_TARGET'] == 'Darwin':
@@ -144,5 +155,4 @@ if CONFIG['OS_TARGET'] == 'Darwin':
             HAS_CONNECTX=True,
         )
 
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497
+include('/tools/fuzzing/libfuzzer-config.mozbuild')

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Implements parallel traversal over the DOM tree.
 //!
@@ -22,14 +22,14 @@
 
 #![deny(missing_docs)]
 
+use crate::context::{StyleContext, ThreadLocalStyleContext};
+use crate::dom::{OpaqueNode, SendNode, TElement};
+use crate::scoped_tls::ScopedTLS;
+use crate::traversal::{DomTraversal, PerLevelTraversalData};
 use arrayvec::ArrayVec;
-use context::{StyleContext, ThreadLocalStyleContext};
-use dom::{OpaqueNode, SendNode, TElement};
 use itertools::Itertools;
 use rayon;
-use scoped_tls::ScopedTLS;
 use smallvec::SmallVec;
-use traversal::{DomTraversal, PerLevelTraversalData};
 
 /// The minimum stack size for a thread in the styling pool, in kilobytes.
 pub const STYLE_THREAD_STACK_SIZE_KB: usize = 256;
@@ -104,7 +104,7 @@ fn top_down_dom<'a, 'scope, E, D>(
     nodes: &'a [SendNode<E::ConcreteNode>],
     root: OpaqueNode,
     mut traversal_data: PerLevelTraversalData,
-    scope: &'a rayon::Scope<'scope>,
+    scope: &'a rayon::ScopeFifo<'scope>,
     pool: &'scope rayon::ThreadPool,
     traversal: &'scope D,
     tls: &'scope ScopedTLS<'scope, ThreadLocalStyleContext<E>>,
@@ -248,7 +248,7 @@ pub fn traverse_nodes<'a, 'scope, E, D, I>(
     recursion_ok: bool,
     root: OpaqueNode,
     traversal_data: PerLevelTraversalData,
-    scope: &'a rayon::Scope<'scope>,
+    scope: &'a rayon::ScopeFifo<'scope>,
     pool: &'scope rayon::ThreadPool,
     traversal: &'scope D,
     tls: &'scope ScopedTLS<'scope, ThreadLocalStyleContext<E>>,
@@ -276,7 +276,8 @@ pub fn traverse_nodes<'a, 'scope, E, D, I>(
         if may_dispatch_tail {
             top_down_dom(&work, root, traversal_data, scope, pool, traversal, tls);
         } else {
-            scope.spawn(move |scope| {
+            scope.spawn_fifo(move |scope| {
+                profiler_label!(Style);
                 let work = work;
                 top_down_dom(&work, root, traversal_data, scope, pool, traversal, tls);
             });
@@ -285,7 +286,8 @@ pub fn traverse_nodes<'a, 'scope, E, D, I>(
         for chunk in nodes.chunks(WORK_UNIT_MAX).into_iter() {
             let nodes: WorkUnit<E::ConcreteNode> = chunk.collect();
             let traversal_data_copy = traversal_data.clone();
-            scope.spawn(move |scope| {
+            scope.spawn_fifo(move |scope| {
+                profiler_label!(Style);
                 let n = nodes;
                 top_down_dom(&*n, root, traversal_data_copy, scope, pool, traversal, tls)
             });

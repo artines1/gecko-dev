@@ -43,7 +43,7 @@ class Parser:
     parseStack = []
     parsed = {}
 
-    def __init__(self, type, name, debug=0):
+    def __init__(self, type, name, debug=False):
         assert type and name
         self.type = type
         self.debug = debug
@@ -132,10 +132,12 @@ reserved = set((
     'prio',
     'protocol',
     'refcounted',
+    'moveonly',
     'returns',
     'struct',
     'sync',
     'union',
+    'UniquePtr',
     'upto',
     'using',
     'verify'))
@@ -145,7 +147,7 @@ tokens = [
 
 t_COLONCOLON = '::'
 
-literals = '(){}[]<>;:,'
+literals = '(){}[]<>;:,?'
 t_ignore = ' \f\t\v'
 
 
@@ -288,13 +290,20 @@ def p_MaybeRefcounted(p):
     p[0] = 2 == len(p)
 
 
+def p_MaybeMoveOnly(p):
+    """MaybeMoveOnly : MOVEONLY
+                       |"""
+    p[0] = 2 == len(p)
+
+
 def p_UsingStmt(p):
-    """UsingStmt : USING MaybeRefcounted UsingKind CxxType FROM STRING"""
+    """UsingStmt : USING MaybeRefcounted MaybeMoveOnly UsingKind CxxType FROM STRING"""
     p[0] = UsingStmt(locFromTok(p, 1),
                      refcounted=p[2],
-                     kind=p[3],
-                     cxxTypeSpec=p[4],
-                     cxxHeader=p[6])
+                     moveonly=p[3],
+                     kind=p[4],
+                     cxxTypeSpec=p[5],
+                     cxxHeader=p[7])
 
 # --------------------
 # Namespaced stuff
@@ -363,12 +372,14 @@ def p_ComponentTypes(p):
 
 
 def p_ProtocolDefn(p):
-    """ProtocolDefn : OptionalProtocolSendSemanticsQual PROTOCOL ID '{' ProtocolBody '}' ';'"""
-    protocol = p[5]
-    protocol.loc = locFromTok(p, 2)
-    protocol.name = p[3]
+    """ProtocolDefn : OptionalProtocolSendSemanticsQual MaybeRefcounted \
+                      PROTOCOL ID '{' ProtocolBody '}' ';'"""
+    protocol = p[6]
+    protocol.loc = locFromTok(p, 3)
+    protocol.name = p[4]
     protocol.nested = p[1][0]
     protocol.sendSemantics = p[1][1]
+    protocol.refcounted = p[2]
     p[0] = protocol
 
     if Parser.current.type == 'header':
@@ -659,14 +670,23 @@ def p_Type(p):
 
 def p_BasicType(p):
     """BasicType : CxxID
-                 | CxxID '[' ']'"""
+                 | CxxID '[' ']'
+                 | CxxID '?'
+                 | CxxUniquePtrInst"""
     # ID == CxxType; we forbid qnames here,
     # in favor of the |using| declaration
     if not isinstance(p[1], TypeSpec):
-        loc, id = p[1]
+        assert (len(p[1]) == 2) or (len(p[1]) == 3)
+        if 2 == len(p[1]):
+            # p[1] is CxxID. isunique = False
+            p[1] = p[1] + (False,)
+        loc, id, isunique = p[1]
         p[1] = TypeSpec(loc, QualifiedId(loc, id))
+        p[1].uniqueptr = isunique
     if 4 == len(p):
-        p[1].array = 1
+        p[1].array = True
+    if 3 == len(p):
+        p[1].maybe = True
     p[0] = p[1]
 
 
@@ -714,6 +734,11 @@ def p_CxxID(p):
 def p_CxxTemplateInst(p):
     """CxxTemplateInst : ID '<' ID '>'"""
     p[0] = (locFromTok(p, 1), str(p[1]) + '<' + str(p[3]) + '>')
+
+
+def p_CxxUniquePtrInst(p):
+    """CxxUniquePtrInst : UNIQUEPTR '<' ID '>'"""
+    p[0] = (locFromTok(p, 1), str(p[3]), True)
 
 
 def p_error(t):

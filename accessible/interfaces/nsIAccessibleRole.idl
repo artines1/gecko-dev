@@ -8,7 +8,7 @@
 /**
  * Defines cross platform (Gecko) roles.
  */
-[scriptable, builtinclass, uuid(05a9f33f-dcfd-4e7b-b825-138ba784c1f5)]
+[scriptable, builtinclass, uuid(ad7f32a5-6d5f-4154-a5b8-0fa7aed48936)]
 interface nsIAccessibleRole : nsISupports
 {
   /**
@@ -123,7 +123,7 @@ interface nsIAccessibleRole : nsISupports
   const unsigned long ROLE_CHART = 17;
 
   /**
-   * Represents a dialog box or message box. It is used for xul:dialog, 
+   * Represents a dialog box or message box. It is used for xul:dialog,
    * role="dialog".
    */
   const unsigned long ROLE_DIALOG = 18;
@@ -312,7 +312,7 @@ interface nsIAccessibleRole : nsISupports
 
   /**
    * Represents a progress bar, dynamically showing the user the percent
-   * complete of an operation in progress. It is used for xul:progressmeter,
+   * complete of an operation in progress. It is used for html:progress,
    * role="progressbar".
    */
   const unsigned long ROLE_PROGRESSBAR = 48;
@@ -709,17 +709,17 @@ interface nsIAccessibleRole : nsISupports
    * An image map -- has child links representing the areas
    */
   const unsigned long ROLE_IMAGE_MAP = 116;
-  
+
   /**
    * An option in a listbox
    */
   const unsigned long ROLE_OPTION = 117;
-  
+
   /**
    * A rich option in a listbox, it can have other widgets as children
    */
   const unsigned long ROLE_RICH_OPTION = 118;
-  
+
   /**
    * A list of options
    */
@@ -729,7 +729,7 @@ interface nsIAccessibleRole : nsISupports
    * Represents a mathematical equation in the accessible name
    */
   const unsigned long ROLE_FLAT_EQUATION = 120;
-  
+
   /**
    * Represents a cell within a grid. It is used for role="gridcell". Unlike
    * ROLE_CELL, it allows the calculation of the accessible name from subtree.
@@ -1031,5 +1031,12 @@ interface nsIAccessibleRole : nsISupports
    * history or a content view providing suggestions from reviewers.
    */
   const unsigned long ROLE_CONTENT_INSERTION = 177;
+
+  /**
+   * An html:form element with a label provided by WAI-ARIA.
+   * This may also be used if role="form" with a label should be exposed
+   * differently in the future.
+   */
+  const unsigned long ROLE_FORM_LANDMARK = 178;
 
 };

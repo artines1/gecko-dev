@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -26,15 +24,20 @@ add_task(async function() {
     window.addEventListener("message", onMessage);
   });
 
-  let iframe = document.createElement("iframe");
+  let iframe = document.createXULElement("iframe");
   document.documentElement.appendChild(iframe);
 
   const tab = await addTab(TEST_URL);
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   const options = { customIframe: iframe };
-  let toolbox = await gDevTools.showToolbox(target, null, Toolbox.HostType.CUSTOM, options);
+  let toolbox = await gDevTools.showToolbox(
+    target,
+    null,
+    Toolbox.HostType.CUSTOM,
+    options
+  );
 
-  is(toolbox.win.top, window, "Toolbox is included in browser.xul");
+  is(toolbox.topWindow, window, "Toolbox is included in browser.xhtml");
   is(toolbox.doc, iframe.contentDocument, "Toolbox is in the custom iframe");
 
   iframe.remove();

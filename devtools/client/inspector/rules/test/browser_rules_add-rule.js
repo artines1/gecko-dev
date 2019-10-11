@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -32,15 +31,15 @@ const TEST_DATA = [
   { node: "p", expected: "p" },
   { node: "h1", expected: ".asd\\@\\@\\@\\@a\\!\\!\\!\\!\\:\\:\\:\\@asd" },
   { node: "h2", expected: "#asd\\@\\@\\@a\\!\\!2a" },
-  { node: "circle", expected: "circle" }
+  { node: "circle", expected: "circle" },
 ];
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view} = await openRuleView();
+  const { inspector, view } = await openRuleView();
 
   for (const data of TEST_DATA) {
-    const {node, expected} = data;
+    const { node, expected } = data;
     await selectNode(node, inspector);
     await addNewRuleAndDismissEditor(inspector, view, expected, 1);
   }

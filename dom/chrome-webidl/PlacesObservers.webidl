@@ -6,13 +6,13 @@
 
 callback PlacesEventCallback = void (sequence<PlacesEvent> events);
 
-[ChromeOnly, Exposed=(Window,System),
- Constructor(PlacesEventCallback callback)]
+[ChromeOnly, Exposed=Window]
 interface PlacesWeakCallbackWrapper {
+  constructor(PlacesEventCallback callback);
 };
 
 // Global singleton which should handle all events for places.
-[ChromeOnly, Exposed=(Window,System)]
+[ChromeOnly, Exposed=Window]
 namespace PlacesObservers {
   [Throws]
   void addListener(sequence<PlacesEventType> eventTypes,

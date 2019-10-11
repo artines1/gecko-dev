@@ -13,6 +13,7 @@
  * liability, trademark and document use rules apply.
  */
 
+[Exposed=Window]
 interface Element : Node {
   [Constant]
   readonly attribute DOMString? namespaceURI;
@@ -147,19 +148,35 @@ interface Element : Node {
   [CEReactions, Throws]
   Attr? setAttributeNodeNS(Attr newAttr);
 
-  [ChromeOnly]
-  /**
-   * Scrolls the element by (dx, dy) CSS pixels without doing any
-   * layout flushing.
-   */
-  boolean scrollByNoFlush(long dx, long dy);
-
-  [ChromeOnly]
+  [Func="nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled"]
   DOMMatrixReadOnly getTransformToAncestor(Element ancestor);
-  [ChromeOnly]
+  [Func="nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled"]
   DOMMatrixReadOnly getTransformToParent();
-  [ChromeOnly]
+  [Func="nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled"]
   DOMMatrixReadOnly getTransformToViewport();
+};
+
+// https://html.spec.whatwg.org/#focus-management-apis
+dictionary FocusOptions {
+  boolean preventScroll = false;
+};
+
+interface mixin HTMLOrForeignElement {
+  [SameObject] readonly attribute DOMStringMap dataset;
+  // See bug 1389421
+  // attribute DOMString nonce; // intentionally no [CEReactions]
+
+  // See bug 1575154
+  // [CEReactions] attribute boolean autofocus;
+  [CEReactions, SetterThrows, Pure] attribute long tabIndex;
+  [Throws] void focus(optional FocusOptions options = {});
+  [Throws] void blur();
+};
+
+// https://drafts.csswg.org/cssom/#the-elementcssinlinestyle-mixin
+interface mixin ElementCSSInlineStyle {
+  [SameObject, PutForwards=cssText]
+  readonly attribute CSSStyleDeclaration style;
 };
 
 // http://dev.w3.org/csswg/cssom-view/
@@ -175,7 +192,7 @@ partial interface Element {
   DOMRect getBoundingClientRect();
 
   // scrolling
-  void scrollIntoView(optional (boolean or ScrollIntoViewOptions) arg);
+  void scrollIntoView(optional (boolean or ScrollIntoViewOptions) arg = {});
   // None of the CSSOM attributes are [Pure], because they flush
            attribute long scrollTop;   // scroll on setting
            attribute long scrollLeft;  // scroll on setting
@@ -183,11 +200,11 @@ partial interface Element {
   readonly attribute long scrollHeight;
 
   void scroll(unrestricted double x, unrestricted double y);
-  void scroll(optional ScrollToOptions options);
+  void scroll(optional ScrollToOptions options = {});
   void scrollTo(unrestricted double x, unrestricted double y);
-  void scrollTo(optional ScrollToOptions options);
+  void scrollTo(optional ScrollToOptions options = {});
   void scrollBy(unrestricted double x, unrestricted double y);
-  void scrollBy(optional ScrollToOptions options);
+  void scrollBy(optional ScrollToOptions options = {});
   // mozScrollSnap is used by chrome to perform scroll snapping after the
   // user performs actions that may affect scroll position
   // mozScrollSnap is deprecated, to be replaced by a web accessible API, such
@@ -211,10 +228,10 @@ partial interface Element {
 
 // http://domparsing.spec.whatwg.org/#extensions-to-the-element-interface
 partial interface Element {
-  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, GetterCanOOM, TreatNullAs=EmptyString]
-  attribute DOMString innerHTML;
-  [CEReactions, Pure,SetterThrows,TreatNullAs=EmptyString]
-  attribute DOMString outerHTML;
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, GetterCanOOM]
+  attribute [TreatNullAs=EmptyString] DOMString innerHTML;
+  [CEReactions, Pure, SetterThrows]
+  attribute [TreatNullAs=EmptyString] DOMString outerHTML;
   [CEReactions, Throws]
   void insertAdjacentHTML(DOMString position, DOMString text);
 };
@@ -235,41 +252,47 @@ dictionary ShadowRootInit {
 // https://dom.spec.whatwg.org/#element
 partial interface Element {
   // Shadow DOM v1
-  [Throws, Func="nsDocument::IsShadowDOMEnabled"]
+  [Throws, UseCounter]
   ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
-  [BinaryName="shadowRootByMode", Func="nsDocument::IsShadowDOMEnabled"]
+  [BinaryName="shadowRootByMode"]
   readonly attribute ShadowRoot? shadowRoot;
 
-  [Func="nsDocument::IsShadowDOMEnabledAndCallerIsChromeOrAddon", BinaryName="shadowRoot"]
+  [Func="Document::IsCallerChromeOrAddon", BinaryName="shadowRoot"]
   readonly attribute ShadowRoot? openOrClosedShadowRoot;
 
-  [BinaryName="assignedSlotByMode", Func="nsDocument::IsShadowDOMEnabled"]
+  [BinaryName="assignedSlotByMode"]
   readonly attribute HTMLSlotElement? assignedSlot;
 
-  [ChromeOnly, BinaryName="assignedSlot", Func="nsDocument::IsShadowDOMEnabled"]
+  [ChromeOnly, BinaryName="assignedSlot"]
   readonly attribute HTMLSlotElement? openOrClosedAssignedSlot;
 
-  [CEReactions, Unscopable, SetterThrows, Func="nsDocument::IsShadowDOMEnabled"]
+  [CEReactions, Unscopable, SetterThrows]
            attribute DOMString slot;
 };
 
-Element implements ChildNode;
-Element implements NonDocumentTypeChildNode;
-Element implements ParentNode;
-Element implements Animatable;
-Element implements GeometryUtils;
+Element includes ChildNode;
+Element includes NonDocumentTypeChildNode;
+Element includes ParentNode;
+Element includes Animatable;
+Element includes GeometryUtils;
 
 // https://fullscreen.spec.whatwg.org/#api
 partial interface Element {
-  [Throws, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
-  void requestFullscreen();
-  [Throws, BinaryName="requestFullscreen", NeedsCallerType]
-  void mozRequestFullScreen();
+  [Throws, Func="Document::IsUnprefixedFullscreenEnabled", NeedsCallerType]
+  Promise<void> requestFullscreen();
+  [Throws, BinaryName="requestFullscreen", NeedsCallerType, Deprecated="MozRequestFullScreenDeprecatedPrefix"]
+  Promise<void> mozRequestFullScreen();
+
+  // Events handlers
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
+  attribute EventHandler onfullscreenchange;
+  [Func="Document::IsUnprefixedFullscreenEnabled"]
+  attribute EventHandler onfullscreenerror;
 };
 
 // https://w3c.github.io/pointerlock/#extensions-to-the-element-interface
 partial interface Element {
-  [NeedsCallerType]
+  [NeedsCallerType, Pref="dom.pointer-lock.enabled"]
   void requestPointerLock();
 };
 
@@ -301,4 +324,19 @@ partial interface Element {
    */
   [ChromeOnly, Pure]
   sequence<Element> getElementsWithGrid();
+};
+
+// These variables are used in vtt.js, they are used for positioning vtt cues.
+partial interface Element {
+  // These two attributes are a double version of the clientHeight and the
+  // clientWidth.
+  [ChromeOnly]
+  readonly attribute double clientHeightDouble;
+  [ChromeOnly]
+  readonly attribute double clientWidthDouble;
+  // This attribute returns the block size of the first line box under the different
+  // writing directions. If the direction is horizontal, it represents box's
+  // height. If the direction is vertical, it represents box's width.
+  [ChromeOnly]
+  readonly attribute double firstLineBoxBSize;
 };

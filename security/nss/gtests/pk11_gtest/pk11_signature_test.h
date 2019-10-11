@@ -8,7 +8,7 @@
 #include "sechash.h"
 
 #include "cpputil.h"
-#include "scoped_ptrs.h"
+#include "nss_scoped_ptrs.h"
 #include "databuffer.h"
 
 #include "gtest/gtest.h"
@@ -59,6 +59,9 @@ class Pk11SignatureTest : public ::testing::Test {
 
     ScopedCERTSubjectPublicKeyInfo certSpki(
         SECKEY_DecodeDERSubjectPublicKeyInfo(&spkiItem));
+    if (!certSpki) {
+      return nullptr;
+    }
 
     return ScopedSECKEYPublicKey(SECKEY_ExtractPublicKey(certSpki.get()));
   }

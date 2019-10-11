@@ -29,17 +29,17 @@ class GamepadEventChannelParent;
 // 2. Monitor Thread:
 //    This thread is populated in platform-dependent backends, which
 //    is in charge of processing gamepad hardware events from OS
-class GamepadPlatformService final
-{
+class GamepadPlatformService final {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(GamepadPlatformService)
  public:
-  //Get the singleton service
+  // Get the singleton service
   static already_AddRefed<GamepadPlatformService> GetParentService();
 
   // Add a gamepad to the list of known gamepads, and return its index.
   uint32_t AddGamepad(const char* aID, GamepadMappingType aMapping,
                       GamepadHand aHand, uint32_t aNumButtons,
-                      uint32_t aNumAxes, uint32_t aNumHaptics);
+                      uint32_t aNumAxes, uint32_t aNumHaptics,
+                      uint32_t aNumLightIndicator, uint32_t aNumTouchEvents);
   // Remove the gamepad at |aIndex| from the list of known gamepads.
   void RemoveGamepad(uint32_t aIndex);
 
@@ -55,7 +55,9 @@ class GamepadPlatformService final
   // When only a digital button are available the value will be synthesized.
   void NewButtonEvent(uint32_t aIndex, uint32_t aButton, bool aPressed,
                       bool aTouched);
-
+  // When only a digital button are available the value will be synthesized.
+  void NewButtonEvent(uint32_t aIndex, uint32_t aButton, bool aPressed,
+                      double aValue);
   // Update the state of |aAxis| for the gamepad at |aIndex| for all
   // windows that are listening and visible, and fire a gamepadaxismove
   // event at them as well.
@@ -63,15 +65,23 @@ class GamepadPlatformService final
   // Update the state of |aState| for the gamepad at |aIndex| for all
   // windows that are listening and visible.
   void NewPoseEvent(uint32_t aIndex, const GamepadPoseState& aState);
+  // Update the type of |aType| for the gamepad at |aIndex| for all
+  // windows that are listening and visible.
+  void NewLightIndicatorTypeEvent(uint32_t aIndex, uint32_t aLight,
+                                  GamepadLightIndicatorType aType);
+  // Update the state of |aState| for the gamepad at |aIndex| with
+  // |aTouchArrayIndex| for all windows that are listening and visible.
+  void NewMultiTouchEvent(uint32_t aIndex, uint32_t aTouchArrayIndex,
+                          const GamepadTouchState& aState);
 
   // When shutting down the platform communications for gamepad, also reset the
   // indexes.
   void ResetGamepadIndexes();
 
-  //Add IPDL parent instance
+  // Add IPDL parent instance
   void AddChannelParent(GamepadEventChannelParent* aParent);
 
-  //Remove IPDL parent instance
+  // Remove IPDL parent instance
   void RemoveChannelParent(GamepadEventChannelParent* aParent);
 
   bool HasGamepadListeners();
@@ -81,7 +91,8 @@ class GamepadPlatformService final
  private:
   GamepadPlatformService();
   ~GamepadPlatformService();
-  template<class T> void NotifyGamepadChange(uint32_t aIndex, const T& aInfo);
+  template <class T>
+  void NotifyGamepadChange(uint32_t aIndex, const T& aInfo);
 
   // Flush all pending events buffered in mPendingEvents, must be called
   // with mMutex held
@@ -106,7 +117,7 @@ class GamepadPlatformService final
   nsTArray<GamepadChangeEvent> mPendingEvents;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 #endif

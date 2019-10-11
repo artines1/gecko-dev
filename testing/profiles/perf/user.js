@@ -2,12 +2,10 @@
 /* globals user_pref */
 user_pref("app.normandy.api_url", "https://127.0.0.1/selfsupport-dummy/");
 user_pref("browser.EULA.override", true);
-user_pref("browser.aboutHomeSnippets.updateUrl", "https://127.0.0.1/about-dummy/");
 user_pref("browser.addon-watch.interval", -1); // Deactivate add-on watching
 // Disable Bookmark backups by default.
 user_pref("browser.bookmarks.max_backups", 0);
 user_pref("browser.cache.disk.smart_size.enabled", false);
-user_pref("browser.cache.disk.smart_size.first_run", false);
 user_pref("browser.chrome.dynamictoolbar", false);
 user_pref("browser.contentHandlers.types.0.uri", "http://127.0.0.1/rss?url=%s");
 user_pref("browser.contentHandlers.types.1.uri", "http://127.0.0.1/rss?url=%s");
@@ -49,12 +47,13 @@ user_pref("dom.allow_scripts_to_close_windows", true);
 user_pref("dom.disable_open_during_load", false);
 user_pref("dom.disable_window_flip", true);
 user_pref("dom.disable_window_move_resize", true);
+user_pref("dom.push.connection.enabled", false);
 user_pref("extensions.autoDisableScopes", 10);
 user_pref("extensions.blocklist.enabled", false);
 user_pref("extensions.blocklist.url", "http://127.0.0.1/extensions-dummy/blocklistURL");
 user_pref("extensions.checkCompatibility", false);
 user_pref("extensions.getAddons.get.url", "http://127.0.0.1/extensions-dummy/repositoryGetURL");
-user_pref("extensions.getAddons.getWithPerformance.url", "http://127.0.0.1/extensions-dummy/repositoryGetWithPerformanceURL");
+user_pref("extensions.getAddons.compatOverides.url", "http://127.0.0.1/extensions-dummy/repositoryCompatOverridesURL");
 user_pref("extensions.getAddons.search.browseURL", "http://127.0.0.1/extensions-dummy/repositoryBrowseURL");
 user_pref("extensions.hotfix.url", "http://127.0.0.1/extensions-dummy/hotfixURL");
 user_pref("extensions.systemAddon.update.url", "http://127.0.0.1/dummy-system-addons.xml");
@@ -64,9 +63,9 @@ user_pref("extensions.update.url", "http://127.0.0.1/extensions-dummy/updateURL"
 user_pref("extensions.webservice.discoverURL", "http://127.0.0.1/extensions-dummy/discoveryURL");
 user_pref("identity.fxaccounts.auth.uri", "https://127.0.0.1/fxa-dummy/");
 user_pref("identity.fxaccounts.migrateToDevEdition", false);
-// Make tests run consistently on DevEdition (which has a lightweight theme
-// selected by default).
-user_pref("lightweightThemes.selectedThemeID", "");
+// Avoid idle-daily notifications, to avoid expensive operations that may
+// cause unexpected test timeouts.
+user_pref("idle.lastDailyNotification", -1);
 user_pref("media.capturestream_hints.enabled", true);
 user_pref("media.gmp-manager.url", "http://127.0.0.1/gmpmanager-dummy/update.xml");
 // Don't block old libavcodec libraries when testing, because our test systems
@@ -77,9 +76,6 @@ user_pref("media.navigator.permission.disabled", true);
 user_pref("media.peerconnection.enabled", true);
 // Disable speculative connections so they aren't reported as leaking when they're hanging around.
 user_pref("network.http.speculative-parallel-limit", 0);
-user_pref("network.proxy.http", "localhost");
-user_pref("network.proxy.http_port", 80);
-user_pref("network.proxy.type", 1);
 // Set places maintenance far in the future (the maximum time possible in an
 // int32_t) to avoid it kicking in during tests. The maintenance can take a
 // relatively long time which may cause unnecessary intermittents and slow down
@@ -95,3 +91,6 @@ user_pref("privacy.trackingprotection.pbmode.enabled", false);
 user_pref("security.enable_java", false);
 user_pref("security.fileuri.strict_origin_policy", false);
 user_pref("toolkit.telemetry.server", "https://127.0.0.1/telemetry-dummy/");
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("trailhead.firstrun.branches", "join");

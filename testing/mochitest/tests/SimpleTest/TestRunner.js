@@ -124,12 +124,12 @@ TestRunner._checkForHangs = function() {
     }
   }
 
-  function killTest(win) {
+  async function killTest(win) {
     if ("SimpleTest" in win) {
-      win.SimpleTest.timeout();
+      await win.SimpleTest.timeout();
       win.SimpleTest.finish();
     } else if ("W3CTest" in win) {
-      win.W3CTest.timeout();
+      await win.W3CTest.timeout();
     }
   }
 
@@ -154,7 +154,14 @@ TestRunner._checkForHangs = function() {
 
       // Add a little (1 second) delay to ensure automation.py has time to notice
       // "Test timed out" log and process it (= take a screenshot).
-      setTimeout(function delayedKillTest() { killTest(frameWindow); }, 1000);
+      setTimeout(async function delayedKillTest() {
+        try {
+          await killTest(frameWindow);
+        } catch(e) {
+          reportError(frameWindow, "Test error: " + e);
+        }
+      }, 1000);
+
 
       if (TestRunner._haltTests)
         return;
@@ -209,7 +216,7 @@ TestRunner.setFailureFile = function(fileName) {
 
 TestRunner.generateFailureList = function () {
     if (TestRunner._failureFile) {
-        var failures = new SpecialPowersLogger(TestRunner._failureFile);
+        var failures = new MozillaFileLogger(TestRunner._failureFile);
         failures.log(JSON.stringify(TestRunner._failedTests));
         failures.close();
     }
@@ -312,7 +319,7 @@ TestRunner._makeIframe = function (url, retry) {
         SpecialPowers.focus();
         iframe.focus();
         if (retry < 3) {
-            window.setTimeout('TestRunner._makeIframe("'+url+'", '+(retry+1)+')', 1000);
+            window.setTimeout(function() {TestRunner._makeIframe(url, retry+1)}, 1000);
             return;
         }
 
@@ -543,8 +550,8 @@ TestRunner.testFinished = function(tests) {
                          TestRunner.dumpAboutMemoryAfterTest,
                          TestRunner.dumpDMDAfterTest);
 
-        function cleanUpCrashDumpFiles() {
-            if (!SpecialPowers.removeExpectedCrashDumpFiles(TestRunner._expectingProcessCrash)) {
+        async function cleanUpCrashDumpFiles() {
+            if (!await SpecialPowers.removeExpectedCrashDumpFiles(TestRunner._expectingProcessCrash)) {
                 var subtest = "expected-crash-dump-missing";
                 TestRunner.structuredLogger.testStatus(TestRunner.currentTestURL,
                                                        subtest,
@@ -556,7 +563,7 @@ TestRunner.testFinished = function(tests) {
             }
 
             var unexpectedCrashDumpFiles =
-                SpecialPowers.findUnexpectedCrashDumpFiles();
+                await SpecialPowers.findUnexpectedCrashDumpFiles();
             TestRunner._expectingProcessCrash = false;
             if (unexpectedCrashDumpFiles.length) {
                 var subtest = "unexpected-crash-dump-found";
@@ -577,7 +584,7 @@ TestRunner.testFinished = function(tests) {
             }
 
             if (TestRunner.cleanupCrashes) {
-                if (SpecialPowers.removePendingCrashDumpFiles()) {
+                if (await SpecialPowers.removePendingCrashDumpFiles()) {
                     TestRunner.structuredLogger.info("This test left pending crash dumps");
                 }
             }
@@ -640,14 +647,12 @@ TestRunner.testFinished = function(tests) {
             TestRunner._makeIframe(interstitialURL, 0);
         }
 
-        SpecialPowers.executeAfterFlushingMessageQueue(function() {
-            SpecialPowers.waitForCrashes(TestRunner._expectingProcessCrash)
-                         .then(() => {
-                cleanUpCrashDumpFiles();
-                SpecialPowers.flushPermissions(function () {
-                    SpecialPowers.flushPrefEnv(runNextTest);
-                });
-            });
+        SpecialPowers.executeAfterFlushingMessageQueue(async function() {
+          await SpecialPowers.waitForCrashes(TestRunner._expectingProcessCrash);
+          await cleanUpCrashDumpFiles();
+          await SpecialPowers.flushPermissions();
+          await SpecialPowers.flushPrefEnv();
+          runNextTest();
         });
     });
 };

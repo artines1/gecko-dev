@@ -6,7 +6,7 @@
 
 '''This script analyzes a JSON file emitted by DMD.'''
 
-from __future__ import print_function, division
+from __future__ import absolute_import, print_function, division
 
 import argparse
 import collections
@@ -219,15 +219,19 @@ def fixStackTraces(inputFilename, isZipped, opener):
     if bpsyms and os.path.exists(bpsyms):
         import fix_stack_using_bpsyms as fixModule
 
-        def fix(line): return fixModule.fixSymbols(line, bpsyms)
+        def fix(line):
+            return fixModule.fixSymbols(line, bpsyms, jsonEscape=True)
+
     elif sysname == 'Linux':
         import fix_linux_stack as fixModule
 
-        def fix(line): return fixModule.fixSymbols(line)
+        def fix(line): return fixModule.fixSymbols(line, jsonEscape=True)
+
     elif sysname == 'Darwin':
         import fix_macosx_stack as fixModule
 
-        def fix(line): return fixModule.fixSymbols(line)
+        def fix(line): return fixModule.fixSymbols(line, jsonEscape=True)
+
     else:
         fix = None  # there is no fix script for Windows
 
@@ -332,7 +336,8 @@ def getDigestFromFile(args, inputFile):
         if args.filter_stacks_for_testing:
             # When running SmokeDMD.cpp, every stack trace should contain at
             # least one frame that contains 'DMD.cpp', from either |DMD.cpp| or
-            # |SmokeDMD.cpp|. (Or 'dmd.cpp' on Windows.) If we see such a
+            # |SmokeDMD.cpp|. (Or 'dmd.cpp' on Windows.) On builds without
+            # debuginfo we expect just |SmokeDMD|. If we see such a
             # frame, we replace the entire stack trace with a single,
             # predictable frame. There is too much variation in the stack
             # traces across different machines and platforms to do more precise
@@ -340,7 +345,8 @@ def getDigestFromFile(args, inputFile):
             # stack fixing fails completely.
             for frameKey in frameKeys:
                 frameDesc = frameTable[frameKey]
-                if 'DMD.cpp' in frameDesc or 'dmd.cpp' in frameDesc:
+                expected = ('DMD.cpp', 'dmd.cpp', 'SmokeDMD')
+                if any(ex in frameDesc for ex in expected):
                     return [fmt.format(1, ': ... DMD.cpp ...')]
 
         # The frame number is always '#00' (see DMD.h for why), so we have to
@@ -586,11 +592,8 @@ def printDigest(args, digest):
                        number(record.reqSize),
                        number(record.slopSize)))
 
-            def abscmp((usableSize1, _1), (usableSize2, _2)): return \
-                cmp(abs(usableSize1), abs(usableSize2))
-            usableSizes = sorted(record.usableSizes.items(), cmp=abscmp,
-                                 reverse=True)
-
+            usableSizes = sorted(record.usableSizes.items(),
+                                 key=lambda x: abs(x[0]), reverse=True)
             hasSingleBlock = len(usableSizes) == 1 and usableSizes[0][1] == 1
 
             if not hasSingleBlock:

@@ -37,6 +37,18 @@ be specified by name regardless of ``run_on_projects``.
 If ``run_on_projects`` is set to an empty list, then the task will not run
 anywhere, unless its build platform is specified explicitly in try syntax.
 
+run_on_hg_branches
+==================
+
+On a given project, the mercurial branch where this task should be in the target
+task set.  This is how requirements like "only run this RELBRANCH" get implemented.
+These are either the regular expression of a branch (e.g.: ``GECKOVIEW_\d+_RELBRANCH``)
+or the following alias:
+
+ * `all` -- everywhere (the default)
+
+Like ``run_on_projects``, the same behavior applies if it is set to an empty list.
+
 task_duplicates
 ===============
 
@@ -83,18 +95,24 @@ unittest_suite
 This is the unit test suite being run in a unit test task.  For example,
 ``mochitest`` or ``cppunittest``.
 
-unittest_flavor
-===============
+unittest_category
+=================
 
-If a unittest suite has subdivisions, those are represented as flavors.  Not
-all suites have flavors, in which case this attribute should be set to match
-the suite.  Examples: ``mochitest-devtools-chrome-chunked`` or ``a11y``.
+This is the high-level category of test the suite corresponds to. This is
+usually the test harness used to run the suite.
 
 unittest_try_name
 =================
 
 This is the name used to refer to a unit test via try syntax.  It
-may not match either of ``unittest_suite`` or ``unittest_flavor``.
+may not match ``unittest_suite``.
+
+unittest_variant
+================
+
+The configuration variant the test suite is running with. If set, this usually
+means the tests are running with a special pref enabled. These are defined in
+``taskgraph.transforms.tests.TEST_VARIANTS``.
 
 talos_try_name
 ==============
@@ -134,6 +152,11 @@ nightly
 
 Signals whether the task is part of a nightly graph. Useful when filtering
 out nightly tasks from full task set at target stage.
+
+shippable
+=========
+Signals whether the task is considered "shippable", that it should get signed and is ok to
+be used for nightlies or releases.
 
 all_locales
 ===========
@@ -224,7 +247,12 @@ artifact_prefix
 Most taskcluster artifacts are public, so we've hardcoded ``public/build`` in a
 lot of places. To support private artifacts, we've moved this to the
 ``artifact_prefix`` attribute. It will default to ``public/build`` but will be
-overrideable per-task.
+overridable per-task.
+
+artifact_map
+===============
+For beetmover jobs, this indicates which yaml file should be used to
+generate the upstream artifacts and payload instructions to the task.
 
 enable-full-crashsymbols
 ========================
@@ -232,3 +260,69 @@ In automation, full crashsymbol package generation is normally disabled.  For
 build kinds where the full crashsymbols should be enabled, set this attribute
 to True. The full symbol packages will then be generated and uploaded on
 release branches and on try.
+
+cron
+====
+Indicates that a task is meant to be run via cron tasks, and should not be run
+on push.
+
+cached_task
+===========
+Some tasks generate artifacts that are cached between pushes. This is a
+dictionary with the type and name of the cache, and the unique string used to
+identify the current version of the artifacts. See :py:mod:`taskgraph.util.cached_task`.
+
+.. code:: yaml
+
+   cached_task:
+       digest: 66dfc2204600b48d92a049b6a18b83972bb9a92f9504c06608a9c20eb4c9d8ae
+       name: debian7-base
+       type: docker-images.v2
+
+required_signoffs
+=================
+A list of release signoffs that this kind requires, should the release also
+require these signoffs. For example, ``mar-signing`` signoffs may be required
+by some releases in the future; for any releases that require ``mar-signing``
+signoffs, the kinds that also require that signoff are marked with this
+attribute.
+
+update-channel
+==============
+The update channel the build is configured to use.
+
+mar-channel-id
+==============
+The mar-channel-id the build is configured to use.
+
+accepted-mar-channel-ids
+========================
+The mar-channel-ids this build will accept updates to. It should usually be the same as
+the value mar_channel_id.  If more than one ID is needed, then you should use a
+comma separated list of values.
+
+openh264_rev
+============
+Only used for openh264 plugin builds, used to signify the revision (and thus inform artifact name) of the given build.
+
+code-review
+===========
+If a task set this boolean attribute to `true`, it will be processed by the code
+review bot, the task will ran for every new Phabricator diff.
+Any supported and detected issue will be automatically reported on the
+Phabricator revision.
+
+retrigger
+=========
+Whether the task can be retriggered, or if it needs to be re-run.
+
+disable-push-apk
+================
+Some GeckoView-only Android tasks produce APKs that shouldn't be
+pushed to the Google Play Store.  Set this to ``true`` to disable
+pushing.
+
+disable-build-signing
+=====================
+Some GeckoView-only tasks produce APKs, but not APKs that should be
+signed.  Set this to ``true`` to disable APK signing.

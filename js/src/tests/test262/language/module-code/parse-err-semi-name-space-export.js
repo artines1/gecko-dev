@@ -1,4 +1,4 @@
-// |reftest| error:SyntaxError module
+// |reftest| skip error:SyntaxError module -- export-star-as-namespace-from-module is not supported
 // Copyright (C) 2018 Valerie Young. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -20,9 +20,10 @@ info: |
 negative:
   phase: parse
   type: SyntaxError
-flags: [module, export-star-as-namespace-from-module]
+flags: [module]
+features: [export-star-as-namespace-from-module]
 ---*/
 
-throw "Test262: This statement should not be evaluated.";
+$DONOTEVALUATE();
 
 export * as namespace from './parse-err-semi-name-space-export.js' null;

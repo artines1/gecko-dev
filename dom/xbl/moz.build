@@ -7,13 +7,11 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "XBL")
 
-DIRS += ['builtin']
-
 EXPORTS += [
     'nsBindingManager.h',
     'nsXBLBinding.h',
+    'nsXBLPrototypeHandler.h',
     'nsXBLService.h',
-    'nsXBLWindowKeyHandler.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -32,11 +30,8 @@ UNIFIED_SOURCES += [
     'nsXBLProtoImplProperty.cpp',
     'nsXBLPrototypeBinding.cpp',
     'nsXBLPrototypeHandler.cpp',
-    'nsXBLPrototypeResources.cpp',
-    'nsXBLResourceLoader.cpp',
     'nsXBLSerialize.cpp',
     'nsXBLService.cpp',
-    'nsXBLWindowKeyHandler.cpp',
     'XBLChildrenElement.cpp',
 ]
 
@@ -47,6 +42,8 @@ LOCAL_INCLUDES += [
     '/dom/xul',
     '/layout/style',
 ]
+
+include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 

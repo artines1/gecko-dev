@@ -1,6 +1,4 @@
-if (!wasmGcEnabled()) {
-    quit(0);
-}
+// |jit-test| skip-if: !wasmReftypesEnabled()
 
 const { startProfiling, endProfiling, assertEqPreciseStacks, isSingleStepProfilingEnabled } = WasmHelpers;
 
@@ -9,17 +7,30 @@ function Baguette(calories) {
     this.calories = calories;
 }
 
+// Ensure the baseline compiler sync's before the postbarrier.
+(function() {
+    wasmEvalText(`(module
+        (global (mut anyref) (ref.null))
+        (func (export "f")
+            global.get 0
+            ref.null
+            global.set 0
+            global.set 0
+        )
+    )`).exports.f();
+})();
+
 let exportsPlain = wasmEvalText(`(module
     (global i32 (i32.const 42))
-    (global $g (mut anyref) (ref.null anyref))
-    (func (export "set") (param anyref) get_local 0 set_global $g)
-    (func (export "get") (result anyref) get_global $g)
+    (global $g (mut anyref) (ref.null))
+    (func (export "set") (param anyref) local.get 0 global.set $g)
+    (func (export "get") (result anyref) global.get $g)
 )`).exports;
 
 let exportsObj = wasmEvalText(`(module
-    (global $g (export "g") (mut anyref) (ref.null anyref))
-    (func (export "set") (param anyref) get_local 0 set_global $g)
-    (func (export "get") (result anyref) get_global $g)
+    (global $g (export "g") (mut anyref) (ref.null))
+    (func (export "set") (param anyref) local.get 0 global.set $g)
+    (func (export "get") (result anyref) global.get $g)
 )`).exports;
 
 // 7 => Generational GC zeal.
@@ -51,7 +62,15 @@ if (!isSingleStepProfilingEnabled)
 enableGeckoProfiling();
 
 const EXPECTED_STACKS = [
-    ['', '!>', '0,!>', '<,0,!>', 'GC postbarrier,0,!>', '<,0,!>', '0,!>', '!>', ''],
+    // Expected output for (simulator+baseline).
+    ['', '!>', '0,!>', '<,0,!>', 'GC postbarrier,0,!>',
+     '<,0,!>', '0,!>', '!>', ''],
+
+    // Expected output for (simulator+via-Ion).
+    ['', '!>', '0,!>', '<,0,!>', 'filtering GC postbarrier,0,!>',
+     '<,0,!>', '0,!>', '!>', ''],
+
+    // Expected output for other configurations.
     ['', '!>', '0,!>', '!>', ''],
 ];
 

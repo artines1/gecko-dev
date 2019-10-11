@@ -26,40 +26,32 @@ using namespace mozilla::dom::indexedDB;
 
 IDBFileRequest::IDBFileRequest(IDBFileHandle* aFileHandle,
                                bool aWrapAsDOMRequest)
-  : DOMRequest(aFileHandle->GetOwner())
-  , mFileHandle(aFileHandle)
-  , mWrapAsDOMRequest(aWrapAsDOMRequest)
-  , mHasEncoding(false)
-{
+    : DOMRequest(aFileHandle->GetOwnerGlobal()),
+      mFileHandle(aFileHandle),
+      mWrapAsDOMRequest(aWrapAsDOMRequest),
+      mHasEncoding(false) {
   MOZ_ASSERT(aFileHandle);
   aFileHandle->AssertIsOnOwningThread();
 }
 
-IDBFileRequest::~IDBFileRequest()
-{
-  AssertIsOnOwningThread();
-}
+IDBFileRequest::~IDBFileRequest() { AssertIsOnOwningThread(); }
 
 // static
-already_AddRefed<IDBFileRequest>
-IDBFileRequest::Create(IDBFileHandle* aFileHandle,
-                       bool aWrapAsDOMRequest)
-{
+already_AddRefed<IDBFileRequest> IDBFileRequest::Create(
+    IDBFileHandle* aFileHandle, bool aWrapAsDOMRequest) {
   MOZ_ASSERT(aFileHandle);
   aFileHandle->AssertIsOnOwningThread();
 
   RefPtr<IDBFileRequest> request =
-    new IDBFileRequest(aFileHandle, aWrapAsDOMRequest);
+      new IDBFileRequest(aFileHandle, aWrapAsDOMRequest);
 
   return request.forget();
 }
 
-void
-IDBFileRequest::FireProgressEvent(uint64_t aLoaded, uint64_t aTotal)
-{
+void IDBFileRequest::FireProgressEvent(uint64_t aLoaded, uint64_t aTotal) {
   AssertIsOnOwningThread();
 
-  if (NS_FAILED(CheckInnerWindowCorrectness())) {
+  if (NS_FAILED(CheckCurrentGlobalCorrectness())) {
     return;
   }
 
@@ -71,18 +63,16 @@ IDBFileRequest::FireProgressEvent(uint64_t aLoaded, uint64_t aTotal)
   init.mTotal = aTotal;
 
   RefPtr<ProgressEvent> event =
-    ProgressEvent::Constructor(this, NS_LITERAL_STRING("progress"), init);
+      ProgressEvent::Constructor(this, NS_LITERAL_STRING("progress"), init);
   DispatchTrustedEvent(event);
 }
 
-void
-IDBFileRequest::SetResultCallback(ResultCallback* aCallback)
-{
+void IDBFileRequest::SetResultCallback(ResultCallback* aCallback) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(aCallback);
 
   AutoJSAPI autoJS;
-  if (NS_WARN_IF(!autoJS.Init(GetOwner()))) {
+  if (NS_WARN_IF(!autoJS.Init(GetOwnerGlobal()))) {
     FireError(NS_ERROR_DOM_FILEHANDLE_UNKNOWN_ERR);
     return;
   }
@@ -104,12 +94,9 @@ NS_IMPL_RELEASE_INHERITED(IDBFileRequest, DOMRequest)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBFileRequest)
 NS_INTERFACE_MAP_END_INHERITING(DOMRequest)
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(IDBFileRequest, DOMRequest,
-                                   mFileHandle)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(IDBFileRequest, DOMRequest, mFileHandle)
 
-void
-IDBFileRequest::GetEventTargetParent(EventChainPreVisitor& aVisitor)
-{
+void IDBFileRequest::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
@@ -117,9 +104,8 @@ IDBFileRequest::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 }
 
 // virtual
-JSObject*
-IDBFileRequest::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* IDBFileRequest::WrapObject(JSContext* aCx,
+                                     JS::Handle<JSObject*> aGivenProto) {
   AssertIsOnOwningThread();
 
   if (mWrapAsDOMRequest) {
@@ -128,5 +114,5 @@ IDBFileRequest::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
   return IDBFileRequest_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

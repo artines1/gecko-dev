@@ -8,6 +8,7 @@ const {
   BATCH_ACTIONS,
   BATCH_ENABLE,
   BATCH_RESET,
+  BATCH_FLUSH,
 } = require("../constants");
 
 /**
@@ -18,14 +19,14 @@ const {
 function batchActions(actions) {
   return {
     type: BATCH_ACTIONS,
-    actions
+    actions,
   };
 }
 
 function batchEnable(enabled) {
   return {
     type: BATCH_ENABLE,
-    enabled
+    enabled,
   };
 }
 
@@ -35,8 +36,15 @@ function batchReset() {
   };
 }
 
+function batchFlush() {
+  return {
+    type: BATCH_FLUSH,
+  };
+}
+
 module.exports = {
   batchActions,
   batchEnable,
   batchReset,
+  batchFlush,
 };

@@ -14,57 +14,55 @@ namespace safebrowsing {
 // Forward declaration.
 class TableUpdateV4;
 
-class LookupCacheV4 final : public LookupCache
-{
-public:
+class LookupCacheV4 final : public LookupCache {
+ public:
   explicit LookupCacheV4(const nsACString& aTableName,
                          const nsACString& aProvider,
                          nsCOMPtr<nsIFile>& aStoreFile)
-    : LookupCache(aTableName, aProvider, aStoreFile) {}
+      : LookupCache(aTableName, aProvider, aStoreFile) {}
 
-  virtual nsresult Init() override;
-  virtual nsresult Has(const Completion& aCompletion,
-                       bool* aHas,
-                       uint32_t* aMatchLength,
-                       bool* aConfirmed) override;
-
-  virtual bool IsEmpty() const override;
+  virtual nsresult Has(const Completion& aCompletion, bool* aHas,
+                       uint32_t* aMatchLength, bool* aConfirmed) override;
 
   nsresult Build(PrefixStringMap& aPrefixMap);
 
   nsresult GetPrefixes(PrefixStringMap& aPrefixMap);
   nsresult GetFixedLengthPrefixes(FallibleTArray<uint32_t>& aPrefixes);
 
-  // ApplyUpdate will merge data stored in aTableUpdate with prefixes in aInputMap.
+  // ApplyUpdate will merge data stored in aTableUpdate with prefixes in
+  // aInputMap.
   nsresult ApplyUpdate(RefPtr<TableUpdateV4> aTableUpdate,
-                       PrefixStringMap& aInputMap,
-                       PrefixStringMap& aOutputMap);
+                       PrefixStringMap& aInputMap, PrefixStringMap& aOutputMap);
 
   nsresult AddFullHashResponseToCache(const FullHashResponseMap& aResponseMap);
 
   nsresult WriteMetadata(RefPtr<const TableUpdateV4> aTableUpdate);
   nsresult LoadMetadata(nsACString& aState, nsACString& aChecksum);
 
+  virtual nsresult LoadMozEntries() override;
+
   static const int VER;
   static const uint32_t MAX_METADATA_VALUE_LENGTH;
+  static const uint32_t VLPSET_MAGIC;
+  static const uint32_t VLPSET_VERSION;
 
-protected:
-  virtual nsresult ClearPrefixes() override;
-  virtual nsresult StoreToFile(nsCOMPtr<nsIFile>& aFile) override;
-  virtual nsresult LoadFromFile(nsCOMPtr<nsIFile>& aFile) override;
-  virtual size_t SizeOfPrefixSet() const override;
+ protected:
+  virtual nsCString GetPrefixSetSuffix() const override;
+  nsCString GetMetadataSuffix() const;
 
-private:
+ private:
   ~LookupCacheV4() {}
 
   virtual int Ver() const override { return VER; }
 
-  nsresult VerifyChecksum(const nsACString& aChecksum);
+  virtual nsresult LoadLegacyFile() override;
+  virtual nsresult ClearLegacyFile() override;
 
-  RefPtr<VariableLengthPrefixSet> mVLPrefixSet;
+  virtual void GetHeader(Header& aHeader) override;
+  virtual nsresult SanityCheck(const Header& aHeader) override;
 };
 
-} // namespace safebrowsing
-} // namespace mozilla
+}  // namespace safebrowsing
+}  // namespace mozilla
 
 #endif

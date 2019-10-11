@@ -25,12 +25,16 @@ module.exports = {
     sendSyncMessage: false,
     sendRpcMessage: false,
     tabEventTarget: false,
+    RPMGetAppBuildID: false,
+    RPMGetIntPref: false,
+    RPMGetStringPref: false,
     RPMGetBoolPref: false,
     RPMSetBoolPref: false,
     RPMGetFormatURLPref: false,
     RPMIsWindowPrivate: false,
     RPMSendAsyncMessage: false,
     RPMAddMessageListener: false,
-    RPMRemoveMessageListener: false
-  }
+    RPMRecordTelemetryEvent: false,
+    RPMRemoveMessageListener: false,
+  },
 };

@@ -9,6 +9,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/GuardObjects.h"
+#include "mozilla/Tuple.h"
 #include "mozilla/Types.h"
 
 // The Gecko Profiler defines AutoProfilerLabel, an RAII class for
@@ -20,18 +21,17 @@
 //
 // Note that this class is slightly slower than the other AutoProfilerLabel,
 // and it lacks the macro wrappers. It also is effectively hardwired to use
-// js::ProfilingStackFrame::Category::OTHER as the category, because that's what
-// the callbacks provided by the profiler use. (Specifying the category in
-// this file would require #including ProfilingStack.h in mozglue, which we
+// JS::ProfilingCategory::OTHER as the category pair, because that's what
+// the callbacks provided by the profiler use. (Specifying the categories in
+// this file would require #including ProfilingCategory.h in mozglue, which we
 // don't want to do.)
-
-class ProfilingStack;
 
 namespace mozilla {
 
-typedef ProfilingStack* (*ProfilerLabelEnter)(const char*, const char*, void*,
-                                           uint32_t);
-typedef void (*ProfilerLabelExit)(ProfilingStack*);
+// Enter should return a pointer that will be given to Exit.
+typedef void* (*ProfilerLabelEnter)(const char* aLabel,
+                                    const char* aDynamicString, void* aSp);
+typedef void (*ProfilerLabelExit)(void* EntryContext);
 
 // Register callbacks that do the entry/exit work involving sProfilingStack.
 MFBT_API void RegisterProfilerLabelEnterExit(ProfilerLabelEnter aEnter,
@@ -41,21 +41,33 @@ MFBT_API void RegisterProfilerLabelEnterExit(ProfilerLabelEnter aEnter,
 // which would conflict with the one in the profiler.
 #ifdef IMPL_MFBT
 
-class MOZ_RAII AutoProfilerLabel
-{
-public:
-  AutoProfilerLabel(const char* aLabel, const char* aDynamicString,
-                    uint32_t aLine
-                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+class MOZ_RAII AutoProfilerLabel {
+ public:
+  AutoProfilerLabel(const char* aLabel,
+                    const char* aDynamicString MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
   ~AutoProfilerLabel();
 
-private:
+ private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-  ProfilingStack* mProfilingStack;
+  void* mEntryContext;
+  // Number of RegisterProfilerLabelEnterExit calls, to avoid giving an entry
+  // context from one generation to the next.
+  uint32_t mGeneration;
 };
+
+using ProfilerLabel = Tuple<void*, uint32_t>;
+
+bool IsProfilerPresent();
+ProfilerLabel ProfilerLabelBegin(const char* aLabelName,
+                                 const char* aDynamicString, void* aSp);
+void ProfilerLabelEnd(const ProfilerLabel& aLabel);
+
+inline bool IsValidProfilerLabel(const ProfilerLabel& aLabel) {
+  return !!Get<0>(aLabel);
+}
 
 #endif
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_AutoProfilerLabel_h
+#endif  // mozilla_AutoProfilerLabel_h

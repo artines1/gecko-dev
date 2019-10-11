@@ -1,11 +1,17 @@
 var tagData = [
   { uri: uri("http://slint.us"), tags: ["indie", "kentucky", "music"] },
-  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), tags: ["dinosaur", "dj", "rad word"] }
+  {
+    uri: uri("http://en.wikipedia.org/wiki/Diplodocus"),
+    tags: ["dinosaur", "dj", "rad word"],
+  },
 ];
 
 var bookmarkData = [
   { uri: uri("http://slint.us"), title: "indie, kentucky, music" },
-  { uri: uri("http://en.wikipedia.org/wiki/Diplodocus"), title: "dinosaur, dj, rad word" }
+  {
+    uri: uri("http://en.wikipedia.org/wiki/Diplodocus"),
+    title: "dinosaur, dj, rad word",
+  },
 ];
 
 /*
@@ -21,9 +27,13 @@ var bookmarkData = [
 */
 add_task(async function() {
   // Remove eventual bookmarks.exported.json.
-  let jsonFile = OS.Path.join(OS.Constants.Path.profileDir, "bookmarks.exported.json");
-  if ((await OS.File.exists(jsonFile)))
+  let jsonFile = OS.Path.join(
+    OS.Constants.Path.profileDir,
+    "bookmarks.exported.json"
+  );
+  if (await OS.File.exists(jsonFile)) {
     await OS.File.remove(jsonFile);
+  }
 
   // Test importing a pre-Places canonical bookmarks file.
   // Note: we do not empty the db before this import to catch bugs like 380999
@@ -35,14 +45,18 @@ add_task(async function() {
     PlacesUtils.tagging.tagURI(uri, tags);
   }
   for (let { uri, title } of bookmarkData) {
-    await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-                                         url: uri,
-                                         title });
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+      url: uri,
+      title,
+    });
   }
   for (let { uri, title } of bookmarkData) {
-    await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-                                         url: uri,
-                                         title });
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+      url: uri,
+      title,
+    });
   }
 
   await validate("initial database");
@@ -104,42 +118,44 @@ async function testMenuBookmarks() {
   Assert.equal("test", entry.keyword);
   Assert.equal("hidden1%3Dbar&text1%3D%25s", entry.postData);
 
-  let pageInfo = await PlacesUtils.history.fetch(bookmarkNode.uri, {includeAnnotations: true});
-  Assert.equal(pageInfo.annotations.get(PlacesUtils.CHARSET_ANNO), "ISO-8859-1",
-    "Should have the correct charset");
+  let pageInfo = await PlacesUtils.history.fetch(bookmarkNode.uri, {
+    includeAnnotations: true,
+  });
+  Assert.equal(
+    pageInfo.annotations.get(PlacesUtils.CHARSET_ANNO),
+    "ISO-8859-1",
+    "Should have the correct charset"
+  );
 
   folderNode.containerOpen = false;
   root.containerOpen = false;
 }
 
 async function testToolbarBookmarks() {
-  let root = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.toolbarGuid).root;
+  let root = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.toolbarGuid)
+    .root;
 
-  // child count (add 3 for pre-existing items)
-  Assert.equal(root.childCount, bookmarkData.length + 3);
+  // child count (add 2 for pre-existing items, one of the feeds is skipped
+  // because it doesn't have href)
+  Assert.equal(root.childCount, bookmarkData.length + 2);
 
-  let livemarkNode = root.getChild(1);
-  Assert.equal("Latest Headlines", livemarkNode.title);
-
-  let livemark = await PlacesUtils.livemarks.getLivemark({ id: livemarkNode.itemId });
-  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/livebookmarks/",
-               livemark.siteURI.spec);
-  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
-               livemark.feedURI.spec);
-
-  livemarkNode = root.getChild(2);
-  Assert.equal("Latest Headlines No Site", livemarkNode.title);
-
-  livemark = await PlacesUtils.livemarks.getLivemark({ id: livemarkNode.itemId });
-  Assert.equal(null, livemark.siteURI);
-  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
-               livemark.feedURI.spec);
+  // Livemarks are no more supported but may still exist in old html files.
+  let legacyLivemarkNode = root.getChild(1);
+  Assert.equal("Latest Headlines", legacyLivemarkNode.title);
+  Assert.equal(
+    "http://en-us.fxfeeds.mozilla.com/en-US/firefox/livebookmarks/",
+    legacyLivemarkNode.uri
+  );
+  Assert.equal(
+    legacyLivemarkNode.type,
+    Ci.nsINavHistoryResultNode.RESULT_TYPE_URI
+  );
 
   // test added bookmark data
-  let bookmarkNode = root.getChild(3);
+  let bookmarkNode = root.getChild(2);
   Assert.equal(bookmarkNode.uri, bookmarkData[0].uri.spec);
   Assert.equal(bookmarkNode.title, bookmarkData[0].title);
-  bookmarkNode = root.getChild(4);
+  bookmarkNode = root.getChild(3);
   Assert.equal(bookmarkNode.uri, bookmarkData[1].uri.spec);
   Assert.equal(bookmarkNode.title, bookmarkData[1].title);
 
@@ -147,15 +163,17 @@ async function testToolbarBookmarks() {
 }
 
 function testUnfiledBookmarks() {
-  let root = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.unfiledGuid).root;
+  let root = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.unfiledGuid)
+    .root;
   // child count (add 1 for pre-existing item)
   Assert.equal(root.childCount, bookmarkData.length + 1);
   for (let i = 1; i < root.childCount; ++i) {
     let child = root.getChild(i);
     Assert.equal(child.uri, bookmarkData[i - 1].uri.spec);
     Assert.equal(child.title, bookmarkData[i - 1].title);
-    if (child.tags)
+    if (child.tags) {
       Assert.equal(child.tags, bookmarkData[i - 1].title);
+    }
   }
   root.containerOpen = false;
 }

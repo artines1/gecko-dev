@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-arg-val-undefined.case
 // - src/function-forms/default/async-arrow-function.template
 /*---
 description: Use of initializer when argument value is `undefined` (async arrow function expression)
 esid: sec-async-arrow-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.7 Async Arrow Function Definitions

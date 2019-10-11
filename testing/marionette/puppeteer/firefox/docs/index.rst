@@ -15,7 +15,7 @@ visual section of Firefox's browser UI. For example, there are different
 libraries for the tab bar, the navigation bar, etc.
 
 .. _Firefox Puppeteer: http://firefox-puppeteer.readthedocs.io/
-.. _Marionette Python client: http://marionette-client.readthedocs.org/
+.. _Marionette Python client: https://firefox-source-docs.mozilla.org/python/marionette_driver.html
 
 Installation
 ------------
@@ -66,14 +66,12 @@ future. Each library is available from an instance of the FirefoxTestCase class.
    ui/browser/tabbar
    ui/browser/toolbars
    ui/browser/window
-   ui/update_wizard/dialog
    ui/windows
    api/appinfo
    api/keys
    api/l10n
    api/places
    api/security
-   api/software_update
    api/utils
 
 

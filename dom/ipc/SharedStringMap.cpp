@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=4 et sw=4 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -21,18 +21,18 @@ using namespace ipc;
 namespace dom {
 namespace ipc {
 
-static inline size_t
-GetAlignmentOffset(size_t aOffset, size_t aAlign)
-{
+static constexpr uint32_t kSharedStringMapMagic = 0x9e3779b9;
+
+static inline size_t GetAlignmentOffset(size_t aOffset, size_t aAlign) {
   auto mod = aOffset % aAlign;
   return mod ? aAlign - mod : 0;
 }
 
-
-SharedStringMap::SharedStringMap(const FileDescriptor& aMapFile, size_t aMapSize)
-{
+SharedStringMap::SharedStringMap(const FileDescriptor& aMapFile,
+                                 size_t aMapSize) {
   auto result = mMap.initWithHandle(aMapFile, aMapSize);
   MOZ_RELEASE_ASSERT(result.isOk());
+  MOZ_RELEASE_ASSERT(GetHeader().mMagic == kSharedStringMapMagic);
   // We return literal nsStrings and nsCStrings pointing to the mapped data,
   // which means that we may still have references to the mapped data even
   // after this instance is destroyed. That means that we need to keep the
@@ -40,29 +40,23 @@ SharedStringMap::SharedStringMap(const FileDescriptor& aMapFile, size_t aMapSize
   mMap.setPersistent();
 }
 
-SharedStringMap::SharedStringMap(SharedStringMapBuilder&& aBuilder)
-{
+SharedStringMap::SharedStringMap(SharedStringMapBuilder&& aBuilder) {
   auto result = aBuilder.Finalize(mMap);
   MOZ_RELEASE_ASSERT(result.isOk());
+  MOZ_RELEASE_ASSERT(GetHeader().mMagic == kSharedStringMapMagic);
   mMap.setPersistent();
 }
 
-mozilla::ipc::FileDescriptor
-SharedStringMap::CloneFileDescriptor() const
-{
+mozilla::ipc::FileDescriptor SharedStringMap::CloneFileDescriptor() const {
   return mMap.cloneHandle();
 }
 
-bool
-SharedStringMap::Has(const nsCString& aKey)
-{
+bool SharedStringMap::Has(const nsCString& aKey) {
   size_t index;
   return Find(aKey, &index);
 }
 
-bool
-SharedStringMap::Get(const nsCString& aKey, nsAString& aValue)
-{
+bool SharedStringMap::Get(const nsCString& aKey, nsAString& aValue) {
   const auto& entries = Entries();
 
   size_t index;
@@ -74,28 +68,24 @@ SharedStringMap::Get(const nsCString& aKey, nsAString& aValue)
   return true;
 }
 
-bool
-SharedStringMap::Find(const nsCString& aKey, size_t* aIndex)
-{
+bool SharedStringMap::Find(const nsCString& aKey, size_t* aIndex) {
   const auto& keys = KeyTable();
 
-  return BinarySearchIf(Entries(), 0, EntryCount(),
-                        [&] (const Entry& aEntry) {
-                          return aKey.Compare(keys.GetBare(aEntry.mKey));
-                        },
-                        aIndex);
+  return BinarySearchIf(
+      Entries(), 0, EntryCount(),
+      [&](const Entry& aEntry) {
+        return aKey.Compare(keys.GetBare(aEntry.mKey));
+      },
+      aIndex);
 }
 
-
-void
-SharedStringMapBuilder::Add(const nsCString& aKey, const nsString& aValue)
-{
+void SharedStringMapBuilder::Add(const nsCString& aKey,
+                                 const nsString& aValue) {
   mEntries.Put(aKey, {mKeyTable.Add(aKey), mValueTable.Add(aValue)});
 }
 
-Result<Ok, nsresult>
-SharedStringMapBuilder::Finalize(loader::AutoMemMap& aMap)
-{
+Result<Ok, nsresult> SharedStringMapBuilder::Finalize(
+    loader::AutoMemMap& aMap) {
   using Header = SharedStringMap::Header;
 
   MOZ_ASSERT(mEntries.Count() == mKeyTable.Count());
@@ -106,8 +96,7 @@ SharedStringMapBuilder::Finalize(loader::AutoMemMap& aMap)
   }
   keys.Sort();
 
-
-  Header header = {uint32_t(keys.Length())};
+  Header header = {kSharedStringMapMagic, uint32_t(keys.Length())};
 
   size_t offset = sizeof(header);
   offset += GetAlignmentOffset(offset, alignof(Header));
@@ -118,13 +107,13 @@ SharedStringMapBuilder::Finalize(loader::AutoMemMap& aMap)
   header.mKeyStringsSize = mKeyTable.Size();
 
   offset += header.mKeyStringsSize;
-  offset += GetAlignmentOffset(offset, alignof(decltype(mValueTable)::ElemType));
+  offset +=
+      GetAlignmentOffset(offset, alignof(decltype(mValueTable)::ElemType));
 
   header.mValueStringsOffset = offset;
   header.mValueStringsSize = mValueTable.Size();
 
   offset += header.mValueStringsSize;
-
 
   MemMapSnapshot mem;
   MOZ_TRY(mem.Init(offset));
@@ -139,11 +128,10 @@ SharedStringMapBuilder::Finalize(loader::AutoMemMap& aMap)
 
   auto ptr = mem.Get<uint8_t>();
 
-  mKeyTable.Write({ &ptr[header.mKeyStringsOffset],
-                    header.mKeyStringsSize });
+  mKeyTable.Write({&ptr[header.mKeyStringsOffset], header.mKeyStringsSize});
 
-  mValueTable.Write({ &ptr[header.mValueStringsOffset],
-                      header.mValueStringsSize });
+  mValueTable.Write(
+      {&ptr[header.mValueStringsOffset], header.mValueStringsSize});
 
   mKeyTable.Clear();
   mValueTable.Clear();
@@ -152,6 +140,6 @@ SharedStringMapBuilder::Finalize(loader::AutoMemMap& aMap)
   return mem.Finalize(aMap);
 }
 
-} // ipc
-} // dom
-} // mozilla
+}  // namespace ipc
+}  // namespace dom
+}  // namespace mozilla

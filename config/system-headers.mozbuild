@@ -1048,7 +1048,7 @@ system_headers = [
     'zmouse.h',
 ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+if CONFIG['OS_TARGET'] == 'Android':
     system_headers += [
         'android/api-level.h',
         'android/ashmem.h',
@@ -1255,6 +1255,14 @@ if CONFIG['MOZ_SYSTEM_PNG']:
         'png.h',
     ]
 
+if CONFIG['MOZ_SYSTEM_WEBP']:
+    system_headers += [
+        'webp/decode.h',
+        'webp/demux.h',
+        'webp/mux_types.h',
+        'webp/types.h',
+    ]
+
 if CONFIG['MOZ_SYSTEM_ZLIB']:
     system_headers += [
         'zlib.h',
@@ -1287,15 +1295,6 @@ if CONFIG['MOZ_ENABLE_LIBPROXY']:
         'proxy.h',
     ]
 
-if CONFIG['MOZ_ENABLE_CONTENTMANAGER']:
-    system_headers += [
-        'QtSparql/qsparqlconnection.h',
-        'QtSparql/qsparqlquery.h',
-        'QtSparql/qsparqlresult.h',
-        'SelectMultipleContentItemsPage.h',
-        'SelectSingleContentItemPage.h',
-    ]
-
 if CONFIG['MOZ_SYSTEM_LIBVPX']:
     system_headers += [
         'vpx_mem/vpx_mem.h',
@@ -1312,27 +1311,27 @@ if CONFIG['MOZ_SYSTEM_ICU']:
         'unicode/locid.h',
         'unicode/numsys.h',
         'unicode/plurrule.h',
+        'unicode/putil.h',
         'unicode/timezone.h',
         'unicode/ucal.h',
         'unicode/uchar.h',
         'unicode/uclean.h',
         'unicode/ucol.h',
         'unicode/udat.h',
+        'unicode/udata.h',
         'unicode/udatpg.h',
         'unicode/udisplaycontext.h',
         'unicode/uenum.h',
+        'unicode/uformattedvalue.h',
         'unicode/unistr.h',
         'unicode/unorm.h',
         'unicode/unum.h',
+        'unicode/unumberformatter.h',
         'unicode/upluralrules.h',
         'unicode/ureldatefmt.h',
+        'unicode/ures.h',
         'unicode/ustring.h',
         'unicode/utypes.h',
-    ]
-
-if CONFIG['ENABLE_BIGINT']:
-    system_headers += [
-        'gmp.h'
     ]
 
 if CONFIG['MOZ_WAYLAND']:
@@ -1340,21 +1339,13 @@ if CONFIG['MOZ_WAYLAND']:
         'xkbcommon/xkbcommon.h',
         'wayland-client.h',
         'wayland-egl.h',
+        'wayland-util.h',
     ]
 
-if CONFIG['MOZ_LIB_SECRET']:
+if CONFIG['OS_TARGET'] == 'Linux' and CONFIG['CPU_ARCH'].startswith('mips'):
     system_headers += [
-        'libsecret/secret.h',
-        'libsecret/secret-attributes.h',
-        'libsecret/secret-collection.h',
-        'libsecret/secret-enum-types.h',
-        'libsecret/secret-item.h',
-        'libsecret/secret-password.h',
-        'libsecret/secret-paths.h',
-        'libsecret/secret-prompt.h',
-        'libsecret/secret-schema.h',
-        'libsecret/secret-schemas.h',
-        'libsecret/secret-types.h',
-        'libsecret/secret-value.h',
-        'libsecret/secret-service.h',
+        'sys/cachectl.h',
     ]
+
+if CONFIG['MOZ_APP_SYSTEM_HEADERS']:
+    include("../" + CONFIG['MOZ_BUILD_APP'] + "/app-system-headers.mozbuild")

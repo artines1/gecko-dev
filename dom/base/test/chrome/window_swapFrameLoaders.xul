@@ -7,11 +7,10 @@ Test swapFrameLoaders with different frame types and remoteness
 -->
 <window title="Mozilla Bug 1242644"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
 
   <script type="application/javascript"><![CDATA[
-  ["SimpleTest", "SpecialPowers", "info", "is", "ok"].forEach(key => {
-    window[key] = window.opener[key];
+  ["SimpleTest", "SpecialPowers", "info", "is", "ok", "add_task"].forEach(key => {
+    window[key] = window.arguments[0][key];
   })
 
   const NS = {
@@ -129,7 +128,7 @@ Test swapFrameLoaders with different frame types and remoteness
           });
           addEventListener("pagehide", function({ inFrameSwap }) {
             sendAsyncMessage("pagehide", inFrameSwap);
-          });
+          }, {mozSystemGroup: true});
         }`;
       }
 
@@ -159,18 +158,6 @@ Test swapFrameLoaders with different frame types and remoteness
         mmB.sendAsyncMessage("ping");
         let [ { data: pongB } ] = await inflightB;
         is(pongB, "B", "Frame B message manager gets reply B before swap");
-      }
-
-      // Check height before swap
-      {
-        if (frameA.getContentDimensions) {
-          let { height } = await frameA.getContentDimensions();
-          is(height, heightA, "Frame A's content height is 200px before swap");
-        }
-        if (frameB.getContentDimensions) {
-          let { height } = await frameB.getContentDimensions();
-          is(height, heightB, "Frame B's content height is 400px before swap");
-        }
       }
 
       // Ping after swap using message managers acquired before

@@ -10,12 +10,9 @@ DIRS += [
 
 DevToolsModules(
     'AbstractTreeItem.jsm',
-    'BarGraphWidget.js',
-    'BreadcrumbsWidget.jsm',
     'Chart.js',
     'CubicBezierPresets.js',
     'CubicBezierWidget.js',
-    'FastListWidget.js',
     'FilterWidget.js',
     'FlameGraph.js',
     'Graphs.js',
@@ -23,8 +20,6 @@ DevToolsModules(
     'LineGraphWidget.js',
     'MountainGraphWidget.js',
     'ShapesInContextEditor.js',
-    'SideMenuWidget.jsm',
-    'SimpleListWidget.jsm',
     'Spectrum.js',
     'TableWidget.js',
     'TreeWidget.js',

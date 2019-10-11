@@ -15,19 +15,18 @@ DIRS += [
     'utils',
 ]
 DevToolsModules(
+    'browser-console-manager.js',
     'browser-console.js',
-    'console-commands.js',
+    'commands.js',
     'constants.js',
-    'hudservice.js',
-    'main.js',
     'panel.js',
+    'service-container.js',
     'store.js',
     'types.js',
     'utils.js',
     'webconsole-connection-proxy.js',
-    'webconsole-frame.js',
-    'webconsole-l10n.js',
-    'webconsole-output-wrapper.js',
+    'webconsole-ui.js',
+    'webconsole-wrapper.js',
     'webconsole.js',
 )
 with Files('**'):

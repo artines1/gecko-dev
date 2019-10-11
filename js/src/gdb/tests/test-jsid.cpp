@@ -1,11 +1,13 @@
 #include "gdb-tests.h"
 #include "jsapi.h"
 
+#include "js/Symbol.h"
+
 FRAGMENT(jsid, simple) {
   JS::Rooted<JSString*> string(cx, JS_NewStringCopyZ(cx, "moon"));
   JS::Rooted<JSString*> interned(cx, JS_AtomizeAndPinJSString(cx, string));
   JS::Rooted<jsid> string_id(cx, INTERNED_STRING_TO_JSID(cx, interned));
-  jsid int_id = INT_TO_JSID(1729);
+  JS::Rooted<jsid> int_id(cx, INT_TO_JSID(1729));
   JS::Rooted<jsid> unique_symbol_id(
       cx, SYMBOL_TO_JSID(JS::NewSymbol(cx, interned)));
   JS::Rooted<jsid> registry_symbol_id(
@@ -26,10 +28,8 @@ FRAGMENT(jsid, simple) {
   use(empty_id);
 }
 
-void
-jsid_handles(JS::Handle<jsid> jsid_handle,
-             JS::MutableHandle<jsid> mutable_jsid_handle)
-{
+void jsid_handles(JS::Handle<jsid> jsid_handle,
+                  JS::MutableHandle<jsid> mutable_jsid_handle) {
   // Prevent the linker from unifying this function with others that are
   // equivalent in machine code but not type.
   fprintf(stderr, "Called " __FILE__ ":jsid_handles\n");

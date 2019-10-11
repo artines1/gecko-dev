@@ -4,13 +4,22 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Preferences.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Preferences } = ChromeUtils.import(
+  "resource://gre/modules/Preferences.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.import("chrome://marionette/content/assert.js");
-ChromeUtils.import("chrome://marionette/content/capture.js");
-const {InvalidArgumentError} = ChromeUtils.import("chrome://marionette/content/error.js", {});
-const {Log} = ChromeUtils.import("chrome://marionette/content/log.js", {});
+const { assert } = ChromeUtils.import("chrome://marionette/content/assert.js");
+const { capture } = ChromeUtils.import(
+  "chrome://marionette/content/capture.js"
+);
+const { InvalidArgumentError } = ChromeUtils.import(
+  "chrome://marionette/content/error.js"
+);
+const { Log } = ChromeUtils.import("chrome://marionette/content/log.js");
 
 XPCOMUtils.defineLazyGetter(this, "logger", Log.get);
 
@@ -32,6 +41,9 @@ const STATUS = {
   TIMEOUT: "TIMEOUT",
 };
 
+const DEFAULT_REFTEST_WIDTH = 600;
+const DEFAULT_REFTEST_HEIGHT = 600;
+
 /**
  * Implements an fast runner for web-platform-tests format reftests
  * c.f. http://web-platform-tests.org/writing-tests/reftests.html.
@@ -47,7 +59,7 @@ this.reftest = {};
 reftest.Runner = class {
   constructor(driver) {
     this.driver = driver;
-    this.canvasCache = new Map([[null, []]]);
+    this.canvasCache = new DefaultMap(undefined, () => new Map([[null, []]]));
     this.windowUtils = null;
     this.lastURL = null;
     this.remote = Preferences.get(PREF_E10S);
@@ -66,67 +78,113 @@ reftest.Runner = class {
    * @param {string} screenshotMode
    *     String enum representing when screenshots should be taken
    */
-  async setup(urlCount, screenshotMode) {
-    this.parentWindow =  assert.open(this.driver.getCurrentWindow());
+  setup(urlCount, screenshotMode) {
+    this.parentWindow = assert.open(this.driver.getCurrentWindow());
 
-    this.screenshotMode = SCREENSHOT_MODE[screenshotMode] ||
-        SCREENSHOT_MODE.unexpected;
+    this.screenshotMode =
+      SCREENSHOT_MODE[screenshotMode] || SCREENSHOT_MODE.unexpected;
 
-    this.urlCount = Object.keys(urlCount || {})
-        .reduce((map, key) => map.set(key, urlCount[key]), new Map());
-
-    await this.ensureWindow();
+    this.urlCount = Object.keys(urlCount || {}).reduce(
+      (map, key) => map.set(key, urlCount[key]),
+      new Map()
+    );
   }
 
-  async ensureWindow() {
+  async ensureWindow(timeout, width, height) {
+    logger.debug(`ensuring we have a window ${width}x${height}`);
+
     if (this.reftestWin && !this.reftestWin.closed) {
-      return this.reftestWin;
+      let browserRect = this.reftestWin.gBrowser.getBoundingClientRect();
+      if (browserRect.width === width && browserRect.height === height) {
+        return this.reftestWin;
+      }
+      logger.debug(`current: ${browserRect.width}x${browserRect.height}`);
     }
 
-    let reftestWin = await this.openWindow();
+    let reftestWin;
+    if (Services.appinfo.OS == "Android") {
+      logger.debug("Using current window");
+      reftestWin = this.parentWindow;
+      await this.driver.listener.get({
+        commandID: this.driver.listener.activeMessageId,
+        pageTimeout: timeout,
+        url: "about:blank",
+        loadEventExpected: false,
+      });
+    } else {
+      logger.debug("Using separate window");
+      if (this.reftestWin && !this.reftestWin.closed) {
+        this.reftestWin.close();
+      }
+      reftestWin = await this.openWindow(width, height);
+    }
+
+    this.setupWindow(reftestWin, width, height);
+    this.windowUtils = reftestWin.windowUtils;
+    this.reftestWin = reftestWin;
 
     let found = this.driver.findWindow([reftestWin], () => true);
     await this.driver.setWindowHandle(found, true);
 
-    this.windowUtils = reftestWin.windowUtils;
-    this.reftestWin = reftestWin;
+    let browserRect = reftestWin.gBrowser.getBoundingClientRect();
+    logger.debug(`new: ${browserRect.width}x${browserRect.height}`);
+
     return reftestWin;
   }
 
-  async openWindow() {
+  async openWindow(width, height) {
+    assert.positiveInteger(width);
+    assert.positiveInteger(height);
+
     let reftestWin = this.parentWindow.open(
-        "chrome://marionette/content/reftest.xul",
-        "reftest",
-        "chrome,dialog,height=600,width=600");
+      "chrome://marionette/content/reftest.xul",
+      "reftest",
+      `chrome,height=${height},width=${width}`
+    );
 
     await new Promise(resolve => {
-      reftestWin.addEventListener("load", resolve, {once: true});
+      reftestWin.addEventListener("load", resolve, { once: true });
     });
+    return reftestWin;
+  }
 
-    let browser = reftestWin.document.createElementNS(XUL_NS, "xul:browser");
-    browser.permanentKey = {};
-    browser.setAttribute("id", "browser");
-    browser.setAttribute("anonid", "initialBrowser");
-    browser.setAttribute("type", "content");
-    browser.setAttribute("primary", "true");
-
-    if (this.remote) {
-      browser.setAttribute("remote", "true");
-      browser.setAttribute("remoteType", "web");
+  setupWindow(reftestWin, width, height) {
+    let browser;
+    if (Services.appinfo.OS === "Android") {
+      browser = reftestWin.document.getElementsByTagName("browser")[0];
+      browser.setAttribute("remote", "false");
+    } else {
+      browser = reftestWin.document.createElementNS(XUL_NS, "xul:browser");
+      browser.permanentKey = {};
+      browser.setAttribute("id", "browser");
+      browser.setAttribute("anonid", "initialBrowser");
+      browser.setAttribute("type", "content");
+      browser.setAttribute("primary", "true");
+      if (this.remote) {
+        browser.setAttribute("remote", "true");
+        browser.setAttribute("remoteType", "web");
+      } else {
+        browser.setAttribute("remote", "false");
+      }
     }
-    // Make sure the browser element is exactly 600x600, no matter
+    // Make sure the browser element is exactly the right size, no matter
     // what size our window is
     const windowStyle = `padding: 0px; margin: 0px; border:none;
-min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
+min-width: ${width}px; min-height: ${height}px;
+max-width: ${width}px; max-height: ${height}px`;
     browser.setAttribute("style", windowStyle);
 
-    let doc = reftestWin.document.documentElement;
-    while (doc.firstChild) {
-      doc.firstChild.remove();
+    if (Services.appinfo.OS !== "Android") {
+      let doc = reftestWin.document.documentElement;
+      while (doc.firstChild) {
+        doc.firstChild.remove();
+      }
+      doc.appendChild(browser);
     }
-    doc.appendChild(browser);
+    if (reftestWin.BrowserApp) {
+      reftestWin.BrowserApp = browser;
+    }
     reftestWin.gBrowser = browser;
-
     return reftestWin;
   }
 
@@ -179,20 +237,33 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
    * @return {Object}
    *     Result object with fields status, message and extra.
    */
-  async run(testUrl, references, expected, timeout) {
-
+  async run(
+    testUrl,
+    references,
+    expected,
+    timeout,
+    width = DEFAULT_REFTEST_WIDTH,
+    height = DEFAULT_REFTEST_HEIGHT
+  ) {
     let timeoutHandle;
 
     let timeoutPromise = new Promise(resolve => {
       timeoutHandle = this.parentWindow.setTimeout(() => {
-        resolve({status: STATUS.TIMEOUT, message: null, extra: {}});
+        resolve({ status: STATUS.TIMEOUT, message: null, extra: {} });
       }, timeout);
     });
 
     let testRunner = (async () => {
       let result;
       try {
-        result = await this.runTest(testUrl, references, expected, timeout);
+        result = await this.runTest(
+          testUrl,
+          references,
+          expected,
+          timeout,
+          width,
+          height
+        );
       } catch (e) {
         result = {
           status: STATUS.ERROR,
@@ -213,42 +284,71 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
     return result;
   }
 
-  async runTest(testUrl, references, expected, timeout) {
-    let win = await this.ensureWindow();
+  async runTest(testUrl, references, expected, timeout, width, height) {
+    let win = await this.ensureWindow(timeout, width, height);
 
     function toBase64(screenshot) {
       let dataURL = screenshot.canvas.toDataURL();
       return dataURL.split(",")[1];
     }
 
-    win.innerWidth = 600;
-    win.innerHeight = 600;
-
-    let message = "";
+    let result = {
+      status: STATUS.FAIL,
+      message: "",
+      stack: null,
+      extra: {},
+    };
 
     let screenshotData = [];
 
     let stack = [];
     for (let i = references.length - 1; i >= 0; i--) {
       let item = references[i];
-      stack.push([testUrl, item[0], item[1], item[2]]);
+      stack.push([testUrl, ...item]);
     }
 
-    let status = STATUS.FAIL;
+    let done = false;
 
-    while (stack.length) {
-      let [lhsUrl, rhsUrl, references, relation] = stack.pop();
-      message += `Testing ${lhsUrl} ${relation} ${rhsUrl}\n`;
+    while (stack.length && !done) {
+      let [lhsUrl, rhsUrl, references, relation, extras = {}] = stack.pop();
+      result.message += `Testing ${lhsUrl} ${relation} ${rhsUrl}\n`;
 
-      let comparison = await this.compareUrls(
-          win, lhsUrl, rhsUrl, relation, timeout);
+      let comparison;
+      try {
+        comparison = await this.compareUrls(
+          win,
+          lhsUrl,
+          rhsUrl,
+          relation,
+          timeout,
+          extras
+        );
+      } catch (e) {
+        comparison = {
+          lhs: null,
+          rhs: null,
+          passed: false,
+          error: e,
+          msg: null,
+        };
+      }
+      if (comparison.msg) {
+        result.message += `${comparison.msg}\n`;
+      }
+      if (comparison.error !== null) {
+        result.status = STATUS.ERROR;
+        result.message += String(comparison.error);
+        result.stack = comparison.error.stack;
+      }
 
       function recordScreenshot() {
-        let encodedLHS = toBase64(comparison.lhs);
-        let encodedRHS = toBase64(comparison.rhs);
-        screenshotData.push([{url: lhsUrl, screenshot: encodedLHS},
+        let encodedLHS = comparison.lhs ? toBase64(comparison.lhs) : "";
+        let encodedRHS = comparison.rhs ? toBase64(comparison.rhs) : "";
+        screenshotData.push([
+          { url: lhsUrl, screenshot: encodedLHS },
           relation,
-          {url: rhsUrl, screenshot: encodedRHS}]);
+          { url: rhsUrl, screenshot: encodedRHS },
+        ]);
       }
 
       if (this.screenshotMode === SCREENSHOT_MODE.always) {
@@ -259,38 +359,42 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
         if (references.length) {
           for (let i = references.length - 1; i >= 0; i--) {
             let item = references[i];
-            stack.push([testUrl, item[0], item[1], item[2]]);
+            stack.push([rhsUrl, ...item]);
           }
         } else {
           // Reached a leaf node so all of one reference chain passed
-          status = STATUS.PASS;
-          if (this.screenshotMode <= SCREENSHOT_MODE.fail &&
-              expected != status) {
+          result.status = STATUS.PASS;
+          if (
+            this.screenshotMode <= SCREENSHOT_MODE.fail &&
+            expected != result.status
+          ) {
             recordScreenshot();
           }
-          break;
+          done = true;
         }
-      } else if (!stack.length) {
+      } else if (!stack.length || result.status == STATUS.ERROR) {
         // If we don't have any alternatives to try then this will be
         // the last iteration, so save the failing screenshots if required.
         let isFail = this.screenshotMode === SCREENSHOT_MODE.fail;
         let isUnexpected = this.screenshotMode === SCREENSHOT_MODE.unexpected;
-        if (isFail || (isUnexpected && expected != status)) {
+        if (isFail || (isUnexpected && expected != result.status)) {
           recordScreenshot();
         }
       }
 
       // Return any reusable canvases to the pool
-      let canvasPool = this.canvasCache.get(null);
+      let cacheKey = width + "x" + height;
+      let canvasPool = this.canvasCache.get(cacheKey).get(null);
       [comparison.lhs, comparison.rhs].map(screenshot => {
-        if (screenshot.reuseCanvas) {
+        if (screenshot !== null && screenshot.reuseCanvas) {
           canvasPool.push(screenshot.canvas);
         }
       });
-      logger.debug(`Canvas pool is of length ${canvasPool.length}`);
+      logger.debug(
+        `Canvas pool (${cacheKey}) is of length ${canvasPool.length}`
+      );
     }
 
-    let result = {status, message, extra: {}};
     if (screenshotData.length) {
       // For now the tbpl formatter only accepts one screenshot, so just
       // return the last one we took.
@@ -302,7 +406,7 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
     return result;
   }
 
-  async compareUrls(win, lhsUrl, rhsUrl, relation, timeout) {
+  async compareUrls(win, lhsUrl, rhsUrl, relation, timeout, extras) {
     logger.info(`Testing ${lhsUrl} ${relation} ${rhsUrl}`);
 
     // Take the reference screenshot first so that if we pause
@@ -310,59 +414,137 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
     let rhs = await this.screenshot(win, rhsUrl, timeout);
     let lhs = await this.screenshot(win, lhsUrl, timeout);
 
-    let maxDifferences = {};
-
-    let differences = this.windowUtils.compareCanvases(
-        lhs.canvas, rhs.canvas, maxDifferences);
+    logger.debug(`lhs canvas size ${lhs.canvas.width}x${lhs.canvas.height}`);
+    logger.debug(`rhs canvas size ${rhs.canvas.width}x${rhs.canvas.height}`);
 
     let passed;
-    switch (relation) {
-      case "==":
-        passed = differences === 0;
-        if (!passed) {
-          logger.info(`Found ${differences} pixels different, ` +
-              `maximum difference per channel ${maxDifferences.value}`);
-        }
-        break;
+    let error = null;
+    let pixelsDifferent = null;
+    let maxDifferences = {};
+    let msg = null;
 
-      case "!=":
-        passed = differences !== 0;
-        break;
-
-      default:
-        throw new InvalidArgumentError("Reftest operator should be '==' or '!='");
+    try {
+      pixelsDifferent = this.windowUtils.compareCanvases(
+        lhs.canvas,
+        rhs.canvas,
+        maxDifferences
+      );
+    } catch (e) {
+      passed = false;
+      error = e;
     }
 
-    return {lhs, rhs, passed};
+    if (error === null) {
+      passed = this.isAcceptableDifference(
+        maxDifferences.value,
+        pixelsDifferent,
+        extras.fuzzy
+      );
+      switch (relation) {
+        case "==":
+          if (!passed) {
+            msg =
+              `Found ${pixelsDifferent} pixels different, ` +
+              `maximum difference per channel ${maxDifferences.value}`;
+          }
+          break;
+        case "!=":
+          passed = !passed;
+          break;
+        default:
+          throw new InvalidArgumentError(
+            "Reftest operator should be '==' or '!='"
+          );
+      }
+    }
+    return { lhs, rhs, passed, error, msg };
+  }
+
+  isAcceptableDifference(maxDifference, pixelsDifferent, allowed) {
+    if (!allowed) {
+      logger.info(`No differences allowed`);
+      return pixelsDifferent === 0;
+    }
+    let [allowedDiff, allowedPixels] = allowed;
+    logger.info(
+      `Allowed ${allowedPixels.join("-")} pixels different, ` +
+        `maximum difference per channel ${allowedDiff.join("-")}`
+    );
+    return (
+      (pixelsDifferent === 0 && allowedPixels[0] == 0) ||
+      (maxDifference === 0 && allowedDiff[0] == 0) ||
+      (maxDifference >= allowedDiff[0] &&
+        maxDifference <= allowedDiff[1] &&
+        (pixelsDifferent >= allowedPixels[0] ||
+          pixelsDifferent <= allowedPixels[1]))
+    );
+  }
+
+  ensureFocus(win) {
+    const focusManager = Services.focus;
+    if (focusManager.activeWindow != win) {
+      focusManager.activeWindow = win;
+    }
+    this.driver.curBrowser.contentBrowser.focus();
   }
 
   async screenshot(win, url, timeout) {
+    // On windows the above doesn't *actually* set the window to be the
+    // reftest size; but *does* set the content area to be the right size;
+    // the window is given some extra borders that aren't explicable from CSS
+    let browserRect = win.gBrowser.getBoundingClientRect();
     let canvas = null;
     let remainingCount = this.urlCount.get(url) || 1;
     let cache = remainingCount > 1;
-    logger.debug(`screenshot ${url} remainingCount: ` +
-        `${remainingCount} cache: ${cache}`);
+    let cacheKey = browserRect.width + "x" + browserRect.height;
+    logger.debug(
+      `screenshot ${url} remainingCount: ` +
+        `${remainingCount} cache: ${cache} cacheKey: ${cacheKey}`
+    );
     let reuseCanvas = false;
-    if (this.canvasCache.has(url)) {
+    let sizedCache = this.canvasCache.get(cacheKey);
+    if (sizedCache.has(url)) {
       logger.debug(`screenshot ${url} taken from cache`);
-      canvas = this.canvasCache.get(url);
+      canvas = sizedCache.get(url);
       if (!cache) {
-        this.canvasCache.delete(url);
+        sizedCache.delete(url);
       }
     } else {
-      let canvases = this.canvasCache.get(null);
-      if (canvases.length) {
-        canvas = canvases.pop();
+      let canvasPool = sizedCache.get(null);
+      if (canvasPool.length) {
+        logger.debug("reusing canvas from canvas pool");
+        canvas = canvasPool.pop();
       } else {
+        logger.debug("using new canvas");
         canvas = null;
       }
       reuseCanvas = !cache;
 
       let ctxInterface = win.CanvasRenderingContext2D;
-      let flags = ctxInterface.DRAWWINDOW_DRAW_CARET |
-          ctxInterface.DRAWWINDOW_USE_WIDGET_LAYERS |
-          ctxInterface.DRAWWINDOW_DRAW_VIEW;
+      let flags =
+        ctxInterface.DRAWWINDOW_DRAW_CARET |
+        ctxInterface.DRAWWINDOW_DRAW_VIEW |
+        ctxInterface.DRAWWINDOW_USE_WIDGET_LAYERS;
 
+      if (
+        !(
+          0 <= browserRect.left &&
+          0 <= browserRect.top &&
+          win.innerWidth >= browserRect.width &&
+          win.innerHeight >= browserRect.height
+        )
+      ) {
+        logger.error(`Invalid window dimensions:
+browserRect.left: ${browserRect.left}
+browserRect.top: ${browserRect.top}
+win.innerWidth: ${win.innerWidth}
+browserRect.width: ${browserRect.width}
+win.innerHeight: ${win.innerHeight}
+browserRect.height: ${browserRect.height}`);
+        throw new Error("Window has incorrect dimensions");
+      }
+
+      url = new URL(url).href; // normalize the URL
       logger.debug(`Starting load of ${url}`);
       let navigateOpts = {
         commandId: this.driver.listener.activeMessageId,
@@ -378,21 +560,50 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
         this.lastURL = url;
       }
 
-      this.driver.curBrowser.contentBrowser.focus();
+      this.ensureFocus(win);
       await this.driver.listener.reftestWait(url, this.remote);
 
-      canvas = capture.canvas(
-          win,
-          0, // left
-          0, // top
-          win.innerWidth,
-          win.innerHeight,
-          {canvas, flags});
+      canvas = await capture.canvas(
+        win,
+        win.docShell.browsingContext,
+        0, // left
+        0, // top
+        browserRect.width,
+        browserRect.height,
+        { canvas, flags, readback: true }
+      );
+    }
+    if (
+      canvas.width !== browserRect.width ||
+      canvas.height !== browserRect.height
+    ) {
+      logger.warn(
+        `Canvas dimensions changed to ${canvas.width}x${canvas.height}`
+      );
+      reuseCanvas = false;
+      cache = false;
     }
     if (cache) {
-      this.canvasCache.set(url, canvas);
+      sizedCache.set(url, canvas);
     }
     this.urlCount.set(url, remainingCount - 1);
-    return {canvas, reuseCanvas};
+    return { canvas, reuseCanvas };
   }
 };
+
+class DefaultMap extends Map {
+  constructor(iterable, defaultFactory) {
+    super(iterable);
+    this.defaultFactory = defaultFactory;
+  }
+
+  get(key) {
+    if (this.has(key)) {
+      return super.get(key);
+    }
+
+    let v = this.defaultFactory();
+    this.set(key, v);
+    return v;
+  }
+}

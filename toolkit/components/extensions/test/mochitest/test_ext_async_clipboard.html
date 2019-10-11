@@ -3,7 +3,6 @@
 <head>
   <title>Async Clipboard permissions tests</title>
   <script src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="/tests/SimpleTest/AddTask.js"></script>
   <script src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script src="head.js"></script>
   <link rel="stylesheet" href="/tests/SimpleTest/test.css">
@@ -12,6 +11,9 @@
 
 <script>
 "use strict";
+
+// Bug 1479956 - On android-debug verify this test times out
+SimpleTest.requestLongerTimeout(2);
 
 /* globals clipboardWriteText, clipboardWrite, clipboardReadText, clipboardRead */
 function shared() {
@@ -108,8 +110,8 @@ add_task(async function test_contentscript_async_clipboard_no_permission() {
   await extension.startup();
   let win = window.open("https://example.com/tests/toolkit/components/extensions/test/mochitest/test-oop-extensions/file_sample.html");
   await extension.awaitMessage("ready");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that with enough permissions, we are allowed to use writeText  in content script
@@ -146,8 +148,8 @@ add_task(async function test_contentscript_clipboard_permission_writetext() {
   await extension.awaitMessage("ready");
   const actual = SpecialPowers.getClipboardData("text/unicode");
   is(actual, "HI", "right string copied by write");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that with enough permissions, we are allowed to use readText in content script
@@ -182,13 +184,15 @@ add_task(async function test_contentscript_clipboard_permission_readtext() {
       "contentscript.js": contentScript,
     },
   };
-  SpecialPowers.clipboardCopyString("HI");
+  await SimpleTest.promiseClipboardChange("HI", () => {
+    SpecialPowers.clipboardCopyString("HI");
+  }, "text/unicode");
   let extension = ExtensionTestUtils.loadExtension(extensionData);
   await extension.startup();
   let win = window.open("https://example.com/tests/toolkit/components/extensions/test/mochitest/test-oop-extensions/file_sample.html");
   await extension.awaitMessage("ready");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that with enough permissions, we are allowed to use write in content script
@@ -227,8 +231,8 @@ add_task(async function test_contentscript_clipboard_permission_write() {
   await extension.awaitMessage("ready");
   const actual = SpecialPowers.getClipboardData("text/unicode");
   is(actual, "HI", "right string copied by write");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that with enough permissions, we are allowed to use read in content script
@@ -263,13 +267,15 @@ add_task(async function test_contentscript_clipboard_permission_read() {
       "contentscript.js": contentScript,
     },
   };
+  await SimpleTest.promiseClipboardChange("HELLO", () => {
+    SpecialPowers.clipboardCopyString("HELLO");
+  }, "text/unicode");
   let extension = ExtensionTestUtils.loadExtension(extensionData);
-  SpecialPowers.clipboardCopyString("HELLO");
   await extension.startup();
   let win = window.open("https://example.com/tests/toolkit/components/extensions/test/mochitest/test-oop-extensions/file_sample.html");
   await extension.awaitMessage("ready");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that performing readText(...) when the clipboard is empty returns an empty string
@@ -310,8 +316,8 @@ add_task(async function test_contentscript_clipboard_nocontents_readtext() {
   await extension.startup();
   let win = window.open("https://example.com/tests/toolkit/components/extensions/test/mochitest/test-oop-extensions/file_sample.html");
   await extension.awaitMessage("ready");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 
 // Test that performing read(...) when the clipboard is empty returns an empty data transfer
@@ -325,7 +331,7 @@ add_task(async function test_contentscript_clipboard_nocontents_read() {
       // and read from it, the data transfer object contains an item of type
       // text/plain and kind string, but we can't call getAsString on it to verify
       // that at least it is an empty string because the callback never gets invoked.
-      if (dataT.items.length == 0 ||
+      if (!dataT.items.length ||
         (dataT.items.length == 1 && dataT.items[0].type == "text/plain" &&
          dataT.items[0].kind == "string")) {
         browser.test.succeed("Read promise successfully resolved");
@@ -362,8 +368,8 @@ add_task(async function test_contentscript_clipboard_nocontents_read() {
   await extension.startup();
   let win = window.open("https://example.com/tests/toolkit/components/extensions/test/mochitest/test-oop-extensions/file_sample.html");
   await extension.awaitMessage("ready");
-  await extension.unload();
   win.close();
+  await extension.unload();
 });
 </script>
 </body>

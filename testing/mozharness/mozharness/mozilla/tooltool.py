@@ -18,6 +18,7 @@ _here = os.path.abspath(os.path.dirname(__file__))
 _external_tools_path = os.path.normpath(os.path.join(_here, '..', '..',
                                                      'external_tools'))
 
+
 class TooltoolMixin(object):
     """Mixin class for handling tooltool manifests.
     To use a tooltool server other than the Mozilla server, override
@@ -46,6 +47,9 @@ class TooltoolMixin(object):
     def tooltool_fetch(self, manifest,
                        output_dir=None, privileged=False, cache=None):
         """docstring for tooltool_fetch"""
+        if cache is None:
+            cache = os.environ.get('TOOLTOOL_CACHE')
+
         for d in (output_dir, cache):
             if d is not None and not os.path.exists(d):
                 self.mkdir_p(d)
@@ -91,6 +95,10 @@ class TooltoolMixin(object):
 
         toolchains = os.environ.get('MOZ_TOOLCHAINS')
         if toolchains:
+            if not self.topsrcdir:
+                raise Exception(
+                    'MOZ_TOOLCHAINS is not supported for tasks without '
+                    'a source checkout.')
             cmd.extend(toolchains.split())
 
         timeout = self.config.get('tooltool_timeout', 10 * 60)

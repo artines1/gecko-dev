@@ -10,20 +10,20 @@ const testCases = [
   {
     location: ["cookies", "https://sectest1.example.org"],
     sidebarHidden: true,
-    toggleButtonVisible: false
+    toggleButtonVisible: false,
   },
   {
     location: getCookieId("cs2", ".example.org", "/"),
     sidebarHidden: false,
-    toggleButtonVisible: true
+    toggleButtonVisible: true,
   },
   {
-    clickToggle: true
+    clickToggle: true,
   },
   {
     location: getCookieId("cs2", ".example.org", "/"),
-    sidebarHidden: true
-  }
+    sidebarHidden: true,
+  },
 ];
 
 add_task(async function() {
@@ -43,11 +43,17 @@ add_task(async function() {
     if (clickToggle) {
       toggleSidebar();
     } else if (typeof toggleButtonHidden !== "undefined") {
-      is(sidebarToggleVisible(), toggleButtonVisible,
-         "correct visibility state of toggle button");
+      is(
+        sidebarToggleVisible(),
+        toggleButtonVisible,
+        "correct visibility state of toggle button"
+      );
     } else {
-      is(gUI.sidebar.hidden, sidebarHidden,
-        "correct visibility state of sidebar.");
+      is(
+        gUI.sidebar.hidden,
+        sidebarHidden,
+        "correct visibility state of sidebar."
+      );
     }
 
     info("-".repeat(80));

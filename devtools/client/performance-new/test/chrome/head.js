@@ -6,10 +6,12 @@
 /* exported addPerfTest, MockPerfFront */
 /* globals URL_ROOT */
 
-const { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
+const { BrowserLoader } = ChromeUtils.import(
+  "resource://devtools/client/shared/browser-loader.js"
+);
 var { require } = BrowserLoader({
   baseURI: "resource://devtools/client/performance-new/",
-  window
+  window,
 });
 
 const EventEmitter = require("devtools/shared/event-emitter");
@@ -18,10 +20,17 @@ const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
 const EXPECTED_DTU_ASSERT_FAILURE_COUNT = 0;
 SimpleTest.registerCleanupFunction(function() {
-  if (DevToolsUtils.assertionFailureCount !== EXPECTED_DTU_ASSERT_FAILURE_COUNT) {
-    ok(false, "Should have had the expected number of DevToolsUtils.assert() failures." +
-      "Expected " + EXPECTED_DTU_ASSERT_FAILURE_COUNT +
-      ", got " + DevToolsUtils.assertionFailureCount);
+  if (
+    DevToolsUtils.assertionFailureCount !== EXPECTED_DTU_ASSERT_FAILURE_COUNT
+  ) {
+    ok(
+      false,
+      "Should have had the expected number of DevToolsUtils.assert() failures." +
+        "Expected " +
+        EXPECTED_DTU_ASSERT_FAILURE_COUNT +
+        ", got " +
+        DevToolsUtils.assertionFailureCount
+    );
   }
 });
 
@@ -62,9 +71,11 @@ class MockPerfFront extends EventEmitter {
     this.isActive = this._wrapInAsyncQueue(this.isActive);
     this.startProfiler = this._wrapInAsyncQueue(this.startProfiler);
     this.stopProfilerAndDiscardProfile = this._wrapInAsyncQueue(
-      this.stopProfilerAndDiscardProfile);
+      this.stopProfilerAndDiscardProfile
+    );
     this.getProfileAndStopProfiler = this._wrapInAsyncQueue(
-      this.getProfileAndStopProfiler);
+      this.getProfileAndStopProfiler
+    );
   }
 
   /**
@@ -106,7 +117,11 @@ class MockPerfFront extends EventEmitter {
     this._isActive = false;
     this.emit("profiler-stopped");
     // Return a fake profile.
-    return {};
+    return { meta: {}, libs: [], threads: [], processes: [] };
+  }
+
+  async getSymbolTable() {
+    throw new Error("unimplemented");
   }
 
   stopProfilerAndDiscardProfile() {
@@ -131,8 +146,10 @@ class MockPerfFront extends EventEmitter {
 const mockKeys = Object.getOwnPropertyNames(MockPerfFront.prototype);
 Object.getOwnPropertyNames(perfDescription.methods).forEach(methodName => {
   if (!mockKeys.includes(methodName)) {
-    throw new Error(`The MockPerfFront is missing the method "${methodName}" from the ` +
-                    "actor's spec. It should be added to the mock.");
+    throw new Error(
+      `The MockPerfFront is missing the method "${methodName}" from the ` +
+        "actor's spec. It should be added to the mock."
+    );
   }
 });
 
@@ -144,7 +161,10 @@ Object.getOwnPropertyNames(perfDescription.methods).forEach(methodName => {
 function setReactFriendlyInputValue(element, value) {
   const valueSetter = Object.getOwnPropertyDescriptor(element, "value").set;
   const prototype = Object.getPrototypeOf(element);
-  const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value").set;
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(
+    prototype,
+    "value"
+  ).set;
 
   if (valueSetter && valueSetter !== prototypeValueSetter) {
     prototypeValueSetter.call(element, value);
@@ -163,19 +183,18 @@ function createPerfComponent() {
   const React = require("devtools/client/shared/vendor/react");
   const ReactDOM = require("devtools/client/shared/vendor/react-dom");
   const ReactRedux = require("devtools/client/shared/vendor/react-redux");
-  const createStore = require("devtools/client/shared/redux/create-store")();
+  const createStore = require("devtools/client/shared/redux/create-store");
   const reducers = require("devtools/client/performance-new/store/reducers");
   const actions = require("devtools/client/performance-new/store/actions");
   const selectors = require("devtools/client/performance-new/store/selectors");
 
   const perfFrontMock = new MockPerfFront();
-  const toolboxMock = {};
   const store = createStore(reducers);
   const container = document.querySelector("#container");
   const receiveProfileCalls = [];
   const recordingPreferencesCalls = [];
 
-  function receiveProfileMock(profile) {
+  function receiveProfileMock(profile, getSymbolTableCallback) {
     receiveProfileCalls.push(profile);
   }
 
@@ -183,14 +202,20 @@ function createPerfComponent() {
     recordingPreferencesCalls.push(settings);
   }
 
+  const noop = () => {};
+
   function mountComponent() {
-    store.dispatch(actions.initializeStore({
-      toolbox: toolboxMock,
-      perfFront: perfFrontMock,
-      receiveProfile: receiveProfileMock,
-      recordingSettingsFromPreferences: selectors.getRecordingSettings(store.getState()),
-      setRecordingPreferences: recordingPreferencesMock
-    }));
+    store.dispatch(
+      actions.initializeStore({
+        perfFront: perfFrontMock,
+        receiveProfile: receiveProfileMock,
+        recordingSettingsFromPreferences: selectors.getRecordingSettings(
+          store.getState()
+        ),
+        setRecordingPreferences: recordingPreferencesMock,
+        getSymbolTableGetter: () => noop,
+      })
+    );
 
     return ReactDOM.render(
       React.createElement(
@@ -224,6 +249,6 @@ function createPerfComponent() {
     getState: store.getState,
     dispatch: store.dispatch,
     // Provide a common shortcut for this selector.
-    getRecordingState: () => selectors.getRecordingState(store.getState())
+    getRecordingState: () => selectors.getRecordingState(store.getState()),
   };
 }

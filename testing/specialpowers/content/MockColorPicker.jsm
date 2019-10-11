@@ -13,19 +13,22 @@ const CONTRACT_ID = "@mozilla.org/colorpicker;1";
 Cu.forcePermissiveCOWs();
 
 var registrar = Cm.QueryInterface(Ci.nsIComponentRegistrar);
-var oldClassID = "", oldFactory = null;
-var newClassID = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator).generateUUID();
+var oldClassID = "";
+var newClassID = Cc["@mozilla.org/uuid-generator;1"]
+  .getService(Ci.nsIUUIDGenerator)
+  .generateUUID();
 var newFactory = function(window) {
   return {
     createInstance(aOuter, aIID) {
-      if (aOuter)
+      if (aOuter) {
         throw Cr.NS_ERROR_NO_AGGREGATION;
+      }
       return new MockColorPickerInstance(window).QueryInterface(aIID);
     },
     lockFactory(aLock) {
       throw Cr.NS_ERROR_NOT_IMPLEMENTED;
     },
-    QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory]),
   };
 };
 
@@ -36,15 +39,12 @@ var MockColorPicker = {
     if (!registrar.isCIDRegistered(newClassID)) {
       try {
         oldClassID = registrar.contractIDToCID(CONTRACT_ID);
-        oldFactory = Cm.getClassObject(Cc[CONTRACT_ID], Ci.nsIFactory);
       } catch (ex) {
         oldClassID = "";
-        oldFactory = null;
-        dump("TEST-INFO | can't get colorpicker registered component, " +
-             "assuming there is none");
-      }
-      if (oldClassID != "" && oldFactory != null) {
-        registrar.unregisterFactory(oldClassID, oldFactory);
+        dump(
+          "TEST-INFO | can't get colorpicker registered component, " +
+            "assuming there is none"
+        );
       }
       registrar.registerFactory(newClassID, "", CONTRACT_ID, this.factory);
     }
@@ -63,10 +63,10 @@ var MockColorPicker = {
     this.factory = null;
 
     registrar.unregisterFactory(newClassID, previousFactory);
-    if (oldClassID != "" && oldFactory != null) {
-      registrar.registerFactory(oldClassID, "", CONTRACT_ID, oldFactory);
+    if (oldClassID != "") {
+      registrar.registerFactory(oldClassID, "", CONTRACT_ID, null);
     }
-  }
+  },
 };
 
 function MockColorPickerInstance(window) {
@@ -100,12 +100,16 @@ MockColorPickerInstance.prototype = {
           result = MockColorPicker.returnColor;
         }
       } catch (ex) {
-        dump("TEST-UNEXPECTED-FAIL | Exception in MockColorPicker.jsm open() " +
-             "method: " + ex + "\n");
+        dump(
+          "TEST-UNEXPECTED-FAIL | Exception in MockColorPicker.jsm open() " +
+            "method: " +
+            ex +
+            "\n"
+        );
       }
       if (aColorPickerShownCallback) {
         aColorPickerShownCallback.done(result);
       }
     }, 0);
-  }
+  },
 };

@@ -13,7 +13,8 @@
 interface nsISupports;
 interface Variant;
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLCanvasElement : HTMLElement {
   [CEReactions, Pure, SetterThrows]
            attribute unsigned long width;
@@ -27,7 +28,7 @@ interface HTMLCanvasElement : HTMLElement {
   DOMString toDataURL(optional DOMString type = "",
                       optional any encoderOptions);
   [Throws, NeedsSubjectPrincipal]
-  void toBlob(BlobCallback _callback,
+  void toBlob(BlobCallback callback,
               optional DOMString type = "",
               optional any encoderOptions);
 };
@@ -56,7 +57,8 @@ partial interface HTMLCanvasElement {
   OffscreenCanvas transferControlToOffscreen();
 };
 
-[ChromeOnly]
+[ChromeOnly,
+ Exposed=Window]
 interface MozCanvasPrintState
 {
   // A canvas rendering context.

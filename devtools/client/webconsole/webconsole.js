@@ -5,13 +5,45 @@
 "use strict";
 
 var Services = require("Services");
-loader.lazyRequireGetter(this, "Utils", "devtools/client/webconsole/utils", true);
-loader.lazyRequireGetter(this, "WebConsoleFrame", "devtools/client/webconsole/webconsole-frame", true);
-loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
-loader.lazyRequireGetter(this, "viewSource", "devtools/client/shared/view-source");
-loader.lazyRequireGetter(this, "openDocLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(
+  this,
+  "Utils",
+  "devtools/client/webconsole/utils",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "WebConsoleUI",
+  "devtools/client/webconsole/webconsole-ui",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "gDevTools",
+  "devtools/client/framework/devtools",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "viewSource",
+  "devtools/client/shared/view-source"
+);
+loader.lazyRequireGetter(
+  this,
+  "openDocLink",
+  "devtools/client/shared/link",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "DevToolsUtils",
+  "devtools/shared/DevToolsUtils"
+);
+const EventEmitter = require("devtools/shared/event-emitter");
+const Telemetry = require("devtools/client/shared/telemetry");
 
 var gHudId = 0;
+const isMacOS = Services.appinfo.OS === "Darwin";
 
 /**
  * A WebConsole instance is an interactive console initialized *per target*
@@ -21,52 +53,49 @@ var gHudId = 0;
  * This object only wraps the iframe that holds the Web Console UI. This is
  * meant to be an integration point between the Firefox UI and the Web Console
  * UI and features.
- *
- * @constructor
- * @param object target
- *        The target that the web console will connect to.
- * @param nsIDOMWindow iframeWindow
- *        The window where the web console UI is already loaded.
- * @param nsIDOMWindow chromeWindow
- *        The window of the web console owner.
- * @param object hudService
- *        The parent HUD Service
  */
-function WebConsole(target, iframeWindow, chromeWindow, hudService) {
-  this.iframeWindow = iframeWindow;
-  this.chromeWindow = chromeWindow;
-  this.hudId = "hud_" + ++gHudId;
-  this.target = target;
-  this.browserWindow = this.chromeWindow.top;
-  this.hudService = hudService;
-
-  const element = this.browserWindow.document.documentElement;
-  if (element.getAttribute("windowtype") != gDevTools.chromeWindowType) {
-    this.browserWindow = this.hudService.currentContext();
-  }
-  this.ui = new WebConsoleFrame(this);
-}
-
-WebConsole.prototype = {
-  iframeWindow: null,
-  chromeWindow: null,
-  browserWindow: null,
-  hudId: null,
-  target: null,
-  ui: null,
-  _browserConsole: false,
-  _destroyer: null,
-
-  /**
-   * Getter for a function to to listen for every request that completes. Used
-   * by unit tests. The callback takes one argument: the HTTP activity object as
-   * received from the remote Web Console.
-   *
-   * @type function
+class WebConsole {
+  /*
+   * @constructor
+   * @param object toolbox
+   *        The toolbox where the web console is displayed.
+   * @param nsIDOMWindow iframeWindow
+   *        The window where the web console UI is already loaded.
+   * @param nsIDOMWindow chromeWindow
+   *        The window of the web console owner.
+   * @param bool isBrowserConsole
    */
-  get lastFinishedRequestCallback() {
-    return this.hudService.lastFinishedRequest.callback;
-  },
+  constructor(toolbox, iframeWindow, chromeWindow, isBrowserConsole = false) {
+    this.toolbox = toolbox;
+    this.iframeWindow = iframeWindow;
+    this.chromeWindow = chromeWindow;
+    this.hudId = "hud_" + ++gHudId;
+    this.browserWindow = DevToolsUtils.getTopWindow(this.chromeWindow);
+    this.isBrowserConsole = isBrowserConsole;
+    this.telemetry = new Telemetry();
+
+    const element = this.browserWindow.document.documentElement;
+    if (element.getAttribute("windowtype") != gDevTools.chromeWindowType) {
+      this.browserWindow = Services.wm.getMostRecentWindow(
+        gDevTools.chromeWindowType
+      );
+    }
+    this.ui = new WebConsoleUI(this);
+    this._destroyer = null;
+
+    EventEmitter.decorate(this);
+  }
+
+  recordEvent(event, extra = {}) {
+    this.telemetry.recordEvent(event, "webconsole", null, {
+      session_id: (this.toolbox && this.toolbox.sessionId) || -1,
+      ...extra,
+    });
+  }
+
+  get currentTarget() {
+    return this.toolbox.target;
+  }
 
   /**
    * Getter for the window that can provide various utilities that the web
@@ -80,28 +109,12 @@ WebConsole.prototype = {
     if (this.browserWindow) {
       return this.browserWindow;
     }
-    return this.chromeWindow.top;
-  },
-
-  /**
-   * Getter for the xul:popupset that holds any popups we open.
-   * @type Element
-   */
-  get mainPopupSet() {
-    return this.chromeUtilsWindow.document.getElementById("mainPopupSet");
-  },
-
-  /**
-   * Getter for the output element that holds messages we display.
-   * @type Element
-   */
-  get outputNode() {
-    return this.ui ? this.ui.outputNode : null;
-  },
+    return DevToolsUtils.getTopWindow(this.chromeWindow);
+  }
 
   get gViewSourceUtils() {
     return this.chromeUtilsWindow.gViewSourceUtils;
-  },
+  }
 
   /**
    * Initialize the Web Console instance.
@@ -110,8 +123,8 @@ WebConsole.prototype = {
    *         A promise for the initialization.
    */
   init() {
-    return this.ui.init().then(() => this);
-  },
+    return this.ui.init();
+  }
 
   /**
    * The JSTerm object that manages the console's input.
@@ -120,15 +133,53 @@ WebConsole.prototype = {
    */
   get jsterm() {
     return this.ui ? this.ui.jsterm : null;
-  },
+  }
+
+  canRewind() {
+    const traits = this.currentTarget && this.currentTarget.traits;
+    return traits && traits.canRewind;
+  }
 
   /**
-   * Alias for the WebConsoleFrame.setFilterState() method.
-   * @see webconsole.js::WebConsoleFrame.setFilterState()
+   * Get the value from the input field.
+   * @returns {String|null} returns null if there's no input.
    */
-  setFilterState() {
-    this.ui && this.ui.setFilterState.apply(this.ui, arguments);
-  },
+  getInputValue() {
+    if (!this.jsterm) {
+      return null;
+    }
+
+    return this.jsterm._getValue();
+  }
+
+  inputHasSelection() {
+    const { editor } = this.jsterm || {};
+    return editor && !!editor.getSelection();
+  }
+
+  getInputSelection() {
+    if (!this.jsterm || !this.jsterm.editor) {
+      return null;
+    }
+    return this.jsterm.editor.getSelection();
+  }
+
+  /**
+   * Sets the value of the input field (command line)
+   *
+   * @param {String} newValue: The new value to set.
+   */
+  setInputValue(newValue) {
+    if (!this.jsterm) {
+      return;
+    }
+
+    this.jsterm._setValue(newValue);
+  }
+
+  focusInput() {
+    return this.jsterm && this.jsterm.focus();
+  }
 
   /**
    * Open a link in a new tab.
@@ -136,9 +187,15 @@ WebConsole.prototype = {
    * @param string link
    *        The URL you want to open in a new tab.
    */
-  openLink(link, e) {
-    openDocLink(link);
-  },
+  openLink(link, e = {}) {
+    openDocLink(link, {
+      relatedToCurrent: true,
+      inBackground: isMacOS ? e.metaKey : e.ctrlKey,
+    });
+    if (e && typeof e.stopPropagation === "function") {
+      e.stopPropagation();
+    }
+  }
 
   /**
    * Open a link in Firefox's view source.
@@ -149,8 +206,11 @@ WebConsole.prototype = {
    *        The line number which should be highlighted.
    */
   viewSource(sourceURL, sourceLine) {
-    this.gViewSourceUtils.viewSource({ URL: sourceURL, lineNumber: sourceLine || 0 });
-  },
+    this.gViewSourceUtils.viewSource({
+      URL: sourceURL,
+      lineNumber: sourceLine || 0,
+    });
+  }
 
   /**
    * Tries to open a Stylesheet file related to the web page for the web console
@@ -165,13 +225,13 @@ WebConsole.prototype = {
    *        The line number which you want to place the caret.
    */
   viewSourceInStyleEditor(sourceURL, sourceLine) {
-    const toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = this.toolbox;
     if (!toolbox) {
       this.viewSource(sourceURL, sourceLine);
       return;
     }
     toolbox.viewSourceInStyleEditor(sourceURL, sourceLine);
-  },
+  }
 
   /**
    * Tries to open a JavaScript file related to the web page for the web console
@@ -184,17 +244,19 @@ WebConsole.prototype = {
    *        The URL of the file.
    * @param integer sourceLine
    *        The line number which you want to place the caret.
+   * @param integer sourceColumn
+   *        The column number which you want to place the caret.
    */
-  viewSourceInDebugger(sourceURL, sourceLine) {
-    const toolbox = gDevTools.getToolbox(this.target);
+  async viewSourceInDebugger(sourceURL, sourceLine, sourceColumn) {
+    const toolbox = this.toolbox;
     if (!toolbox) {
-      this.viewSource(sourceURL, sourceLine);
+      this.viewSource(sourceURL, sourceLine, sourceColumn);
       return;
     }
-    toolbox.viewSourceInDebugger(sourceURL, sourceLine).then(() => {
-      this.ui.emit("source-in-debugger-opened");
-    });
-  },
+
+    await toolbox.viewSourceInDebugger(sourceURL, sourceLine, sourceColumn);
+    this.ui.emit("source-in-debugger-opened");
+  }
 
   /**
    * Tries to open a JavaScript file related to the web page for the web console
@@ -205,7 +267,7 @@ WebConsole.prototype = {
    */
   viewSourceInScratchpad(sourceURL, sourceLine) {
     viewSource.viewSourceInScratchpad(sourceURL, sourceLine);
-  },
+  }
 
   /**
    * Retrieve information about the JavaScript debugger's stackframes list. This
@@ -214,14 +276,14 @@ WebConsole.prototype = {
    *
    * @return object|null
    *         An object which holds:
-   *         - frames: the active ThreadClient.cachedFrames array.
+   *         - frames: the active ThreadFront.cachedFrames array.
    *         - selected: depth/index of the selected stackframe in the debugger
    *         UI.
    *         If the debugger is not open or if it's not paused, then |null| is
    *         returned.
    */
   getDebuggerFrames() {
-    const toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = this.toolbox;
     if (!toolbox) {
       return null;
     }
@@ -232,21 +294,66 @@ WebConsole.prototype = {
     }
 
     return panel.getFrames();
-  },
+  }
 
-  async getMappedExpression(expression) {
-    const toolbox = gDevTools.getToolbox(this.target);
-    if (!toolbox) {
-      return expression;
+  /**
+   * Given an expression, returns an object containing a new expression, mapped by the
+   * parser worker to provide additional feature for the user (top-level await,
+   * original languages mapping, …).
+   *
+   * @param {String} expression: The input to maybe map.
+   * @returns {Object|null}
+   *          Returns null if the input can't be mapped.
+   *          If it can, returns an object containing the following:
+   *            - {String} expression: The mapped expression
+   *            - {Object} mapped: An object containing the different mapping that could
+   *                               be done and if they were applied on the input.
+   *                               At the moment, contains `await`, `bindings` and
+   *                               `originalExpression`.
+   */
+  getMappedExpression(expression) {
+    const toolbox = this.toolbox;
+
+    // We need to check if the debugger is open, since it may perform a variable name
+    // substitution for sourcemapped script (i.e. evaluated `myVar.trim()` might need to
+    // be transformed into `a.trim()`).
+    const panel = toolbox && toolbox.getPanel("jsdebugger");
+    if (panel) {
+      return panel.getMappedExpression(expression);
     }
-    const panel = toolbox.getPanel("jsdebugger");
 
-    if (!panel) {
-      return expression;
+    if (this.parserService && expression.includes("await ")) {
+      const shouldMapBindings = false;
+      const shouldMapAwait = true;
+      const res = this.parserService.mapExpression(
+        expression,
+        null,
+        null,
+        shouldMapBindings,
+        shouldMapAwait
+      );
+      return res;
     }
 
-    return panel.getMappedExpression(expression);
-  },
+    return null;
+  }
+
+  get parserService() {
+    if (this._parserService) {
+      return this._parserService;
+    }
+
+    const {
+      ParserDispatcher,
+    } = require("devtools/client/debugger/src/workers/parser/index");
+
+    this._parserService = new ParserDispatcher();
+    this._parserService.start(
+      "resource://devtools/client/debugger/dist/parser-worker.js",
+      this.chromeUtilsWindow
+    );
+    return this._parserService;
+  }
 
   /**
    * Retrieves the current selection from the Inspector, if such a selection
@@ -260,7 +367,7 @@ WebConsole.prototype = {
    *         then |null| is returned.
    */
   getInspectorSelection() {
-    const toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = this.toolbox;
     if (!toolbox) {
       return null;
     }
@@ -269,7 +376,83 @@ WebConsole.prototype = {
       return null;
     }
     return panel.selection;
-  },
+  }
+
+  async onViewSourceInDebugger(frame) {
+    if (this.toolbox) {
+      await this.toolbox.viewSourceInDebugger(
+        frame.url,
+        frame.line,
+        frame.column,
+        frame.sourceId
+      );
+
+      this.recordEvent("jump_to_source");
+      this.emit("source-in-debugger-opened");
+    }
+  }
+
+  async onViewSourceInScratchpad(frame) {
+    if (this.toolbox) {
+      await this.toolbox.viewSourceInScratchpad(frame.url, frame.line);
+      this.recordEvent("jump_to_source");
+    }
+  }
+
+  async onViewSourceInStyleEditor(frame) {
+    if (!this.toolbox) {
+      return;
+    }
+    await this.toolbox.viewSourceInStyleEditor(
+      frame.url,
+      frame.line,
+      frame.column
+    );
+    this.recordEvent("jump_to_source");
+  }
+
+  async openNetworkPanel(requestId) {
+    if (!this.toolbox) {
+      return;
+    }
+    const netmonitor = await this.toolbox.selectTool("netmonitor");
+    await netmonitor.panelWin.Netmonitor.inspectRequest(requestId);
+  }
+
+  async resendNetworkRequest(requestId) {
+    if (!this.toolbox) {
+      return;
+    }
+
+    const api = await this.toolbox.getNetMonitorAPI();
+    await api.resendRequest(requestId);
+  }
+
+  async openNodeInInspector(grip) {
+    if (!this.toolbox) {
+      return;
+    }
+
+    const onSelectInspector = this.toolbox.selectTool(
+      "inspector",
+      "inspect_dom"
+    );
+    // TODO: Bug1574506 - Use the contextual WalkerFront for gripToNodeFront.
+    const walkerFront = (await this.toolbox.target.getFront("inspector"))
+      .walker;
+    const onGripNodeToFront = walkerFront.gripToNodeFront(grip);
+    const [front, inspector] = await Promise.all([
+      onGripNodeToFront,
+      onSelectInspector,
+    ]);
+
+    const onInspectorUpdated = inspector.once("inspector-updated");
+    const onNodeFrontSet = this.toolbox.selection.setNodeFront(front, {
+      reason: "console",
+    });
+
+    await Promise.all([onNodeFrontSet, onInspectorUpdated]);
+  }
 
   /**
    * Destroy the object. Call this method to avoid memory leaks when the Web
@@ -278,41 +461,26 @@ WebConsole.prototype = {
    * @return object
    *         A promise object that is resolved once the Web Console is closed.
    */
-  async destroy() {
-    if (this._destroyer) {
-      return this._destroyer;
+  destroy() {
+    if (!this.hudId) {
+      return;
     }
 
-    this._destroyer = (async () => {
-      this.hudService.consoles.delete(this.hudId);
+    if (this.ui) {
+      this.ui.destroy();
+    }
 
-      // The document may already be removed
-      if (this.chromeUtilsWindow && this.mainPopupSet) {
-        const popupset = this.mainPopupSet;
-        const panels = popupset.querySelectorAll("panel[hudId=" + this.hudId + "]");
-        for (const panel of panels) {
-          panel.hidePopup();
-        }
-      }
+    if (this._parserService) {
+      this._parserService.stop();
+      this._parserService = null;
+    }
 
-      if (this.ui) {
-        await this.ui.destroy();
-      }
+    const id = Utils.supportsString(this.hudId);
+    Services.obs.notifyObservers(id, "web-console-destroyed");
+    this.hudId = null;
 
-      if (!this._browserConsole) {
-        try {
-          await this.target.activeTab.focus();
-        } catch (ex) {
-          // Tab focus can fail if the tab or target is closed.
-        }
-      }
-
-      const id = Utils.supportsString(this.hudId);
-      Services.obs.notifyObservers(id, "web-console-destroyed");
-    })();
-
-    return this._destroyer;
-  },
-};
+    this.emit("destroyed");
+  }
+}
 
 module.exports = WebConsole;

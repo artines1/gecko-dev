@@ -1,4 +1,3 @@
-/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -9,9 +8,7 @@
 function run_test() {
   const { flatten } = DevToolsUtils;
 
-  const flat = flatten([["a", "b", "c"],
-                        ["d", "e", "f"],
-                        ["g", "h", "i"]]);
+  const flat = flatten([["a", "b", "c"], ["d", "e", "f"], ["g", "h", "i"]]);
 
   equal(flat.length, 9);
   equal(flat[0], "a");

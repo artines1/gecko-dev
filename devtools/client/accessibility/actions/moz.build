@@ -4,6 +4,8 @@
 
 DevToolsModules(
     'accessibles.js',
+    'audit.js',
     'details.js',
+    'simulation.js',
     'ui.js'
 )

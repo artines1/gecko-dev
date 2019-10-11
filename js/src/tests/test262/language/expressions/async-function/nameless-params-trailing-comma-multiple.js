@@ -1,9 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/params-trailing-comma-multiple.case
 // - src/function-forms/default/async-func-expr-nameless.template
 /*---
 description: A trailing comma should not increase the respective length, using multiple parameters (async function nameless expression)
 esid: sec-async-function-definitions
+features: [async-functions]
 flags: [generated, async]
 info: |
     14.6 Async Function Definitions

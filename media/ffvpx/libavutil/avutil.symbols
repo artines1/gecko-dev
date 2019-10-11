@@ -174,7 +174,7 @@ av_image_get_buffer_size
 av_image_get_linesize
 av_int_list_length_for_size
 av_log
-#ifndef MOZ_FFVPX_FLACONLY
+#ifndef MOZ_FFVPX_AUDIOONLY
 av_log2
 av_log2_16bit
 #endif
@@ -304,7 +304,6 @@ av_vlog
 av_write_image_line
 avpriv_alloc_fixed_dsp
 avpriv_float_dsp_alloc
-avpriv_frame_get_metadatap
 avpriv_report_missing_feature
 avpriv_request_sample
 avpriv_scalarproduct_float_c
@@ -312,9 +311,14 @@ avpriv_set_systematic_pal2
 avutil_configuration
 avutil_license
 avutil_version
-#ifdef XP_WIN
+#if defined(XP_WIN) && !defined(_ARM64_)
 avpriv_emms_asm
 #endif
 avpriv_slicethread_create
 avpriv_slicethread_execute
 avpriv_slicethread_free
+av_hwdevice_get_type_name
+av_hwframe_ctx_alloc
+av_hwframe_ctx_init
+av_malloc_array
+av_mallocz_array

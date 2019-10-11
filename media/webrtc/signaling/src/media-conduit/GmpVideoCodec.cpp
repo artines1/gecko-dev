@@ -8,11 +8,11 @@
 namespace mozilla {
 
 WebrtcVideoEncoder* GmpVideoCodec::CreateEncoder() {
-  return new WebrtcVideoEncoderProxy();
+  return new WebrtcVideoEncoderProxy(new WebrtcGmpVideoEncoder());
 }
 
 WebrtcVideoDecoder* GmpVideoCodec::CreateDecoder() {
   return new WebrtcVideoDecoderProxy();
 }
 
-}
+}  // namespace mozilla

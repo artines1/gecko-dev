@@ -11,9 +11,8 @@ const {
 } = require("./index");
 
 module.exports = {
-
   /**
-   * Update the grid highlighter's show grid areas preference.
+   * Updates the grid highlighter's show grid areas preference.
    *
    * @param  {Boolean} enabled
    *         Whether or not the grid highlighter should show the grid areas.
@@ -26,7 +25,7 @@ module.exports = {
   },
 
   /**
-   * Update the grid highlighter's show grid line numbers preference.
+   * Updates the grid highlighter's show grid line numbers preference.
    *
    * @param  {Boolean} enabled
    *         Whether or not the grid highlighter should show the grid line numbers.
@@ -39,7 +38,7 @@ module.exports = {
   },
 
   /**
-   * Update the grid highlighter's show infinite lines preference.
+   * Updates the grid highlighter's show infinite lines preference.
    *
    * @param  {Boolean} enabled
    *         Whether or not the grid highlighter should extend grid lines infinitely.
@@ -50,5 +49,4 @@ module.exports = {
       enabled,
     };
   },
-
 };

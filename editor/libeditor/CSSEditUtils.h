@@ -6,11 +6,11 @@
 #ifndef mozilla_CSSEditUtils_h
 #define mozilla_CSSEditUtils_h
 
-#include "mozilla/ChangeStyleTransaction.h" // for ChangeStyleTransaction
-#include "nsCOMPtr.h"               // for already_AddRefed
+#include "mozilla/ChangeStyleTransaction.h"  // for ChangeStyleTransaction
+#include "nsCOMPtr.h"                        // for already_AddRefed
 #include "nsStringFwd.h"
-#include "nsTArray.h"               // for nsTArray
-#include "nscore.h"                 // for nsAString, nsresult, nullptr
+#include "nsTArray.h"  // for nsTArray
+#include "nscore.h"    // for nsAString, nsresult, nullptr
 
 class nsComputedDOMStyle;
 class nsAtom;
@@ -23,7 +23,7 @@ namespace mozilla {
 class HTMLEditor;
 namespace dom {
 class Element;
-} // namespace dom
+}  // namespace dom
 
 typedef void (*nsProcessValueFunc)(const nsAString* aInputString,
                                    nsAString& aOutputString,
@@ -31,15 +31,13 @@ typedef void (*nsProcessValueFunc)(const nsAString* aInputString,
                                    const char* aPrependString,
                                    const char* aAppendString);
 
-class CSSEditUtils final
-{
-public:
+class CSSEditUtils final {
+ public:
   explicit CSSEditUtils(HTMLEditor* aEditor);
   ~CSSEditUtils();
 
-  enum nsCSSEditableProperty
-  {
-    eCSSEditableProperty_NONE=0,
+  enum nsCSSEditableProperty {
+    eCSSEditableProperty_NONE = 0,
     eCSSEditableProperty_background_color,
     eCSSEditableProperty_background_image,
     eCSSEditableProperty_border,
@@ -63,9 +61,7 @@ public:
 
   enum StyleType { eSpecified, eComputed };
 
-
-  struct CSSEquivTable
-  {
+  struct CSSEquivTable {
     nsCSSEditableProperty cssProperty;
     nsProcessValueFunc processValueFunctor;
     const char* defaultValue;
@@ -100,14 +96,17 @@ public:
    * @param aSuppressTransaction [IN] A boolean indicating, when true,
    *                                  that no transaction should be recorded.
    */
-  nsresult SetCSSProperty(dom::Element& aElement, nsAtom& aProperty,
-                          const nsAString& aValue, bool aSuppressTxn = false);
-  nsresult SetCSSPropertyPixels(dom::Element& aElement,
-                                nsAtom& aProperty, int32_t aIntValue);
-  nsresult RemoveCSSProperty(dom::Element& aElement,
-                             nsAtom& aProperty,
-                             const nsAString& aPropertyValue,
-                             bool aSuppressTxn = false);
+  MOZ_CAN_RUN_SCRIPT nsresult SetCSSProperty(dom::Element& aElement,
+                                             nsAtom& aProperty,
+                                             const nsAString& aValue,
+                                             bool aSuppressTxn = false);
+  MOZ_CAN_RUN_SCRIPT nsresult SetCSSPropertyPixels(dom::Element& aElement,
+                                                   nsAtom& aProperty,
+                                                   int32_t aIntValue);
+  MOZ_CAN_RUN_SCRIPT nsresult RemoveCSSProperty(dom::Element& aElement,
+                                                nsAtom& aProperty,
+                                                const nsAString& aPropertyValue,
+                                                bool aSuppressTxn = false);
 
   /**
    * Gets the specified/computed style value of a CSS property for a given
@@ -132,6 +131,7 @@ public:
    * @param aPropertyValue  [IN] The value of the property we have to remove
    *                             if the property accepts more than one value.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult RemoveCSSInlineStyle(nsINode& aNode, nsAtom* aProperty,
                                 const nsAString& aPropertyValue);
 
@@ -161,7 +161,7 @@ public:
    * @param aLengthUnit    [OUT] The default length unit as it is defined in
    *                             prefs.
    */
-  static void GetDefaultLengthUnit(nsAString & aLengthUnit);
+  static void GetDefaultLengthUnit(nsAString& aLengthUnit);
 
   /**
    * Returns the list of values for the CSS equivalences to
@@ -230,10 +230,8 @@ public:
    *                       not set.
    */
 
-  static bool HaveCSSEquivalentStyles(nsINode& aNode,
-                                      nsAtom* aProperty,
-                                      nsAtom* aAttribute,
-                                      StyleType aStyleType);
+  static bool HaveCSSEquivalentStyles(nsINode& aNode, nsAtom* aProperty,
+                                      nsAtom* aAttribute, StyleType aStyleType);
 
   /**
    * Adds to the node the CSS inline styles equivalent to the HTML style
@@ -249,11 +247,9 @@ public:
    *
    * @return               The number of CSS properties set by the call.
    */
-  int32_t SetCSSEquivalentToHTMLStyle(dom::Element* aElement,
-                                      nsAtom* aProperty,
-                                      nsAtom* aAttribute,
-                                      const nsAString* aValue,
-                                      bool aSuppressTransaction);
+  MOZ_CAN_RUN_SCRIPT int32_t SetCSSEquivalentToHTMLStyle(
+      dom::Element* aElement, nsAtom* aProperty, nsAtom* aAttribute,
+      const nsAString* aValue, bool aSuppressTransaction);
 
   /**
    * Removes from the node the CSS inline styles equivalent to the HTML style.
@@ -266,6 +262,7 @@ public:
    * @param aSuppressTransaction [IN] A boolean indicating, when true,
    *                                  that no transaction should be recorded.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult RemoveCSSEquivalentToHTMLStyle(dom::Element* aElement,
                                           nsAtom* aHTMLProperty,
                                           nsAtom* aAttribute,
@@ -324,7 +321,7 @@ public:
                                   nsICSSDeclaration** aCssDecl,
                                   uint32_t* aLength);
 
-public:
+ public:
   /**
    * Returns aNode itself if it is an element node, or the first ancestors
    * being an element node if aNode is not one itself.
@@ -338,10 +335,10 @@ public:
   /**
    * Gets the computed style for a given element.  Can return null.
    */
-  static already_AddRefed<nsComputedDOMStyle>
-           GetComputedStyle(dom::Element* aElement);
+  static already_AddRefed<nsComputedDOMStyle> GetComputedStyle(
+      dom::Element* aElement);
 
-private:
+ private:
   /**
    * Retrieves the CSS property atom from an enum.
    *
@@ -389,13 +386,9 @@ private:
    *                                 RemoveCSSEquivalentToHTMLInlineStyleSet().
    */
   static void GenerateCSSDeclarationsFromHTMLStyle(
-                dom::Element* aNode,
-                nsAtom* aHTMLProperty,
-                nsAtom* aAttribute,
-                const nsAString* aValue,
-                nsTArray<nsAtom*>& aPropertyArray,
-                nsTArray<nsString>& aValueArray,
-                bool aGetOrRemoveRequest);
+      dom::Element* aNode, nsAtom* aHTMLProperty, nsAtom* aAttribute,
+      const nsAString* aValue, nsTArray<nsAtom*>& aPropertyArray,
+      nsTArray<nsString>& aValueArray, bool aGetOrRemoveRequest);
 
   /**
    * Back-end for GetSpecifiedProperty and GetComputedProperty.
@@ -409,21 +402,21 @@ private:
                                            nsAString& aValue,
                                            StyleType aStyleType);
 
-private:
+ private:
   HTMLEditor* mHTMLEditor;
   bool mIsCSSPrefChecked;
 };
 
-#define NS_EDITOR_INDENT_INCREMENT_IN        0.4134f
-#define NS_EDITOR_INDENT_INCREMENT_CM        1.05f
-#define NS_EDITOR_INDENT_INCREMENT_MM        10.5f
-#define NS_EDITOR_INDENT_INCREMENT_PT        29.76f
-#define NS_EDITOR_INDENT_INCREMENT_PC        2.48f
-#define NS_EDITOR_INDENT_INCREMENT_EM        3
-#define NS_EDITOR_INDENT_INCREMENT_EX        6
-#define NS_EDITOR_INDENT_INCREMENT_PX        40
-#define NS_EDITOR_INDENT_INCREMENT_PERCENT   4
+#define NS_EDITOR_INDENT_INCREMENT_IN 0.4134f
+#define NS_EDITOR_INDENT_INCREMENT_CM 1.05f
+#define NS_EDITOR_INDENT_INCREMENT_MM 10.5f
+#define NS_EDITOR_INDENT_INCREMENT_PT 29.76f
+#define NS_EDITOR_INDENT_INCREMENT_PC 2.48f
+#define NS_EDITOR_INDENT_INCREMENT_EM 3
+#define NS_EDITOR_INDENT_INCREMENT_EX 6
+#define NS_EDITOR_INDENT_INCREMENT_PX 40
+#define NS_EDITOR_INDENT_INCREMENT_PERCENT 4
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // #ifndef mozilla_CSSEditUtils_h
+#endif  // #ifndef mozilla_CSSEditUtils_h

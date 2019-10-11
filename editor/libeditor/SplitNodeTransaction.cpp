@@ -5,58 +5,46 @@
 
 #include "SplitNodeTransaction.h"
 
-#include "mozilla/EditorBase.h"         // for EditorBase
-#include "mozilla/EditorDOMPoint.h"     // for RangeBoundary, EditorRawDOMPoint
+#include "mozilla/EditorBase.h"      // for EditorBase
+#include "mozilla/EditorDOMPoint.h"  // for RangeBoundary, EditorRawDOMPoint
 #include "mozilla/dom/Selection.h"
 #include "nsAString.h"
-#include "nsDebug.h"                    // for NS_ASSERTION, etc.
-#include "nsError.h"                    // for NS_ERROR_NOT_INITIALIZED, etc.
-#include "nsIContent.h"                 // for nsIContent
+#include "nsDebug.h"     // for NS_ASSERTION, etc.
+#include "nsError.h"     // for NS_ERROR_NOT_INITIALIZED, etc.
+#include "nsIContent.h"  // for nsIContent
 
 namespace mozilla {
 
 using namespace dom;
 
-template already_AddRefed<SplitNodeTransaction>
-SplitNodeTransaction::Create(
-                        EditorBase& aEditorBase,
-                        const EditorDOMPoint& aStartOfRightNode);
-template already_AddRefed<SplitNodeTransaction>
-SplitNodeTransaction::Create(
-                        EditorBase& aEditorBase,
-                        const EditorRawDOMPoint& aStartOfRightNode);
+template already_AddRefed<SplitNodeTransaction> SplitNodeTransaction::Create(
+    EditorBase& aEditorBase, const EditorDOMPoint& aStartOfRightNode);
+template already_AddRefed<SplitNodeTransaction> SplitNodeTransaction::Create(
+    EditorBase& aEditorBase, const EditorRawDOMPoint& aStartOfRightNode);
 
 // static
-template<typename PT, typename CT>
-already_AddRefed<SplitNodeTransaction>
-SplitNodeTransaction::Create(
-                        EditorBase& aEditorBase,
-                        const EditorDOMPointBase<PT, CT>& aStartOfRightNode)
-{
+template <typename PT, typename CT>
+already_AddRefed<SplitNodeTransaction> SplitNodeTransaction::Create(
+    EditorBase& aEditorBase,
+    const EditorDOMPointBase<PT, CT>& aStartOfRightNode) {
   RefPtr<SplitNodeTransaction> transaction =
-    new SplitNodeTransaction(aEditorBase, aStartOfRightNode);
+      new SplitNodeTransaction(aEditorBase, aStartOfRightNode);
   return transaction.forget();
 }
 
-template<typename PT, typename CT>
+template <typename PT, typename CT>
 SplitNodeTransaction::SplitNodeTransaction(
-                        EditorBase& aEditorBase,
-                        const EditorDOMPointBase<PT, CT>& aStartOfRightNode)
-  : mEditorBase(&aEditorBase)
-  , mStartOfRightNode(aStartOfRightNode)
-{
+    EditorBase& aEditorBase,
+    const EditorDOMPointBase<PT, CT>& aStartOfRightNode)
+    : mEditorBase(&aEditorBase), mStartOfRightNode(aStartOfRightNode) {
   MOZ_DIAGNOSTIC_ASSERT(aStartOfRightNode.IsSet());
   MOZ_DIAGNOSTIC_ASSERT(aStartOfRightNode.GetContainerAsContent());
 }
 
-SplitNodeTransaction::~SplitNodeTransaction()
-{
-}
+SplitNodeTransaction::~SplitNodeTransaction() {}
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(SplitNodeTransaction, EditTransactionBase,
-                                   mEditorBase,
-                                   mStartOfRightNode,
-                                   mParent,
+                                   mEditorBase, mStartOfRightNode, mParent,
                                    mNewLeftNode)
 
 NS_IMPL_ADDREF_INHERITED(SplitNodeTransaction, EditTransactionBase)
@@ -64,11 +52,10 @@ NS_IMPL_RELEASE_INHERITED(SplitNodeTransaction, EditTransactionBase)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SplitNodeTransaction)
 NS_INTERFACE_MAP_END_INHERITING(EditTransactionBase)
 
+MOZ_CAN_RUN_SCRIPT_BOUNDARY
 NS_IMETHODIMP
-SplitNodeTransaction::DoTransaction()
-{
-  if (NS_WARN_IF(!mEditorBase) ||
-      NS_WARN_IF(!mStartOfRightNode.IsSet())) {
+SplitNodeTransaction::DoTransaction() {
+  if (NS_WARN_IF(!mEditorBase) || NS_WARN_IF(!mStartOfRightNode.IsSet())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
   MOZ_ASSERT(mStartOfRightNode.IsSetAndValid());
@@ -77,7 +64,7 @@ SplitNodeTransaction::DoTransaction()
   ErrorResult error;
   // Don't use .downcast directly because AsContent has an assertion we want
   nsCOMPtr<nsINode> clone =
-    mStartOfRightNode.GetContainer()->CloneNode(false, error);
+      mStartOfRightNode.GetContainer()->CloneNode(false, error);
   if (NS_WARN_IF(error.Failed())) {
     return error.StealNSResult();
   }
@@ -94,23 +81,23 @@ SplitNodeTransaction::DoTransaction()
   }
 
   // Insert the new node
-  mEditorBase->DoSplitNode(EditorDOMPoint(mStartOfRightNode),
-                           *mNewLeftNode, error);
+  RefPtr<EditorBase> editorBase = mEditorBase;
+  nsCOMPtr<nsIContent> newLeftNode = mNewLeftNode;
+  editorBase->DoSplitNode(EditorDOMPoint(mStartOfRightNode), *newLeftNode,
+                          error);
+  if (NS_WARN_IF(error.Failed())) {
+    return error.StealNSResult();
+  }
 
-  if (!mEditorBase->AllowsTransactionsToChangeSelection()) {
-    if (NS_WARN_IF(error.Failed())) {
-      return error.StealNSResult();
-    }
+  if (!editorBase->AllowsTransactionsToChangeSelection()) {
     return NS_OK;
   }
 
-  // XXX Really odd.  The result of DoSplitNode() is respected only when
-  //     we shouldn't set selection.  Otherwise, it's overridden by the
-  //     result of Selection.Collapse().
-  NS_WARNING_ASSERTION(!mEditorBase->Destroyed(),
-    "The editor has gone but SplitNodeTransaction keeps trying to modify "
-    "Selection");
-  RefPtr<Selection> selection = mEditorBase->GetSelection();
+  NS_WARNING_ASSERTION(
+      !editorBase->Destroyed(),
+      "The editor has gone but SplitNodeTransaction keeps trying to modify "
+      "Selection");
+  RefPtr<Selection> selection = editorBase->GetSelection();
   if (NS_WARN_IF(!selection)) {
     return NS_ERROR_FAILURE;
   }
@@ -118,7 +105,6 @@ SplitNodeTransaction::DoTransaction()
     // XXX This must be a bug.
     error.SuppressException();
   }
-  MOZ_ASSERT(mStartOfRightNode.Offset() == mNewLeftNode->Length());
   EditorRawDOMPoint atEndOfLeftNode;
   atEndOfLeftNode.SetToEndOf(mNewLeftNode);
   selection->Collapse(atEndOfLeftNode, error);
@@ -128,48 +114,50 @@ SplitNodeTransaction::DoTransaction()
   return NS_OK;
 }
 
+MOZ_CAN_RUN_SCRIPT_BOUNDARY
 NS_IMETHODIMP
-SplitNodeTransaction::UndoTransaction()
-{
-  if (NS_WARN_IF(!mEditorBase) ||
-      NS_WARN_IF(!mNewLeftNode) ||
-      NS_WARN_IF(!mParent) ||
-      NS_WARN_IF(!mStartOfRightNode.IsSet())) {
+SplitNodeTransaction::UndoTransaction() {
+  if (NS_WARN_IF(!mEditorBase) || NS_WARN_IF(!mNewLeftNode) ||
+      NS_WARN_IF(!mParent) || NS_WARN_IF(!mStartOfRightNode.IsSet())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
   // This assumes Do inserted the new node in front of the prior existing node
   // XXX Perhaps, we should reset mStartOfRightNode with current first child
   //     of the right node.
-  return mEditorBase->DoJoinNodes(mStartOfRightNode.GetContainer(),
-                                  mNewLeftNode, mParent);
+  RefPtr<EditorBase> editorBase = mEditorBase;
+  nsCOMPtr<nsINode> container = mStartOfRightNode.GetContainer();
+  nsCOMPtr<nsINode> newLeftNode = mNewLeftNode;
+  nsCOMPtr<nsINode> parent = mParent;
+  return editorBase->DoJoinNodes(container, newLeftNode, parent);
 }
 
 /* Redo cannot simply resplit the right node, because subsequent transactions
  * on the redo stack may depend on the left node existing in its previous
  * state.
  */
+MOZ_CAN_RUN_SCRIPT_BOUNDARY
 NS_IMETHODIMP
-SplitNodeTransaction::RedoTransaction()
-{
-  if (NS_WARN_IF(!mNewLeftNode) ||
-      NS_WARN_IF(!mParent) ||
-      NS_WARN_IF(!mStartOfRightNode.IsSet())) {
+SplitNodeTransaction::RedoTransaction() {
+  if (NS_WARN_IF(!mNewLeftNode) || NS_WARN_IF(!mParent) ||
+      NS_WARN_IF(!mStartOfRightNode.IsSet()) || NS_WARN_IF(!mEditorBase)) {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
   // First, massage the existing node so it is in its post-split state
   if (mStartOfRightNode.IsInTextNode()) {
-    Text* rightNodeAsText = mStartOfRightNode.GetContainerAsText();
+    RefPtr<EditorBase> editorBase = mEditorBase;
+    RefPtr<Text> rightNodeAsText = mStartOfRightNode.GetContainerAsText();
     MOZ_DIAGNOSTIC_ASSERT(rightNodeAsText);
-    ErrorResult rv;
-    rightNodeAsText->DeleteData(0, mStartOfRightNode.Offset(), rv);
-    if (NS_WARN_IF(rv.Failed())) {
-      return rv.StealNSResult();
+    ErrorResult error;
+    editorBase->DoDeleteText(*rightNodeAsText, 0, mStartOfRightNode.Offset(),
+                             error);
+    if (NS_WARN_IF(error.Failed())) {
+      return error.StealNSResult();
     }
   } else {
     nsCOMPtr<nsIContent> child =
-      mStartOfRightNode.GetContainer()->GetFirstChild();
+        mStartOfRightNode.GetContainer()->GetFirstChild();
     nsCOMPtr<nsIContent> nextSibling;
     for (uint32_t i = 0; i < mStartOfRightNode.Offset(); i++) {
       // XXX This must be bad behavior.  Perhaps, we should work with
@@ -202,10 +190,6 @@ SplitNodeTransaction::RedoTransaction()
   return NS_OK;
 }
 
-nsIContent*
-SplitNodeTransaction::GetNewNode()
-{
-  return mNewLeftNode;
-}
+nsIContent* SplitNodeTransaction::GetNewNode() { return mNewLeftNode; }
 
-} // namespace mozilla
+}  // namespace mozilla

@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -25,10 +24,13 @@ add_task(async function() {
   info("Waiting for source editor to be ready.");
   await ui.editors[1].getSourceEditor();
 
-  is(ui.selectedEditor, ui.editors[1],
-    "second editor is selected after reload");
+  is(
+    ui.selectedEditor,
+    ui.editors[1],
+    "second editor is selected after reload"
+  );
 
-  const {line, ch} = ui.selectedEditor.sourceEditor.getCursor();
+  const { line, ch } = ui.selectedEditor.sourceEditor.getCursor();
   is(line, LINE_NO, "correct line selected");
   is(ch, COL_NO, "correct column selected");
 });

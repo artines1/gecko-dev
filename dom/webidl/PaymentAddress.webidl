@@ -5,10 +5,14 @@
  *
  * The origin of this WebIDL file is
  *   https://www.w3.org/TR/payment-request/#paymentaddress-interface
+ *
+ * Copyright © 2018 W3C® (MIT, ERCIM, Keio), All Rights Reserved. W3C
+ * liability, trademark and document use rules apply.
  */
 
 [SecureContext,
- Func="mozilla::dom::PaymentRequest::PrefEnabled"]
+ Func="mozilla::dom::PaymentRequest::PrefEnabled",
+ Exposed=Window]
 interface PaymentAddress {
   [Default] object toJSON();
 
@@ -18,11 +22,11 @@ interface PaymentAddress {
   [Frozen, Cached, Pure]
   readonly attribute sequence<DOMString>    addressLine;
   readonly attribute DOMString              region;
+  readonly attribute DOMString              regionCode;
   readonly attribute DOMString              city;
   readonly attribute DOMString              dependentLocality;
   readonly attribute DOMString              postalCode;
   readonly attribute DOMString              sortingCode;
-  readonly attribute DOMString              languageCode;
   readonly attribute DOMString              organization;
   readonly attribute DOMString              recipient;
   readonly attribute DOMString              phone;

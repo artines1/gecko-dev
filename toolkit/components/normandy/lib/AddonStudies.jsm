@@ -8,10 +8,14 @@
  * @property {Number} recipeId
  *   ID of the recipe that created the study. Used as the primary key of the
  *   study.
- * @property {string} name
- *   Name of the study
- * @property {string} description
+ * @property {Number} slug
+ *   String code used to identify the study for use in Telemetry and logging.
+ * @property {string} userFacingName
+ *   Name of the study to show to the user
+ * @property {string} userFacingDescription
  *   Description of the study and its intent.
+ * @property {string} branch
+ *   The branch the user is enrolled in
  * @property {boolean} active
  *   Is the study still running?
  * @property {string} addonId
@@ -20,35 +24,61 @@
  *   URL that the study add-on was installed from.
  * @property {string} addonVersion
  *   Study add-on version number
+ * @property {int} extensionApiId
+ *   The ID used to look up the extension in Normandy's API.
+ * @property {string} extensionHash
+ *   The hash of the XPI file.
+ * @property {string} extensionHashAlgorithm
+ *   The algorithm used to hash the XPI file.
  * @property {string} studyStartDate
  *   Date when the study was started.
  * @property {Date} studyEndDate
  *   Date when the study was ended.
+ * @property {string} enrollmentId
+ *   A random ID generated at time of enrollment. It should be included on all
+ *   telemetry related to this study. It should not be re-used by other studies,
+ *   or any other purpose. May be null on old study.
  */
 
-ChromeUtils.import("resource://gre/modules/osfile.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.defineModuleGetter(this, "FileUtils", "resource://gre/modules/FileUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "IndexedDB", "resource://gre/modules/IndexedDB.jsm");
-ChromeUtils.defineModuleGetter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "Addons", "resource://normandy/lib/Addons.jsm");
 ChromeUtils.defineModuleGetter(
-  this, "CleanupManager", "resource://normandy/lib/CleanupManager.jsm"
+  this,
+  "IndexedDB",
+  "resource://gre/modules/IndexedDB.jsm"
 );
-ChromeUtils.defineModuleGetter(this, "LogManager", "resource://normandy/lib/LogManager.jsm");
-ChromeUtils.defineModuleGetter(this, "TelemetryEvents", "resource://normandy/lib/TelemetryEvents.jsm");
-
-XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]); /* globals fetch */
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "CleanupManager",
+  "resource://normandy/lib/CleanupManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "LogManager",
+  "resource://normandy/lib/LogManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "TelemetryEnvironment",
+  "resource://gre/modules/TelemetryEnvironment.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "TelemetryEvents",
+  "resource://normandy/lib/TelemetryEvents.jsm"
+);
 
 var EXPORTED_SYMBOLS = ["AddonStudies"];
 
 const DB_NAME = "shield";
 const STORE_NAME = "addon-studies";
-const DB_OPTIONS = {
-  version: 1,
-};
+const VERSION_STORE_NAME = "addon-studies-version";
+const DB_VERSION = 2;
 const STUDY_ENDED_TOPIC = "shield-study-ended";
 const log = LogManager.getLogger("addon-studies");
 
@@ -56,10 +86,16 @@ const log = LogManager.getLogger("addon-studies");
  * Create a new connection to the database.
  */
 function openDatabase() {
-  return IndexedDB.open(DB_NAME, DB_OPTIONS, db => {
-    db.createObjectStore(STORE_NAME, {
-      keyPath: "recipeId",
-    });
+  return IndexedDB.open(DB_NAME, DB_VERSION, async (db, event) => {
+    if (event.oldVersion < 1) {
+      db.createObjectStore(STORE_NAME, {
+        keyPath: "recipeId",
+      });
+    }
+
+    if (event.oldVersion < 2) {
+      db.createObjectStore(VERSION_STORE_NAME);
+    }
   });
 }
 
@@ -77,37 +113,20 @@ async function getDatabase() {
 /**
  * Get a transaction for interacting with the study store.
  *
+ * @param {IDBDatabase} db
+ * @param {String} mode Either "readonly" or "readwrite"
+ *
  * NOTE: Methods on the store returned by this function MUST be called
  * synchronously, otherwise the transaction with the store will expire.
  * This is why the helper takes a database as an argument; if we fetched the
  * database in the helper directly, the helper would be async and the
  * transaction would expire before methods on the store were called.
  */
-function getStore(db) {
-  return db.objectStore(STORE_NAME, "readwrite");
-}
-
-/**
- * Mark a study object as having ended. Modifies the study in-place.
- * @param {IDBDatabase} db
- * @param {Study} study
- * @param {String} reason Why the study is ending.
- */
-async function markAsEnded(db, study, reason) {
-  if (reason === "unknown") {
-    log.warn(`Study ${study.name} ending for unknown reason.`);
+function getStore(db, mode) {
+  if (!mode) {
+    throw new Error("mode is required");
   }
-
-  study.active = false;
-  study.studyEndDate = new Date();
-  await getStore(db).put(study);
-
-  Services.obs.notifyObservers(study, STUDY_ENDED_TOPIC, `${study.recipeId}`);
-  TelemetryEvents.sendEvent("unenroll", "addon_study", study.name, {
-    addonId: study.addonId,
-    addonVersion: study.addonVersion,
-    reason,
-  });
+  return db.objectStore(STORE_NAME, mode);
 }
 
 var AddonStudies = {
@@ -127,21 +146,16 @@ var AddonStudies = {
         const oldStudies = await AddonStudies.getAll();
         let db = await getDatabase();
         await AddonStudies.clear();
-        for (const study of studies) {
-          await getStore(db).add(study);
-        }
-        await AddonStudies.close();
+        const store = getStore(db, "readwrite");
+        await Promise.all(studies.map(study => store.add(study)));
 
         try {
           await testFunction(...args, studies);
         } finally {
           db = await getDatabase();
           await AddonStudies.clear();
-          for (const study of oldStudies) {
-            await getStore(db).add(study);
-          }
-
-          await AddonStudies.close();
+          const store = getStore(db, "readwrite");
+          await Promise.all(oldStudies.map(study => store.add(study)));
         }
       };
     };
@@ -151,14 +165,12 @@ var AddonStudies = {
     // If an active study's add-on has been removed since we last ran, stop the
     // study.
     const activeStudies = (await this.getAll()).filter(study => study.active);
-    const db = await getDatabase();
     for (const study of activeStudies) {
       const addon = await AddonManager.getAddonByID(study.addonId);
       if (!addon) {
-        await markAsEnded(db, study, "uninstalled-sideload");
+        await this.markAsEnded(study, "uninstalled-sideload");
       }
     }
-    await this.close();
 
     // Listen for add-on uninstalls so we can stop the corresponding studies.
     AddonManager.addAddonListener(this);
@@ -168,18 +180,64 @@ var AddonStudies = {
   },
 
   /**
+   * Change from "name" and "description" to "slug", "userFacingName",
+   * and "userFacingDescription".
+   *
+   * This is called as needed by NormandyMigrations.jsm, which handles tracking
+   * if this migration has already been run.
+   */
+  async migrateAddonStudyFieldsToSlugAndUserFacingFields() {
+    const db = await getDatabase();
+    const studies = await db.objectStore(STORE_NAME, "readonly").getAll();
+
+    // If there are no studies, stop here to avoid opening the DB again.
+    if (studies.length === 0) {
+      return;
+    }
+
+    // Object stores expire after `await`, so this method accumulates a bunch of
+    // promises, and then awaits them at the end.
+    const writePromises = [];
+    const objectStore = db.objectStore(STORE_NAME, "readwrite");
+
+    for (const study of studies) {
+      // use existing name as slug
+      if (!study.slug) {
+        study.slug = study.name;
+      }
+
+      // Rename `name` and `description` as `userFacingName` and `userFacingDescription`
+      if (study.name && !study.userFacingName) {
+        study.userFacingName = study.name;
+      }
+      delete study.name;
+      if (study.description && !study.userFacingDescription) {
+        study.userFacingDescription = study.description;
+      }
+      delete study.description;
+
+      // Specify that existing recipes don't have branches
+      if (!study.branch) {
+        study.branch = AddonStudies.NO_BRANCHES_MARKER;
+      }
+
+      writePromises.push(objectStore.put(study));
+    }
+
+    await Promise.all(writePromises);
+  },
+
+  /**
    * If a study add-on is uninstalled, mark the study as having ended.
    * @param {Addon} addon
    */
   async onUninstalled(addon) {
     const activeStudies = (await this.getAll()).filter(study => study.active);
-    const matchingStudy = activeStudies.find(study => study.addonId === addon.id);
+    const matchingStudy = activeStudies.find(
+      study => study.addonId === addon.id
+    );
     if (matchingStudy) {
-      // Use a dedicated DB connection instead of the shared one so that we can
-      // close it without fear of affecting other users of the shared connection.
-      const db = await openDatabase();
-      await markAsEnded(db, matchingStudy, "uninstalled");
-      await db.close();
+      await this.markAsEnded(matchingStudy, "uninstalled");
     }
   },
 
@@ -188,19 +246,7 @@ var AddonStudies = {
    */
   async clear() {
     const db = await getDatabase();
-    await getStore(db).clear();
-  },
-
-  /**
-   * Close the current database connection if it is open.
-   */
-  async close() {
-    if (databasePromise) {
-      const promise = databasePromise;
-      databasePromise = null;
-      const db = await promise;
-      await db.close();
-    }
+    await getStore(db, "readwrite").clear();
   },
 
   /**
@@ -210,7 +256,7 @@ var AddonStudies = {
    */
   async has(recipeId) {
     const db = await getDatabase();
-    const study = await getStore(db).get(recipeId);
+    const study = await getStore(db, "readonly").get(recipeId);
     return !!study;
   },
 
@@ -221,135 +267,159 @@ var AddonStudies = {
    */
   async get(recipeId) {
     const db = await getDatabase();
-    return getStore(db).get(recipeId);
+    return getStore(db, "readonly").get(recipeId);
+  },
+
+  FILTER_BRANCHED_ONLY: Symbol("FILTER_BRANCHED_ONLY"),
+  FILTER_NOT_BRANCHED: Symbol("FILTER_NOT_BRANCHED"),
+  FILTER_ALL: Symbol("FILTER_ALL"),
+
+  /**
+   * Fetch all studies in storage.
+   * @return {Array<Study>}
+   */
+  async getAll({ branched = AddonStudies.FILTER_ALL } = {}) {
+    const db = await getDatabase();
+    let results = await getStore(db, "readonly").getAll();
+
+    if (branched == AddonStudies.FILTER_BRANCHED_ONLY) {
+      results = results.filter(
+        study => study.branch != AddonStudies.NO_BRANCHES_MARKER
+      );
+    } else if (branched == AddonStudies.FILTER_NOT_BRANCHED) {
+      results = results.filter(
+        study => study.branch == AddonStudies.NO_BRANCHES_MARKER
+      );
+    }
+    return results;
   },
 
   /**
    * Fetch all studies in storage.
    * @return {Array<Study>}
    */
-  async getAll() {
-    const db = await getDatabase();
-    return getStore(db).getAll();
+  async getAllActive(options) {
+    return (await this.getAll(options)).filter(study => study.active);
   },
 
   /**
-   * Start a new study. Installs an add-on and stores the study info.
-   * @param {Object} options
-   * @param {Number} options.recipeId
-   * @param {String} options.name
-   * @param {String} options.description
-   * @param {String} options.addonUrl
-   * @throws
-   *   If any of the required options aren't given.
-   *   If a study for the given recipeID already exists in storage.
-   *   If add-on installation fails.
+   * Add a study to storage.
+   * @return {Promise<void, Error>} Resolves when the study is stored, or rejects with an error.
    */
-  async start({recipeId, name, description, addonUrl}) {
-    if (!recipeId || !name || !description || !addonUrl) {
-      throw new Error("Required arguments (recipeId, name, description, addonUrl) missing.");
-    }
-
+  async add(study) {
     const db = await getDatabase();
-    if (await getStore(db).get(recipeId)) {
-      throw new Error(`A study for recipe ${recipeId} already exists.`);
+    return getStore(db, "readwrite").add(study);
+  },
+
+  /**
+   * Update a study in storage.
+   * @return {Promise<void, Error>} Resolves when the study is updated, or rejects with an error.
+   */
+  async update(study) {
+    const db = await getDatabase();
+    return getStore(db, "readwrite").put(study);
+  },
+
+  /**
+   * Remove a study from storage
+   * @param recipeId The recipeId of the study to delete
+   * @return {Promise<void, Error>} Resolves when the study is deleted, or rejects with an error.
+   */
+  async delete(recipeId) {
+    const db = await getDatabase();
+    return getStore(db, "readwrite").delete(recipeId);
+  },
+
+  /**
+   * Mark a study object as having ended. Modifies the study in-place.
+   * @param {IDBDatabase} db
+   * @param {Study} study
+   * @param {String} reason Why the study is ending.
+   */
+  async markAsEnded(study, reason = "unknown") {
+    if (reason === "unknown") {
+      log.warn(`Study ${study.slug} ending for unknown reason.`);
     }
 
-    let addonFile;
-    try {
-      addonFile = await this.downloadAddonToTemporaryFile(addonUrl);
-      const install = await AddonManager.getInstallForFile(addonFile);
-      const study = {
-        recipeId,
-        name,
-        description,
-        addonId: install.addon.id,
-        addonVersion: install.addon.version,
-        addonUrl,
-        active: true,
-        studyStartDate: new Date(),
-      };
+    study.active = false;
+    study.studyEndDate = new Date();
+    const db = await getDatabase();
+    await getStore(db, "readwrite").put(study);
 
-      await getStore(db).add(study);
-      await Addons.applyInstall(install, false);
+    Services.obs.notifyObservers(study, STUDY_ENDED_TOPIC, `${study.recipeId}`);
+    TelemetryEvents.sendEvent("unenroll", "addon_study", study.slug, {
+      addonId: study.addonId || AddonStudies.NO_ADDON_MARKER,
+      addonVersion: study.addonVersion || AddonStudies.NO_ADDON_MARKER,
+      reason,
+      branch: study.branch,
+      enrollmentId: study.enrollmentId,
+    });
+    TelemetryEnvironment.setExperimentInactive(study.slug);
 
-      TelemetryEvents.sendEvent("enroll", "addon_study", name, {
-        addonId: install.addon.id,
-        addonVersion: install.addon.version,
-      });
+    await this.callUnenrollListeners(study.addonId, reason);
+  },
 
-      return study;
-    } catch (err) {
-      await getStore(db).delete(recipeId);
+  // Maps extension id -> Set(callbacks)
+  _unenrollListeners: new Map(),
 
-      // The actual stack trace and error message could possibly
-      // contain PII, so we don't include them here. Instead include
-      // some information that should still be helpful, and is less
-      // likely to be unsafe.
-      const safeErrorMessage = `${err.fileName}:${err.lineNumber}:${err.columnNumber} ${err.name}`;
-      TelemetryEvents.sendEvent("enrollFailed", "addon_study", name, {
-        reason: safeErrorMessage.slice(0, 80),  // max length is 80 chars
-      });
+  /**
+   * Register a callback to be invoked when a given study ends.
+   *
+   * @param {string} id         The extension id
+   * @param {function} listener The callback
+   */
+  addUnenrollListener(id, listener) {
+    let listeners = this._unenrollListeners.get(id);
+    if (!listeners) {
+      listeners = new Set();
+      this._unenrollListeners.set(id, listeners);
+    }
+    listeners.add(listener);
+  },
 
-      throw err;
-    } finally {
-      if (addonFile) {
-        Services.obs.notifyObservers(addonFile, "flush-cache-entry");
-        await OS.File.remove(addonFile.path);
+  /**
+   * Unregister a callback to be invoked when a given study ends.
+   *
+   * @param {string} id         The extension id
+   * @param {function} listener The callback
+   */
+  removeUnenrollListener(id, listener) {
+    let listeners = this._unenrollListeners.get(id);
+    if (listeners) {
+      listeners.delete(listener);
+    }
+  },
+
+  /**
+   * Invoke the unenroll callback (if any) for the given extension
+   *
+   * @param {string} id The extension id
+   * @param {string} reason Why the study is ending
+   *
+   * @returns {Promise} A Promise resolved after the unenroll listener
+   *                    (if any) has finished its unenroll tasks.
+   */
+  async callUnenrollListeners(id, reason) {
+    let callbacks = this._unenrollListeners.get(id) || [];
+
+    async function callCallback(cb, reason) {
+      try {
+        await cb(reason);
+      } catch (err) {
+        Cu.reportError(err);
       }
     }
-  },
 
-  /**
-   * Download a remote add-on and store it in a temporary nsIFile.
-   * @param {String} addonUrl
-   * @returns {nsIFile}
-   */
-  async downloadAddonToTemporaryFile(addonUrl) {
-    const response = await fetch(addonUrl);
-    if (!response.ok) {
-      throw new Error(`Download for ${addonUrl} failed: ${response.status} ${response.statusText}`);
+    let promises = [];
+    for (let callback of callbacks) {
+      promises.push(callCallback(callback, reason));
     }
 
-    // Create temporary file to store add-on.
-    const path = OS.Path.join(OS.Constants.Path.tmpDir, "study.xpi");
-    const {file, path: uniquePath} = await OS.File.openUnique(path);
-
-    // Write the add-on to the file
-    try {
-      const xpiArrayBufferView = new Uint8Array(await response.arrayBuffer());
-      await file.write(xpiArrayBufferView);
-    } finally {
-      await file.close();
-    }
-
-    return new FileUtils.File(uniquePath);
-  },
-
-  /**
-   * Stop an active study, uninstalling the associated add-on.
-   * @param {Number} recipeId
-   * @param {String} reason Why the study is ending. Optional, defaults to "unknown".
-   * @throws
-   *   If no study is found with the given recipeId.
-   *   If the study is already inactive.
-   */
-  async stop(recipeId, reason = "unknown") {
-    const db = await getDatabase();
-    const study = await getStore(db).get(recipeId);
-    if (!study) {
-      throw new Error(`No study found for recipe ${recipeId}.`);
-    }
-    if (!study.active) {
-      throw new Error(`Cannot stop study for recipe ${recipeId}; it is already inactive.`);
-    }
-
-    await markAsEnded(db, study, reason);
-
-    try {
-      await Addons.uninstall(study.addonId);
-    } catch (err) {
-      log.warn(`Could not uninstall addon ${study.addonId} for recipe ${study.recipeId}:`, err);
-    }
+    // Wait for all the promises to be settled. This won't throw even if some of
+    // the listeners fail.
+    await Promise.all(promises);
   },
 };
+
+AddonStudies.NO_BRANCHES_MARKER = "__NO_BRANCHES__";
+AddonStudies.NO_ADDON_MARKER = "__NO_ADDON__";

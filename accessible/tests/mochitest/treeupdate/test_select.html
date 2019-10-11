@@ -5,8 +5,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -33,7 +32,7 @@
       };
 
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, this.selectList)
+        new invokerChecker(EVENT_REORDER, this.selectList),
       ];
 
       this.finalCheck = function addOptions_finalCheck() {
@@ -41,12 +40,12 @@
           { COMBOBOX: [
             { COMBOBOX_LIST: [
               { COMBOBOX_OPTION: [
-                { TEXT_LEAF: [] }
+                { TEXT_LEAF: [] },
               ] },
               { COMBOBOX_OPTION: [
-                { TEXT_LEAF: [] }
-              ] }
-            ] }
+                { TEXT_LEAF: [] },
+              ] },
+            ] },
           ] };
         testAccessibleTree(this.select, tree);
       };
@@ -67,13 +66,13 @@
       };
 
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, this.selectList)
+        new invokerChecker(EVENT_REORDER, this.selectList),
       ];
 
       this.finalCheck = function removeOptions_finalCheck() {
         var tree =
           { COMBOBOX: [
-            { COMBOBOX_LIST: [] }
+            { COMBOBOX_LIST: [] },
           ] };
         testAccessibleTree(this.select, tree);
       };
@@ -100,8 +99,8 @@
         var tree =
           { COMBOBOX: [
             { COMBOBOX_LIST: [
-              { COMBOBOX_OPTION: [ ] }
-            ] }
+              { COMBOBOX_OPTION: [ ] },
+            ] },
           ] };
         testAccessibleTree("s2", tree);
       };
@@ -119,7 +118,6 @@
       gQueue.push(new setHrefOnOption());
 
       gQueue.invoke(); // Will call SimpleTest.finish();
-
     }
 
     SimpleTest.waitForExplicitFinish();

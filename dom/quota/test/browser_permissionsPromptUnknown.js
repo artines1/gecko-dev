@@ -9,28 +9,42 @@ const testPageURL =
 add_task(async function testPermissionUnknownInPrivateWindow() {
   removePermission(testPageURL, "persistent-storage");
   info("Creating private window");
-  let win = await BrowserTestUtils.openNewBrowserWindow({ private : true });
+  let win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
 
-  registerPopupEventHandler("popupshowing", function () {
-    ok(false, "Shouldn't show a popup this time");
-  }, win);
-  registerPopupEventHandler("popupshown", function () {
-    ok(false, "Shouldn't show a popup this time");
-  }, win);
-  registerPopupEventHandler("popuphidden", function () {
-    ok(false, "Shouldn't show a popup this time");
-  }, win);
+  registerPopupEventHandler(
+    "popupshowing",
+    function() {
+      ok(false, "Shouldn't show a popup this time");
+    },
+    win
+  );
+  registerPopupEventHandler(
+    "popupshown",
+    function() {
+      ok(false, "Shouldn't show a popup this time");
+    },
+    win
+  );
+  registerPopupEventHandler(
+    "popuphidden",
+    function() {
+      ok(false, "Shouldn't show a popup this time");
+    },
+    win
+  );
 
   info("Creating private tab");
-  win.gBrowser.selectedTab = win.gBrowser.addTab();
+  win.gBrowser.selectedTab = BrowserTestUtils.addTab(win.gBrowser);
 
   info("Loading test page: " + testPageURL);
-  win.gBrowser.selectedBrowser.loadURI(testPageURL);
+  BrowserTestUtils.loadURI(win.gBrowser.selectedBrowser, testPageURL);
   await waitForMessage(false, win.gBrowser);
 
-  is(getPermission(testPageURL, "persistent-storage"),
-     Ci.nsIPermissionManager.UNKNOWN_ACTION,
-     "Correct permission set");
+  is(
+    getPermission(testPageURL, "persistent-storage"),
+    Ci.nsIPermissionManager.UNKNOWN_ACTION,
+    "Correct permission set"
+  );
   unregisterAllPopupEventHandlers(win);
   win.gBrowser.removeCurrentTab();
   await BrowserTestUtils.closeWindow(win);

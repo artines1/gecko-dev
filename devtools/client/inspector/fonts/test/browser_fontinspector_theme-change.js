@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -18,14 +17,13 @@ registerCleanupFunction(() => {
 });
 
 add_task(async function() {
-  await pushPref("devtools.inspector.fonteditor.enabled", true);
   const { inspector, view } = await openFontInspectorForURL(TEST_URI);
   const viewDoc = view.document;
 
   await selectNode(".normal-text", inspector);
-  await expandOtherFontsAccordion(viewDoc);
-  const otherFontsEls = getOtherFontsEls(viewDoc);
-  const fontEl = otherFontsEls[0];
+  await expandFontsAccordion(viewDoc);
+  const allFontsEls = getAllFontsEls(viewDoc);
+  const fontEl = allFontsEls[0];
 
   // Store the original preview URI for later comparison.
   const originalURI = fontEl.querySelector(".font-preview").src;
@@ -34,12 +32,18 @@ add_task(async function() {
   info(`Original theme was '${originalTheme}'.`);
 
   await setThemeAndWaitForUpdate(newTheme, inspector);
-  isnot(fontEl.querySelector(".font-preview").src, originalURI,
-    "The preview image changed with the theme.");
+  isnot(
+    fontEl.querySelector(".font-preview").src,
+    originalURI,
+    "The preview image changed with the theme."
+  );
 
   await setThemeAndWaitForUpdate(originalTheme, inspector);
-  is(fontEl.querySelector(".font-preview").src, originalURI,
-    "The preview image is correct after the original theme was restored.");
+  is(
+    fontEl.querySelector(".font-preview").src,
+    originalURI,
+    "The preview image is correct after the original theme was restored."
+  );
 });
 
 /**

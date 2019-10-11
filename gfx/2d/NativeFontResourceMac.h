@@ -14,35 +14,26 @@
 namespace mozilla {
 namespace gfx {
 
-class NativeFontResourceMac final : public NativeFontResource
-{
-public:
+class NativeFontResourceMac final : public NativeFontResource {
+ public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(NativeFontResourceMac, override)
 
-  static already_AddRefed<NativeFontResourceMac>
-    Create(uint8_t *aFontData, uint32_t aDataLength, bool aNeedsCairo);
+  static already_AddRefed<NativeFontResourceMac> Create(uint8_t* aFontData,
+                                                        uint32_t aDataLength);
 
-  already_AddRefed<UnscaledFont>
-    CreateUnscaledFont(uint32_t aIndex,
-                       const uint8_t* aInstanceData,
-                       uint32_t aInstanceDataLength) final;
+  already_AddRefed<UnscaledFont> CreateUnscaledFont(
+      uint32_t aIndex, const uint8_t* aInstanceData,
+      uint32_t aInstanceDataLength) final;
 
-  ~NativeFontResourceMac()
-  {
-    CFRelease(mFontRef);
-  }
+  ~NativeFontResourceMac() { CFRelease(mFontRef); }
 
-private:
-  NativeFontResourceMac(CGFontRef aFontRef, bool aNeedsCairo)
-    : mFontRef(aFontRef)
-    , mNeedsCairo(aNeedsCairo)
-  {}
+ private:
+  explicit NativeFontResourceMac(CGFontRef aFontRef) : mFontRef(aFontRef) {}
 
   CGFontRef mFontRef;
-  bool mNeedsCairo;
 };
 
-} // gfx
-} // mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
-#endif // mozilla_gfx_NativeFontResourceMac_h
+#endif  // mozilla_gfx_NativeFontResourceMac_h

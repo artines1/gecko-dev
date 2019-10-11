@@ -1,9 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/params-trailing-comma-multiple.case
 // - src/function-forms/default/async-arrow-function.template
 /*---
 description: A trailing comma should not increase the respective length, using multiple parameters (async arrow function expression)
 esid: sec-async-arrow-function-definitions
+features: [async-functions]
 flags: [generated, async]
 info: |
     14.7 Async Arrow Function Definitions

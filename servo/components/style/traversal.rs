@@ -1,21 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Traversing the DOM tree; the bloom filter.
 
-use context::{ElementCascadeInputs, SharedStyleContext, StyleContext};
-use data::{ElementData, ElementStyles};
-use dom::{NodeInfo, OpaqueNode, TElement, TNode};
-use invalidation::element::restyle_hints::RestyleHint;
-use matching::{ChildCascadeRequirement, MatchMethods};
-use selector_parser::PseudoElement;
+use crate::context::{ElementCascadeInputs, SharedStyleContext, StyleContext};
+use crate::data::{ElementData, ElementStyles};
+use crate::dom::{NodeInfo, OpaqueNode, TElement, TNode};
+use crate::invalidation::element::restyle_hints::RestyleHint;
+use crate::matching::{ChildCascadeRequirement, MatchMethods};
+use crate::selector_parser::PseudoElement;
+use crate::sharing::StyleSharingTarget;
+use crate::style_resolver::{PseudoElementResolution, StyleResolverForElement};
+use crate::stylist::RuleInclusion;
+use crate::traversal_flags::TraversalFlags;
 use selectors::NthIndexCache;
-use sharing::StyleSharingTarget;
 use smallvec::SmallVec;
-use style_resolver::{PseudoElementResolution, StyleResolverForElement};
-use stylist::RuleInclusion;
-use traversal_flags::TraversalFlags;
 
 /// A per-traversal-level chunk of data. This is sent down by the traversal, and
 /// currently only holds the dom depth for the bloom filter.
@@ -279,7 +279,8 @@ pub trait DomTraversal<E: TElement>: Sync {
         // likely to load valid bindings, we avoid wasted work here, which may
         // be a very big perf hit when elements with bindings are nested
         // heavily.
-        if cfg!(feature = "gecko") && is_initial_style &&
+        if cfg!(feature = "gecko") &&
+            is_initial_style &&
             parent_data.styles.primary().has_moz_binding()
         {
             debug!("Parent {:?} has XBL binding, deferring traversal", parent);
@@ -306,8 +307,6 @@ pub fn resolve_style<E>(
 where
     E: TElement,
 {
-    use style_resolver::StyleResolverForElement;
-
     debug_assert!(
         rule_inclusion == RuleInclusion::DefaultOnly ||
             pseudo.map_or(false, |p| p.is_before_or_after()) ||
@@ -360,7 +359,8 @@ where
             context,
             rule_inclusion,
             PseudoElementResolution::IfApplicable,
-        ).resolve_primary_style(
+        )
+        .resolve_primary_style(
             style.as_ref().map(|s| &**s),
             layout_parent_style.as_ref().map(|s| &**s),
         );
@@ -381,11 +381,12 @@ where
         context,
         rule_inclusion,
         PseudoElementResolution::Force,
-    ).resolve_style(
+    )
+    .resolve_style(
         style.as_ref().map(|s| &**s),
         layout_parent_style.as_ref().map(|s| &**s),
     )
-        .into()
+    .into()
 }
 
 /// Calculates the style for a single node.
@@ -404,14 +405,14 @@ pub fn recalc_style_at<E, D, F>(
     F: FnMut(E::ConcreteNode),
 {
     use std::cmp;
-    use traversal_flags::TraversalFlags;
 
     let flags = context.shared.traversal_flags;
     let is_initial_style = !data.has_styles();
 
     context.thread_local.statistics.elements_traversed += 1;
     debug_assert!(
-        flags.intersects(TraversalFlags::AnimationOnly) || !element.has_snapshot() ||
+        flags.intersects(TraversalFlags::AnimationOnly) ||
+            !element.has_snapshot() ||
             element.handled_snapshot(),
         "Should've handled snapshots here already"
     );
@@ -534,11 +535,6 @@ pub fn recalc_style_at<E, D, F>(
         debug_assert!(!element.has_animation_only_dirty_descendants());
     }
 
-    debug_assert!(
-        flags.for_animation_only() || !flags.contains(TraversalFlags::ClearDirtyBits) ||
-            !element.has_animation_only_dirty_descendants(),
-        "Should have cleared animation bits already"
-    );
     clear_state_after_traversing(element, data, flags);
 }
 
@@ -546,27 +542,11 @@ fn clear_state_after_traversing<E>(element: E, data: &mut ElementData, flags: Tr
 where
     E: TElement,
 {
-    // If we are in a forgetful traversal, drop the existing restyle
-    // data here, since we won't need to perform a post-traversal to pick up
-    // any change hints.
-    if flags.contains(TraversalFlags::Forgetful) {
+    if flags.intersects(TraversalFlags::FinalAnimationTraversal) {
+        debug_assert!(flags.for_animation_only());
         data.clear_restyle_flags_and_damage();
-    }
-
-    // Clear dirty bits as appropriate.
-    if flags.for_animation_only() {
-        if flags.intersects(
-            TraversalFlags::ClearDirtyBits | TraversalFlags::ClearAnimationOnlyDirtyDescendants,
-        ) {
-            unsafe {
-                element.unset_animation_only_dirty_descendants();
-            }
-        }
-    } else if flags.contains(TraversalFlags::ClearDirtyBits) {
-        // The animation traversal happens first, so we don't need to guard against
-        // clearing the animation bit on the regular traversal.
         unsafe {
-            element.clear_dirty_bits();
+            element.unset_animation_only_dirty_descendants();
         }
     }
 }
@@ -580,7 +560,7 @@ fn compute_style<E>(
 where
     E: TElement,
 {
-    use data::RestyleKind::*;
+    use crate::data::RestyleKind::*;
 
     context.thread_local.statistics.elements_styled += 1;
     let kind = data.restyle_kind(context.shared);
@@ -681,7 +661,7 @@ where
             // sibling or cousin. Otherwise, recascading a bunch of identical
             // elements would unnecessarily flood the cache with identical entries.
             //
-            // This is analagous to the obvious "don't insert an element that just
+            // This is analogous to the obvious "don't insert an element that just
             // got a hit in the style sharing cache" behavior in the MatchAndCascade
             // handling above.
             //
@@ -713,9 +693,8 @@ fn notify_paint_worklet<E>(context: &StyleContext<E>, data: &ElementData)
 where
     E: TElement,
 {
+    use crate::values::generics::image::{GenericImageLayer, Image};
     use style_traits::ToCss;
-    use values::Either;
-    use values::generics::image::Image;
 
     // We speculatively evaluate any paint worklets during styling.
     // This allows us to run paint worklets in parallel with style and layout.
@@ -724,7 +703,7 @@ where
     if let Some(ref values) = data.styles.primary {
         for image in &values.get_background().background_image.0 {
             let (name, arguments) = match *image {
-                Either::Second(Image::PaintWorklet(ref worklet)) => {
+                GenericImageLayer::Image(Image::PaintWorklet(ref worklet)) => {
                     (&worklet.name, &worklet.arguments)
                 },
                 _ => continue,
@@ -805,7 +784,7 @@ fn note_children<E, D, F>(
                     child_hint |= RestyleHint::RECASCADE_SELF | RestyleHint::RECASCADE_DESCENDANTS;
                 },
                 ChildCascadeRequirement::MustCascadeChildrenIfInheritResetStyle => {
-                    use properties::computed_value_flags::ComputedValueFlags;
+                    use crate::properties::computed_value_flags::ComputedValueFlags;
                     if child_data
                         .styles
                         .primary()

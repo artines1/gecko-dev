@@ -6,7 +6,9 @@
 
 const BYTES_PER_MEBIBYTE = 1048576;
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 XPCOMUtils.defineLazyModuleGetters(this, {
   Services: "resource://gre/modules/Services.jsm",
   OS: "resource://gre/modules/osfile.jsm",
@@ -14,7 +16,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Sqlite: "resource://gre/modules/Sqlite.jsm",
 });
 
-var EXPORTED_SYMBOLS = [ "PlacesDBUtils" ];
+var EXPORTED_SYMBOLS = ["PlacesDBUtils"];
 
 var PlacesDBUtils = {
   _isShuttingDown: false,
@@ -41,15 +43,18 @@ var PlacesDBUtils = {
       this.checkCoherence,
       this._refreshUI,
       this.originFrecencyStats,
-      this.incrementalVacuum
+      this.incrementalVacuum,
     ];
     let telemetryStartTime = Date.now();
     let taskStatusMap = await PlacesDBUtils.runTasks(tasks);
 
-    Services.prefs.setIntPref("places.database.lastMaintenance",
-                               parseInt(Date.now() / 1000));
-    Services.telemetry.getHistogramById("PLACES_IDLE_MAINTENANCE_TIME_MS")
-                      .add(Date.now() - telemetryStartTime);
+    Services.prefs.setIntPref(
+      "places.database.lastMaintenance",
+      parseInt(Date.now() / 1000)
+    );
+    Services.telemetry
+      .getHistogramById("PLACES_IDLE_MAINTENANCE_TIME_MS")
+      .add(Date.now() - telemetryStartTime);
     return taskStatusMap;
   },
 
@@ -114,10 +119,15 @@ var PlacesDBUtils = {
         logs.push(`The ${dbName} database is sane`);
       } catch (ex) {
         PlacesDBUtils.clearPendingTasks();
-        if (ex.status == Cr.NS_ERROR_FILE_CORRUPTED) {
+        if (ex.result == Cr.NS_ERROR_FILE_CORRUPTED) {
           logs.push(`The ${dbName} database is corrupt`);
-          Services.prefs.setCharPref("places.database.replaceDatabaseOnStartup", dbName);
-          throw new Error(`Unable to fix corruption, ${dbName} will be replaced on next startup`);
+          Services.prefs.setCharPref(
+            "places.database.replaceDatabaseOnStartup",
+            dbName
+          );
+          throw new Error(
+            `Unable to fix corruption, ${dbName} will be replaced on next startup`
+          );
         }
         throw new Error(`Unable to check ${dbName} integrity: ${ex}`);
       }
@@ -131,18 +141,21 @@ var PlacesDBUtils = {
 
   invalidateCaches() {
     let logs = [];
-    return PlacesUtils.withConnectionWrapper("PlacesDBUtils: invalidate caches", async db => {
-      let idsWithInvalidGuidsRows = await db.execute(`
+    return PlacesUtils.withConnectionWrapper(
+      "PlacesDBUtils: invalidate caches",
+      async db => {
+        let idsWithInvalidGuidsRows = await db.execute(`
         SELECT id FROM moz_bookmarks
         WHERE guid IS NULL OR
               NOT IS_VALID_GUID(guid)`);
-      for (let row of idsWithInvalidGuidsRows) {
-        let id = row.getResultByName("id");
-        PlacesUtils.invalidateCachedGuidFor(id);
+        for (let row of idsWithInvalidGuidsRows) {
+          let id = row.getResultByName("id");
+          PlacesUtils.invalidateCachedGuidFor(id);
+        }
+        logs.push("The caches have been invalidated");
+        return logs;
       }
-      logs.push("The caches have been invalidated");
-      return logs;
-    }).catch(ex => {
+    ).catch(ex => {
       PlacesDBUtils.clearPendingTasks();
       throw new Error("Unable to invalidate caches");
     });
@@ -161,16 +174,17 @@ var PlacesDBUtils = {
     let coherenceCheck = true;
     await PlacesUtils.withConnectionWrapper(
       "PlacesDBUtils: coherence check:",
-      db => db.executeTransaction(async () => {
-        for (let {query, params} of stmts) {
-          try {
-            await db.execute(query, params || null);
-          } catch (ex) {
-            Cu.reportError(ex);
-            coherenceCheck = false;
+      db =>
+        db.executeTransaction(async () => {
+          for (let { query, params } of stmts) {
+            try {
+              await db.execute(query, params || null);
+            } catch (ex) {
+              Cu.reportError(ex);
+              coherenceCheck = false;
+            }
           }
-        }
-      })
+        })
     );
 
     if (coherenceCheck) {
@@ -191,22 +205,36 @@ var PlacesDBUtils = {
    */
   async incrementalVacuum() {
     let logs = [];
-    return PlacesUtils.withConnectionWrapper("PlacesDBUtils: incrementalVacuum",
+    return PlacesUtils.withConnectionWrapper(
+      "PlacesDBUtils: incrementalVacuum",
       async db => {
-        let count = (await db.execute("PRAGMA favicons.freelist_count"))[0].getResultByIndex(0);
+        let count = (await db.execute(
+          "PRAGMA favicons.freelist_count"
+        ))[0].getResultByIndex(0);
         if (count < 10) {
-          logs.push(`The favicons database has only ${count} free pages, not vacuuming.`);
+          logs.push(
+            `The favicons database has only ${count} free pages, not vacuuming.`
+          );
         } else {
-          logs.push(`The favicons database has ${count} free pages, vacuuming.`);
+          logs.push(
+            `The favicons database has ${count} free pages, vacuuming.`
+          );
           await db.execute("PRAGMA favicons.incremental_vacuum");
-          count = (await db.execute("PRAGMA favicons.freelist_count"))[0].getResultByIndex(0);
-          logs.push(`The database has been vacuumed and has now ${count} free pages.`);
+          count = (await db.execute(
+            "PRAGMA favicons.freelist_count"
+          ))[0].getResultByIndex(0);
+          logs.push(
+            `The database has been vacuumed and has now ${count} free pages.`
+          );
         }
         return logs;
-      }).catch(ex => {
-        PlacesDBUtils.clearPendingTasks();
-        throw new Error("Unable to incrementally vacuum the favicons database " + ex);
-      });
+      }
+    ).catch(ex => {
+      PlacesDBUtils.clearPendingTasks();
+      throw new Error(
+        "Unable to incrementally vacuum the favicons database " + ex
+      );
+    });
   },
 
   async _getCoherenceStatements() {
@@ -224,16 +252,16 @@ var PlacesDBUtils = {
       // from the table. This fires the cleanup trigger, which updates all
       // foreign key references to point to one of the duplicate Places, then
       // deletes the others.
-      { query:
-        `CREATE TEMP TABLE IF NOT EXISTS moz_places_dupes_temp(
+      {
+        query: `CREATE TEMP TABLE IF NOT EXISTS moz_places_dupes_temp(
           id INTEGER PRIMARY KEY
         , hash INTEGER NOT NULL
         , url TEXT UNIQUE NOT NULL
         , count INTEGER NOT NULL DEFAULT 0
-        )`
+        )`,
       },
-      { query:
-        `CREATE TEMP TRIGGER IF NOT EXISTS moz_places_remove_dupes_temp_trigger
+      {
+        query: `CREATE TEMP TRIGGER IF NOT EXISTS moz_places_remove_dupes_temp_trigger
         AFTER DELETE ON moz_places_dupes_temp
         FOR EACH ROW
         BEGIN
@@ -304,17 +332,17 @@ var PlacesDBUtils = {
 
           /* Trigger frecency updates for affected origins. */
           DELETE FROM moz_updateoriginsupdate_temp;
-        END`
+        END`,
       },
-      { query:
-        `INSERT INTO moz_places_dupes_temp(id, hash, url, count)
+      {
+        query: `INSERT INTO moz_places_dupes_temp(id, hash, url, count)
         SELECT h.id, h.url_hash, h.url, 1
         FROM moz_places h
         JOIN (SELECT url_hash FROM moz_places
               GROUP BY url_hash
               HAVING count(*) > 1) d ON d.url_hash = h.url_hash
         ON CONFLICT(url) DO UPDATE SET
-          count = count + 1`
+          count = count + 1`,
       },
       { query: `DELETE FROM moz_places_dupes_temp WHERE count > 1` },
       { query: `DROP TABLE moz_places_dupes_temp` },
@@ -323,77 +351,61 @@ var PlacesDBUtils = {
       // A.1 remove obsolete annotations from moz_annos.
       // The 'weave0' idiom exploits character ordering (0 follows /) to
       // efficiently select all annos with a 'weave/' prefix.
-      { query:
-        `DELETE FROM moz_annos
+      {
+        query: `DELETE FROM moz_annos
         WHERE type = 4 OR anno_attribute_id IN (
           SELECT id FROM moz_anno_attributes
           WHERE name = 'downloads/destinationFileName' OR
                 name BETWEEN 'weave/' AND 'weave0'
-        )`
+        )`,
       },
 
       // A.2 remove obsolete annotations from moz_items_annos.
-      { query:
-        `DELETE FROM moz_items_annos
+      {
+        query: `DELETE FROM moz_items_annos
         WHERE type = 4 OR anno_attribute_id IN (
           SELECT id FROM moz_anno_attributes
           WHERE name = 'sync/children'
              OR name = 'placesInternal/GUID'
              OR name BETWEEN 'weave/' AND 'weave0'
-        )`
+        )`,
       },
 
       // A.3 remove unused attributes.
-      { query:
-        `DELETE FROM moz_anno_attributes WHERE id IN (
+      {
+        query: `DELETE FROM moz_anno_attributes WHERE id IN (
           SELECT id FROM moz_anno_attributes n
           WHERE NOT EXISTS
               (SELECT id FROM moz_annos WHERE anno_attribute_id = n.id LIMIT 1)
             AND NOT EXISTS
               (SELECT id FROM moz_items_annos WHERE anno_attribute_id = n.id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_ANNOS
       // B.1 remove annos with an invalid attribute
-      { query:
-        `DELETE FROM moz_annos WHERE id IN (
+      {
+        query: `DELETE FROM moz_annos WHERE id IN (
           SELECT id FROM moz_annos a
           WHERE NOT EXISTS
             (SELECT id FROM moz_anno_attributes
               WHERE id = a.anno_attribute_id LIMIT 1)
-        )`
+        )`,
       },
 
       // B.2 remove orphan annos
-      { query:
-        `DELETE FROM moz_annos WHERE id IN (
+      {
+        query: `DELETE FROM moz_annos WHERE id IN (
           SELECT id FROM moz_annos a
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = a.place_id LIMIT 1)
-        )`
-      },
-
-      // C.1 Fix built-in folders with incorrect parents.
-      { query:
-        `UPDATE moz_bookmarks SET parent = :rootId
-         WHERE guid IN (
-           :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid, :mobileGuid
-         ) AND parent <> :rootId`,
-        params: {
-          rootId: PlacesUtils.placesRootId,
-          menuGuid: PlacesUtils.bookmarks.menuGuid,
-          toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
-          unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
-          tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-          mobileGuid: PlacesUtils.bookmarks.mobileGuid,
-        }
+        )`,
       },
 
       // D.1 remove items without a valid place
       // If fk IS NULL we fix them in D.7
-      { query:
-        `DELETE FROM moz_bookmarks WHERE guid NOT IN (
+      {
+        query: `DELETE FROM moz_bookmarks WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
           SELECT b.id FROM moz_bookmarks b
@@ -407,12 +419,12 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.2 remove items that are not uri bookmarks from tag containers
-      { query:
-        `DELETE FROM moz_bookmarks WHERE guid NOT IN (
+      {
+        query: `DELETE FROM moz_bookmarks WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
           SELECT b.id FROM moz_bookmarks b
@@ -428,12 +440,12 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.3 remove empty tags
-      { query:
-        `DELETE FROM moz_bookmarks WHERE guid NOT IN (
+      {
+        query: `DELETE FROM moz_bookmarks WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
           SELECT b.id FROM moz_bookmarks b
@@ -449,13 +461,13 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.4 move orphan items to unsorted folder
-      { query:
-        `UPDATE moz_bookmarks SET
-          parent = :unsorted_folder
+      {
+        query: `UPDATE moz_bookmarks SET
+          parent = (SELECT id FROM moz_bookmarks WHERE guid = :unfiledGuid)
         WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
@@ -464,21 +476,20 @@ var PlacesDBUtils = {
             (SELECT id FROM moz_bookmarks WHERE id = b.parent LIMIT 1)
         )`,
         params: {
-          unsorted_folder: PlacesUtils.unfiledBookmarksFolderId,
           rootGuid: PlacesUtils.bookmarks.rootGuid,
           menuGuid: PlacesUtils.bookmarks.menuGuid,
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.6 fix wrong item types
       // Folders and separators should not have an fk.
       // If they have a valid fk convert them to bookmarks. Later in D.9 we
       // will move eventual children to unsorted bookmarks.
-      { query:
-        `UPDATE moz_bookmarks
+      {
+        query: `UPDATE moz_bookmarks
         SET type = :bookmark_type,
             syncChangeCounter = syncChangeCounter + 1
         WHERE guid NOT IN (
@@ -497,14 +508,14 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.7 fix wrong item types
       // Bookmarks should have an fk, if they don't have any, convert them to
       // folders.
-      { query:
-        `UPDATE moz_bookmarks
+      {
+        query: `UPDATE moz_bookmarks
         SET type = :folder_type,
             syncChangeCounter = syncChangeCounter + 1
         WHERE guid NOT IN (
@@ -522,15 +533,15 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.9 fix wrong parents
       // Items cannot have separators or other bookmarks
       // as parent, if they have bad parent move them to unsorted bookmarks.
-      { query:
-        `UPDATE moz_bookmarks SET
-          parent = :unsorted_folder
+      {
+        query: `UPDATE moz_bookmarks SET
+          parent = (SELECT id FROM moz_bookmarks WHERE guid = :unfiledGuid)
         WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
@@ -541,7 +552,6 @@ var PlacesDBUtils = {
               LIMIT 1)
         )`,
         params: {
-          unsorted_folder: PlacesUtils.unfiledBookmarksFolderId,
           bookmark_type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
           separator_type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
           rootGuid: PlacesUtils.bookmarks.rootGuid,
@@ -549,7 +559,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.10 recalculate positions
@@ -560,15 +570,15 @@ var PlacesDBUtils = {
       // SUM(DISTINCT position + 1) == (n * (n + 1) / 2).
       // id is not a PRIMARY KEY on purpose, since we need a rowid that
       // increments monotonically.
-      { query:
-        `CREATE TEMP TABLE IF NOT EXISTS moz_bm_reindex_temp (
+      {
+        query: `CREATE TEMP TABLE IF NOT EXISTS moz_bm_reindex_temp (
           id INTEGER
         , parent INTEGER
         , position INTEGER
-        )`
+        )`,
       },
-      { query:
-        `INSERT INTO moz_bm_reindex_temp
+      {
+        query: `INSERT INTO moz_bm_reindex_temp
         SELECT id, parent, 0
         FROM moz_bookmarks b
         WHERE parent IN (
@@ -577,25 +587,25 @@ var PlacesDBUtils = {
           GROUP BY parent
           HAVING (SUM(DISTINCT position + 1) - (count(*) * (count(*) + 1) / 2)) <> 0
         )
-        ORDER BY parent ASC, position ASC, ROWID ASC`
+        ORDER BY parent ASC, position ASC, ROWID ASC`,
       },
-      { query:
-        `CREATE INDEX IF NOT EXISTS moz_bm_reindex_temp_index
-        ON moz_bm_reindex_temp(parent)`
+      {
+        query: `CREATE INDEX IF NOT EXISTS moz_bm_reindex_temp_index
+        ON moz_bm_reindex_temp(parent)`,
       },
-      { query:
-        `UPDATE moz_bm_reindex_temp SET position = (
+      {
+        query: `UPDATE moz_bm_reindex_temp SET position = (
           ROWID - (SELECT MIN(t.ROWID) FROM moz_bm_reindex_temp t
                     WHERE t.parent = moz_bm_reindex_temp.parent)
-        )`
+        )`,
       },
-      { query:
-        `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_reindex_temp_trigger
+      {
+        query: `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_reindex_temp_trigger
         BEFORE DELETE ON moz_bm_reindex_temp
         FOR EACH ROW
         BEGIN
           UPDATE moz_bookmarks SET position = OLD.position WHERE id = OLD.id;
-        END`
+        END`,
       },
       { query: `DELETE FROM moz_bm_reindex_temp` },
       { query: `DROP INDEX moz_bm_reindex_temp_index` },
@@ -606,8 +616,8 @@ var PlacesDBUtils = {
       // Tags were allowed to have empty names due to a UI bug.  Fix them by
       // replacing their title with "(notitle)", and bumping the change counter
       // for all bookmarks with the fixed tags.
-      { query:
-        `UPDATE moz_bookmarks SET syncChangeCounter = syncChangeCounter + 1
+      {
+        query: `UPDATE moz_bookmarks SET syncChangeCounter = syncChangeCounter + 1
          WHERE fk IN (SELECT b.fk FROM moz_bookmarks b
                       JOIN moz_bookmarks p ON p.id = b.parent
                       WHERE length(p.title) = 0 AND p.type = :folder_type AND
@@ -617,94 +627,93 @@ var PlacesDBUtils = {
           tags_folder: PlacesUtils.tagsFolderId,
         },
       },
-      { query:
-        `UPDATE moz_bookmarks SET title = :empty_title
+      {
+        query: `UPDATE moz_bookmarks SET title = :empty_title
         WHERE length(title) = 0 AND type = :folder_type
           AND parent = :tags_folder`,
         params: {
           empty_title: "(notitle)",
           folder_type: PlacesUtils.bookmarks.TYPE_FOLDER,
           tags_folder: PlacesUtils.tagsFolderId,
-        }
+        },
       },
 
       // MOZ_ICONS
       // E.1 remove orphan icon entries.
-      { query:
-        `DELETE FROM moz_pages_w_icons WHERE page_url_hash NOT IN (
+      {
+        query: `DELETE FROM moz_pages_w_icons WHERE page_url_hash NOT IN (
           SELECT url_hash FROM moz_places
-        )`
+        )`,
       },
 
-      { query:
-        `DELETE FROM moz_icons WHERE id IN (
+      // Remove icons whose origin is not in moz_origins, unless referenced.
+      {
+        query: `DELETE FROM moz_icons WHERE id IN (
           SELECT id FROM moz_icons WHERE root = 0
+          UNION ALL
+          SELECT id FROM moz_icons
+          WHERE root = 1
+            AND get_host_and_port(icon_url) NOT IN (SELECT host FROM moz_origins)
+            AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)
           EXCEPT
           SELECT icon_id FROM moz_icons_to_pages
-        )`
-      },
-
-      { query:
-        `DELETE FROM moz_icons
-         WHERE root = 1
-           AND get_host_and_port(icon_url) NOT IN (SELECT host FROM moz_origins)
-           AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`
+        )`,
       },
 
       // MOZ_HISTORYVISITS
       // F.1 remove orphan visits
-      { query:
-        `DELETE FROM moz_historyvisits WHERE id IN (
+      {
+        query: `DELETE FROM moz_historyvisits WHERE id IN (
           SELECT id FROM moz_historyvisits v
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = v.place_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_INPUTHISTORY
       // G.1 remove orphan input history
-      { query:
-        `DELETE FROM moz_inputhistory WHERE place_id IN (
+      {
+        query: `DELETE FROM moz_inputhistory WHERE place_id IN (
           SELECT place_id FROM moz_inputhistory i
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = i.place_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_ITEMS_ANNOS
       // H.1 remove item annos with an invalid attribute
-      { query:
-        `DELETE FROM moz_items_annos WHERE id IN (
+      {
+        query: `DELETE FROM moz_items_annos WHERE id IN (
           SELECT id FROM moz_items_annos t
           WHERE NOT EXISTS
             (SELECT id FROM moz_anno_attributes
               WHERE id = t.anno_attribute_id LIMIT 1)
-        )`
+        )`,
       },
 
       // H.2 remove orphan item annos
-      { query:
-        `DELETE FROM moz_items_annos WHERE id IN (
+      {
+        query: `DELETE FROM moz_items_annos WHERE id IN (
           SELECT id FROM moz_items_annos t
           WHERE NOT EXISTS
             (SELECT id FROM moz_bookmarks WHERE id = t.item_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_KEYWORDS
       // I.1 remove unused keywords
-      { query:
-        `DELETE FROM moz_keywords WHERE id IN (
+      {
+        query: `DELETE FROM moz_keywords WHERE id IN (
           SELECT id FROM moz_keywords k
           WHERE NOT EXISTS
             (SELECT 1 FROM moz_places h WHERE k.place_id = h.id)
-        )`
+        )`,
       },
 
       // MOZ_PLACES
       // L.2 recalculate visit_count and last_visit_date
-      { query:
-        `UPDATE moz_places
+      {
+        query: `UPDATE moz_places
         SET visit_count = (SELECT count(*) FROM moz_historyvisits
                             WHERE place_id = moz_places.id AND visit_type NOT IN (0,4,7,8,9)),
             last_visit_date = (SELECT MAX(visit_date) FROM moz_historyvisits
@@ -715,12 +724,12 @@ var PlacesDBUtils = {
                                 WHERE v.place_id = h.id AND visit_type NOT IN (0,4,7,8,9))
               OR last_visit_date <> (SELECT MAX(visit_date) FROM moz_historyvisits v
                                     WHERE v.place_id = h.id)
-        )`
+        )`,
       },
 
       // L.3 recalculate hidden for redirects.
-      { query:
-        `UPDATE moz_places
+      {
+        query: `UPDATE moz_places
         SET hidden = 1
         WHERE id IN (
           SELECT h.id FROM moz_places h
@@ -728,25 +737,27 @@ var PlacesDBUtils = {
           JOIN moz_historyvisits dst ON dst.from_visit = src.id AND dst.visit_type IN (5,6)
           LEFT JOIN moz_bookmarks on fk = h.id AND fk ISNULL
           GROUP BY src.place_id HAVING count(*) = visit_count
-        )`
+        )`,
       },
 
       // L.4 recalculate foreign_count.
-      { query:
-        `UPDATE moz_places SET foreign_count =
+      {
+        query: `UPDATE moz_places SET foreign_count =
           (SELECT count(*) FROM moz_bookmarks WHERE fk = moz_places.id ) +
-          (SELECT count(*) FROM moz_keywords WHERE place_id = moz_places.id )`
+          (SELECT count(*) FROM moz_keywords WHERE place_id = moz_places.id )`,
       },
 
       // L.5 recalculate missing hashes.
-      { query: `UPDATE moz_places SET url_hash = hash(url) WHERE url_hash = 0` },
+      {
+        query: `UPDATE moz_places SET url_hash = hash(url) WHERE url_hash = 0`,
+      },
 
       // L.6 fix invalid Place GUIDs.
-      { query:
-        `UPDATE moz_places
+      {
+        query: `UPDATE moz_places
         SET guid = GENERATE_GUID()
         WHERE guid IS NULL OR
-              NOT IS_VALID_GUID(guid)`
+              NOT IS_VALID_GUID(guid)`,
       },
 
       // MOZ_BOOKMARKS
@@ -759,8 +770,8 @@ var PlacesDBUtils = {
       // parent. Finally, we assign new GUIDs for all items with missing and
       // invalid GUIDs, bump their change counters, and reset their sync
       // statuses to NEW so that they're considered for deduping.
-      { query:
-        `INSERT OR IGNORE INTO moz_bookmarks_deleted(guid, dateRemoved)
+      {
+        query: `INSERT OR IGNORE INTO moz_bookmarks_deleted(guid, dateRemoved)
         SELECT guid, :dateRemoved
         FROM moz_bookmarks
         WHERE syncStatus <> :syncStatus AND
@@ -771,8 +782,8 @@ var PlacesDBUtils = {
           syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NEW,
         },
       },
-      { query:
-        `UPDATE moz_bookmarks
+      {
+        query: `UPDATE moz_bookmarks
         SET guid = GENERATE_GUID(),
             syncStatus = :syncStatus
         WHERE guid IS NULL OR
@@ -783,14 +794,14 @@ var PlacesDBUtils = {
       },
 
       // S.2 drop tombstones for bookmarks that aren't deleted.
-      { query:
-        `DELETE FROM moz_bookmarks_deleted
+      {
+        query: `DELETE FROM moz_bookmarks_deleted
         WHERE guid IN (SELECT guid FROM moz_bookmarks)`,
       },
 
       // S.3 set missing added and last modified dates.
-      { query:
-        `UPDATE moz_bookmarks
+      {
+        query: `UPDATE moz_bookmarks
         SET dateAdded = COALESCE(NULLIF(dateAdded, 0), NULLIF(lastModified, 0), NULLIF((
               SELECT MIN(visit_date) FROM moz_historyvisits
               WHERE place_id = fk
@@ -804,8 +815,8 @@ var PlacesDBUtils = {
       },
 
       // S.4 reset added dates that are ahead of last modified dates.
-      { query:
-        `UPDATE moz_bookmarks
+      {
+        query: `UPDATE moz_bookmarks
          SET dateAdded = lastModified
          WHERE dateAdded > lastModified`,
       },
@@ -817,19 +828,17 @@ var PlacesDBUtils = {
     // parent. The "sync tombstone" trigger inserts tombstones for deleted
     // synced bookmarks.
     cleanupStatements.unshift({
-      query:
-      `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_change_temp_trigger
+      query: `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_change_temp_trigger
       AFTER UPDATE of guid, parent, position ON moz_bookmarks
       FOR EACH ROW
       BEGIN
         UPDATE moz_bookmarks
         SET syncChangeCounter = syncChangeCounter + 1
         WHERE id IN (OLD.parent, NEW.parent, NEW.id);
-      END`
+      END`,
     });
     cleanupStatements.unshift({
-      query:
-      `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_tombstone_temp_trigger
+      query: `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_sync_tombstone_temp_trigger
       AFTER DELETE ON moz_bookmarks
       FOR EACH ROW WHEN OLD.guid NOT NULL AND
                         OLD.syncStatus <> 1
@@ -840,10 +849,14 @@ var PlacesDBUtils = {
 
         INSERT INTO moz_bookmarks_deleted(guid, dateRemoved)
         VALUES(OLD.guid, STRFTIME('%s', 'now', 'localtime', 'utc') * 1000000);
-      END`
+      END`,
     });
-    cleanupStatements.push({ query: `DROP TRIGGER moz_bm_sync_change_temp_trigger` });
-    cleanupStatements.push({ query: `DROP TRIGGER moz_bm_sync_tombstone_temp_trigger` });
+    cleanupStatements.push({
+      query: `DROP TRIGGER moz_bm_sync_change_temp_trigger`,
+    });
+    cleanupStatements.push({
+      query: `DROP TRIGGER moz_bm_sync_tombstone_temp_trigger`,
+    });
 
     return cleanupStatements;
   },
@@ -860,16 +873,22 @@ var PlacesDBUtils = {
    */
   async vacuum() {
     let logs = [];
-    let placesDbPath = OS.Path.join(OS.Constants.Path.profileDir, "places.sqlite");
+    let placesDbPath = OS.Path.join(
+      OS.Constants.Path.profileDir,
+      "places.sqlite"
+    );
     let info = await OS.File.stat(placesDbPath);
     logs.push(`Initial database size is ${parseInt(info.size / 1024)}KiB`);
-    return PlacesUtils.withConnectionWrapper("PlacesDBUtils: vacuum", async db => {
-      await db.execute("VACUUM");
-      logs.push("The database has been vacuumed");
-      info = await OS.File.stat(placesDbPath);
-      logs.push(`Final database size is ${parseInt(info.size / 1024)}KiB`);
-      return logs;
-    }).catch(() => {
+    return PlacesUtils.withConnectionWrapper(
+      "PlacesDBUtils: vacuum",
+      async db => {
+        await db.execute("VACUUM");
+        logs.push("The database has been vacuumed");
+        info = await OS.File.stat(placesDbPath);
+        logs.push(`Final database size is ${parseInt(info.size / 1024)}KiB`);
+        return logs;
+      }
+    ).catch(() => {
       PlacesDBUtils.clearPendingTasks();
       throw new Error("Unable to vacuum database");
     });
@@ -887,8 +906,9 @@ var PlacesDBUtils = {
   async expire() {
     let logs = [];
 
-    let expiration = Cc["@mozilla.org/places/expiration;1"]
-                       .getService(Ci.nsIObserver);
+    let expiration = Cc["@mozilla.org/places/expiration;1"].getService(
+      Ci.nsIObserver
+    );
 
     let returnPromise = new Promise(res => {
       let observer = (subject, topic, data) => {
@@ -913,50 +933,66 @@ var PlacesDBUtils = {
    */
   async stats() {
     let logs = [];
-    let placesDbPath = OS.Path.join(OS.Constants.Path.profileDir, "places.sqlite");
+    let placesDbPath = OS.Path.join(
+      OS.Constants.Path.profileDir,
+      "places.sqlite"
+    );
     let info = await OS.File.stat(placesDbPath);
     logs.push(`Places.sqlite size is ${parseInt(info.size / 1024)}KiB`);
-    let faviconsDbPath = OS.Path.join(OS.Constants.Path.profileDir, "favicons.sqlite");
+    let faviconsDbPath = OS.Path.join(
+      OS.Constants.Path.profileDir,
+      "favicons.sqlite"
+    );
     info = await OS.File.stat(faviconsDbPath);
     logs.push(`Favicons.sqlite size is ${parseInt(info.size / 1024)}KiB`);
 
     // Execute each step async.
-    let pragmas = [ "user_version",
-                    "page_size",
-                    "cache_size",
-                    "journal_mode",
-                    "synchronous"
-                  ].map(p => `pragma_${p}`);
-    let pragmaQuery = `SELECT * FROM ${ pragmas.join(", ") }`;
-    await PlacesUtils.withConnectionWrapper("PlacesDBUtils: pragma for stats", async db => {
-      let row = (await db.execute(pragmaQuery))[0];
-      for (let i = 0; i != pragmas.length; i++) {
-        logs.push(`${ pragmas[i] } is ${ row.getResultByIndex(i) }`);
+    let pragmas = [
+      "user_version",
+      "page_size",
+      "cache_size",
+      "journal_mode",
+      "synchronous",
+    ].map(p => `pragma_${p}`);
+    let pragmaQuery = `SELECT * FROM ${pragmas.join(", ")}`;
+    await PlacesUtils.withConnectionWrapper(
+      "PlacesDBUtils: pragma for stats",
+      async db => {
+        let row = (await db.execute(pragmaQuery))[0];
+        for (let i = 0; i != pragmas.length; i++) {
+          logs.push(`${pragmas[i]} is ${row.getResultByIndex(i)}`);
+        }
       }
-    }).catch(() => {
+    ).catch(() => {
       logs.push("Could not set pragma for stat collection");
     });
 
     // Get maximum number of unique URIs.
     try {
       let limitURIs = Services.prefs.getIntPref(
-        "places.history.expiration.transient_current_max_pages");
-      logs.push("History can store a maximum of " + limitURIs + " unique pages");
+        "places.history.expiration.transient_current_max_pages"
+      );
+      logs.push(
+        "History can store a maximum of " + limitURIs + " unique pages"
+      );
     } catch (ex) {}
 
     let query = "SELECT name FROM sqlite_master WHERE type = :type";
     let params = {};
-    let _getTableCount = async (tableName) => {
+    let _getTableCount = async tableName => {
       let db = await PlacesUtils.promiseDBConnection();
       let rows = await db.execute(`SELECT count(*) FROM ${tableName}`);
-      logs.push(`Table ${tableName} has ${rows[0].getResultByIndex(0)} records`);
+      logs.push(
+        `Table ${tableName} has ${rows[0].getResultByIndex(0)} records`
+      );
     };
 
     try {
       params.type = "table";
       let db = await PlacesUtils.promiseDBConnection();
-      await db.execute(query, params,
-                       r => _getTableCount(r.getResultByIndex(0)));
+      await db.execute(query, params, r =>
+        _getTableCount(r.getResultByIndex(0))
+      );
 
       params.type = "index";
       await db.execute(query, params, r => {
@@ -967,7 +1003,6 @@ var PlacesDBUtils = {
       await db.execute(query, params, r => {
         logs.push(`Trigger ${r.getResultByIndex(0)}`);
       });
-
     } catch (ex) {
       throw new Error("Unable to collect stats.");
     }
@@ -982,9 +1017,9 @@ var PlacesDBUtils = {
    */
   originFrecencyStats() {
     return new Promise(resolve => {
-      PlacesUtils.history.recalculateOriginFrecencyStats(() => resolve([
-        "Recalculated origin frecency stats"
-      ]));
+      PlacesUtils.history.recalculateOriginFrecencyStats(() =>
+        resolve(["Recalculated origin frecency stats"])
+      );
     });
   },
 
@@ -996,9 +1031,6 @@ var PlacesDBUtils = {
    *
    */
   async telemetry() {
-    // First deal with some scalars for feeds:
-    await this._telemetryForFeeds();
-
     // This will be populated with one integer property for each probe result,
     // using the histogram name as key.
     let probeValues = {};
@@ -1020,33 +1052,40 @@ var PlacesDBUtils = {
     // callbacks can also use the result of previous queries stored in the
     // probeValues object.
     let probes = [
-      { histogram: "PLACES_PAGES_COUNT",
-        query:     "SELECT count(*) FROM moz_places" },
+      {
+        histogram: "PLACES_PAGES_COUNT",
+        query: "SELECT count(*) FROM moz_places",
+      },
 
-      { histogram: "PLACES_BOOKMARKS_COUNT",
-        query:     `SELECT count(*) FROM moz_bookmarks b
+      {
+        histogram: "PLACES_BOOKMARKS_COUNT",
+        query: `SELECT count(*) FROM moz_bookmarks b
                     JOIN moz_bookmarks t ON t.id = b.parent
                     AND t.parent <> :tags_folder
                     WHERE b.type = :type_bookmark`,
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
-      { histogram: "PLACES_TAGS_COUNT",
-        query:     `SELECT count(*) FROM moz_bookmarks
+      {
+        histogram: "PLACES_TAGS_COUNT",
+        query: `SELECT count(*) FROM moz_bookmarks
                     WHERE parent = :tags_folder`,
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
-        }
+        },
       },
 
-      { histogram: "PLACES_KEYWORDS_COUNT",
-        query:     "SELECT count(*) FROM moz_keywords" },
+      {
+        histogram: "PLACES_KEYWORDS_COUNT",
+        query: "SELECT count(*) FROM moz_keywords",
+      },
 
-      { histogram: "PLACES_SORTED_BOOKMARKS_PERC",
-        query:     `SELECT IFNULL(ROUND((
+      {
+        histogram: "PLACES_SORTED_BOOKMARKS_PERC",
+        query: `SELECT IFNULL(ROUND((
                       SELECT count(*) FROM moz_bookmarks b
                       JOIN moz_bookmarks t ON t.id = b.parent
                       AND t.parent <> :tags_folder AND t.parent > :places_root
@@ -1061,11 +1100,12 @@ var PlacesDBUtils = {
           places_root: PlacesUtils.placesRootId,
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
-      { histogram: "PLACES_TAGGED_BOOKMARKS_PERC",
-        query:     `SELECT IFNULL(ROUND((
+      {
+        histogram: "PLACES_TAGGED_BOOKMARKS_PERC",
+        query: `SELECT IFNULL(ROUND((
                       SELECT count(*) FROM moz_bookmarks b
                       JOIN moz_bookmarks t ON t.id = b.parent
                       AND t.parent = :tags_folder
@@ -1078,63 +1118,84 @@ var PlacesDBUtils = {
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
-      { histogram: "PLACES_DATABASE_FILESIZE_MB",
+      {
+        histogram: "PLACES_DATABASE_FILESIZE_MB",
         async callback() {
-          let placesDbPath = OS.Path.join(OS.Constants.Path.profileDir, "places.sqlite");
+          let placesDbPath = OS.Path.join(
+            OS.Constants.Path.profileDir,
+            "places.sqlite"
+          );
           let info = await OS.File.stat(placesDbPath);
           return parseInt(info.size / BYTES_PER_MEBIBYTE);
-        }
+        },
       },
 
-      { histogram: "PLACES_DATABASE_PAGESIZE_B",
-        query:     "PRAGMA page_size /* PlacesDBUtils.jsm PAGESIZE_B */" },
+      {
+        histogram: "PLACES_DATABASE_PAGESIZE_B",
+        query: "PRAGMA page_size /* PlacesDBUtils.jsm PAGESIZE_B */",
+      },
 
-      { histogram: "PLACES_DATABASE_SIZE_PER_PAGE_B",
-        query:     "PRAGMA page_count",
+      {
+        histogram: "PLACES_DATABASE_SIZE_PER_PAGE_B",
+        query: "PRAGMA page_count",
         callback(aDbPageCount) {
           // Note that the database file size would not be meaningful for this
           // calculation, because the file grows in fixed-size chunks.
           let dbPageSize = probeValues.PLACES_DATABASE_PAGESIZE_B;
           let placesPageCount = probeValues.PLACES_PAGES_COUNT;
           return Math.round((dbPageSize * aDbPageCount) / placesPageCount);
-        }
+        },
       },
 
-      { histogram: "PLACES_DATABASE_FAVICONS_FILESIZE_MB",
+      {
+        histogram: "PLACES_DATABASE_FAVICONS_FILESIZE_MB",
         async callback() {
-          let faviconsDbPath = OS.Path.join(OS.Constants.Path.profileDir, "favicons.sqlite");
+          let faviconsDbPath = OS.Path.join(
+            OS.Constants.Path.profileDir,
+            "favicons.sqlite"
+          );
           let info = await OS.File.stat(faviconsDbPath);
           return parseInt(info.size / BYTES_PER_MEBIBYTE);
-        }
+        },
       },
 
-      { histogram: "PLACES_ANNOS_BOOKMARKS_COUNT",
-        query:     "SELECT count(*) FROM moz_items_annos" },
+      {
+        histogram: "PLACES_ANNOS_BOOKMARKS_COUNT",
+        query: "SELECT count(*) FROM moz_items_annos",
+      },
 
-      { histogram: "PLACES_ANNOS_PAGES_COUNT",
-        query:     "SELECT count(*) FROM moz_annos" },
+      {
+        histogram: "PLACES_ANNOS_PAGES_COUNT",
+        query: "SELECT count(*) FROM moz_annos",
+      },
 
-      { histogram: "PLACES_MAINTENANCE_DAYSFROMLAST",
+      {
+        histogram: "PLACES_MAINTENANCE_DAYSFROMLAST",
         callback() {
           try {
-            let lastMaintenance = Services.prefs.getIntPref("places.database.lastMaintenance");
+            let lastMaintenance = Services.prefs.getIntPref(
+              "places.database.lastMaintenance"
+            );
             let nowSeconds = parseInt(Date.now() / 1000);
             return parseInt((nowSeconds - lastMaintenance) / 86400);
           } catch (ex) {
             return 60;
           }
-        }
+        },
       },
     ];
 
     for (let probe of probes) {
       let val;
-      if (("query" in probe)) {
+      if ("query" in probe) {
         let db = await PlacesUtils.promiseDBConnection();
-        val = (await db.execute(probe.query, probe.params || {}))[0].getResultByIndex(0);
+        val = (await db.execute(
+          probe.query,
+          probe.params || {}
+        ))[0].getResultByIndex(0);
       }
       // Report the result of the probe through Telemetry.
       // The resulting promise cannot reject.
@@ -1144,16 +1205,6 @@ var PlacesDBUtils = {
       probeValues[probe.histogram] = val;
       Services.telemetry.getHistogramById(probe.histogram).add(val);
     }
-  },
-
-  async _telemetryForFeeds() {
-    let db = await PlacesUtils.promiseDBConnection();
-    let livebookmarkCount = await db.execute(
-      `SELECT count(*) FROM moz_items_annos a
-                       JOIN moz_anno_attributes aa ON a.anno_attribute_id = aa.id
-                       WHERE aa.name = 'livemark/feedURI'`);
-    livebookmarkCount = livebookmarkCount[0].getResultByIndex(0);
-    Services.telemetry.scalarSet("browser.feeds.livebookmark_count", livebookmarkCount);
   },
 
   /**
@@ -1173,16 +1224,18 @@ var PlacesDBUtils = {
     let tasksMap = new Map();
     for (let task of tasks) {
       if (PlacesDBUtils._isShuttingDown) {
-        tasksMap.set(
-          task.name,
-          { succeeded: false, logs: ["Shutting down, will not schedule the task."] });
+        tasksMap.set(task.name, {
+          succeeded: false,
+          logs: ["Shutting down, will not schedule the task."],
+        });
         continue;
       }
 
       if (PlacesDBUtils._clearTaskQueue) {
-        tasksMap.set(
-          task.name,
-          { succeeded: false, logs: ["The task queue was cleared by an error in another task."] });
+        tasksMap.set(task.name, {
+          succeeded: false,
+          logs: ["The task queue was cleared by an error in another task."],
+        });
         continue;
       }
 
@@ -1192,7 +1245,7 @@ var PlacesDBUtils = {
       tasksMap.set(task.name, result);
     }
     return tasksMap;
-  }
+  },
 };
 
 async function integrity(dbName) {
@@ -1207,30 +1260,33 @@ async function integrity(dbName) {
 
   // Create a new connection for this check, so we can operate independently
   // from a broken Places service.
-  // openConnection returns an exception with .status == Cr.NS_ERROR_FILE_CORRUPTED,
+  // openConnection returns an exception with .result == Cr.NS_ERROR_FILE_CORRUPTED,
   // we should do the same everywhere we want maintenance to try replacing the
   // database on next startup.
   let path = OS.Path.join(OS.Constants.Path.profileDir, dbName);
   let db = await Sqlite.openConnection({ path });
   try {
-    if (await check(db))
+    if (await check(db)) {
       return;
+    }
 
     // We stopped due to an integrity corruption, try to fix it if possible.
     // First, try to reindex, this often fixes simple indices problems.
     try {
       await db.execute("REINDEX");
     } catch (ex) {
-      let error = new Error("Impossible to reindex database");
-      error.status = Cr.NS_ERROR_FILE_CORRUPTED;
-      throw error;
+      throw new Components.Exception(
+        "Impossible to reindex database",
+        Cr.NS_ERROR_FILE_CORRUPTED
+      );
     }
 
     // Check again.
-    if (!await check(db)) {
-      let error = new Error("The database is still corrupt");
-      error.status = Cr.NS_ERROR_FILE_CORRUPTED;
-      throw error;
+    if (!(await check(db))) {
+      throw new Components.Exception(
+        "The database is still corrupt",
+        Cr.NS_ERROR_FILE_CORRUPTED
+      );
     }
   } finally {
     await db.close();

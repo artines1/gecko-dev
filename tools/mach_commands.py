@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 import sys
 
@@ -10,13 +10,53 @@ from mach.decorators import (
     CommandArgument,
     CommandProvider,
     Command,
+    SubCommand,
 )
 
 from mozbuild.base import MachCommandBase, MozbuildObject
 
 
 @CommandProvider
+class BustedProvider(object):
+    @Command('busted', category='misc',
+             description='Query known bugs in our tooling, and file new ones.')
+    def busted_default(self):
+        import requests
+        payload = {'include_fields': 'id,summary,last_change_time',
+                   'blocks': 1543241,
+                   'resolution': '---'}
+        response = requests.get('https://bugzilla.mozilla.org/rest/bug', payload)
+        response.raise_for_status()
+        json_response = response.json()
+        if 'bugs' in json_response and len(json_response['bugs']) > 0:
+            # Display most recently modifed bugs first.
+            bugs = sorted(json_response['bugs'], key=lambda item: item['last_change_time'],
+                          reverse=True)
+            for bug in bugs:
+                print("Bug %s - %s" % (bug['id'], bug['summary']))
+        else:
+            print("No known tooling issues found.")
+
+    @SubCommand('busted',
+                'file',
+                description='File a bug for busted tooling.')
+    def busted_file(self):
+        import webbrowser
+        uri = ('https://bugzilla.mozilla.org/enter_bug.cgi?'
+               'product=Firefox%20Build%20System&component=General&blocked=1543241')
+        webbrowser.open_new_tab(uri)
+
+
+@CommandProvider
 class SearchProvider(object):
+    @Command('searchfox', category='misc',
+             description='Search for something in Searchfox.')
+    @CommandArgument('term', nargs='+', help='Term(s) to search for.')
+    def searchfox(self, term):
+        import webbrowser
+        term = ' '.join(term)
+        uri = 'https://searchfox.org/mozilla-central/search?q=%s' % term
+        webbrowser.open_new_tab(uri)
     @Command('dxr', category='misc',
              description='Search for something in DXR.')
     @CommandArgument('term', nargs='+', help='Term(s) to search for.')
@@ -46,13 +86,14 @@ class SearchProvider(object):
 
     @Command('search', category='misc',
              description='Search for something on the Internets. '
-             'This will open 3 new browser tabs and search for the term on Google, '
-             'MDN, and DXR.')
+             'This will open 4 new browser tabs and search for the term on Google, '
+             'MDN, DXR, and Searchfox.')
     @CommandArgument('term', nargs='+', help='Term(s) to search for.')
     def search(self, term):
         self.google(term)
         self.mdn(term)
         self.dxr(term)
+        self.searchfox(term)
 
 
 @CommandProvider
@@ -75,97 +116,228 @@ class UUIDProvider(object):
             print(('  { ' + '0x%s, ' * 7 + '0x%s } }') % pairs)
 
 
+MACH_PASTEBIN_DURATIONS = {
+    'onetime': 'onetime',
+    'hour': '3600',
+    'day': '86400',
+    'week': '604800',
+    'month': '2073600',
+}
+
+EXTENSION_TO_HIGHLIGHTER = {
+    '.hgrc': 'ini',
+    'Dockerfile': 'docker',
+    'Makefile': 'make',
+    'applescript': 'applescript',
+    'arduino': 'arduino',
+    'bash': 'bash',
+    'bat': 'bat',
+    'c': 'c',
+    'clojure': 'clojure',
+    'cmake': 'cmake',
+    'coffee': 'coffee-script',
+    'console': 'console',
+    'cpp': 'cpp',
+    'cs': 'csharp',
+    'css': 'css',
+    'cu': 'cuda',
+    'cuda': 'cuda',
+    'dart': 'dart',
+    'delphi': 'delphi',
+    'diff': 'diff',
+    'django': 'django',
+    'docker': 'docker',
+    'elixir': 'elixir',
+    'erlang': 'erlang',
+    'go': 'go',
+    'h': 'c',
+    'handlebars': 'handlebars',
+    'haskell': 'haskell',
+    'hs': 'haskell',
+    'html': 'html',
+    'ini': 'ini',
+    'ipy': 'ipythonconsole',
+    'ipynb': 'ipythonconsole',
+    'irc': 'irc',
+    'j2': 'django',
+    'java': 'java',
+    'js': 'js',
+    'json': 'json',
+    'jsx': 'jsx',
+    'kt': 'kotlin',
+    'less': 'less',
+    'lisp': 'common-lisp',
+    'lsp': 'common-lisp',
+    'lua': 'lua',
+    'm': 'objective-c',
+    'make': 'make',
+    'matlab': 'matlab',
+    'md': '_markdown',
+    'nginx': 'nginx',
+    'numpy': 'numpy',
+    'patch': 'diff',
+    'perl': 'perl',
+    'php': 'php',
+    'pm': 'perl',
+    'postgresql': 'postgresql',
+    'py': 'python',
+    'rb': 'rb',
+    'rs': 'rust',
+    'rst': 'rst',
+    'sass': 'sass',
+    'scss': 'scss',
+    'sh': 'bash',
+    'sol': 'sol',
+    'sql': 'sql',
+    'swift': 'swift',
+    'tex': 'tex',
+    'typoscript': 'typoscript',
+    'vim': 'vim',
+    'xml': 'xml',
+    'xslt': 'xslt',
+    'yaml': 'yaml',
+    'yml': 'yaml'
+}
+
+
+def guess_highlighter_from_path(path):
+    '''Return a known highlighter from a given path
+
+    Attempt to select a highlighter by checking the file extension in the mapping
+    of extensions to highlighter. If that fails, attempt to pass the basename of
+    the file. Return `_code` as the default highlighter if that fails.
+    '''
+    import os
+
+    _name, ext = os.path.splitext(path)
+
+    if ext.startswith('.'):
+        ext = ext[1:]
+
+    if ext in EXTENSION_TO_HIGHLIGHTER:
+        return EXTENSION_TO_HIGHLIGHTER[ext]
+
+    basename = os.path.basename(path)
+
+    return EXTENSION_TO_HIGHLIGHTER.get(basename, '_code')
+
+
+PASTEMO_MAX_CONTENT_LENGTH = 250 * 1024 * 1024
+
+PASTEMO_URL = 'https://paste.mozilla.org/api/'
+
+MACH_PASTEBIN_DESCRIPTION = '''
+Command line interface to paste.mozilla.org.
+
+Takes either a filename whose content should be pasted, or reads
+content from standard input. If a highlighter is specified it will
+be used, otherwise the file name will be used to determine an
+appropriate highlighter.
+'''
+
+
 @CommandProvider
 class PastebinProvider(object):
     @Command('pastebin', category='misc',
-             description='Command line interface to pastebin.mozilla.org.')
-    @CommandArgument('--language', default=None,
-                     help='Language to use for syntax highlighting')
-    @CommandArgument('--poster', default='',
-                     help='Specify your name for use with pastebin.mozilla.org')
-    @CommandArgument('--duration', default='day',
-                     choices=['d', 'day', 'm', 'month', 'f', 'forever'],
-                     help='Keep for specified duration (default: %(default)s)')
-    @CommandArgument('file', nargs='?', default=None,
-                     help='Specify the file to upload to pastebin.mozilla.org')
-    def pastebin(self, language, poster, duration, file):
-        import urllib
-        import urllib2
+             description=MACH_PASTEBIN_DESCRIPTION)
+    @CommandArgument('--list-highlighters', action='store_true',
+                     help='List known highlighters and exit')
+    @CommandArgument('--highlighter', default=None,
+                     help='Syntax highlighting to use for paste')
+    @CommandArgument('--expires', default='week',
+                     choices=sorted(MACH_PASTEBIN_DURATIONS.keys()),
+                     help='Expire paste after given time duration (default: %(default)s)')
+    @CommandArgument('--verbose', action='store_true',
+                     help='Print extra info such as selected syntax highlighter')
+    @CommandArgument('path', nargs='?', default=None,
+                     help='Path to file for upload to paste.mozilla.org')
+    def pastebin(self, list_highlighters, highlighter, expires, verbose, path):
+        import requests
 
-        URL = 'https://pastebin.mozilla.org/'
+        def verbose_print(*args, **kwargs):
+            '''Print a string if `--verbose` flag is set'''
+            if verbose:
+                print(*args, **kwargs)
 
-        FILE_TYPES = [{'value': 'text', 'name': 'None', 'extension': 'txt'},
-                      {'value': 'bash', 'name': 'Bash', 'extension': 'sh'},
-                      {'value': 'c', 'name': 'C', 'extension': 'c'},
-                      {'value': 'cpp', 'name': 'C++', 'extension': 'cpp'},
-                      {'value': 'html4strict', 'name': 'HTML', 'extension': 'html'},
-                      {'value': 'javascript', 'name': 'Javascript', 'extension': 'js'},
-                      {'value': 'javascript', 'name': 'Javascript', 'extension': 'jsm'},
-                      {'value': 'lua', 'name': 'Lua', 'extension': 'lua'},
-                      {'value': 'perl', 'name': 'Perl', 'extension': 'pl'},
-                      {'value': 'php', 'name': 'PHP', 'extension': 'php'},
-                      {'value': 'python', 'name': 'Python', 'extension': 'py'},
-                      {'value': 'ruby', 'name': 'Ruby', 'extension': 'rb'},
-                      {'value': 'css', 'name': 'CSS', 'extension': 'css'},
-                      {'value': 'diff', 'name': 'Diff', 'extension': 'diff'},
-                      {'value': 'ini', 'name': 'INI file', 'extension': 'ini'},
-                      {'value': 'java', 'name': 'Java', 'extension': 'java'},
-                      {'value': 'xml', 'name': 'XML', 'extension': 'xml'},
-                      {'value': 'xml', 'name': 'XML', 'extension': 'xul'}]
+        # Show known highlighters and exit.
+        if list_highlighters:
+            lexers = set(EXTENSION_TO_HIGHLIGHTER.values())
+            print('Available lexers:\n'
+                  '    - %s' % '\n    - '.join(sorted(lexers)))
+            return 0
 
-        lang = ''
-
-        if file:
-            try:
-                with open(file, 'r') as f:
-                    content = f.read()
-                # TODO: Use mime-types instead of extensions; suprocess('file <f_name>')
-                # Guess File-type based on file extension
-                extension = file.split('.')[-1]
-                for l in FILE_TYPES:
-                    if extension == l['extension']:
-                        print('Identified file as %s' % l['name'])
-                        lang = l['value']
-            except IOError:
-                print('ERROR. No such file')
-                return 1
-        else:
-            content = sys.stdin.read()
-        duration = duration[0]
-
-        if language:
-            lang = language
-
-        params = [
-            ('parent_pid', ''),
-            ('format', lang),
-            ('code2', content),
-            ('poster', poster),
-            ('expiry', duration),
-            ('paste', 'Send')]
-
-        data = urllib.urlencode(params)
-        print('Uploading ...')
+        # Get a correct expiry value.
         try:
-            req = urllib2.Request(URL, data)
-            response = urllib2.urlopen(req)
-            http_response_code = response.getcode()
-            if http_response_code == 200:
-                pasteurl = response.geturl()
-                if pasteurl == URL:
-                    if "Query failure: Data too long for column" in response.readline():
-                        print('ERROR. Request too large. Limit is 64KB.')
-                    else:
-                        print('ERROR. Unknown error')
-                else:
-                    print(pasteurl)
-            else:
-                print('Could not upload the file, '
-                      'HTTP Response Code %s' % (http_response_code))
-        except urllib2.URLError:
-            print('ERROR. Could not connect to pastebin.mozilla.org.')
+            verbose_print('Setting expiry from %s' % expires)
+            expires = MACH_PASTEBIN_DURATIONS[expires]
+            verbose_print('Using %s as expiry' % expires)
+        except KeyError:
+            print('%s is not a valid duration.\n'
+                  '(hint: try one of %s)' %
+                  (expires, ', '.join(MACH_PASTEBIN_DURATIONS.keys())))
             return 1
-        return 0
+
+        data = {
+            'format': 'json',
+            'expires': expires,
+        }
+
+        # Get content to be pasted.
+        if path:
+            verbose_print('Reading content from %s' % path)
+            try:
+                with open(path, 'r') as f:
+                    content = f.read()
+            except IOError:
+                print('ERROR. No such file %s' % path)
+                return 1
+
+            lexer = guess_highlighter_from_path(path)
+            if lexer:
+                data['lexer'] = lexer
+        else:
+            verbose_print('Reading content from stdin')
+            content = sys.stdin.read()
+
+        # Assert the length of content to be posted does not exceed the maximum.
+        content_length = len(content)
+        verbose_print('Checking size of content is okay (%d)' % content_length)
+        if content_length > PASTEMO_MAX_CONTENT_LENGTH:
+            print('Paste content is too large (%d, maximum %d)' %
+                  (content_length, PASTEMO_MAX_CONTENT_LENGTH))
+            return 1
+
+        data['content'] = content
+
+        # Highlight as specified language, overwriting value set from filename.
+        if highlighter:
+            verbose_print('Setting %s as highlighter' % highlighter)
+            data['lexer'] = highlighter
+
+        try:
+            verbose_print('Sending request to %s' % PASTEMO_URL)
+            resp = requests.post(PASTEMO_URL, data=data)
+
+            # Error code should always be 400.
+            # Response content will include a helpful error message,
+            # so print it here (for example, if an invalid highlighter is
+            # provided, it will return a list of valid highlighters).
+            if resp.status_code >= 400:
+                print('Error code %d: %s' % (resp.status_code, resp.content))
+                return 1
+
+            verbose_print('Pasted successfully')
+
+            response_json = resp.json()
+
+            verbose_print('Paste highlighted as %s' % response_json['lexer'])
+            print(response_json['url'])
+
+            return 0
+        except Exception as e:
+            print('ERROR. Paste failed.')
+            print('%s' % e)
+        return 1
 
 
 def mozregression_import():

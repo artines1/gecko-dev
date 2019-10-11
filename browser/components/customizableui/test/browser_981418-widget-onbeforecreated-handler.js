@@ -14,11 +14,11 @@ add_task(async function testAddOnBeforeCreatedWidget() {
     type: "view",
     viewId: kWidgetId + "idontexistyet",
     onBeforeCreated(doc) {
-      let view = doc.createElement("panelview");
+      let view = doc.createXULElement("panelview");
       view.id = kWidgetId + "idontexistyet";
       document.getElementById("appMenu-viewCache").appendChild(view);
       onBeforeCreatedCalled = true;
-    }
+    },
   };
 
   CustomizableUI.createWidget(widgetSpec);
@@ -42,7 +42,10 @@ add_task(async function testAddOnBeforeCreatedWidget() {
   widgetPanel.hidePopup();
   await panelHiddenPromise;
 
-  CustomizableUI.addWidgetToArea(kWidgetId, CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+  CustomizableUI.addWidgetToArea(
+    kWidgetId,
+    CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+  );
   await waitForOverflowButtonShown();
   await document.getElementById("nav-bar").overflowable.show();
 

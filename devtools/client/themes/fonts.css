@@ -2,6 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* CSS Variables specific to the font editor that aren't defined by the themes */
+:root {
+  --highlight-color: var(--blue-55);
+  --input-background-color: white;
+  --input-border-color: var(--grey-30);
+  --preview-input-background: var(--theme-toolbar-background);
+  --slider-thumb-color: var(--grey-50);
+  --slider-track-color: var(--grey-30);
+}
+
+:root.theme-dark {
+  --input-background-color: var(--grey-70);
+  --input-border-color: var(--grey-70);
+  --preview-input-background: #222225;
+  --slider-thumb-color: var(--grey-40);
+  --slider-track-color: var(--grey-60);
+}
+
 #sidebar-panel-fontinspector {
   margin: 0;
   display: flex;
@@ -16,14 +34,18 @@
 }
 
 #font-editor {
-  padding-bottom: .8em;
+  padding-bottom: .5em;
 }
 
 #font-editor summary {
-  -moz-user-select: none;
+  user-select: none;
   cursor: pointer;
-  margin-bottom: .7em;
+  margin-bottom: .4em;
   width: -moz-fit-content;
+}
+
+#font-editor details {
+  padding-bottom: .5em;
 }
 
 #font-editor details .label-open,
@@ -39,6 +61,10 @@
   display: inline-block;
 }
 
+#font-editor .devtools-sidepanel-no-result {
+  padding-bottom: 0;
+}
+
 .fonts-list {
   padding: 0;
   margin: 0;
@@ -47,7 +73,7 @@
 
 .font {
   border: 1px solid var(--theme-splitter-color);
-  border-width: 0 1px 1px 0;
+  border-width: 0 0 1px 0;
   display: grid;
   grid-template-columns: 1fr auto;
   grid-column-gap: 10px;
@@ -61,44 +87,25 @@
   vertical-align: bottom;
 }
 
-.font-preview-container {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  overflow: hidden;
-  display: grid;
-  place-items: center end;
-  position: relative;
+#font-preview-input-container {
+  background: var(--preview-input-background);
+  border-bottom: 1px solid var(--theme-splitter-color);
+  display: flex;
+  height: 25px;
+}
+
+#font-preview-input-container input {
+  background-image: none;
+  flex: 1;
+  padding-inline: 19px;
 }
 
 .font-preview {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  object-fit: contain;
   height: 50px;
-  display: block;
-}
-
-.font-preview:hover {
-  cursor: text;
-  background-image: linear-gradient(to right,
-    var(--grey-40) 3px, transparent 3px, transparent);
-  background-size: 6px 1px;
-  background-repeat: repeat-x;
-  background-position-y: 45px;
-}
-
-#font-container .font-preview-input {
-  position: absolute;
-  top: 5px;
-  left: 0;
-  width: calc(100% - 5px);
-  height: calc(100% - 10px);
-  background: transparent;
-  color: transparent;
-  border-radius: 0;
-  padding: 0;
-}
-
-.font-preview-input::-moz-selection {
-  background: transparent;
-  color: transparent;
+  width: 100%;
 }
 
 .font-name,
@@ -108,9 +115,10 @@
 }
 
 .font-name {
+  display: inline-block;
   margin-bottom: 0.6em;
   font-size: 1em;
-  color: var(--grey-50);
+  color: var(--theme-text-color-alt);
 }
 
 .font-family-name {
@@ -118,15 +126,54 @@
   font-size: 1.2em;
 }
 
+.font-group {
+  margin-bottom: .5em;
+}
+
+.font-group .font-name {
+  white-space: unset;
+}
+
+.font-group .font-name::after {
+  content: ",";
+}
+
+.font-group .font-name:nth-last-child(1)::after {
+  content: "";
+}
+
+/* Make font-name hoverable as doing so highlights text runs in the page.
+   The hit target is 3px around the font name, which is why we offset them with a -3px
+   horizontal margin so they appear at the same place as they normall would. */
+
+.font-name {
+  padding: 3px;
+  margin-inline-start: -3px;
+  border-radius: 3px;
+}
+
+.font-name:hover {
+  background-color: var(--theme-selection-background-hover);
+}
+
 .font-css-code {
+  /* Force text direction in LTR and RTL */
   direction: ltr;
+  text-align: left;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--theme-toolbar-color);
+  color: var(--theme-text-color-strong);
   grid-column: span 2;
-  position: relative;
-  inset-inline-start: -4px;
+}
+
+.font-css-code .theme-twisty {
+  margin-inline-start: -3px;
+}
+
+/* Force arrow direction in LTR and RTL */
+.font-css-code .theme-twisty:not([open]) {
+  transform: rotate(-90deg) !important;
 }
 
 .font-css-code-expander::before {
@@ -136,18 +183,12 @@
   height: 8px;
   margin: 0 2px;
   line-height: 3px;
-  color: var(--theme-body-color-inactive);
+  color: var(--theme-text-color-inactive);
   border-radius: 3px;
   border-style: solid;
   border-width: 1px;
   text-align: center;
   vertical-align: middle;
-}
-
-.font-axes-controls {
-  border-top: 1px solid var(--theme-splitter-color);
-  margin-top: .8em;
-  padding-top: .8em;
 }
 
 .font-control {
@@ -156,15 +197,29 @@
   flex-wrap: nowrap;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 18px;
+  padding: 0 20px;
+  margin: .6em 0;
 }
 
-.font-control-family {
+/* Style *all* axis controls with a top separator. See reset below. */
+.font-control-axis {
+  border-top: 1px solid var(--theme-splitter-color);
+  padding-top: 1.1em;
+}
+
+/* Remove styles form all axis controls aside from the first one.
+   Workaround for :first-of-type which doesn't work with class names. */
+.font-control-axis ~ .font-control-axis {
+  border-top: unset;
+  padding-top: unset;
+}
+
+.font-control-used-fonts {
   align-items: flex-start;
   border-bottom: 1px solid var(--theme-splitter-color);
-  margin-bottom: .8em;
-  padding-top: .6em;
-  padding-bottom: .4em;
+  margin-top: 0;
+  margin-bottom: 1em;
+  padding-top: 1em;
 }
 
 .font-control-box,
@@ -179,28 +234,50 @@
   align-items: center;
 }
 
+.font-control-input .devtools-checkbox-toggle {
+  margin: 2px 0;
+}
+
 .font-control-label {
   display: inline-block;
   flex: 1;
   font-size: 12px;
-  max-width: 70px;
-  margin-right: 10px;
-  -moz-user-select: none;
+  min-width: 70px;
+  margin-inline-end: 10px;
+  user-select: none;
 }
 
-.font-family-unused {
-  margin-bottom: .3em;
-  color: var(--grey-50);
+.font-control-label-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.font-instance-select:active{
-  outline: none;
+.font-control-label-detail {
+  color: var(--theme-text-color-alt);
+  font-size: smaller;
 }
 
 .font-value-input {
-  margin-left: 10px;
   text-align: right;
   width: 60px;
+  padding: 2px 3px;
+  padding-inline-end: 5px;
+}
+
+.font-value-input,
+.font-value-select {
+  color: var(--theme-text-color-strong);
+  border: 1px solid var(--input-border-color);
+  background-color: var(--input-background-color);
+}
+
+/* Styles for disabled input fields */
+.font-value-input[disabled],
+.font-value-select[disabled],
+.font-value-slider[disabled] {
+  opacity: 0.5;
 }
 
 /* Do not use browser "invalid" state */
@@ -214,26 +291,105 @@
   outline: none;
 }
 
-/* Add space between input text from number stepper */
-.font-value-input[type=number]::-moz-number-spin-box{
-  margin-left: 3px;
-}
-
-/* Do not show number stepper for font-size */
-.font-value-input[name=font-size] {
+/* Make native number steppers disappear by treating it as text field*/
+.font-value-input[type=number] {
   -moz-appearance: textfield;
-  margin-right: 5px;
-  padding-right: 5px;
 }
 
-.font-unit-select {
-  padding: 2px;
+/* Swap around order of value input and unit dropdown for RTL */
+.font-value-input:dir(rtl) {
+  order: 3;
+}
+
+.font-value-label {
+  /* Combined width of .font-value-input and .font-value-select */
+  width: calc(60px + 3.8em);
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+
+/* Mock separator because inputs don't have distinguishable borders in dark theme */
+.theme-dark .font-value-input + .font-value-select:dir(ltr) {
+  margin-inline-start: 2px;
+}
+.theme-dark .font-value-input + .font-value-select:dir(rtl) {
+  margin-inline-end: 2px;
+}
+
+/* Custom styles for <select> elements within the font editor. */
+.font-value-select {
+  background-image: url(chrome://devtools/skin/images/select-arrow.svg);
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  fill: var(--theme-icon-color);
+  -moz-context-properties: fill;
+  -moz-appearance: none;
+  box-shadow: none;
+  padding: 1px 10px 1px 2px;
+  min-width: 3.8em;
+}
+
+.font-value-input + .font-value-select:dir(ltr){
+  border-inline-start: none;
+}
+
+/* Swap around order of value input and unit dropdown for RTL */
+.font-value-input + .font-value-select:dir(rtl){
+  border-inline-end: none;
+  order: 2;
+  text-align: left;
+}
+
+.font-value-select:-moz-focusring {
+  color: transparent;
+  text-shadow: 0 0 0 var(--theme-text-color-strong);
+}
+
+.font-value-input:focus,
+.font-value-select:focus {
+  outline: 1px solid var(--highlight-color);
+  outline-offset: -1px;
+}
+
+.font-value-slider-container {
+  flex: 1;
+  min-width: 50px;
+  position: relative;
+  margin-inline-end: 10px;
+}
+
+/* Firefox doesn't support pseudo-elements on inputs. Using the container instead. */
+.font-value-slider-container::before,
+.font-value-slider-container::after {
+  user-select: none;
+  color: var(--theme-text-color-alt);
+  font-size: smaller;
+  position: absolute;
+  bottom: -.6em;
+  visibility: hidden;
+}
+
+.font-control-input:hover .font-value-slider-container::before,
+.font-control-input:hover .font-value-slider-container::after,
+.font-control-input:focus-within .font-value-slider-container::before,
+.font-control-input:focus-within .font-value-slider-container::after{
+  visibility: visible;
+}
+
+.font-value-slider-container::before {
+  content: attr(data-min);
+  inset-inline-start: .3em;
+}
+
+.font-value-slider-container::after {
+  content: attr(data-max);
+  inset-inline-end: .3em;
 }
 
 .font-value-slider {
-  flex: 1;
+  background: transparent;
+  width: 100%;
   margin: 0;
-  min-width: 50px;
 }
 
 /*
@@ -243,7 +399,8 @@
 .font-value-slider[name=font-weight] {
   --notch-size: 3px;
   /* Draw a vertical line to get one notch per background-image instance */
-  background-image: linear-gradient(90deg, var(--grey-30) var(--notch-size), transparent 0);
+  background-image: linear-gradient(90deg, var(--slider-track-color) var(--notch-size),
+   transparent 0);
   /* Offset the background so the notch aligns with the center of the slider thumb */
   background-position: 5px center;
   /* Repeat the background-image horizontally */
@@ -261,66 +418,22 @@
 }
 
 .font-value-slider::-moz-range-thumb {
-  background: var(--grey-50);
+  background-color: var(--slider-thumb-color);
   border: 0;
 }
 
+.font-value-slider:focus::-moz-range-thumb {
+  background-color: var(--highlight-color);
+}
+
 .font-value-slider::-moz-range-track {
-  background: var(--grey-30);
+  background-color: var(--slider-track-color);
   height: 3px;
 }
 
-/*
-  Restyle a native checkbox input to look like a toggle with a "thumb".
-  Build the decoration using solid shapes created with radial- and linear-gradient
-  background images. Animate the position of the "thumb" using background-position.
- */
-.font-value-toggle {
-  /* Reset native checkbox styling. */
-  -moz-appearance: none;
-  --bg: var(--grey-30);
-  --thumb-color: var(--grey-50);
-  --thumb-position: 0% 50%;
-  cursor: pointer;
-  /* Change font-size to scale. */
-  font-size: 140%;
-  width: 2em;
-  height: 1em;
-
-  background-repeat: no-repeat;
-
-  background-image:
-    /* thumb */
-    radial-gradient(circle 0.35em, var(--thumb-color) 100%, transparent 0),
-    /* left circle */
-    radial-gradient(circle 0.5em, var(--bg) 100%, transparent 0),
-    /* middle bar */
-    linear-gradient(var(--bg) , var(--bg)),
-    /* right circle */
-    radial-gradient(circle 0.5em, var(--bg) 100%, transparent 0);
-
-  /* Every shape has a size of 1em x 1em and is positioned with background-position. */
-  background-size: 1em 1em;
-
-  background-position:
-    var(--thumb-position), /* thumb */
-    left center,  /* left circle */
-    0.5em center, /* middle bar */
-    right center; /* right circle */
-
-  /* Animate the thumb position between states of the checkbox. */
-  transition: background-position .1s ease-out;
-}
-
-.font-value-toggle:checked {
-  --bg: var(--blue-55);
-  --thumb-color: white;
-  --thumb-position: 100% 50%;
-}
-
 .font-origin {
-  margin-top: .2em;
-  color: var(--grey-50);
+  margin-top: -.25em;
+  color: var(--theme-comment);
   justify-self: start;
 }
 
@@ -352,12 +465,15 @@
   background-size: 12px;
   background-position-x: -1px;
   -moz-context-properties: fill;
-  fill: var(--theme-toolbar-color);
-
+  fill: var(--grey-50);
 }
 
 #font-container .accordion {
   border-top: 1px solid var(--theme-splitter-color);
+}
+
+#font-container .accordion ._content {
+  padding: 0;
 }
 
 #font-container .accordion + .accordion {

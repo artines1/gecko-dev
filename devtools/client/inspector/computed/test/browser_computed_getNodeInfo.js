@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -20,7 +19,7 @@ const {
   VIEW_NODE_SELECTOR_TYPE,
   VIEW_NODE_PROPERTY_TYPE,
   VIEW_NODE_VALUE_TYPE,
-  VIEW_NODE_IMAGE_URL_TYPE
+  VIEW_NODE_IMAGE_URL_TYPE,
 } = require("devtools/client/inspector/shared/node-types");
 
 const TEST_URI = `
@@ -55,7 +54,7 @@ const TEST_DATA = [
     },
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo, null);
-    }
+    },
   },
   {
     desc: "Testing a useless node",
@@ -64,7 +63,7 @@ const TEST_DATA = [
     },
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo, null);
-    }
+    },
   },
   {
     desc: "Testing a property name",
@@ -77,7 +76,7 @@ const TEST_DATA = [
       ok("value" in nodeInfo.value);
       is(nodeInfo.value.property, "color");
       is(nodeInfo.value.value, "rgb(255, 0, 0)");
-    }
+    },
   },
   {
     desc: "Testing a property value",
@@ -90,12 +89,12 @@ const TEST_DATA = [
       ok("value" in nodeInfo.value);
       is(nodeInfo.value.property, "color");
       is(nodeInfo.value.value, "rgb(255, 0, 0)");
-    }
+    },
   },
   {
     desc: "Testing an image url",
     getHoveredNode: function(view) {
-      const {valueSpan} = getComputedViewProperty(view, "background-image");
+      const { valueSpan } = getComputedViewProperty(view, "background-image");
       return valueSpan.querySelector(".theme-link");
     },
     assertNodeInfo: function(nodeInfo) {
@@ -103,10 +102,12 @@ const TEST_DATA = [
       ok("property" in nodeInfo.value);
       ok("value" in nodeInfo.value);
       is(nodeInfo.value.property, "background-image");
-      is(nodeInfo.value.value,
-         "url(\"chrome://global/skin/icons/warning-64.png\")");
+      is(
+        nodeInfo.value.value,
+        'url("chrome://global/skin/icons/warning-64.png")'
+      );
       is(nodeInfo.value.url, "chrome://global/skin/icons/warning-64.png");
-    }
+    },
   },
   {
     desc: "Testing a matched rule selector (bestmatch)",
@@ -117,7 +118,7 @@ const TEST_DATA = [
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo.type, VIEW_NODE_SELECTOR_TYPE);
       is(nodeInfo.value, "div div");
-    }
+    },
   },
   {
     desc: "Testing a matched rule selector (matched)",
@@ -128,7 +129,7 @@ const TEST_DATA = [
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo.type, VIEW_NODE_SELECTOR_TYPE);
       is(nodeInfo.value, "div");
-    }
+    },
   },
   {
     desc: "Testing a matched rule selector (parentmatch)",
@@ -139,7 +140,7 @@ const TEST_DATA = [
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo.type, VIEW_NODE_SELECTOR_TYPE);
       is(nodeInfo.value, "body");
-    }
+    },
   },
   {
     desc: "Testing a matched rule value",
@@ -151,7 +152,7 @@ const TEST_DATA = [
       is(nodeInfo.type, VIEW_NODE_VALUE_TYPE);
       is(nodeInfo.value.property, "color");
       is(nodeInfo.value.value, "red");
-    }
+    },
   },
   {
     desc: "Testing a matched rule stylesheet link",
@@ -161,16 +162,16 @@ const TEST_DATA = [
     },
     assertNodeInfo: function(nodeInfo) {
       is(nodeInfo, null);
-    }
-  }
+    },
+  },
 ];
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {inspector, view} = await openComputedView();
+  const { inspector, view } = await openComputedView();
   await selectNode("#testElement", inspector);
 
-  for (const {desc, getHoveredNode, assertNodeInfo} of TEST_DATA) {
+  for (const { desc, getHoveredNode, assertNodeInfo } of TEST_DATA) {
     info(desc);
     const nodeInfo = view.getNodeInfo(await getHoveredNode(view));
     assertNodeInfo(nodeInfo);

@@ -4,20 +4,19 @@
 
 <window title="Autocomplete Widget Test"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         onload="runTest();">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
   <script type="application/javascript"
           src="chrome://global/content/globalOverlay.js"/>
 
-<textbox id="autocomplete"
-         type="autocomplete"
-         completedefaultindex="true"
-         timeout="0"
-         autocompletesearch="simple"/>
+<html:input id="autocomplete"
+            is="autocomplete-input"
+            completedefaultindex="true"
+            timeout="0"
+            autocompletesearch="simple"/>
 
 <script class="testbody" type="application/javascript">
 <![CDATA[
@@ -106,10 +105,6 @@ let autoCompleteSimple = {
 };
 
 SimpleTest.waitForExplicitFinish();
-
-// 6 assertions are recorded due to nested setting <input>.value but not a problem.
-// They are necessary to detect invalid method call without mutation event listers.
-SimpleTest.expectAssertions(6, 6);
 
 let gACTimer;
 let gAutoComplete;

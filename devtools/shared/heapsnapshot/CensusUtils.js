@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { flatten } = require("resource://devtools/shared/ThreadSafeDevToolsUtils.js");
+const {
+  flatten,
+} = require("resource://devtools/shared/ThreadSafeDevToolsUtils.js");
 
 /** * Visitor ****************************************************************/
 
@@ -11,7 +13,7 @@ const { flatten } = require("resource://devtools/shared/ThreadSafeDevToolsUtils.
  * A Visitor visits each node and edge of a census report tree as the census
  * report is being traversed by `walk`.
  */
-function Visitor() { }
+function Visitor() {}
 exports.Visitor = Visitor;
 
 /**
@@ -27,7 +29,7 @@ exports.Visitor = Visitor;
  *        The edge leading to this sub-report. The edge is null if (but not iff!
  *        eg, null allocation stack edges) we are entering the root report.
  */
-Visitor.prototype.enter = function(breakdown, report, edge) { };
+Visitor.prototype.enter = function(breakdown, report, edge) {};
 
 /**
  * The `exit` method is called when traversal of a sub-report has finished.
@@ -42,7 +44,7 @@ Visitor.prototype.enter = function(breakdown, report, edge) { };
  *        The edge leading to this sub-report. The edge is null if (but not iff!
  *        eg, null allocation stack edges) we are entering the root report.
  */
-Visitor.prototype.exit = function(breakdown, report, edge) { };
+Visitor.prototype.exit = function(breakdown, report, edge) {};
 
 /**
  * The `count` method is called when leaf nodes (reports whose breakdown is
@@ -58,7 +60,7 @@ Visitor.prototype.exit = function(breakdown, report, edge) { };
  *        The edge leading to this count report. The edge is null if we are
  *        entering the root report.
  */
-Visitor.prototype.count = function(breakdown, report, edge) { };
+Visitor.prototype.count = function(breakdown, report, edge) {};
 
 /** * getReportEdges *********************************************************/
 
@@ -76,7 +78,7 @@ EDGES.internalType = function(breakdown, report) {
   return Object.keys(report).map(key => ({
     edge: key,
     referent: report[key],
-    breakdown: breakdown.then
+    breakdown: breakdown.then,
   }));
 };
 
@@ -84,7 +86,7 @@ EDGES.descriptiveType = function(breakdown, report) {
   return Object.keys(report).map(key => ({
     edge: key,
     referent: report[key],
-    breakdown: breakdown.then
+    breakdown: breakdown.then,
   }));
 };
 
@@ -92,7 +94,7 @@ EDGES.objectClass = function(breakdown, report) {
   return Object.keys(report).map(key => ({
     edge: key,
     referent: report[key],
-    breakdown: key === "other" ? breakdown.other : breakdown.then
+    breakdown: key === "other" ? breakdown.other : breakdown.then,
   }));
 };
 
@@ -112,7 +114,7 @@ EDGES.allocationStack = function(breakdown, report) {
     edges.push({
       edge: key,
       referent: value,
-      breakdown: key === "noStack" ? breakdown.noStack : breakdown.then
+      breakdown: key === "noStack" ? breakdown.noStack : breakdown.then,
     });
   });
   return edges;
@@ -122,7 +124,7 @@ EDGES.filename = function(breakdown, report) {
   return Object.keys(report).map(key => ({
     edge: key,
     referent: report[key],
-    breakdown: key === "noFilename" ? breakdown.noFilename : breakdown.then
+    breakdown: key === "noFilename" ? breakdown.noFilename : breakdown.then,
   }));
 };
 
@@ -150,8 +152,11 @@ function recursiveWalk(breakdown, edge, report, visitor) {
     visitor.exit(breakdown, report, edge);
   } else {
     visitor.enter(breakdown, report, edge);
-    for (const { edge: ed, referent, breakdown: subBreakdown }
-      of getReportEdges(breakdown, report)) {
+    for (const {
+      edge: ed,
+      referent,
+      breakdown: subBreakdown,
+    } of getReportEdges(breakdown, report)) {
       recursiveWalk(subBreakdown, ed, referent, visitor);
     }
     visitor.exit(breakdown, report, edge);
@@ -323,8 +328,8 @@ DiffVisitor.prototype.count = function(breakdown, report, edge) {
   }
 };
 
-const basisTotalBytes = exports.basisTotalBytes = Symbol("basisTotalBytes");
-const basisTotalCount = exports.basisTotalCount = Symbol("basisTotalCount");
+const basisTotalBytes = (exports.basisTotalBytes = Symbol("basisTotalBytes"));
+const basisTotalCount = (exports.basisTotalCount = Symbol("basisTotalCount"));
 
 /**
  * Get the resulting report of the difference between the traversed census
@@ -488,8 +493,10 @@ exports.getReportLeaves = function(indices, breakdown, report) {
 exports.getCensusIndividuals = function(indices, countBreakdown, snapshot) {
   const bucketBreakdown = exports.countToBucketBreakdown(countBreakdown);
   const bucketReport = snapshot.takeCensus({ breakdown: bucketBreakdown });
-  const buckets = exports.getReportLeaves(indices,
-                                          bucketBreakdown,
-                                          bucketReport);
+  const buckets = exports.getReportLeaves(
+    indices,
+    bucketBreakdown,
+    bucketReport
+  );
   return flatten(buckets);
 };

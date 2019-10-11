@@ -1,12 +1,12 @@
-/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const { DevToolsShim } =
-    ChromeUtils.import("chrome://devtools-startup/content/DevToolsShim.jsm", {});
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { DevToolsShim } = ChromeUtils.import(
+  "chrome://devtools-startup/content/DevToolsShim.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Test the DevToolsShim
 
@@ -24,7 +24,7 @@ function createMockDevTools() {
   ];
 
   const mock = {
-    callLog: {}
+    callLog: {},
   };
 
   for (const method of methods) {
@@ -43,8 +43,10 @@ function createMockDevTools() {
  * arguments provided to the last call, if appropriate.
  */
 function checkCalls(mock, method, length, lastArgs) {
-  ok(mock.callLog[method].length === length,
-      "Devtools.on was called the expected number of times");
+  ok(
+    mock.callLog[method].length === length,
+    "Devtools.on was called the expected number of times"
+  );
 
   // If we don't want to check the last call or if the method was never called, bail out.
   if (!lastArgs || length === 0) {
@@ -53,8 +55,10 @@ function checkCalls(mock, method, length, lastArgs) {
 
   for (let i = 0; i < lastArgs.length; i++) {
     const expectedArg = lastArgs[i];
-    ok(mock.callLog[method][length - 1][i] === expectedArg,
-        `Devtools.${method} was called with the expected argument (index ${i})`);
+    ok(
+      mock.callLog[method][length - 1][i] === expectedArg,
+      `Devtools.${method} was called with the expected argument (index ${i})`
+    );
   }
 }
 

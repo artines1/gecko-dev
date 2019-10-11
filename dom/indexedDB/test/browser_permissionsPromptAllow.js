@@ -3,7 +3,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const testPageURL = "http://mochi.test:8888/browser/" +
+const testPageURL =
+  "http://mochi.test:8888/browser/" +
   "dom/indexedDB/test/browser_permissionsPrompt.html";
 const notificationID = "indexedDB-permissions-prompt";
 
@@ -26,12 +27,14 @@ add_task(async function test1() {
   });
 
   info("loading test page: " + testPageURL);
-  gBrowser.selectedBrowser.loadURI(testPageURL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL);
 
   await waitForMessage(true, gBrowser);
-  is(getPermission(testPageURL, "indexedDB"),
-     Ci.nsIPermissionManager.ALLOW_ACTION,
-     "Correct permission set");
+  is(
+    getPermission(testPageURL, "indexedDB"),
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    "Correct permission set"
+  );
   gBrowser.removeCurrentTab();
 });
 
@@ -50,12 +53,14 @@ add_task(async function test2() {
   });
 
   info("loading test page: " + testPageURL);
-  gBrowser.selectedBrowser.loadURI(testPageURL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testPageURL);
 
   await waitForMessage(true, gBrowser);
-  is(getPermission(testPageURL, "indexedDB"),
-     Ci.nsIPermissionManager.ALLOW_ACTION,
-     "Correct permission set");
+  is(
+    getPermission(testPageURL, "indexedDB"),
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    "Correct permission set"
+  );
   gBrowser.removeCurrentTab();
   unregisterAllPopupEventHandlers();
   removePermission(testPageURL, "indexedDB");

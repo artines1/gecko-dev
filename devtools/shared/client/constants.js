@@ -9,10 +9,10 @@
  * state the actor is in after each message.
  */
 const ThreadStateTypes = {
-  "paused": "paused",
-  "resumed": "attached",
-  "detached": "detached",
-  "running": "attached"
+  paused: "paused",
+  resumed: "attached",
+  detached: "detached",
+  running: "attached",
 };
 
 /**
@@ -20,36 +20,18 @@ const ThreadStateTypes = {
  * by the client.
  */
 const UnsolicitedNotifications = {
-  "consoleAPICall": "consoleAPICall",
-  "eventNotification": "eventNotification",
-  "fileActivity": "fileActivity",
-  "lastPrivateContextExited": "lastPrivateContextExited",
-  "logMessage": "logMessage",
-  "networkEvent": "networkEvent",
-  "networkEventUpdate": "networkEventUpdate",
-  "documentEvent": "documentEvent",
-  "newGlobal": "newGlobal",
-  "newScript": "newScript",
-  "tabDetached": "tabDetached",
-  "tabListChanged": "tabListChanged",
-  "reflowActivity": "reflowActivity",
-  "addonListChanged": "addonListChanged",
-  "workerListChanged": "workerListChanged",
-  "serviceWorkerRegistrationListChanged": "serviceWorkerRegistrationList",
-  "tabNavigated": "tabNavigated",
-  "frameUpdate": "frameUpdate",
-  "pageError": "pageError",
-  "documentLoad": "documentLoad",
-  "enteredFrame": "enteredFrame",
-  "exitedFrame": "exitedFrame",
-  "appOpen": "appOpen",
-  "appClose": "appClose",
-  "appInstall": "appInstall",
-  "appUninstall": "appUninstall",
-  "evaluationResult": "evaluationResult",
-  "newSource": "newSource",
-  "updatedSource": "updatedSource",
-  "inspectObject": "inspectObject"
+  networkEventUpdate: "networkEventUpdate",
+  tabDetached: "tabDetached",
+  tabListChanged: "tabListChanged",
+  addonListChanged: "addonListChanged",
+  workerListChanged: "workerListChanged",
+  serviceWorkerRegistrationListChanged: "serviceWorkerRegistrationList",
+
+  // newSource is still emitted on the ThreadActor, in addition to the
+  // BrowsingContextActor we have to keep it here until ThreadFront is converted to
+  // ThreadFront and/or we stop emitting this duplicated events.
+  // See ThreadActor.onNewSourceEvent.
+  newSource: "newSource",
 };
 
 /**
@@ -57,12 +39,15 @@ const UnsolicitedNotifications = {
  * response to a client request.
  */
 const UnsolicitedPauses = {
-  "resumeLimit": "resumeLimit",
-  "debuggerStatement": "debuggerStatement",
-  "breakpoint": "breakpoint",
-  "DOMEvent": "DOMEvent",
-  "watchpoint": "watchpoint",
-  "exception": "exception"
+  resumeLimit: "resumeLimit",
+  debuggerStatement: "debuggerStatement",
+  breakpoint: "breakpoint",
+  DOMEvent: "DOMEvent",
+  watchpoint: "watchpoint",
+  eventBreakpoint: "eventBreakpoint",
+  exception: "exception",
+  replayForcedPause: "replayForcedPause",
+  mutationBreakpoint: "mutationBreakpoint",
 };
 
 module.exports = {

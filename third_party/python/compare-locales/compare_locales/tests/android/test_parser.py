@@ -26,16 +26,28 @@ class TestAndroidParser(ParserTestMixin, unittest.TestCase):
 <resources>
   <!-- bar -->
   <string name="foo">value</string>
+  <!-- bar -->
+  <!-- foo -->
+  <string name="bar">multi-line comment</string>
+
+  <!-- standalone -->
+
+  <string name="baz">so lonely</string>
 </resources>
 '''
         self._test(
             source,
             (
                 (DocumentWrapper, '<?xml'),
+                (DocumentWrapper, '>'),
                 (Whitespace, '\n  '),
-                (Comment, ' bar '),
+                ('foo', 'value', 'bar'),
+                (Whitespace, '\n'),
+                ('bar', 'multi-line comment', 'bar\nfoo'),
                 (Whitespace, '\n  '),
-                ('foo', 'value'),
+                (Comment, 'standalone'),
+                (Whitespace, '\n  '),
+                ('baz', 'so lonely'),
                 (Whitespace, '\n'),
                 (DocumentWrapper, '</resources>')
             )
@@ -68,6 +80,7 @@ class TestAndroidParser(ParserTestMixin, unittest.TestCase):
             source,
             (
                 (DocumentWrapper, '<?xml'),
+                (DocumentWrapper, '>'),
                 (Whitespace, '\n  '),
                 ('first', 'value'),
                 (Whitespace, '\n  '),
@@ -89,5 +102,27 @@ class TestAndroidParser(ParserTestMixin, unittest.TestCase):
             source,
             (
                 (Junk, 'no xml'),
+            )
+        )
+
+    def test_empty_strings(self):
+        source = '''\
+<?xml version="1.0" ?>
+<resources>
+  <string name="one"></string>
+  <string name="two"/>
+</resources>
+'''
+        self._test(
+            source,
+            (
+                (DocumentWrapper, '<?xml'),
+                (DocumentWrapper, '>'),
+                (Whitespace, '\n  '),
+                ('one', ''),
+                (Whitespace, '\n  '),
+                ('two', ''),
+                (Whitespace, '\n'),
+                (DocumentWrapper, '</resources>')
             )
         )

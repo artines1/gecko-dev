@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_shadowroot_h__
 #define mozilla_dom_shadowroot_h__
 
+#include "mozilla/dom/DocumentBinding.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "mozilla/dom/NameSpaceConstants.h"
@@ -14,7 +15,7 @@
 #include "mozilla/ServoBindings.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsIdentifierMapEntry.h"
+#include "nsIRadioGroupContainer.h"
 #include "nsStubMutationObserver.h"
 #include "nsTHashtable.h"
 
@@ -34,51 +35,50 @@ class Rule;
 namespace dom {
 
 class Element;
+class HTMLInputElement;
 
 class ShadowRoot final : public DocumentFragment,
                          public DocumentOrShadowRoot,
-                         public nsStubMutationObserver
-{
-public:
+                         public nsIRadioGroupContainer {
+ public:
   NS_IMPL_FROMNODE_HELPER(ShadowRoot, IsShadowRoot());
 
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ShadowRoot,
-                                           DocumentFragment)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ShadowRoot, DocumentFragment)
   NS_DECL_ISUPPORTS_INHERITED
-
-  NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
-  NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
-  NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
-  NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
   ShadowRoot(Element* aElement, ShadowRootMode aMode,
              already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
+  void AddSizeOfExcludingThis(nsWindowSizes&, size_t* aNodeSize) const final;
+
+  // Try to reassign an element to a slot.
+  void MaybeReassignElement(Element&);
+  // Called when an element is inserted as a direct child of our host. Tries to
+  // slot the child in one of our slots.
+  void MaybeSlotHostChild(nsIContent&);
+  // Called when a direct child of our host is removed. Tries to un-slot the
+  // child from the currently-assigned slot, if any.
+  void MaybeUnslotHostChild(nsIContent&);
+
   // Shadow DOM v1
-  Element* Host() const
-  {
-    MOZ_ASSERT(GetHost(), "ShadowRoot always has a host, how did we create "
-                          "this ShadowRoot?");
+  Element* Host() const {
+    MOZ_ASSERT(GetHost(),
+               "ShadowRoot always has a host, how did we create "
+               "this ShadowRoot?");
     return GetHost();
   }
 
-  ShadowRootMode Mode() const
-  {
-    return mMode;
-  }
-  bool IsClosed() const
-  {
-    return mMode == ShadowRootMode::Closed;
-  }
+  ShadowRootMode Mode() const { return mMode; }
+  bool IsClosed() const { return mMode == ShadowRootMode::Closed; }
 
   void RemoveSheet(StyleSheet* aSheet);
   void RuleAdded(StyleSheet&, css::Rule&);
   void RuleRemoved(StyleSheet&, css::Rule&);
   void RuleChanged(StyleSheet&, css::Rule*);
+  void StyleSheetCloned(StyleSheet&);
   void StyleSheetApplicableStateChanged(StyleSheet&, bool aApplicable);
 
-  StyleSheetList* StyleSheets()
-  {
+  StyleSheetList* StyleSheets() {
     return &DocumentOrShadowRoot::EnsureDOMStyleSheets();
   }
 
@@ -88,33 +88,37 @@ public:
   void CloneInternalDataFrom(ShadowRoot* aOther);
   void InsertSheetAt(size_t aIndex, StyleSheet&);
 
-private:
+  // Calls UnbindFromTree for each of our kids, and also flags us as no longer
+  // being connected.
+  void Unbind();
+
+  // Only intended for UA widgets / special shadow roots, or for handling
+  // failure cases when adopting (see BlastSubtreeToPieces).
+  //
+  // Forgets our shadow host and unbinds all our kids.
+  void Unattach();
+
+  // Calls BindToTree on each of our kids, and also maybe flags us as being
+  // connected.
+  nsresult Bind();
+
+ private:
   void InsertSheetIntoAuthorData(size_t aIndex, StyleSheet&);
 
-  void AppendStyleSheet(StyleSheet& aSheet)
-  {
+  void AppendStyleSheet(StyleSheet& aSheet) {
     InsertSheetAt(SheetCount(), aSheet);
   }
 
   /**
-   * Try to reassign an element to a slot and returns whether the assignment
-   * changed.
-   */
-  void MaybeReassignElement(Element* aElement);
-
-  /**
    * Represents the insertion point in a slot for a given node.
    */
-  struct SlotAssignment
-  {
+  struct SlotAssignment {
     HTMLSlotElement* mSlot = nullptr;
     Maybe<uint32_t> mIndex;
 
     SlotAssignment() = default;
     SlotAssignment(HTMLSlotElement* aSlot, const Maybe<uint32_t>& aIndex)
-      : mSlot(aSlot)
-      , mIndex(aIndex)
-    { }
+        : mSlot(aSlot), mIndex(aIndex) {}
   };
 
   /**
@@ -124,7 +128,7 @@ private:
    * It's the caller's responsibility to actually call InsertAssignedNode /
    * AppendAssignedNode in the slot as needed.
    */
-  SlotAssignment SlotAssignmentFor(nsIContent* aContent);
+  SlotAssignment SlotAssignmentFor(nsIContent&);
 
   /**
    * Explicitly invalidates the style and layout of the flattened-tree subtree
@@ -142,24 +146,29 @@ private:
    */
   void InvalidateStyleAndLayoutOnSubtree(Element*);
 
-public:
+ public:
   void AddSlot(HTMLSlotElement* aSlot);
   void RemoveSlot(HTMLSlotElement* aSlot);
   bool HasSlots() const { return !mSlotMap.IsEmpty(); };
+  HTMLSlotElement* GetDefaultSlot() const {
+    SlotArray* list = mSlotMap.Get(NS_LITERAL_STRING(""));
+    return list ? (*list)->ElementAt(0) : nullptr;
+  }
 
-  const RawServoAuthorStyles* ServoStyles() const
-  {
+  void PartAdded(const Element&);
+  void PartRemoved(const Element&);
+
+  const nsTArray<const Element*>& Parts() const { return mParts; }
+
+  const RawServoAuthorStyles* GetServoStyles() const {
     return mServoStyles.get();
   }
 
-  RawServoAuthorStyles* ServoStyles()
-  {
-    return mServoStyles.get();
-  }
+  RawServoAuthorStyles* GetServoStyles() { return mServoStyles.get(); }
 
   mozilla::ServoStyleRuleMap& ServoStyleRuleMap();
 
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapNode(JSContext*, JS::Handle<JSObject*> aGivenProto) final;
 
   void AddToIdTable(Element* aElement, nsAtom* aId);
   void RemoveFromIdTable(Element* aElement, nsAtom* aId);
@@ -171,16 +180,73 @@ public:
   void GetInnerHTML(nsAString& aInnerHTML);
   void SetInnerHTML(const nsAString& aInnerHTML, ErrorResult& aError);
 
-  bool IsComposedDocParticipant() const
-  {
-    return mIsComposedDocParticipant;
-  }
+  /**
+   * These methods allow UA Widget to insert DOM elements into the Shadow ROM
+   * without putting their DOM reflectors to content scope first.
+   * The inserted DOM will have their reflectors in the UA Widget scope.
+   */
+  nsINode* ImportNodeAndAppendChildAt(nsINode& aParentNode, nsINode& aNode,
+                                      bool aDeep, mozilla::ErrorResult& rv);
 
-  void SetIsComposedDocParticipant(bool aIsComposedDocParticipant);
+  nsINode* CreateElementAndAppendChildAt(nsINode& aParentNode,
+                                         const nsAString& aTagName,
+                                         mozilla::ErrorResult& rv);
+
+  bool IsUAWidget() const { return mIsUAWidget; }
+
+  void SetIsUAWidget() {
+    MOZ_ASSERT(!HasChildren());
+    SetFlags(NODE_HAS_BEEN_IN_UA_WIDGET);
+    mIsUAWidget = true;
+  }
 
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
-protected:
+  // nsIRadioGroupContainer
+  NS_IMETHOD WalkRadioGroup(const nsAString& aName, nsIRadioVisitor* aVisitor,
+                            bool aFlushContent) override {
+    return DocumentOrShadowRoot::WalkRadioGroup(aName, aVisitor, aFlushContent);
+  }
+  virtual void SetCurrentRadioButton(const nsAString& aName,
+                                     HTMLInputElement* aRadio) override {
+    DocumentOrShadowRoot::SetCurrentRadioButton(aName, aRadio);
+  }
+  virtual HTMLInputElement* GetCurrentRadioButton(
+      const nsAString& aName) override {
+    return DocumentOrShadowRoot::GetCurrentRadioButton(aName);
+  }
+  NS_IMETHOD
+  GetNextRadioButton(const nsAString& aName, const bool aPrevious,
+                     HTMLInputElement* aFocusedRadio,
+                     HTMLInputElement** aRadioOut) override {
+    return DocumentOrShadowRoot::GetNextRadioButton(aName, aPrevious,
+                                                    aFocusedRadio, aRadioOut);
+  }
+  virtual void AddToRadioGroup(const nsAString& aName,
+                               HTMLInputElement* aRadio) override {
+    DocumentOrShadowRoot::AddToRadioGroup(aName, aRadio);
+  }
+  virtual void RemoveFromRadioGroup(const nsAString& aName,
+                                    HTMLInputElement* aRadio) override {
+    DocumentOrShadowRoot::RemoveFromRadioGroup(aName, aRadio);
+  }
+  virtual uint32_t GetRequiredRadioCount(
+      const nsAString& aName) const override {
+    return DocumentOrShadowRoot::GetRequiredRadioCount(aName);
+  }
+  virtual void RadioRequiredWillChange(const nsAString& aName,
+                                       bool aRequiredAdded) override {
+    DocumentOrShadowRoot::RadioRequiredWillChange(aName, aRequiredAdded);
+  }
+  virtual bool GetValueMissingState(const nsAString& aName) const override {
+    return DocumentOrShadowRoot::GetValueMissingState(aName);
+  }
+  virtual void SetValueMissingState(const nsAString& aName,
+                                    bool aValue) override {
+    return DocumentOrShadowRoot::SetValueMissingState(aName, aValue);
+  }
+
+ protected:
   // FIXME(emilio): This will need to become more fine-grained.
   void ApplicableRulesChanged();
 
@@ -192,22 +258,22 @@ protected:
   UniquePtr<RawServoAuthorStyles> mServoStyles;
   UniquePtr<mozilla::ServoStyleRuleMap> mStyleRuleMap;
 
-  using SlotArray = AutoTArray<HTMLSlotElement*, 1>;
+  using SlotArray = TreeOrderedArray<HTMLSlotElement>;
   // Map from name of slot to an array of all slots in the shadow DOM with with
   // the given name. The slots are stored as a weak pointer because the elements
   // are in the shadow tree and should be kept alive by its parent.
   nsClassHashtable<nsStringHashKey, SlotArray> mSlotMap;
 
-  // Flag to indicate whether the descendants of this shadow root are part of the
-  // composed document. Ideally, we would use a node flag on nodes to
-  // mark whether it is in the composed document, but we have run out of flags
-  // so instead we track it here.
-  bool mIsComposedDocParticipant;
+  // Unordered array of all elements that have a part attribute in this shadow
+  // tree.
+  nsTArray<const Element*> mParts;
+
+  bool mIsUAWidget;
 
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_shadowroot_h__
+#endif  // mozilla_dom_shadowroot_h__

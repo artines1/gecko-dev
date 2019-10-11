@@ -20,16 +20,23 @@ class nsIRequest;
 class PendingDBLookup;
 class PendingLookup;
 
-class ApplicationReputationService final :
-  public nsIApplicationReputationService {
-public:
+class ApplicationReputationService final
+    : public nsIApplicationReputationService {
+ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIAPPLICATIONREPUTATIONSERVICE
 
-public:
+ public:
+  static const char* const kNonBinaryExecutables[2];
+#ifdef XP_WIN
+  static const char* const kBinaryFileExtensions[186];
+#else
+  static const char* const kBinaryFileExtensions[185];
+#endif
+
   static already_AddRefed<ApplicationReputationService> GetSingleton();
 
-private:
+ private:
   friend class PendingLookup;
   friend class PendingDBLookup;
   /**

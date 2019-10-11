@@ -12,23 +12,17 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'check-test',
-        'update',  # decided by query_is_nightly()
     ],
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
-    # decides whether we want to use moz_sign_cmd in env
     'secret_files': [
-        {'filename': '/builds/gapi.data',
-         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gapi.data',
+        {'filename': '/builds/gls-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/gls-gapi.data',
+         'min_scm_level': 1},
+        {'filename': '/builds/sb-gapi.data',
+         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/sb-gapi.data',
          'min_scm_level': 1},
         {'filename': '/builds/mozilla-desktop-geoloc-api.key',
          'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/mozilla-desktop-geoloc-api.key',
-         'min_scm_level': 2, 'default': 'try-build-has-no-secrets'},
-        {'filename': '/builds/adjust-sdk.token',
-         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/adjust-sdk.token',
-         'min_scm_level': 2, 'default': 'try-build-has-no-secrets'},
-        {'filename': '/builds/adjust-sdk-beta.token',
-         'secret_name': 'project/releng/gecko/build/level-%(scm-level)s/adjust-sdk-beta.token',
          'min_scm_level': 2, 'default': 'try-build-has-no-secrets'},
     ],
     'vcs_share_base': '/builds/hg-shared',
@@ -37,7 +31,6 @@ config = {
 
     #########################################################################
     ###### 32 bit specific ######
-    'base_name': 'Linux_%(branch)s',
     'platform': 'linux',
     'stage_platform': 'linux',
     'env': {

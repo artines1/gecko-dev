@@ -7,12 +7,14 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import argparse
 import json
 import logging
 import os
 import sys
 import traceback
 import re
+from distutils.util import strtobool
 
 from mach.decorators import (
     CommandArgument,
@@ -52,8 +54,13 @@ class ShowTaskGraphSubCommand(SubCommand):
             CommandArgument('--tasks-regex', '--tasks', default=None,
                             help="only return tasks with labels matching this regular "
                             "expression."),
+            CommandArgument('--target-kind', default=None,
+                            help="only return tasks that are of the given kind, "
+                                 "or their dependencies."),
             CommandArgument('-F', '--fast', dest='fast', default=False, action='store_true',
-                            help="enable fast task generation for local debugging.")
+                            help="enable fast task generation for local debugging."),
+            CommandArgument('-o', '--output-file', default=None,
+                            help="file path to store generated output."),
 
         ]
         for arg in args:
@@ -145,9 +152,6 @@ class MachCommands(MachCommandBase):
     @CommandArgument('--comm-head-rev',
                      required=False,
                      help='Commit revision to use from head comm-* repository')
-    @CommandArgument('--message',
-                     required=True,
-                     help='Commit message to be parsed. Example: "try: -b do -p all -u all"')
     @CommandArgument('--project',
                      required=True,
                      help='Project to use for creating task graph. Example: --project=try')
@@ -168,8 +172,27 @@ class MachCommands(MachCommandBase):
                      help='SCM level of this repository')
     @CommandArgument('--target-tasks-method',
                      help='method for selecting the target tasks to generate')
+    @CommandArgument('--optimize-target-tasks',
+                     type=lambda flag: bool(strtobool(flag)),
+                     nargs='?', const='true',
+                     help='If specified, this indicates whether the target '
+                          'tasks are eligible for optimization. Otherwise, '
+                          'the default for the project is used.')
     @CommandArgument('--try-task-config-file',
                      help='path to try task configuration file')
+    @CommandArgument('--tasks-for',
+                     help='the tasks_for value used to generate this task',
+                     required=True)
+    @CommandArgument('--include-push-tasks',
+                     action='store_true',
+                     help='Whether tasks from the on-push graph should be re-used '
+                          'in this graph. This allows cron graphs to avoid rebuilding '
+                          'jobs that were built on-push.')
+    @CommandArgument('--rebuild-kind',
+                     dest='rebuild_kinds',
+                     action='append',
+                     default=argparse.SUPPRESS,
+                     help='Kinds that should not be re-used from the on-push graph.')
     def taskgraph_decision(self, **options):
         """Run the decision task: generate a task graph and submit to
         TaskCluster.  This is only meant to be called within decision tasks,
@@ -229,7 +252,8 @@ class MachCommands(MachCommandBase):
     @CommandArgument('--root', '-r', default='taskcluster/ci',
                      help="root of the taskgraph definition relative to topsrcdir")
     def action_callback(self, **options):
-        import taskgraph.actions
+        from taskgraph.actions import trigger_action_callback
+        from taskgraph.actions.util import get_parameters
         try:
             self.setup_logging()
 
@@ -239,10 +263,11 @@ class MachCommands(MachCommandBase):
             task_group_id = os.environ.get('ACTION_TASK_GROUP_ID', None)
             input = json.loads(os.environ.get('ACTION_INPUT', 'null'))
             callback = os.environ.get('ACTION_CALLBACK', None)
-            parameters = json.loads(os.environ.get('ACTION_PARAMETERS', '{}'))
             root = options['root']
 
-            return taskgraph.actions.trigger_action_callback(
+            parameters = get_parameters(task_group_id)
+
+            return trigger_action_callback(
                     task_group_id=task_group_id,
                     task_id=task_id,
                     input=input,
@@ -272,12 +297,12 @@ class MachCommands(MachCommandBase):
     def test_action_callback(self, **options):
         import taskgraph.parameters
         import taskgraph.actions
-        import yaml
+        from taskgraph.util import yaml
 
         def load_data(filename):
             with open(filename) as f:
                 if filename.endswith('.yml'):
-                    return yaml.safe_load(f)
+                    return yaml.load_stream(f)
                 elif filename.endswith('.json'):
                     return json.load(f)
                 else:
@@ -292,7 +317,12 @@ class MachCommands(MachCommandBase):
             else:
                 input = None
 
-            parameters = taskgraph.parameters.load_parameters_file(options['parameters'])
+            parameters = taskgraph.parameters.load_parameters_file(
+                options['parameters'],
+                strict=False,
+                # FIXME: There should be a way to parameterize this.
+                trust_domain="gecko",
+            )
             parameters.check()
 
             root = options['root']
@@ -331,7 +361,6 @@ class MachCommands(MachCommandBase):
 
     def show_taskgraph(self, graph_attr, options):
         import taskgraph.parameters
-        import taskgraph.target_tasks
         import taskgraph.generator
         import taskgraph
         if options['fast']:
@@ -339,29 +368,35 @@ class MachCommands(MachCommandBase):
 
         try:
             self.setup_logging(quiet=options['quiet'], verbose=options['verbose'])
-            parameters = taskgraph.parameters.load_parameters_file(options['parameters'])
-            parameters.check()
+            parameters = taskgraph.parameters.parameters_loader(options['parameters'])
 
             tgg = taskgraph.generator.TaskGraphGenerator(
                 root_dir=options.get('root'),
-                parameters=parameters)
+                parameters=parameters,
+                target_kind=options.get('target_kind'),
+            )
 
             tg = getattr(tgg, graph_attr)
 
             show_method = getattr(self, 'show_taskgraph_' + (options['format'] or 'labels'))
             tg = self.get_filtered_taskgraph(tg, options["tasks_regex"])
-            show_method(tg)
+
+            fh = options['output_file']
+            if fh:
+                fh = open(fh, 'w')
+            show_method(tg, file=fh)
         except Exception:
             traceback.print_exc()
             sys.exit(1)
 
-    def show_taskgraph_labels(self, taskgraph):
+    def show_taskgraph_labels(self, taskgraph, file=None):
         for index in taskgraph.graph.visit_postorder():
-            print(taskgraph.tasks[index].label)
+            print(taskgraph.tasks[index].label, file=file)
 
-    def show_taskgraph_json(self, taskgraph):
+    def show_taskgraph_json(self, taskgraph, file=None):
         print(json.dumps(taskgraph.to_json(),
-              sort_keys=True, indent=2, separators=(',', ': ')))
+              sort_keys=True, indent=2, separators=(',', ': ')),
+              file=file)
 
     def get_filtered_taskgraph(self, taskgraph, tasksregex):
         from taskgraph.graph import Graph
@@ -390,21 +425,19 @@ class MachCommands(MachCommandBase):
 
     def show_actions(self, options):
         import taskgraph.parameters
-        import taskgraph.target_tasks
         import taskgraph.generator
         import taskgraph
         import taskgraph.actions
 
         try:
             self.setup_logging(quiet=options['quiet'], verbose=options['verbose'])
-            parameters = taskgraph.parameters.load_parameters_file(options['parameters'])
-            parameters.check()
+            parameters = taskgraph.parameters.parameters_loader(options['parameters'])
 
             tgg = taskgraph.generator.TaskGraphGenerator(
                 root_dir=options.get('root'),
                 parameters=parameters)
 
-            actions = taskgraph.actions.render_actions_json(parameters, tgg.graph_config)
+            actions = taskgraph.actions.render_actions_json(tgg.parameters, tgg.graph_config)
             print(json.dumps(actions, sort_keys=True, indent=2, separators=(',', ': ')))
         except Exception:
             traceback.print_exc()
@@ -421,17 +454,18 @@ class TaskClusterImagesProvider(MachCommandBase):
             self.virtualenv_manager.install_pip_package('zstandard==0.9.0')
 
     @Command('taskcluster-load-image', category="ci",
-             description="Load a pre-built Docker image")
+             description="Load a pre-built Docker image. Note that you need to "
+                         "have docker installed and running for this to work.")
     @CommandArgument('--task-id',
-                     help="Load the image at public/image.tar.zst in this task,"
+                     help="Load the image at public/image.tar.zst in this task, "
                           "rather than searching the index")
     @CommandArgument('-t', '--tag',
                      help="tag that the image should be loaded as. If not "
                           "image will be loaded with tag from the tarball",
                      metavar="name:tag")
     @CommandArgument('image_name', nargs='?',
-                     help="Load the image of this name based on the current"
-                          "contents of the tree (as built for mozilla-central"
+                     help="Load the image of this name based on the current "
+                          "contents of the tree (as built for mozilla-central "
                           "or mozilla-inbound)")
     def load_image(self, image_name, task_id, tag):
         self._ensure_zstd()

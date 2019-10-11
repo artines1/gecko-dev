@@ -20,28 +20,43 @@
  *   commands.json, update it, and write it back out.
  */
 
-var EXPORTED_SYMBOLS = [
-  "ClientEngine",
-  "ClientsRec"
-];
+var EXPORTED_SYMBOLS = ["ClientEngine", "ClientsRec"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://services-common/async.js");
-ChromeUtils.import("resource://services-sync/constants.js");
-ChromeUtils.import("resource://services-sync/engines.js");
-ChromeUtils.import("resource://services-sync/record.js");
-ChromeUtils.import("resource://services-sync/resource.js");
-ChromeUtils.import("resource://services-sync/util.js");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Async } = ChromeUtils.import("resource://services-common/async.js");
+const {
+  DEVICE_TYPE_DESKTOP,
+  DEVICE_TYPE_MOBILE,
+  SCORE_INCREMENT_XLARGE,
+  SINGLE_USER_THRESHOLD,
+  SYNC_API_VERSION,
+} = ChromeUtils.import("resource://services-sync/constants.js");
+const { Store, SyncEngine, Tracker } = ChromeUtils.import(
+  "resource://services-sync/engines.js"
+);
+const { CryptoWrapper } = ChromeUtils.import(
+  "resource://services-sync/record.js"
+);
+const { Resource } = ChromeUtils.import("resource://services-sync/resource.js");
+const { Svc, Utils } = ChromeUtils.import("resource://services-sync/util.js");
 
-ChromeUtils.defineModuleGetter(this, "fxAccounts",
-  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "fxAccounts",
+  "resource://gre/modules/FxAccounts.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "getRepairRequestor",
-  "resource://services-sync/collection_repair.js");
+ChromeUtils.defineModuleGetter(
+  this,
+  "getRepairRequestor",
+  "resource://services-sync/collection_repair.js"
+);
 
-ChromeUtils.defineModuleGetter(this, "getRepairResponder",
-  "resource://services-sync/collection_repair.js");
+ChromeUtils.defineModuleGetter(
+  this,
+  "getRepairResponder",
+  "resource://services-sync/collection_repair.js"
+);
 
 const CLIENTS_TTL = 1814400; // 21 days
 const CLIENTS_TTL_REFRESH = 604800; // 7 days
@@ -55,14 +70,18 @@ const COLLECTION_MODIFIED_REASON_SENDTAB = "sendtab";
 const COLLECTION_MODIFIED_REASON_FIRSTSYNC = "firstsync";
 
 const SUPPORTED_PROTOCOL_VERSIONS = [SYNC_API_VERSION];
-const LAST_MODIFIED_ON_PROCESS_COMMAND_PREF = "services.sync.clients.lastModifiedOnProcessCommands";
+const LAST_MODIFIED_ON_PROCESS_COMMAND_PREF =
+  "services.sync.clients.lastModifiedOnProcessCommands";
 
 function hasDupeCommand(commands, action) {
   if (!commands) {
     return false;
   }
-  return commands.some(other => other.command == action.command &&
-    Utils.deepEquals(other.args, action.args));
+  return commands.some(
+    other =>
+      other.command == action.command &&
+      Utils.deepEquals(other.args, action.args)
+  );
 }
 
 function ClientsRec(collection, id) {
@@ -71,16 +90,22 @@ function ClientsRec(collection, id) {
 ClientsRec.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Clients",
-  ttl: CLIENTS_TTL
+  ttl: CLIENTS_TTL,
 };
 
-Utils.deferGetSet(ClientsRec,
-                  "cleartext",
-                  ["name", "type", "commands",
-                   "version", "protocols",
-                   "formfactor", "os", "appPackage", "application", "device",
-                   "fxaDeviceId"]);
-
+Utils.deferGetSet(ClientsRec, "cleartext", [
+  "name",
+  "type",
+  "commands",
+  "version",
+  "protocols",
+  "formfactor",
+  "os",
+  "appPackage",
+  "application",
+  "device",
+  "fxaDeviceId",
+]);
 
 function ClientEngine(service) {
   SyncEngine.call(this, "Clients", service);
@@ -153,7 +178,7 @@ ClientEngine.prototype = {
     };
 
     for (let id in this._store._remoteClients) {
-      let {name, type, stale} = this._store._remoteClients[id];
+      let { name, type, stale } = this._store._remoteClients[id];
       if (!stale) {
         stats.hasMobile = stats.hasMobile || type == DEVICE_TYPE_MOBILE;
         stats.names.push(name);
@@ -195,26 +220,20 @@ ClientEngine.prototype = {
 
   get brandName() {
     let brand = Services.strings.createBundle(
-      "chrome://branding/locale/brand.properties");
+      "chrome://branding/locale/brand.properties"
+    );
     return brand.GetStringFromName("brandShortName");
   },
 
   get localName() {
-    return Utils.getDeviceName();
+    return this.fxAccounts.device.getLocalName();
   },
   set localName(value) {
-    Svc.Prefs.set("client.name", value);
-    // Update the registration in the background.
-    this.fxAccounts.updateDeviceRegistration().catch(error => {
-      this._log.warn("failed to update fxa device registration", error);
-    });
+    this.fxAccounts.device.setLocalName(value);
   },
 
   get localType() {
-    return Utils.getDeviceType();
-  },
-  set localType(value) {
-    Svc.Prefs.set("client.type", value);
+    return this.fxAccounts.device.getLocalType();
   },
 
   getClientName(id) {
@@ -228,6 +247,19 @@ ClientEngine.prototype = {
   getClientFxaDeviceId(id) {
     if (this._store._remoteClients[id]) {
       return this._store._remoteClients[id].fxaDeviceId;
+    }
+    return null;
+  },
+
+  getClientByFxaDeviceId(fxaDeviceId) {
+    for (let id in this._store._remoteClients) {
+      let client = this._store._remoteClients[id];
+      if (client.stale) {
+        continue;
+      }
+      if (client.fxaDeviceId == fxaDeviceId) {
+        return client;
+      }
     }
     return null;
   },
@@ -327,12 +359,14 @@ ClientEngine.prototype = {
 
   async updateKnownStaleClients() {
     this._log.debug("Updating the known stale clients");
-    await this._refreshKnownStaleClients();
-    let localFxADeviceId = await fxAccounts.getDeviceId();
+    // _fetchFxADevices side effect updates this._knownStaleFxADeviceIds.
+    await this._fetchFxADevices();
+    let localFxADeviceId = await fxAccounts.device.getLocalId();
     // Process newer records first, so that if we hit a record with a device ID
     // we've seen before, we can mark it stale immediately.
-    let clientList = Object.values(this._store._remoteClients).sort((a, b) =>
-      b.serverLastModified - a.serverLastModified);
+    let clientList = Object.values(this._store._remoteClients).sort(
+      (a, b) => b.serverLastModified - a.serverLastModified
+    );
     let seenDeviceIds = new Set([localFxADeviceId]);
     for (let client of clientList) {
       // Clients might not have an `fxaDeviceId` if they fail the FxA
@@ -341,11 +375,15 @@ ClientEngine.prototype = {
         continue;
       }
       if (this._knownStaleFxADeviceIds.includes(client.fxaDeviceId)) {
-        this._log.info(`Hiding stale client ${client.id} - in known stale clients list`);
+        this._log.info(
+          `Hiding stale client ${client.id} - in known stale clients list`
+        );
         client.stale = true;
       } else if (seenDeviceIds.has(client.fxaDeviceId)) {
-        this._log.info(`Hiding stale client ${client.id}` +
-                       ` - duplicate device id ${client.fxaDeviceId}`);
+        this._log.info(
+          `Hiding stale client ${client.id}` +
+            ` - duplicate device id ${client.fxaDeviceId}`
+        );
         client.stale = true;
       } else {
         seenDeviceIds.add(client.fxaDeviceId);
@@ -353,22 +391,22 @@ ClientEngine.prototype = {
     }
   },
 
-  // We assume that clients not present in the FxA Device Manager list have been
-  // disconnected and so are stale
-  async _refreshKnownStaleClients() {
+  async _fetchFxADevices() {
+    try {
+      await this.fxAccounts.device.refreshDeviceList();
+    } catch (e) {
+      this._log.error("Could not refresh the FxA device list", e);
+    }
+
+    // We assume that clients not present in the FxA Device Manager list have been
+    // disconnected and so are stale
     this._log.debug("Refreshing the known stale clients list");
     let localClients = Object.values(this._store._remoteClients)
-                             .filter(client => client.fxaDeviceId) // iOS client records don't have fxaDeviceId
-                             .map(client => client.fxaDeviceId);
-    let fxaClients;
-    try {
-      let deviceList = await this.fxAccounts.getDeviceList();
-      fxaClients = deviceList.map(device => device.id);
-    } catch (ex) {
-      this._log.error("Could not retrieve the FxA device list", ex);
-      this._knownStaleFxADeviceIds = [];
-      return;
-    }
+      .filter(client => client.fxaDeviceId) // iOS client records don't have fxaDeviceId
+      .map(client => client.fxaDeviceId);
+    const fxaClients = this.fxAccounts.device.recentDeviceList
+      ? this.fxAccounts.device.recentDeviceList.map(device => device.id)
+      : [];
     this._knownStaleFxADeviceIds = Utils.arraySub(localClients, fxaClients);
   },
 
@@ -386,11 +424,8 @@ ClientEngine.prototype = {
     this._incomingClients = {};
     try {
       await SyncEngine.prototype._processIncoming.call(this);
-      // Refresh the known stale clients list at startup and when we receive
-      // "device connected/disconnected" push notifications.
-      if (!this._knownStaleFxADeviceIds) {
-        await this._refreshKnownStaleClients();
-      }
+      // Update FxA Device list.
+      await this._fetchFxADevices();
       // Since clients are synced unconditionally, any records in the local store
       // that don't exist on the server must be for disconnected clients. Remove
       // them, so that we don't upload records with commands for clients that will
@@ -402,24 +437,32 @@ ClientEngine.prototype = {
           await this._removeRemoteClient(id);
         }
       }
-      let localFxADeviceId = await fxAccounts.getDeviceId();
+      let localFxADeviceId = await fxAccounts.device.getLocalId();
       // Bug 1264498: Mobile clients don't remove themselves from the clients
       // collection when the user disconnects Sync, so we mark as stale clients
       // with the same name that haven't synced in over a week.
       // (Note we can't simply delete them, or we re-apply them next sync - see
       // bug 1287687)
-      this._localClientLastModified = Math.round(this._incomingClients[this.localID]);
+      this._localClientLastModified = Math.round(
+        this._incomingClients[this.localID]
+      );
       delete this._incomingClients[this.localID];
       let names = new Set([this.localName]);
       let seenDeviceIds = new Set([localFxADeviceId]);
-      let idToLastModifiedList = Object.entries(this._incomingClients)
-                                 .sort((a, b) => b[1] - a[1]);
+      let idToLastModifiedList = Object.entries(this._incomingClients).sort(
+        (a, b) => b[1] - a[1]
+      );
       for (let [id, serverLastModified] of idToLastModifiedList) {
         let record = this._store._remoteClients[id];
         // stash the server last-modified time on the record.
         record.serverLastModified = serverLastModified;
-        if (record.fxaDeviceId && this._knownStaleFxADeviceIds.includes(record.fxaDeviceId)) {
-          this._log.info(`Hiding stale client ${id} - in known stale clients list`);
+        if (
+          record.fxaDeviceId &&
+          this._knownStaleFxADeviceIds.includes(record.fxaDeviceId)
+        ) {
+          this._log.info(
+            `Hiding stale client ${id} - in known stale clients list`
+          );
           record.stale = true;
         }
         if (!names.has(record.name)) {
@@ -436,8 +479,10 @@ ClientEngine.prototype = {
           continue;
         }
         if (record.fxaDeviceId && seenDeviceIds.has(record.fxaDeviceId)) {
-          this._log.info(`Hiding stale client ${record.id}` +
-                         ` - duplicate device id ${record.fxaDeviceId}`);
+          this._log.info(
+            `Hiding stale client ${record.id}` +
+              ` - duplicate device id ${record.fxaDeviceId}`
+          );
           record.stale = true;
         } else if (record.fxaDeviceId) {
           seenDeviceIds.add(record.fxaDeviceId);
@@ -450,7 +495,9 @@ ClientEngine.prototype = {
 
   async _uploadOutgoing() {
     this._currentlySyncingCommands = await this._prepareCommandsForUpload();
-    const clientWithPendingCommands = Object.keys(this._currentlySyncingCommands);
+    const clientWithPendingCommands = Object.keys(
+      this._currentlySyncingCommands
+    );
     for (let clientId of clientWithPendingCommands) {
       if (this._store._remoteClients[clientId] || this.localID == clientId) {
         this._modified.set(clientId, 0);
@@ -476,17 +523,23 @@ ClientEngine.prototype = {
       const commandChanges = this._currentlySyncingCommands[id];
       if (id == this.localID) {
         if (this.isFirstSync) {
-          this._log.info("Uploaded our client record for the first time, notifying other clients.");
+          this._log.info(
+            "Uploaded our client record for the first time, notifying other clients."
+          );
           this._notifyClientRecordUploaded();
         }
         if (this.localCommands) {
-          this.localCommands = this.localCommands.filter(command => !hasDupeCommand(commandChanges, command));
+          this.localCommands = this.localCommands.filter(
+            command => !hasDupeCommand(commandChanges, command)
+          );
         }
       } else {
         const clientRecord = this._store._remoteClients[id];
         if (!commandChanges || !clientRecord) {
           // should be impossible, else we wouldn't have been writing it.
-          this._log.warn("No command/No record changes for a client we uploaded");
+          this._log.warn(
+            "No command/No record changes for a client we uploaded"
+          );
           continue;
         }
         // fixup the client record, so our copy of _remoteClients matches what we uploaded.
@@ -522,13 +575,20 @@ ClientEngine.prototype = {
 
   _notifyOtherClientsModified(ids) {
     // We are not waiting on this promise on purpose.
-    this._notifyCollectionChanged(ids, NOTIFY_TAB_SENT_TTL_SECS,
-                                  COLLECTION_MODIFIED_REASON_SENDTAB);
+    this._notifyCollectionChanged(
+      ids,
+      NOTIFY_TAB_SENT_TTL_SECS,
+      COLLECTION_MODIFIED_REASON_SENDTAB
+    );
   },
 
   _notifyClientRecordUploaded() {
     // We are not waiting on this promise on purpose.
-    this._notifyCollectionChanged(null, 0, COLLECTION_MODIFIED_REASON_FIRSTSYNC);
+    this._notifyCollectionChanged(
+      null,
+      0,
+      COLLECTION_MODIFIED_REASON_FIRSTSYNC
+    );
   },
 
   /**
@@ -542,12 +602,12 @@ ClientEngine.prototype = {
       command: "sync:collection_changed",
       data: {
         collections: ["clients"],
-        reason
-      }
+        reason,
+      },
     };
     let excludedIds = null;
     if (!ids) {
-      const localFxADeviceId = await fxAccounts.getDeviceId();
+      const localFxADeviceId = await fxAccounts.device.getLocalId();
       excludedIds = [localFxADeviceId];
     }
     try {
@@ -576,13 +636,17 @@ ClientEngine.prototype = {
           prefName += "mobile";
           break;
         default:
-          this._log.warn(`Unexpected deviceType "${deviceType}" recording device telemetry.`);
+          this._log.warn(
+            `Unexpected deviceType "${deviceType}" recording device telemetry.`
+          );
           continue;
       }
       Services.telemetry.getHistogramById(hid).add(count);
       // Optimization: only write the pref if it changed since our last sync.
-      if (this._lastDeviceCounts == null ||
-          this._lastDeviceCounts.get(prefName) != count) {
+      if (
+        this._lastDeviceCounts == null ||
+        this._lastDeviceCounts.get(prefName) != count
+      ) {
         Svc.Prefs.set(prefName, count);
       }
     }
@@ -639,7 +703,11 @@ ClientEngine.prototype = {
   async handleHMACMismatch(item, mayRetry) {
     this._log.debug("Handling HMAC mismatch for " + item.id);
 
-    let base = await SyncEngine.prototype.handleHMACMismatch.call(this, item, mayRetry);
+    let base = await SyncEngine.prototype.handleHMACMismatch.call(
+      this,
+      item,
+      mayRetry
+    );
     if (base != SyncEngine.kRecoveryStrategy.error) {
       return base;
     }
@@ -659,14 +727,42 @@ ClientEngine.prototype = {
    * indicate higher importance.
    */
   _commands: {
-    resetAll:    { args: 0, importance: 0, desc: "Clear temporary local data for all engines" },
-    resetEngine: { args: 1, importance: 0, desc: "Clear temporary local data for engine" },
-    wipeAll:     { args: 0, importance: 0, desc: "Delete all client data for all engines" },
-    wipeEngine:  { args: 1, importance: 0, desc: "Delete all client data for engine" },
-    logout:      { args: 0, importance: 0, desc: "Log out client" },
-    displayURI:  { args: 3, importance: 1, desc: "Instruct a client to display a URI" },
-    repairRequest:  { args: 1, importance: 2, desc: "Instruct a client to initiate a repair" },
-    repairResponse: { args: 1, importance: 2, desc: "Instruct a client a repair request is complete" },
+    resetAll: {
+      args: 0,
+      importance: 0,
+      desc: "Clear temporary local data for all engines",
+    },
+    resetEngine: {
+      args: 1,
+      importance: 0,
+      desc: "Clear temporary local data for engine",
+    },
+    wipeAll: {
+      args: 0,
+      importance: 0,
+      desc: "Delete all client data for all engines",
+    },
+    wipeEngine: {
+      args: 1,
+      importance: 0,
+      desc: "Delete all client data for engine",
+    },
+    logout: { args: 0, importance: 0, desc: "Log out client" },
+    displayURI: {
+      args: 3,
+      importance: 1,
+      desc: "Instruct a client to display a URI",
+    },
+    repairRequest: {
+      args: 1,
+      importance: 2,
+      desc: "Instruct a client to initiate a repair",
+    },
+    repairResponse: {
+      args: 1,
+      importance: 2,
+      desc: "Instruct a client a repair request is complete",
+    },
   },
 
   /**
@@ -695,16 +791,26 @@ ClientEngine.prototype = {
       flowID: telemetryExtra.flowID,
     };
 
-    if ((await this._addClientCommand(clientId, action))) {
+    if (await this._addClientCommand(clientId, action)) {
       this._log.trace(`Client ${clientId} got a new action`, [command, args]);
       await this._tracker.addChangedID(clientId);
       try {
-        telemetryExtra.deviceID = this.service.identity.hashedDeviceID(clientId);
+        telemetryExtra.deviceID = this.service.identity.hashedDeviceID(
+          clientId
+        );
       } catch (_) {}
 
-      this.service.recordTelemetryEvent("sendcommand", command, undefined, telemetryExtra);
+      this.service.recordTelemetryEvent(
+        "sendcommand",
+        command,
+        undefined,
+        telemetryExtra
+      );
     } else {
-      this._log.trace(`Client ${clientId} got a duplicate action`, [command, args]);
+      this._log.trace(`Client ${clientId} got a duplicate action`, [
+        command,
+        args,
+      ]);
     }
   },
 
@@ -715,37 +821,45 @@ ClientEngine.prototype = {
    */
   async processIncomingCommands() {
     return this._notify("clients:process-commands", "", async function() {
-      if (!this.localCommands ||
-          (this._lastModifiedOnProcessCommands == this._localClientLastModified
-           && !this.ignoreLastModifiedOnProcessCommands)) {
+      if (
+        !this.localCommands ||
+        (this._lastModifiedOnProcessCommands == this._localClientLastModified &&
+          !this.ignoreLastModifiedOnProcessCommands)
+      ) {
         return true;
       }
       this._lastModifiedOnProcessCommands = this._localClientLastModified;
 
       const clearedCommands = await this._readCommands()[this.localID];
-      const commands = this.localCommands.filter(command => !hasDupeCommand(clearedCommands, command));
+      const commands = this.localCommands.filter(
+        command => !hasDupeCommand(clearedCommands, command)
+      );
       let didRemoveCommand = false;
       let URIsToDisplay = [];
       // Process each command in order.
       for (let rawCommand of commands) {
         let shouldRemoveCommand = true; // most commands are auto-removed.
-        let {command, args, flowID} = rawCommand;
+        let { command, args, flowID } = rawCommand;
         this._log.debug("Processing command " + command, args);
 
-        this.service.recordTelemetryEvent("processcommand", command, undefined,
-                                          { flowID });
+        this.service.recordTelemetryEvent(
+          "processcommand",
+          command,
+          undefined,
+          { flowID }
+        );
 
         let engines = [args[0]];
         switch (command) {
           case "resetAll":
             engines = null;
-            // Fallthrough
+          // Fallthrough
           case "resetEngine":
             await this.service.resetClient(engines);
             break;
           case "wipeAll":
             engines = null;
-            // Fallthrough
+          // Fallthrough
           case "wipeEngine":
             await this.service.wipeClient(engines);
             break;
@@ -766,7 +880,10 @@ ClientEngine.prototype = {
               break;
             }
             if (!(await requestor.continueRepairs(response))) {
-              this._log.warn("repairResponse couldn't continue the repair", response);
+              this._log.warn(
+                "repairResponse couldn't continue the repair",
+                response
+              );
             }
             break;
           }
@@ -779,7 +896,7 @@ ClientEngine.prototype = {
               break;
             }
             try {
-              if ((await responder.repair(request, rawCommand))) {
+              if (await responder.repair(request, rawCommand)) {
                 // We've started a repair - once that collection has synced it
                 // will write a "response" command and arrange for this repair
                 // request to be removed from the local command list - if we
@@ -851,8 +968,14 @@ ClientEngine.prototype = {
       return;
     } else if (!args || args.length != commandData.args) {
       // Don't send a command with the wrong number of arguments.
-      this._log.error("Expected " + commandData.args + " args for '" +
-                      command + "', but got " + args);
+      this._log.error(
+        "Expected " +
+          commandData.args +
+          " args for '" +
+          command +
+          "', but got " +
+          args
+      );
       return;
     }
 
@@ -891,8 +1014,9 @@ ClientEngine.prototype = {
    *        Title of the page being sent.
    */
   async sendURIToClientForDisplay(uri, clientId, title) {
-    this._log.trace("Sending URI to client: " + uri + " -> " +
-                   clientId + " (" + title + ")");
+    this._log.trace(
+      "Sending URI to client: " + uri + " -> " + clientId + " (" + title + ")"
+    );
     await this.sendCommand("displayURI", [uri, this.localID, title], clientId);
 
     this._tracker.score += SCORE_INCREMENT_XLARGE;
@@ -926,7 +1050,7 @@ ClientEngine.prototype = {
     uris.forEach(uri => {
       uri.sender = {
         id: uri.clientId,
-        name: this.getClientName(uri.clientId)
+        name: this.getClientName(uri.clientId),
       };
     });
     Svc.Obs.notify("weave:engine:clients:display-uris", uris);
@@ -964,14 +1088,14 @@ ClientStore.prototype = {
   async createRecord(id, collection) {
     let record = new ClientsRec(collection, id);
 
-    const commandsChanges = this.engine._currentlySyncingCommands ?
-                            this.engine._currentlySyncingCommands[id] :
-                            [];
+    const commandsChanges = this.engine._currentlySyncingCommands
+      ? this.engine._currentlySyncingCommands[id]
+      : [];
 
     // Package the individual components into a record for the local client
     if (id == this.engine.localID) {
       try {
-        record.fxaDeviceId = await this.engine.fxAccounts.getDeviceId();
+        record.fxaDeviceId = await this.engine.fxAccounts.device.getLocalId();
       } catch (error) {
         this._log.warn("failed to get fxa device id", error);
       }
@@ -981,9 +1105,15 @@ ClientStore.prototype = {
       record.protocols = SUPPORTED_PROTOCOL_VERSIONS;
 
       // Substract the commands we recorded that we've already executed
-      if (commandsChanges && commandsChanges.length &&
-          this.engine.localCommands && this.engine.localCommands.length) {
-        record.commands = this.engine.localCommands.filter(command => !hasDupeCommand(commandsChanges, command));
+      if (
+        commandsChanges &&
+        commandsChanges.length &&
+        this.engine.localCommands &&
+        this.engine.localCommands.length
+      ) {
+        record.commands = this.engine.localCommands.filter(
+          command => !hasDupeCommand(commandsChanges, command)
+        );
       }
 
       // Optional fields.
@@ -1001,14 +1131,18 @@ ClientStore.prototype = {
       // Add the commands we have to send
       if (commandsChanges && commandsChanges.length) {
         const recordCommands = record.cleartext.commands || [];
-        const newCommands = commandsChanges.filter(command => !hasDupeCommand(recordCommands, command));
+        const newCommands = commandsChanges.filter(
+          command => !hasDupeCommand(recordCommands, command)
+        );
         record.cleartext.commands = recordCommands.concat(newCommands);
       }
 
       if (record.cleartext.stale) {
         // It's almost certainly a logic error for us to upload a record we
         // consider stale, so make log noise, but still remove the flag.
-        this._log.error(`Preparing to upload record ${id} that we consider stale`);
+        this._log.error(
+          `Preparing to upload record ${id} that we consider stale`
+        );
         delete record.cleartext.stale;
       }
     }
@@ -1039,10 +1173,15 @@ ClientStore.prototype = {
       });
       let truncatedCommands = Utils.tryFitItems(commands, maxPayloadSize);
       if (truncatedCommands.length != record.commands.length) {
-        this._log.warn(`Removing commands from client ${id} (from ${record.commands.length} to ${truncatedCommands.length})`);
+        this._log.warn(
+          `Removing commands from client ${id} (from ${
+            record.commands.length
+          } to ${truncatedCommands.length})`
+        );
         // Restore original order.
-        record.commands = truncatedCommands.sort((a, b) =>
-          origOrder.get(a) - origOrder.get(b));
+        record.commands = truncatedCommands.sort(
+          (a, b) => origOrder.get(a) - origOrder.get(b)
+        );
       }
     }
     return record;
@@ -1075,19 +1214,23 @@ ClientsTracker.prototype = {
   _enabled: false,
 
   onStart() {
+    Svc.Obs.add("fxaccounts:new_device_id", this.asyncObserver);
     Svc.Prefs.observe("client.name", this.asyncObserver);
   },
   onStop() {
     Svc.Prefs.ignore("client.name", this.asyncObserver);
+    Svc.Obs.remove("fxaccounts:new_device_id", this.asyncObserver);
   },
 
   async observe(subject, topic, data) {
     switch (topic) {
       case "nsPref:changed":
         this._log.debug("client.name preference changed");
+      // Fallthrough intended.
+      case "fxaccounts:new_device_id":
         await this.addChangedID(this.engine.localID);
-        this.score += SCORE_INCREMENT_XLARGE;
+        this.score += SINGLE_USER_THRESHOLD + 1; // ALWAYS SYNC NOW.
         break;
     }
-  }
+  },
 };

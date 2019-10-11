@@ -8,17 +8,27 @@ from __future__ import absolute_import, print_function, unicode_literals
 import os
 import json
 import logging
-
 import time
+import sys
+
+from redo import retry
 import yaml
 
-from .generator import TaskGraphGenerator
+from . import GECKO
+from .actions import render_actions_json
 from .create import create_tasks
+from .generator import TaskGraphGenerator
 from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from .try_option_syntax import parse_message
-from .actions import render_actions_json
-from taskgraph.util.partials import populate_release_history
+from .util.hg import get_hg_revision_branch, get_hg_commit_message
+from .util.partials import populate_release_history
+from .util.schema import validate_schema, Schema
+from .util.taskcluster import get_artifact
+from .util.taskgraph import find_decision_task, find_existing_tasks_from_previous_kinds
+from .util.yaml import load_yaml
+from voluptuous import Required, Optional, Url
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,82 +39,111 @@ ARTIFACTS_DIR = 'artifacts'
 PER_PROJECT_PARAMETERS = {
     'try': {
         'target_tasks_method': 'try_tasks',
-        # By default, the `try_option_syntax` `target_task_method` ignores this
-        # parameter, and enables/disables nightlies depending whether
-        # `--include-nightly` is specified in the commit message.
-        # We're setting the `include_nightly` parameter to True here for when
-        # we submit decision tasks against Try that use other
-        # `target_task_method`s, like `nightly_fennec` or `mozilla_beta_tasks`,
-        # which reference the `include_nightly` parameter.
-        'include_nightly': True,
     },
 
     'try-comm-central': {
         'target_tasks_method': 'try_tasks',
-        'include_nightly': True,
     },
 
     'ash': {
         'target_tasks_method': 'ash_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': False,
     },
 
     'cedar': {
-        'target_tasks_method': 'cedar_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': False,
+        'target_tasks_method': 'default',
+    },
+
+    'oak': {
+        'target_tasks_method': 'nightly_desktop',
+        'release_type': 'nightly-oak',
     },
 
     'graphics': {
         'target_tasks_method': 'graphics_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': False,
+    },
+
+    'mozilla-central': {
+        'target_tasks_method': 'default',
+        'release_type': 'nightly',
     },
 
     'mozilla-beta': {
         'target_tasks_method': 'mozilla_beta_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': True,
+        'release_type': 'beta',
     },
 
     'mozilla-release': {
         'target_tasks_method': 'mozilla_release_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': True,
+        'release_type': 'release',
     },
 
     'mozilla-esr60': {
         'target_tasks_method': 'mozilla_esr60_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': True,
+        'release_type': 'esr60',
+    },
+
+    'mozilla-esr68': {
+        'target_tasks_method': 'mozilla_esr68_tasks',
+        'release_type': 'esr68',
+    },
+
+    'comm-central': {
+        'target_tasks_method': 'default',
+        'release_type': 'nightly',
     },
 
     'comm-beta': {
         'target_tasks_method': 'mozilla_beta_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': True,
+        'release_type': 'beta',
     },
 
     'comm-esr60': {
         'target_tasks_method': 'mozilla_esr60_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': True,
+        'release_type': 'release',
+    },
+
+    'comm-esr68': {
+        'target_tasks_method': 'mozilla_esr68_tasks',
+        'release_type': 'release',
     },
 
     'pine': {
         'target_tasks_method': 'pine_tasks',
-        'optimize_target_tasks': True,
-        'include_nightly': False,
     },
 
     # the default parameters are used for projects that do not match above.
     'default': {
         'target_tasks_method': 'default',
-        'optimize_target_tasks': True,
-        'include_nightly': False,
     }
 }
+
+visual_metrics_jobs_schema = Schema({
+        Required('jobs'): [
+            {
+                Required('browsertime_json_url'): Url(),
+                Required('video_url'): Url(),
+            }
+        ]
+})
+
+try_task_config_schema = Schema({
+    Required('tasks'): [basestring],
+    Optional('templates'): {basestring: object},
+    Optional('disable-pgo'): bool,
+    Optional('browsertime'): bool,
+    Optional('gecko-profile'): bool,
+    # Keep in sync with JOB_SCHEMA in taskcluster/docker/visual-metrics/run-visual-metrics.py.
+    Optional('visual-metrics-jobs'): visual_metrics_jobs_schema,
+    Optional(
+        "debian-tests",
+        description="Run linux desktop tests on debian 10 (buster)."
+        ): bool,
+})
+
+
+try_task_config_schema_v2 = Schema({
+    Optional('parameters'): {basestring: object},
+})
 
 
 def full_task_graph_to_runnable_jobs(full_task_json):
@@ -126,6 +165,17 @@ def full_task_graph_to_runnable_jobs(full_task_json):
     return runnable_jobs
 
 
+def try_syntax_from_message(message):
+    """
+    Parse the try syntax out of a commit message, returning '' if none is
+    found.
+    """
+    try_idx = message.find('try:')
+    if try_idx == -1:
+        return ''
+    return message[try_idx:].split('\n', 1)[0]
+
+
 def taskgraph_decision(options, parameters=None):
     """
     Run the decision task.  This function implements `mach taskgraph decision`,
@@ -138,7 +188,9 @@ def taskgraph_decision(options, parameters=None):
      * calling TaskCluster APIs to create the graph
     """
 
-    parameters = parameters or get_decision_parameters(options)
+    parameters = parameters or (
+        lambda graph_config: get_decision_parameters(graph_config, options)
+    )
 
     # create a TaskGraphGenerator instance
     tgg = TaskGraphGenerator(
@@ -146,17 +198,17 @@ def taskgraph_decision(options, parameters=None):
         parameters=parameters)
 
     # write out the parameters used to generate this graph
-    write_artifact('parameters.yml', dict(**parameters))
+    write_artifact('parameters.yml', dict(**tgg.parameters))
 
     # write out the public/actions.json file
-    write_artifact('actions.json', render_actions_json(parameters, tgg.graph_config))
+    write_artifact('actions.json', render_actions_json(tgg.parameters, tgg.graph_config))
 
     # write out the full graph for reference
     full_task_json = tgg.full_task_graph.to_json()
     write_artifact('full-task-graph.json', full_task_json)
 
-    # write out the public/runnable-jobs.json.gz file
-    write_artifact('runnable-jobs.json.gz', full_task_graph_to_runnable_jobs(full_task_json))
+    # write out the public/runnable-jobs.json file
+    write_artifact('runnable-jobs.json', full_task_graph_to_runnable_jobs(full_task_json))
 
     # this is just a test to check whether the from_json() function is working
     _, _ = TaskGraph.from_json(full_task_json)
@@ -170,27 +222,29 @@ def taskgraph_decision(options, parameters=None):
     write_artifact('label-to-taskid.json', tgg.label_to_taskid)
 
     # actually create the graph
-    create_tasks(tgg.morphed_task_graph, tgg.label_to_taskid, parameters)
+    create_tasks(tgg.graph_config, tgg.morphed_task_graph, tgg.label_to_taskid, tgg.parameters)
 
 
-def get_decision_parameters(options):
+def get_decision_parameters(graph_config, options):
     """
     Load parameters from the command-line options for 'taskgraph decision'.
     This also applies per-project parameters, based on the given project.
 
     """
+    product_dir = graph_config['product-dir']
+
     parameters = {n: options[n] for n in [
         'base_repository',
         'head_repository',
         'head_rev',
         'head_ref',
-        'message',
         'project',
         'pushlog_id',
         'pushdate',
         'owner',
         'level',
         'target_tasks_method',
+        'tasks_for',
     ] if n in options}
 
     for n in (
@@ -202,18 +256,23 @@ def get_decision_parameters(options):
         if n in options and options[n] is not None:
             parameters[n] = options[n]
 
+    commit_message = get_hg_commit_message(os.path.join(GECKO, product_dir))
+
     # Define default filter list, as most configurations shouldn't need
     # custom filters.
     parameters['filters'] = [
-        'check_servo',
         'target_tasks_method',
     ]
+    parameters['optimize_target_tasks'] = True
     parameters['existing_tasks'] = {}
     parameters['do_not_optimize'] = []
     parameters['build_number'] = 1
-    parameters['version'] = get_version()
-    parameters['app_version'] = get_app_version()
+    parameters['version'] = get_version(product_dir)
+    parameters['app_version'] = get_app_version(product_dir)
+    parameters['message'] = try_syntax_from_message(commit_message)
+    parameters['hg_branch'] = get_hg_revision_branch(GECKO, revision=parameters['head_rev'])
     parameters['next_version'] = None
+    parameters['phabricator_diff'] = None
     parameters['release_type'] = ''
     parameters['release_eta'] = ''
     parameters['release_enable_partners'] = False
@@ -222,6 +281,11 @@ def get_decision_parameters(options):
     parameters['release_partner_build_number'] = 1
     parameters['release_enable_emefree'] = False
     parameters['release_product'] = None
+    parameters['required_signoffs'] = []
+    parameters['signoff_urls'] = {}
+    parameters['try_mode'] = None
+    parameters['try_task_config'] = {}
+    parameters['try_options'] = None
 
     # owner must be an email, but sometimes (e.g., for ffxbld) it is not, in which
     # case, fake it
@@ -247,6 +311,15 @@ def get_decision_parameters(options):
     if options.get('target_tasks_method'):
         parameters['target_tasks_method'] = options['target_tasks_method']
 
+    # ..but can be overridden by the commit message: if it contains the special
+    # string "DONTBUILD" and this is an on-push decision task, then use the
+    # special 'nothing' target task method.
+    if 'DONTBUILD' in commit_message and options['tasks_for'] == 'hg-push':
+        parameters['target_tasks_method'] = 'nothing'
+
+    if options.get('include_push_tasks'):
+        get_existing_tasks(options.get('rebuild_kinds', []), parameters, graph_config)
+
     # If the target method is nightly, we should build partials. This means
     # knowing what has been released previously.
     # An empty release_history is fine, it just means no partials will be built
@@ -261,41 +334,79 @@ def get_decision_parameters(options):
         task_config_file = os.path.join(os.getcwd(), 'try_task_config.json')
 
     # load try settings
-    if 'try' in project:
-        parameters['try_mode'] = None
-        if os.path.isfile(task_config_file):
-            logger.info("using try tasks from {}".format(task_config_file))
-            parameters['try_mode'] = 'try_task_config'
-            with open(task_config_file, 'r') as fh:
-                parameters['try_task_config'] = json.load(fh)
-        else:
-            parameters['try_task_config'] = None
+    if 'try' in project and options['tasks_for'] == 'hg-push':
+        set_try_config(parameters, task_config_file)
 
-        if 'try:' in parameters['message']:
-            parameters['try_mode'] = 'try_option_syntax'
-            args = parse_message(parameters['message'])
-            parameters['try_options'] = args
-        else:
-            parameters['try_options'] = None
-
-        if parameters['try_mode']:
-            # The user has explicitly requested a set of jobs, so run them all
-            # regardless of optimization.  Their dependencies can be optimized,
-            # though.
-            parameters['optimize_target_tasks'] = False
-        else:
-            # For a try push with no task selection, apply the default optimization
-            # process to all of the tasks.
-            parameters['optimize_target_tasks'] = True
-
-    else:
-        parameters['try_mode'] = None
-        parameters['try_task_config'] = None
-        parameters['try_options'] = None
+    if options.get('optimize_target_tasks') is not None:
+        parameters['optimize_target_tasks'] = options['optimize_target_tasks']
 
     result = Parameters(**parameters)
     result.check()
     return result
+
+
+def get_existing_tasks(rebuild_kinds, parameters, graph_config):
+    """
+    Find the decision task corresponding to the on-push graph, and return
+    a mapping of labels to task-ids from it. This will skip the kinds specificed
+    by `rebuild_kinds`.
+    """
+    try:
+        decision_task = retry(
+            find_decision_task,
+            args=(parameters, graph_config),
+            attempts=4,
+            sleeptime=5*60,
+        )
+    except Exception:
+        logger.exception("Didn't find existing push task.")
+        sys.exit(1)
+    _, task_graph = TaskGraph.from_json(get_artifact(decision_task, "public/full-task-graph.json"))
+    parameters['existing_tasks'] = find_existing_tasks_from_previous_kinds(
+        task_graph, [decision_task], rebuild_kinds
+    )
+
+
+def set_try_config(parameters, task_config_file):
+    if os.path.isfile(task_config_file):
+        logger.info("using try tasks from {}".format(task_config_file))
+        with open(task_config_file, 'r') as fh:
+            task_config = json.load(fh)
+        task_config_version = task_config.pop('version', 1)
+        if task_config_version == 1:
+            validate_schema(
+                try_task_config_schema, task_config,
+                "Invalid v1 `try_task_config.json`.",
+            )
+            parameters['try_mode'] = 'try_task_config'
+            parameters['try_task_config'] = task_config
+        elif task_config_version == 2:
+            validate_schema(
+                try_task_config_schema_v2, task_config,
+                "Invalid v2 `try_task_config.json`.",
+            )
+            parameters.update(task_config['parameters'])
+            return
+        else:
+            raise Exception(
+                "Unknown `try_task_config.json` version: {}".format(task_config_version))
+
+    if 'try:' in parameters['message']:
+        parameters['try_mode'] = 'try_option_syntax'
+        args = parse_message(parameters['message'])
+        parameters['try_options'] = args
+    else:
+        parameters['try_options'] = None
+
+    if parameters['try_mode'] == 'try_task_config':
+        # The user has explicitly requested a set of jobs, so run them all
+        # regardless of optimization.  Their dependencies can be optimized,
+        # though.
+        parameters['optimize_target_tasks'] = False
+    else:
+        # For a try push with no task selection, apply the default optimization
+        # process to all of the tasks.
+        parameters['optimize_target_tasks'] = True
 
 
 def write_artifact(filename, data):
@@ -320,8 +431,7 @@ def write_artifact(filename, data):
 def read_artifact(filename):
     path = os.path.join(ARTIFACTS_DIR, filename)
     if filename.endswith('.yml'):
-        with open(path, 'r') as f:
-            return yaml.load(f)
+        return load_yaml(path, filename)
     elif filename.endswith('.json'):
         with open(path, 'r') as f:
             return json.load(f)
@@ -331,3 +441,7 @@ def read_artifact(filename):
             return json.load(f)
     else:
         raise TypeError("Don't know how to read {}".format(filename))
+
+
+def rename_artifact(src, dest):
+    os.rename(os.path.join(ARTIFACTS_DIR, src), os.path.join(ARTIFACTS_DIR, dest))

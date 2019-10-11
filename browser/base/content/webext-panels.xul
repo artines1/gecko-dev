@@ -9,26 +9,22 @@
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/usercontext/usercontext.css" type="text/css"?>
 
-<!DOCTYPE page [
+<!DOCTYPE window [
 <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
 %browserDTD;
 <!ENTITY % textcontextDTD SYSTEM "chrome://global/locale/textcontext.dtd">
 %textcontextDTD;
 ]>
 
-<page id="webextpanels-window"
-        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+<window id="webextpanels-window"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript" src="chrome://global/content/contentAreaUtils.js"/>
-  <script type="application/javascript" src="chrome://browser/content/browser.js"/>
-  <script type="application/javascript" src="chrome://browser/content/browser-places.js"/>
-  <script type="application/javascript" src="chrome://browser/content/webext-panels.js"/>
-  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script type="application/javascript" src="chrome://browser/content/utilityOverlay.js"/>
-
-  <broadcasterset id="mainBroadcasterSet">
-    <broadcaster id="isFrameImage"/>
-  </broadcasterset>
+  <script src="chrome://global/content/contentAreaUtils.js"/>
+  <script src="chrome://browser/content/browser.js"/>
+  <script src="chrome://browser/content/browser-places.js"/>
+  <script src="chrome://browser/content/webext-panels.js"/>
+  <script src="chrome://global/content/globalOverlay.js"/>
+  <script src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://global/content/editMenuOverlay.js"/>
 
   <commandset id="mainCommandset">
     <command id="Browser:Back"
@@ -44,7 +40,8 @@
   <popupset id="mainPopupSet">
     <tooltip id="aHTMLTooltip" page="true"/>
 
-    <panel type="autocomplete-richlistbox"
+    <panel is="autocomplete-richlistbox-popup"
+           type="autocomplete-richlistbox"
            id="PopupAutoComplete"
            noautofocus="true"
            hidden="true"
@@ -79,6 +76,4 @@
         />
     </menulist>
   </popupset>
-
-#include ../../../toolkit/content/editMenuCommands.inc.xul
-</page>
+</window>

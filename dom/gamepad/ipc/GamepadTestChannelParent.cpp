@@ -12,13 +12,11 @@
 namespace mozilla {
 namespace dom {
 
-mozilla::ipc::IPCResult
-GamepadTestChannelParent::RecvGamepadTestEvent(const uint32_t& aID,
-                                               const GamepadChangeEvent& aEvent)
-{
+mozilla::ipc::IPCResult GamepadTestChannelParent::RecvGamepadTestEvent(
+    const uint32_t& aID, const GamepadChangeEvent& aEvent) {
   mozilla::ipc::AssertIsOnBackgroundThread();
-  RefPtr<GamepadPlatformService>  service =
-    GamepadPlatformService::GetParentService();
+  RefPtr<GamepadPlatformService> service =
+      GamepadPlatformService::GetParentService();
   MOZ_ASSERT(service);
   const uint32_t index = aEvent.index();
   const GamepadChangeEventBody& body = aEvent.body();
@@ -26,12 +24,10 @@ GamepadTestChannelParent::RecvGamepadTestEvent(const uint32_t& aID,
     const GamepadAdded& a = body.get_GamepadAdded();
     nsCString gamepadID;
     LossyCopyUTF16toASCII(a.id(), gamepadID);
-    uint32_t index = service->AddGamepad(gamepadID.get(),
-                                         static_cast<GamepadMappingType>(a.mapping()),
-                                         a.hand(),
-                                         a.num_buttons(),
-                                         a.num_axes(),
-                                         a.num_haptics());
+    uint32_t index = service->AddGamepad(
+        gamepadID.get(), static_cast<GamepadMappingType>(a.mapping()), a.hand(),
+        a.num_buttons(), a.num_axes(), a.num_haptics(), a.num_lights(),
+        a.num_touches());
     if (!mShuttingdown) {
       Unused << SendReplyGamepadIndex(aID, index);
     }
@@ -57,18 +53,21 @@ GamepadTestChannelParent::RecvGamepadTestEvent(const uint32_t& aID,
     service->NewPoseEvent(index, a.pose_state());
     return IPC_OK();
   }
+  if (body.type() == GamepadChangeEventBody::TGamepadTouchInformation) {
+    const GamepadTouchInformation& a = body.get_GamepadTouchInformation();
+    service->NewMultiTouchEvent(index, a.index(), a.touch_state());
+    return IPC_OK();
+  }
 
   NS_WARNING("Unknown event type.");
   return IPC_FAIL_NO_REASON(this);
 }
 
-mozilla::ipc::IPCResult
-GamepadTestChannelParent::RecvShutdownChannel()
-{
+mozilla::ipc::IPCResult GamepadTestChannelParent::RecvShutdownChannel() {
   mShuttingdown = true;
   Unused << Send__delete__(this);
   return IPC_OK();
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

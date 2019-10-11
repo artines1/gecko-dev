@@ -1,29 +1,39 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Computed percentages.
 
+use crate::values::animated::ToAnimatedValue;
+use crate::values::generics::NonNegative;
+use crate::values::{serialize_percentage, CSSFloat};
+use crate::Zero;
 use std::fmt;
 use style_traits::{CssWriter, ToCss};
-use values::{serialize_percentage, CSSFloat};
-use values::animated::ToAnimatedValue;
-use values::generics::NonNegative;
 
 /// A computed percentage.
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, Default,
-         MallocSizeOf, PartialEq, PartialOrd, SpecifiedValueInfo,
-         ToAnimatedValue, ToAnimatedZero, ToComputedValue)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    Default,
+    MallocSizeOf,
+    PartialEq,
+    PartialOrd,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
 pub struct Percentage(pub CSSFloat);
 
 impl Percentage {
-    /// 0%
-    #[inline]
-    pub fn zero() -> Self {
-        Percentage(0.)
-    }
-
     /// 100%
     #[inline]
     pub fn hundred() -> Self {
@@ -43,6 +53,16 @@ impl Percentage {
     }
 }
 
+impl Zero for Percentage {
+    fn zero() -> Self {
+        Percentage(0.)
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0 == 0.
+    }
+}
+
 impl ToCss for Percentage {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
@@ -56,12 +76,6 @@ impl ToCss for Percentage {
 pub type NonNegativePercentage = NonNegative<Percentage>;
 
 impl NonNegativePercentage {
-    /// 0%
-    #[inline]
-    pub fn zero() -> Self {
-        NonNegative(Percentage::zero())
-    }
-
     /// 100%
     #[inline]
     pub fn hundred() -> Self {

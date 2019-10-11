@@ -12,8 +12,7 @@
 
 var srv;
 
-function run_test()
-{
+function run_test() {
   srv = createServer();
   srv.registerPathHandler("/content-length", contentLength);
   srv.start(-1);
@@ -23,8 +22,7 @@ function run_test()
 
 const REQUEST_DATA = "12345678901234567";
 
-function contentLength(request, response)
-{
+function contentLength(request, response) {
   Assert.equal(request.method, "POST");
   Assert.equal(request.getHeader("Content-Length"), "017");
 
@@ -32,31 +30,37 @@ function contentLength(request, response)
 
   var avail;
   var data = "";
-  while ((avail = body.available()) > 0)
+  while ((avail = body.available()) > 0) {
     data += body.read(avail);
+  }
 
   Assert.equal(data, REQUEST_DATA);
 }
 
-/***************
+/** *************
  * BEGIN TESTS *
  ***************/
 
-XPCOMUtils.defineLazyGetter(this, 'tests', function() {
+XPCOMUtils.defineLazyGetter(this, "tests", function() {
   return [
-           new Test("http://localhost:" + srv.identity.primaryPort + "/content-length",
-                    init_content_length),
+    new Test(
+      "http://localhost:" + srv.identity.primaryPort + "/content-length",
+      init_content_length
+    ),
   ];
 });
 
-function init_content_length(ch)
-{
-  var content = Cc["@mozilla.org/io/string-input-stream;1"]
-                  .createInstance(Ci.nsIStringInputStream);
+function init_content_length(ch) {
+  var content = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
+    Ci.nsIStringInputStream
+  );
   content.data = REQUEST_DATA;
 
-  ch.QueryInterface(Ci.nsIUploadChannel)
-    .setUploadStream(content, "text/plain", REQUEST_DATA.length);
+  ch.QueryInterface(Ci.nsIUploadChannel).setUploadStream(
+    content,
+    "text/plain",
+    REQUEST_DATA.length
+  );
 
   // Override the values implicitly set by setUploadStream above.
   ch.requestMethod = "POST";

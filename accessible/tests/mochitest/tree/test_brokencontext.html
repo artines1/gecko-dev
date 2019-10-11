@@ -5,8 +5,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -44,12 +43,12 @@
       { PUSHBUTTON: [ // table
           { NOTHING: [ // tr
             { NOTHING: [ // th
-              { TEXT_LEAF: [ ] }
+              { TEXT_LEAF: [ ] },
             ] },
             { NOTHING: [ // td
-              { TEXT_LEAF: [ ] }
-            ] }
-          ] }
+              { TEXT_LEAF: [ ] },
+            ] },
+          ] },
       ] };
     testAccessibleTree("button_table", tree);
 
@@ -79,12 +78,12 @@
       { PUSHBUTTON: [ // ul
         { NOTHING: [ // li
           { STATICTEXT: [ ] },
-          { TEXT_LEAF: [ ] }
+          { TEXT_LEAF: [ ] },
         ] },
         { NOTHING: [ // span styled as a list
           { STATICTEXT: [ ] },
-          { TEXT_LEAF: [ ] }
-        ] }
+          { TEXT_LEAF: [ ] },
+        ] },
       ] };
     testAccessibleTree("button_ul", tree);
 
@@ -92,19 +91,19 @@
       { PUSHBUTTON: [ // ol
         { NOTHING: [ // li
           { STATICTEXT: [ ] },
-          { TEXT_LEAF: [ ] }
-        ] }
+          { TEXT_LEAF: [ ] },
+        ] },
       ] };
     testAccessibleTree("button_ol", tree);
 
     tree =
       { PUSHBUTTON: [ // dl
         { NOTHING: [ // dt
-          { TEXT_LEAF: [ ] }
+          { TEXT_LEAF: [ ] },
         ] },
         { NOTHING: [ // dd
-          { TEXT_LEAF: [ ] }
-        ] }
+          { TEXT_LEAF: [ ] },
+        ] },
       ] };
     testAccessibleTree("button_dl", tree);
 
@@ -113,13 +112,13 @@
 
     tree =
       { LINK: [ // a
-        { TEXT_LEAF: [ ] }
+        { TEXT_LEAF: [ ] },
       ] };
     testAccessibleTree("a_as_td", tree);
 
     tree =
       { HEADING: [
-        { TEXT_LEAF: [ ] }
+        { TEXT_LEAF: [ ] },
       ] };
     testAccessibleTree("h1_as_td", tree);
     testAccessibleTree("h2_as_td", tree);

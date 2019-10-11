@@ -15,37 +15,32 @@
 
 // MapViewOfFile2 is just an inline function that calls MapViewOfFileNuma2 with
 // its preferred node set to NUMA_NO_PREFERRED_NODE
-WINBASEAPI PVOID WINAPI
-MapViewOfFileNuma2(HANDLE aFileMapping, HANDLE aProcess, ULONG64 aOffset,
-                   PVOID aBaseAddress, SIZE_T aViewSize, ULONG aAllocationType,
-                   ULONG aPageProtection, ULONG aPreferredNode);
+WINBASEAPI PVOID WINAPI MapViewOfFileNuma2(HANDLE aFileMapping, HANDLE aProcess,
+                                           ULONG64 aOffset, PVOID aBaseAddress,
+                                           SIZE_T aViewSize,
+                                           ULONG aAllocationType,
+                                           ULONG aPageProtection,
+                                           ULONG aPreferredNode);
 
-WINBASEAPI BOOL WINAPI
-UnmapViewOfFile2(HANDLE aProcess, PVOID aBaseAddress, ULONG aUnmapFlags);
+WINBASEAPI BOOL WINAPI UnmapViewOfFile2(HANDLE aProcess, PVOID aBaseAddress,
+                                        ULONG aUnmapFlags);
 
-#endif // (NTDDI_VERSION < NTDDI_WIN10_RS2)
+#endif  // (NTDDI_VERSION < NTDDI_WIN10_RS2)
 
-enum SECTION_INHERIT
-{
-  ViewShare = 1,
-  ViewUnmap = 2
-};
+enum SECTION_INHERIT { ViewShare = 1, ViewUnmap = 2 };
 
-NTSTATUS NTAPI
-NtMapViewOfSection(HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress,
-                   ULONG_PTR aZeroBits, SIZE_T aCommitSize,
-                   PLARGE_INTEGER aSectionOffset, PSIZE_T aViewSize,
-                   SECTION_INHERIT aInheritDisposition, ULONG aAllocationType,
-                   ULONG aProtectionFlags);
+NTSTATUS NTAPI NtMapViewOfSection(
+    HANDLE aSection, HANDLE aProcess, PVOID* aBaseAddress, ULONG_PTR aZeroBits,
+    SIZE_T aCommitSize, PLARGE_INTEGER aSectionOffset, PSIZE_T aViewSize,
+    SECTION_INHERIT aInheritDisposition, ULONG aAllocationType,
+    ULONG aProtectionFlags);
 
-NTSTATUS NTAPI
-NtUnmapViewOfSection(HANDLE aProcess, PVOID aBaseAddress);
+NTSTATUS NTAPI NtUnmapViewOfSection(HANDLE aProcess, PVOID aBaseAddress);
 
-static DWORD
-GetWin32ErrorCode(NTSTATUS aNtStatus)
-{
-  static const mozilla::DynamicallyLinkedFunctionPtr<decltype(&RtlNtStatusToDosError)>
-    pRtlNtStatusToDosError(L"ntdll.dll", "RtlNtStatusToDosError");
+static DWORD GetWin32ErrorCode(NTSTATUS aNtStatus) {
+  static const mozilla::StaticDynamicallyLinkedFunctionPtr<decltype(
+      &RtlNtStatusToDosError)>
+      pRtlNtStatusToDosError(L"ntdll.dll", "RtlNtStatusToDosError");
 
   MOZ_ASSERT(!!pRtlNtStatusToDosError);
   if (!pRtlNtStatusToDosError) {
@@ -57,13 +52,13 @@ GetWin32ErrorCode(NTSTATUS aNtStatus)
 
 namespace mozilla {
 
-MFBT_API void*
-MapRemoteViewOfFile(HANDLE aFileMapping, HANDLE aProcess, ULONG64 aOffset,
-                    PVOID aBaseAddress, SIZE_T aViewSize, ULONG aAllocationType,
-                    ULONG aProtectionFlags)
-{
-  static const DynamicallyLinkedFunctionPtr<decltype(&MapViewOfFileNuma2)>
-    pMapViewOfFileNuma2(L"Api-ms-win-core-memory-l1-1-5.dll", "MapViewOfFileNuma2");
+MFBT_API void* MapRemoteViewOfFile(HANDLE aFileMapping, HANDLE aProcess,
+                                   ULONG64 aOffset, PVOID aBaseAddress,
+                                   SIZE_T aViewSize, ULONG aAllocationType,
+                                   ULONG aProtectionFlags) {
+  static const StaticDynamicallyLinkedFunctionPtr<decltype(&MapViewOfFileNuma2)>
+      pMapViewOfFileNuma2(L"Api-ms-win-core-memory-l1-1-5.dll",
+                          "MapViewOfFileNuma2");
 
   if (!!pMapViewOfFileNuma2) {
     return pMapViewOfFileNuma2(aFileMapping, aProcess, aOffset, aBaseAddress,
@@ -71,8 +66,8 @@ MapRemoteViewOfFile(HANDLE aFileMapping, HANDLE aProcess, ULONG64 aOffset,
                                NUMA_NO_PREFERRED_NODE);
   }
 
-  static const DynamicallyLinkedFunctionPtr<decltype(&NtMapViewOfSection)>
-    pNtMapViewOfSection(L"ntdll.dll", "NtMapViewOfSection");
+  static const StaticDynamicallyLinkedFunctionPtr<decltype(&NtMapViewOfSection)>
+      pNtMapViewOfSection(L"ntdll.dll", "NtMapViewOfSection");
 
   MOZ_ASSERT(!!pNtMapViewOfSection);
   if (!pNtMapViewOfSection) {
@@ -104,18 +99,17 @@ MapRemoteViewOfFile(HANDLE aFileMapping, HANDLE aProcess, ULONG64 aOffset,
   return nullptr;
 }
 
-MFBT_API bool
-UnmapRemoteViewOfFile(HANDLE aProcess, PVOID aBaseAddress)
-{
-  static const DynamicallyLinkedFunctionPtr<decltype(&UnmapViewOfFile2)>
-    pUnmapViewOfFile2(L"kernel32.dll", "UnmapViewOfFile2");
+MFBT_API bool UnmapRemoteViewOfFile(HANDLE aProcess, PVOID aBaseAddress) {
+  static const StaticDynamicallyLinkedFunctionPtr<decltype(&UnmapViewOfFile2)>
+      pUnmapViewOfFile2(L"kernel32.dll", "UnmapViewOfFile2");
 
   if (!!pUnmapViewOfFile2) {
     return !!pUnmapViewOfFile2(aProcess, aBaseAddress, 0);
   }
 
-  static const DynamicallyLinkedFunctionPtr<decltype(&NtUnmapViewOfSection)>
-    pNtUnmapViewOfSection(L"ntdll.dll", "NtUnmapViewOfSection");
+  static const StaticDynamicallyLinkedFunctionPtr<decltype(
+      &NtUnmapViewOfSection)>
+      pNtUnmapViewOfSection(L"ntdll.dll", "NtUnmapViewOfSection");
 
   MOZ_ASSERT(!!pNtUnmapViewOfSection);
   if (!pNtUnmapViewOfSection) {
@@ -127,5 +121,4 @@ UnmapRemoteViewOfFile(HANDLE aProcess, PVOID aBaseAddress)
   return NT_SUCCESS(ntStatus);
 }
 
-} // namespace mozilla
-
+}  // namespace mozilla

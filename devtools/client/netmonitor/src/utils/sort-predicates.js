@@ -35,12 +35,12 @@ function compareValues(first, second) {
 }
 
 function waterfall(first, second) {
-  const result = compareValues(first.startedMillis, second.startedMillis);
+  const result = compareValues(first.startedMs, second.startedMs);
   return result || compareValues(first.id, second.id);
 }
 
 function status(first, second) {
-  const result = compareValues(first.status, second.status);
+  const result = compareValues(getStatusValue(first), getStatusValue(second));
   return result || waterfall(first, second);
 }
 
@@ -56,13 +56,23 @@ function file(first, second) {
   return result || waterfall(first, second);
 }
 
+function url(first, second) {
+  const firstUrl = first.url.toLowerCase();
+  const secondUrl = second.url.toLowerCase();
+  const result = compareValues(firstUrl, secondUrl);
+  return result || waterfall(first, second);
+}
+
 function protocol(first, second) {
   const result = compareValues(first.httpVersion, second.httpVersion);
   return result || waterfall(first, second);
 }
 
 function scheme(first, second) {
-  const result = compareValues(first.urlDetails.scheme, second.urlDetails.scheme);
+  const result = compareValues(
+    first.urlDetails.scheme,
+    second.urlDetails.scheme
+  );
   return result || waterfall(first, second);
 }
 
@@ -89,20 +99,50 @@ function duration(first, second) {
 function latency(first, second) {
   const { eventTimings: firstEventTimings = { timings: {} } } = first;
   const { eventTimings: secondEventTimings = { timings: {} } } = second;
-  const result = compareValues(firstEventTimings.timings.wait,
-   secondEventTimings.timings.wait);
+  const result = compareValues(
+    firstEventTimings.timings.wait,
+    secondEventTimings.timings.wait
+  );
   return result || waterfall(first, second);
 }
 
 function compareHeader(header, first, second) {
-  const result = compareValues(getResponseHeader(first, header) || "",
-                               getResponseHeader(second, header) || "");
+  const firstValue = getResponseHeader(first, header) || "";
+  const secondValue = getResponseHeader(second, header) || "";
+
+  let result;
+
+  switch (header) {
+    case "Content-Length": {
+      result = compareValues(
+        parseInt(firstValue, 10) || 0,
+        parseInt(secondValue, 10) || 0
+      );
+      break;
+    }
+    case "Last-Modified": {
+      result = compareValues(
+        new Date(firstValue).valueOf() || -1,
+        new Date(secondValue).valueOf() || -1
+      );
+      break;
+    }
+    default: {
+      result = compareValues(firstValue, secondValue);
+      break;
+    }
+  }
+
   return result || waterfall(first, second);
 }
 
-const responseHeaders = RESPONSE_HEADERS
-  .reduce((acc, header) => Object.assign(
-    acc, {[header]: (first, second) => compareHeader(header, first, second)}), {});
+const responseHeaders = RESPONSE_HEADERS.reduce(
+  (acc, header) =>
+    Object.assign(acc, {
+      [header]: (first, second) => compareHeader(header, first, second),
+    }),
+  {}
+);
 
 function domain(first, second) {
   const firstDomain = first.urlDetails.host.toLowerCase();
@@ -129,9 +169,12 @@ function setCookies(first, second) {
   let { responseCookies: firstResponseCookies = { cookies: [] } } = first;
   let { responseCookies: secondResponseCookies = { cookies: [] } } = second;
   firstResponseCookies = firstResponseCookies.cookies || firstResponseCookies;
-  secondResponseCookies = secondResponseCookies.cookies || secondResponseCookies;
-  const result =
-    compareValues(firstResponseCookies.length, secondResponseCookies.length);
+  secondResponseCookies =
+    secondResponseCookies.cookies || secondResponseCookies;
+  const result = compareValues(
+    firstResponseCookies.length,
+    secondResponseCookies.length
+  );
   return result || waterfall(first, second);
 }
 
@@ -140,8 +183,10 @@ function cookies(first, second) {
   let { requestCookies: secondRequestCookies = { cookies: [] } } = second;
   firstRequestCookies = firstRequestCookies.cookies || firstRequestCookies;
   secondRequestCookies = secondRequestCookies.cookies || secondRequestCookies;
-  const result =
-    compareValues(firstRequestCookies.length, secondRequestCookies.length);
+  const result = compareValues(
+    firstRequestCookies.length,
+    secondRequestCookies.length
+  );
   return result || waterfall(first, second);
 }
 
@@ -152,8 +197,43 @@ function type(first, second) {
   return result || waterfall(first, second);
 }
 
+function getStatusValue(item) {
+  let value;
+  if (item.blockedReason) {
+    value = typeof item.blockedReason == "number" ? -item.blockedReason : -1000;
+  } else if (item.status == null) {
+    value = -2;
+  } else {
+    value = item.status;
+  }
+  return value;
+}
+
+function getTransferedSizeValue(item) {
+  let value;
+  if (item.blockedReason) {
+    // Also properly group/sort various blocked reasons.
+    value = typeof item.blockedReason == "number" ? -item.blockedReason : -1000;
+  } else if (item.fromCache || item.status === "304") {
+    value = -2;
+  } else if (item.fromServiceWorker) {
+    value = -3;
+  } else if (typeof item.transferredSize == "number") {
+    value = item.transferredSize;
+    if (item.isRacing && typeof item.isRacing == "boolean") {
+      value = -4;
+    }
+  } else if (item.transferredSize === null) {
+    value = -5;
+  }
+  return value;
+}
+
 function transferred(first, second) {
-  const result = compareValues(first.transferredSize, second.transferredSize);
+  const result = compareValues(
+    getTransferedSizeValue(first),
+    getTransferedSizeValue(second)
+  );
   return result || waterfall(first, second);
 }
 
@@ -165,12 +245,12 @@ function contentSize(first, second) {
 const sorters = {
   status,
   method,
+  domain,
   file,
   protocol,
   scheme,
   cookies,
   setCookies,
-  domain,
   remoteip,
   cause,
   type,
@@ -182,5 +262,6 @@ const sorters = {
   duration,
   latency,
   waterfall,
+  url,
 };
 exports.Sorters = Object.assign(sorters, responseHeaders);

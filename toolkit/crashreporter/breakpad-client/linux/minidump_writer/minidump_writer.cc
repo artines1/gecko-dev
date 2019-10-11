@@ -610,8 +610,9 @@ class MinidumpWriter {
          iter != mapping_list_.end();
          ++iter) {
       MDRawModule mod;
-      if (!FillRawModule(iter->first, false, 0, &mod, iter->second))
+      if (!FillRawModule(iter->first, false, 0, &mod, &iter->second)) {
         return false;
+      }
       list.CopyIndexAfterObject(j++, &mod, MD_MODULE_SIZE);
     }
 
@@ -625,7 +626,7 @@ class MinidumpWriter {
                      bool member,
                      unsigned int mapping_id,
                      MDRawModule* mod,
-                     const uint8_t* identifier) {
+                     const std::vector<uint8_t>* identifier) {
     my_memset(mod, 0, MD_MODULE_SIZE);
 
     mod->base_of_image = mapping.start_addr;
@@ -637,8 +638,8 @@ class MinidumpWriter {
     if (identifier) {
       // GUID was provided by caller.
       identifier_bytes.insert(identifier_bytes.end(),
-                              identifier,
-                              identifier + sizeof(MDGUID));
+                              identifier->begin(),
+                              identifier->end());
     } else {
       // Note: ElfFileIdentifierForMapping() can manipulate the |mapping.name|.
       dumper_->ElfFileIdentifierForMapping(mapping,
@@ -712,6 +713,12 @@ class MinidumpWriter {
     stream->exception_record.exception_code = dumper_->crash_signal();
     stream->exception_record.exception_flags = dumper_->crash_signal_code();
     stream->exception_record.exception_address = dumper_->crash_address();
+    const std::vector<uint64_t> crash_exception_info =
+        dumper_->crash_exception_info();
+    stream->exception_record.number_parameters = crash_exception_info.size();
+    memcpy(stream->exception_record.exception_information,
+           crash_exception_info.data(),
+           sizeof(uint64_t) * crash_exception_info.size());
     stream->thread_context = crashing_thread_context_;
 
     return true;
@@ -1041,7 +1048,7 @@ class MinidumpWriter {
     // processor_architecture should always be set, do this first
     sys_info->processor_architecture =
 #if defined(__aarch64__)
-        MD_CPU_ARCHITECTURE_ARM64;
+        MD_CPU_ARCHITECTURE_ARM64_OLD;
 #else
         MD_CPU_ARCHITECTURE_ARM;
 #endif

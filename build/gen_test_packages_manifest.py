@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 
 ALL_HARNESSES = [
     'common',  # Harnesses without a specific package will look here.
+    'condprof',
     'mochitest',
     'reftest',
     'xpcshell',
@@ -21,9 +22,11 @@ ALL_HARNESSES = [
     'raptor',
     'awsy',
     'gtest',
+    'updater-dep'
 ]
 
 PACKAGE_SPECIFIED_HARNESSES = [
+    'condprof',
     'cppunittest',
     'mochitest',
     'reftest',
@@ -32,6 +35,7 @@ PACKAGE_SPECIFIED_HARNESSES = [
     'talos',
     'raptor',
     'awsy',
+    'updater-dep',
 ]
 
 # These packages are not present for every build configuration.

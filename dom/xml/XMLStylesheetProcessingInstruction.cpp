@@ -19,55 +19,44 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(XMLStylesheetProcessingInstruction,
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(XMLStylesheetProcessingInstruction)
 
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(XMLStylesheetProcessingInstruction,
-                                                  ProcessingInstruction)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(
+    XMLStylesheetProcessingInstruction, ProcessingInstruction)
   tmp->nsStyleLinkElement::Traverse(cb);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(XMLStylesheetProcessingInstruction,
-                                                ProcessingInstruction)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(
+    XMLStylesheetProcessingInstruction, ProcessingInstruction)
   tmp->nsStyleLinkElement::Unlink();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-
-XMLStylesheetProcessingInstruction::~XMLStylesheetProcessingInstruction()
-{
-}
+XMLStylesheetProcessingInstruction::~XMLStylesheetProcessingInstruction() {}
 
 // nsIContent
 
-nsresult
-XMLStylesheetProcessingInstruction::BindToTree(nsIDocument* aDocument,
-                                               nsIContent* aParent,
-                                               nsIContent* aBindingParent)
-{
-  nsresult rv = ProcessingInstruction::BindToTree(aDocument, aParent,
-                                                  aBindingParent);
+nsresult XMLStylesheetProcessingInstruction::BindToTree(BindContext& aContext,
+                                                        nsINode& aParent) {
+  nsresult rv = ProcessingInstruction::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   void (XMLStylesheetProcessingInstruction::*update)() =
-    &XMLStylesheetProcessingInstruction::UpdateStyleSheetInternal;
+      &XMLStylesheetProcessingInstruction::UpdateStyleSheetInternal;
   nsContentUtils::AddScriptRunner(NewRunnableMethod(
-    "dom::XMLStylesheetProcessingInstruction::BindToTree", this, update));
+      "dom::XMLStylesheetProcessingInstruction::BindToTree", this, update));
 
   return rv;
 }
 
-void
-XMLStylesheetProcessingInstruction::UnbindFromTree(bool aDeep, bool aNullParent)
-{
-  nsCOMPtr<nsIDocument> oldDoc = GetUncomposedDoc();
+void XMLStylesheetProcessingInstruction::UnbindFromTree(bool aNullParent) {
+  nsCOMPtr<Document> oldDoc = GetUncomposedDoc();
 
-  ProcessingInstruction::UnbindFromTree(aDeep, aNullParent);
+  ProcessingInstruction::UnbindFromTree(aNullParent);
   Unused << UpdateStyleSheetInternal(oldDoc, nullptr);
 }
 
 // nsINode
 
-void
-XMLStylesheetProcessingInstruction::SetNodeValueInternal(const nsAString& aNodeValue,
-                                                         ErrorResult& aError)
-{
+void XMLStylesheetProcessingInstruction::SetNodeValueInternal(
+    const nsAString& aNodeValue, ErrorResult& aError) {
   CharacterData::SetNodeValueInternal(aNodeValue, aError);
   if (!aError.Failed()) {
     Unused << UpdateStyleSheetInternal(nullptr, nullptr, ForceUpdate::Yes);
@@ -76,23 +65,19 @@ XMLStylesheetProcessingInstruction::SetNodeValueInternal(const nsAString& aNodeV
 
 // nsStyleLinkElement
 
-void
-XMLStylesheetProcessingInstruction::GetCharset(nsAString& aCharset)
-{
+void XMLStylesheetProcessingInstruction::GetCharset(nsAString& aCharset) {
   if (!GetAttrValue(nsGkAtoms::charset, aCharset)) {
     aCharset.Truncate();
   }
 }
 
-/* virtual */ void
-XMLStylesheetProcessingInstruction::OverrideBaseURI(nsIURI* aNewBaseURI)
-{
+/* virtual */
+void XMLStylesheetProcessingInstruction::OverrideBaseURI(nsIURI* aNewBaseURI) {
   mOverriddenBaseURI = aNewBaseURI;
 }
 
 Maybe<nsStyleLinkElement::SheetInfo>
-XMLStylesheetProcessingInstruction::GetStyleSheetInfo()
-{
+XMLStylesheetProcessingInstruction::GetStyleSheetInfo() {
   // xml-stylesheet PI is special only in prolog
   if (!nsContentUtils::InProlog(this)) {
     return Nothing();
@@ -110,8 +95,7 @@ XMLStylesheetProcessingInstruction::GetStyleSheetInfo()
   nsContentUtils::GetPseudoAttributeValue(data, nsGkAtoms::title, title);
 
   nsAutoString alternateAttr;
-  nsContentUtils::GetPseudoAttributeValue(data,
-                                          nsGkAtoms::alternate,
+  nsContentUtils::GetPseudoAttributeValue(data, nsGkAtoms::alternate,
                                           alternateAttr);
 
   bool alternate = alternateAttr.EqualsLiteral("yes");
@@ -134,35 +118,38 @@ XMLStylesheetProcessingInstruction::GetStyleSheetInfo()
     return Nothing();
   }
 
-  nsIDocument* doc = OwnerDoc();
+  Document* doc = OwnerDoc();
   nsIURI* baseURL =
-    mOverriddenBaseURI ? mOverriddenBaseURI.get() : doc->GetDocBaseURI();
+      mOverriddenBaseURI ? mOverriddenBaseURI.get() : doc->GetDocBaseURI();
   auto encoding = doc->GetDocumentCharacterSet();
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), href, encoding, baseURL);
-  return Some(SheetInfo {
-    *doc,
-    this,
-    uri.forget(),
-    nullptr,
-    net::RP_Unset,
-    CORS_NONE,
-    title,
-    media,
-    alternate ? HasAlternateRel::Yes : HasAlternateRel::No,
-    IsInline::No,
+  nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo();
+  referrerInfo->InitWithDocument(doc);
+
+  return Some(SheetInfo{
+      *doc,
+      this,
+      uri.forget(),
+      nullptr,
+      referrerInfo.forget(),
+      CORS_NONE,
+      title,
+      media,
+      alternate ? HasAlternateRel::Yes : HasAlternateRel::No,
+      IsInline::No,
+      IsExplicitlyEnabled::No,
   });
 }
 
 already_AddRefed<CharacterData>
-XMLStylesheetProcessingInstruction::CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
-                                                  bool aCloneText) const
-{
+XMLStylesheetProcessingInstruction::CloneDataNode(
+    mozilla::dom::NodeInfo* aNodeInfo, bool aCloneText) const {
   nsAutoString data;
   GetData(data);
   RefPtr<mozilla::dom::NodeInfo> ni = aNodeInfo;
   return do_AddRef(new XMLStylesheetProcessingInstruction(ni.forget(), data));
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

@@ -9,18 +9,19 @@
 
 var EXPORTED_SYMBOLS = ["BrowserWindowTracker"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Lazy getters
 XPCOMUtils.defineLazyModuleGetters(this, {
-  AppConstants: "resource://gre/modules/AppConstants.jsm",
-  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm"
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
 });
 
 // Constants
 const TAB_EVENTS = ["TabBrowserInserted", "TabSelect"];
-const WINDOW_EVENTS = ["activate", "sizemodechange", "unload"];
+const WINDOW_EVENTS = ["activate", "unload"];
 const DEBUG = false;
 
 // Variables
@@ -35,26 +36,39 @@ function debug(s) {
 }
 
 function _updateCurrentContentOuterWindowID(browser) {
-  if (!browser.outerWindowID ||
-      browser.outerWindowID === _lastTopLevelWindowID) {
+  if (
+    !browser.outerWindowID ||
+    browser.outerWindowID === _lastTopLevelWindowID ||
+    browser.ownerGlobal != _trackedWindows[0]
+  ) {
     return;
   }
 
-  debug("Current window uri=" + browser.currentURI.spec +
-        " id=" + browser.outerWindowID);
+  debug(
+    "Current window uri=" +
+      (browser.currentURI && browser.currentURI.spec) +
+      " id=" +
+      browser.outerWindowID
+  );
 
   _lastTopLevelWindowID = browser.outerWindowID;
-  let windowIDWrapper = Cc["@mozilla.org/supports-PRUint64;1"]
-                          .createInstance(Ci.nsISupportsPRUint64);
+  let windowIDWrapper = Cc["@mozilla.org/supports-PRUint64;1"].createInstance(
+    Ci.nsISupportsPRUint64
+  );
   windowIDWrapper.data = _lastTopLevelWindowID;
-  Services.obs.notifyObservers(windowIDWrapper,
-                               "net:current-toplevel-outer-content-windowid");
+  Services.obs.notifyObservers(
+    windowIDWrapper,
+    "net:current-toplevel-outer-content-windowid"
+  );
 }
 
 function _handleEvent(event) {
   switch (event.type) {
     case "TabBrowserInserted":
-      if (event.target.ownerGlobal.gBrowser.selectedBrowser === event.target.linkedBrowser) {
+      if (
+        event.target.ownerGlobal.gBrowser.selectedBrowser ===
+        event.target.linkedBrowser
+      ) {
         _updateCurrentContentOuterWindowID(event.target.linkedBrowser);
       }
       break;
@@ -64,9 +78,6 @@ function _handleEvent(event) {
     case "activate":
       WindowHelper.onActivate(event.target);
       break;
-    case "sizemodechange":
-      WindowHelper.onSizemodeChange(event.target);
-      break;
     case "unload":
       WindowHelper.removeWindow(event.currentTarget);
       break;
@@ -75,21 +86,33 @@ function _handleEvent(event) {
 
 function _handleMessage(message) {
   let browser = message.target;
-  if (message.name === "Browser:Init" &&
-      browser === browser.ownerGlobal.gBrowser.selectedBrowser) {
+  if (
+    message.name === "Browser:Init" &&
+    browser === browser.ownerGlobal.gBrowser.selectedBrowser
+  ) {
     _updateCurrentContentOuterWindowID(browser);
   }
 }
 
 function _trackWindowOrder(window) {
-  _trackedWindows.splice(window.windowState == window.STATE_MINIMIZED ?
-    _trackedWindows.length - 1 : 0, 0, window);
+  if (window.windowState == window.STATE_MINIMIZED) {
+    let firstMinimizedWindow = _trackedWindows.findIndex(
+      w => w.windowState == w.STATE_MINIMIZED
+    );
+    if (firstMinimizedWindow == -1) {
+      firstMinimizedWindow = _trackedWindows.length;
+    }
+    _trackedWindows.splice(firstMinimizedWindow, 0, window);
+  } else {
+    _trackedWindows.unshift(window);
+  }
 }
 
 function _untrackWindowOrder(window) {
   let idx = _trackedWindows.indexOf(window);
-  if (idx >= 0)
+  if (idx >= 0) {
     _trackedWindows.splice(idx, 1);
+  }
 }
 
 // Methods that impact a window. Put into single object for organization.
@@ -127,66 +150,17 @@ var WindowHelper = {
     messageManager.removeMessageListener("Browser:Init", _handleMessage);
   },
 
-  onActivate(window, hasFocus) {
+  onActivate(window) {
     // If this window was the last focused window, we don't need to do anything
-    if (window == _trackedWindows[0])
+    if (window == _trackedWindows[0]) {
       return;
+    }
 
     _untrackWindowOrder(window);
     _trackWindowOrder(window);
 
     _updateCurrentContentOuterWindowID(window.gBrowser.selectedBrowser);
   },
-
-  onSizemodeChange(window) {
-    if (window.windowState == window.STATE_MINIMIZED) {
-      // Make sure to have the minimized window at the end of the list.
-      _untrackWindowOrder(window);
-      _trackedWindows.push(window);
-    }
-  },
-
-  getTopWindow(options) {
-    let checkPrivacy = typeof options == "object" &&
-                       "private" in options;
-
-    let allowPopups = typeof options == "object" && !!options.allowPopups;
-
-    function isSuitableBrowserWindow(win) {
-      return (!win.closed &&
-              (allowPopups || win.toolbar.visible) &&
-              (!checkPrivacy ||
-               PrivateBrowsingUtils.permanentPrivateBrowsing ||
-               PrivateBrowsingUtils.isWindowPrivate(win) == options.private));
-    }
-
-    let broken_wm_z_order =
-      AppConstants.platform != "macosx" && AppConstants.platform != "win";
-
-    if (broken_wm_z_order) {
-      let win = Services.wm.getMostRecentWindow("navigator:browser");
-
-      // if we're lucky, this isn't a popup, and we can just return this
-      if (win && !isSuitableBrowserWindow(win)) {
-        win = null;
-        let windowList = Services.wm.getEnumerator("navigator:browser");
-        // this is oldest to newest, so this gets a bit ugly
-        while (windowList.hasMoreElements()) {
-          let nextWin = windowList.getNext();
-          if (isSuitableBrowserWindow(nextWin))
-            win = nextWin;
-        }
-      }
-      return win;
-    }
-    let windowList = Services.wm.getZOrderDOMWindowEnumerator("navigator:browser", true);
-    while (windowList.hasMoreElements()) {
-      let win = windowList.getNext();
-      if (isSuitableBrowserWindow(win))
-        return win;
-    }
-    return null;
-  }
 };
 
 this.BrowserWindowTracker = {
@@ -199,26 +173,39 @@ this.BrowserWindowTracker = {
    *            Omit the property to search in both groups.
    *        * allowPopups: true if popup windows are permissable.
    */
-  getTopWindow(options) {
-    return WindowHelper.getTopWindow(options);
+  getTopWindow(options = {}) {
+    for (let win of _trackedWindows) {
+      if (
+        !win.closed &&
+        (options.allowPopups || win.toolbar.visible) &&
+        (!("private" in options) ||
+          PrivateBrowsingUtils.permanentPrivateBrowsing ||
+          PrivateBrowsingUtils.isWindowPrivate(win) == options.private)
+      ) {
+        return win;
+      }
+    }
+    return null;
   },
 
   /**
-   * Iterator property that yields window objects by z-index, in reverse order.
-   * This means that the lastly focused window will the first item that is yielded.
-   * Note: we only know the order of windows we're actively tracking, which
-   * basically means _only_ browser windows.
+   * Number of currently open browser windows.
    */
-  orderedWindows: {
-    * [Symbol.iterator]() {
-      // Clone the windows array immediately as it may change during iteration,
-      // we'd rather have an outdated order than skip/revisit windows.
-      for (let window of [..._trackedWindows])
-        yield window;
-    }
+  get windowCount() {
+    return _trackedWindows.length;
+  },
+
+  /**
+   * Array of browser windows ordered by z-index, in reverse order.
+   * This means that the top-most browser window will be the first item.
+   */
+  get orderedWindows() {
+    // Clone the windows array immediately as it may change during iteration,
+    // we'd rather have an outdated order than skip/revisit windows.
+    return [..._trackedWindows];
   },
 
   track(window) {
     return WindowHelper.addWindow(window);
-  }
+  },
 };

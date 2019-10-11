@@ -6,11 +6,14 @@
 
 "use strict";
 
-const { takeSnapshotAndCensus } = require("devtools/client/memory/actions/snapshot");
+const {
+  takeSnapshotAndCensus,
+} = require("devtools/client/memory/actions/snapshot");
 const { viewState } = require("devtools/client/memory/constants");
 const { changeView } = require("devtools/client/memory/actions/view");
 
-const TEST_URL = "http://example.com/browser/devtools/client/memory/test/browser/doc_steady_allocation.html";
+const TEST_URL =
+  "http://example.com/browser/devtools/client/memory/test/browser/doc_steady_allocation.html";
 
 this.test = makeMemoryTest(TEST_URL, async function({ tab, panel }) {
   const heapWorker = panel.panelWin.gHeapAnalysesClient;
@@ -23,17 +26,22 @@ this.test = makeMemoryTest(TEST_URL, async function({ tab, panel }) {
   await dispatch(takeSnapshotAndCensus(front, heapWorker));
 
   is(getState().allocations.recording, false);
-  const recordingCheckbox = doc.getElementById("record-allocation-stacks-checkbox");
+  const recordingCheckbox = doc.getElementById(
+    "record-allocation-stacks-checkbox"
+  );
   EventUtils.synthesizeMouseAtCenter(recordingCheckbox, {}, panel.panelWin);
   is(getState().allocations.recording, true);
 
   const nameElems = [
-    ...doc.querySelectorAll(".heap-tree-item-field.heap-tree-item-name")
+    ...doc.querySelectorAll(".heap-tree-item-field.heap-tree-item-name"),
   ];
 
   for (const el of nameElems) {
     dumpn(`Found ${el.textContent.trim()}`);
-    is(el.style.marginInlineStart, "0px",
-       "None of the elements should be an indented/expanded child");
+    is(
+      el.style.marginInlineStart,
+      "0px",
+      "None of the elements should be an indented/expanded child"
+    );
   }
 });

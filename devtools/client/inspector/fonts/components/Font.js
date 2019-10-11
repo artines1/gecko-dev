@@ -4,11 +4,15 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
-const FontMeta = createFactory(require("./FontMeta"));
+const FontName = createFactory(require("./FontName"));
+const FontOrigin = createFactory(require("./FontOrigin"));
 const FontPreview = createFactory(require("./FontPreview"));
 
 const Types = require("../types");
@@ -17,8 +21,7 @@ class Font extends PureComponent {
   static get propTypes() {
     return {
       font: PropTypes.shape(Types.font).isRequired,
-      fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
-      onPreviewFonts: PropTypes.func.isRequired,
+      onPreviewClick: PropTypes.func,
       onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
@@ -45,7 +48,7 @@ class Font extends PureComponent {
 
   onFontFaceRuleToggle(event) {
     this.setState({
-      isFontFaceRuleExpanded: !this.state.isFontFaceRuleExpanded
+      isFontFaceRuleExpanded: !this.state.isFontFaceRuleExpanded,
     });
     event.stopPropagation();
   }
@@ -59,7 +62,10 @@ class Font extends PureComponent {
     // This way we can collapse the declarations by default and display an expander icon
     // to expand them again.
     const leading = ruleText.substring(0, ruleText.indexOf("{") + 1);
-    const body = ruleText.substring(ruleText.indexOf("{") + 1, ruleText.lastIndexOf("}"));
+    const body = ruleText.substring(
+      ruleText.indexOf("{") + 1,
+      ruleText.lastIndexOf("}")
+    );
     const trailing = ruleText.substring(ruleText.lastIndexOf("}"));
 
     const { isFontFaceRuleExpanded } = this.state;
@@ -70,14 +76,12 @@ class Font extends PureComponent {
       },
       this.renderFontCSSCodeTwisty(),
       leading,
-      isFontFaceRuleExpanded ?
-        body :
-        dom.span(
-          {
+      isFontFaceRuleExpanded
+        ? body
+        : dom.span({
             className: "font-css-code-expander",
             onClick: this.onFontFaceRuleToggle,
-          }
-        ),
+          }),
       trailing
     );
   }
@@ -96,28 +100,30 @@ class Font extends PureComponent {
     return dom.span(attributes);
   }
 
+  renderFontFamilyName(family) {
+    if (!family) {
+      return null;
+    }
+
+    return dom.div({ className: "font-family-name" }, family);
+  }
+
   render() {
-    const {
-      font,
-      fontOptions,
-      onPreviewFonts,
-      onToggleFontHighlight,
-    } = this.props;
+    const { font, onPreviewClick, onToggleFontHighlight } = this.props;
 
-    const { previewText } = fontOptions;
-
-    const {
-      previewUrl,
-      rule,
-      ruleText,
-    } = font;
+    const { CSSFamilyName, previewUrl, rule, ruleText } = font;
 
     return dom.li(
       {
         className: "font",
       },
-      FontMeta({ font, onToggleFontHighlight }),
-      FontPreview({ previewText, previewUrl, onPreviewFonts }),
+      dom.div(
+        {},
+        this.renderFontFamilyName(CSSFamilyName),
+        FontName({ font, onToggleFontHighlight })
+      ),
+      FontOrigin({ font }),
+      FontPreview({ onPreviewClick, previewUrl }),
       this.renderFontCSSCode(rule, ruleText)
     );
   }

@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
 import time
 
 from firefox_puppeteer import PuppeteerMixin
@@ -146,8 +147,7 @@ class TestSafeBrowsingNotificationBar(PuppeteerMixin, MarionetteTestCase):
             # TODO: update to use safe browsing notification bar class when bug 1139544 lands
             button = (self.marionette.find_element(By.ID, 'tabbrowser-tabbox')
                       .find_element(By.CSS_SELECTOR, 'notification[value=blocked-badware-page]')
-                      .find_element('anon attribute',
-                                    {'class': 'messageCloseButton close-icon tabbable'}))
+                      .find_element(By.CSS_SELECTOR, '.messageCloseButton'))
             button.click()
 
             Wait(self.marionette, timeout=self.marionette.timeout.page_load).until(

@@ -7,14 +7,19 @@
 const actionTypes = {
   ADD_REQUEST: "ADD_REQUEST",
   ADD_TIMING_MARKER: "ADD_TIMING_MARKER",
+  ADD_BLOCKED_URL: "ADD_BLOCKED_URL",
   BATCH_ACTIONS: "BATCH_ACTIONS",
   BATCH_ENABLE: "BATCH_ENABLE",
+  BATCH_FLUSH: "BATCH_FLUSH",
+  BLOCK_SELECTED_REQUEST_DONE: "BLOCK_SELECTED_REQUEST_DONE",
   CLEAR_REQUESTS: "CLEAR_REQUESTS",
   CLEAR_TIMING_MARKERS: "CLEAR_TIMING_MARKERS",
+  CLONE_REQUEST: "CLONE_REQUEST",
   CLONE_SELECTED_REQUEST: "CLONE_SELECTED_REQUEST",
   ENABLE_REQUEST_FILTER_TYPE_ONLY: "ENABLE_REQUEST_FILTER_TYPE_ONLY",
   OPEN_NETWORK_DETAILS: "OPEN_NETWORK_DETAILS",
   RESIZE_NETWORK_DETAILS: "RESIZE_NETWORK_DETAILS",
+  RIGHT_CLICK_REQUEST: "RIGHT_CLICK_REQUEST",
   ENABLE_PERSISTENT_LOGS: "ENABLE_PERSISTENT_LOGS",
   DISABLE_BROWSER_CACHE: "DISABLE_BROWSER_CACHE",
   OPEN_STATISTICS: "OPEN_STATISTICS",
@@ -22,14 +27,51 @@ const actionTypes = {
   RESET_COLUMNS: "RESET_COLUMNS",
   SELECT_REQUEST: "SELECT_REQUEST",
   SELECT_DETAILS_PANEL_TAB: "SELECT_DETAILS_PANEL_TAB",
+  SELECT_ACTION_BAR_TAB: "SELECT_ACTION_BAR_TAB",
   SEND_CUSTOM_REQUEST: "SEND_CUSTOM_REQUEST",
   SET_REQUEST_FILTER_TEXT: "SET_REQUEST_FILTER_TEXT",
   SORT_BY: "SORT_BY",
+  TOGGLE_BLOCKING_ENABLED: "TOGGLE_BLOCKING_ENABLED",
+  REMOVE_BLOCKED_URL: "REMOVE_BLOCKED_URL",
+  TOGGLE_BLOCKED_URL: "TOGGLE_BLOCKED_URL",
+  UPDATE_BLOCKED_URL: "UPDATE_BLOCKED_URL",
+  DISABLE_MATCHING_URLS: "DISABLE_MATCHING_URLS",
+  REQUEST_BLOCKING_UPDATE_COMPLETE: "REQUEST_BLOCKING_UPDATE_COMPLETE",
   TOGGLE_COLUMN: "TOGGLE_COLUMN",
   TOGGLE_RECORDING: "TOGGLE_RECORDING",
   TOGGLE_REQUEST_FILTER_TYPE: "TOGGLE_REQUEST_FILTER_TYPE",
+  UNBLOCK_SELECTED_REQUEST_DONE: "UNBLOCK_SELECTED_REQUEST_DONE",
   UPDATE_REQUEST: "UPDATE_REQUEST",
   WATERFALL_RESIZE: "WATERFALL_RESIZE",
+  SET_COLUMNS_WIDTH: "SET_COLUMNS_WIDTH",
+  WS_ADD_FRAME: "WS_ADD_FRAME",
+  WS_SELECT_FRAME: "WS_SELECT_FRAME",
+  WS_OPEN_FRAME_DETAILS: "WS_OPEN_FRAME_DETAILS",
+  WS_CLEAR_FRAMES: "WS_CLEAR_FRAMES",
+  WS_TOGGLE_FRAME_FILTER_TYPE: "WS_TOGGLE_FRAME_FILTER_TYPE",
+  WS_SET_REQUEST_FILTER_TEXT: "WS_SET_REQUEST_FILTER_TEXT",
+  WS_TOGGLE_COLUMN: "WS_TOGGLE_COLUMN",
+  WS_RESET_COLUMNS: "WS_RESET_COLUMNS",
+
+  // Search
+  ADD_SEARCH_QUERY: "ADD_SEARCH_QUERY",
+  ADD_SEARCH_RESULT: "ADD_SEARCH_RESULT",
+  CLEAR_SEARCH_RESULTS: "CLEAR_SEARCH_RESULTS",
+  ADD_ONGOING_SEARCH: "ADD_ONGOING_SEARCH",
+  OPEN_SEARCH: "OPEN_SEARCH",
+  CLOSE_SEARCH: "CLOSE_SEARCH",
+  TOGGLE_SEARCH_CASE_SENSITIVE_SEARCH: "TOGGLE_SEARCH_CASE_SENSITIVE_SEARCH",
+  UPDATE_SEARCH_STATUS: "UPDATE_SEARCH_STATUS",
+  SET_TARGET_SEARCH_RESULT: "SET_TARGET_SEARCH_RESULT",
+};
+
+// Search status types
+const SEARCH_STATUS = {
+  INITIAL: "INITIAL",
+  FETCHING: "FETCHING",
+  CANCELED: "CANCELED",
+  DONE: "DONE",
+  ERROR: "ERROR",
 };
 
 // Descriptions for what this frontend is currently doing.
@@ -41,12 +83,12 @@ const ACTIVITY_TYPE = {
   RELOAD: {
     WITH_CACHE_ENABLED: 1,
     WITH_CACHE_DISABLED: 2,
-    WITH_CACHE_DEFAULT: 3
+    WITH_CACHE_DEFAULT: 3,
   },
 
   // Enabling or disabling the cache without triggering a reload.
   ENABLE_CACHE: 3,
-  DISABLE_CACHE: 4
+  DISABLE_CACHE: 4,
 };
 
 // The panel's window global is an EventEmitter firing the following events:
@@ -105,6 +147,12 @@ const EVENTS = {
 
   // When request payload (HTTP details data) are fetched from the backend.
   PAYLOAD_READY: "NetMonitor:PayloadReady",
+
+  // When throttling is set on the backend.
+  THROTTLING_CHANGED: "NetMonitor:ThrottlingChanged",
+
+  // When a long string is resolved
+  LONGSTRING_RESOLVED: "NetMonitor:LongStringResolved",
 };
 
 const UPDATE_PROPS = [
@@ -115,6 +163,7 @@ const UPDATE_PROPS = [
   "status",
   "statusText",
   "httpVersion",
+  "isRacing",
   "securityState",
   "securityInfo",
   "securityInfoAvailable",
@@ -143,17 +192,23 @@ const UPDATE_PROPS = [
   "responseCacheAvailable",
   "formDataSections",
   "stacktrace",
+  "isThirdPartyTrackingResource",
+  "referrerPolicy",
+  "blockedReason",
+  "channelId",
 ];
 
 const PANELS = {
   COOKIES: "cookies",
   HEADERS: "headers",
+  MESSAGES: "messages",
   PARAMS: "params",
   RESPONSE: "response",
   CACHE: "cache",
   SECURITY: "security",
   STACK_TRACE: "stack-trace",
   TIMINGS: "timings",
+  BLOCKING: "network-action-bar-blocked",
 };
 
 const RESPONSE_HEADERS = [
@@ -165,7 +220,7 @@ const RESPONSE_HEADERS = [
   "Keep-Alive",
   "Last-Modified",
   "Server",
-  "Vary"
+  "Vary",
 ];
 
 const HEADERS = [
@@ -173,10 +228,14 @@ const HEADERS = [
     name: "status",
     label: "status3",
     canFilter: true,
-    filterKey: "status-code"
+    filterKey: "status-code",
   },
   {
     name: "method",
+    canFilter: true,
+  },
+  {
+    name: "domain",
     canFilter: true,
   },
   {
@@ -184,15 +243,15 @@ const HEADERS = [
     canFilter: false,
   },
   {
+    name: "url",
+    canFilter: true,
+  },
+  {
     name: "protocol",
     canFilter: true,
   },
   {
     name: "scheme",
-    canFilter: true,
-  },
-  {
-    name: "domain",
     canFilter: true,
   },
   {
@@ -255,23 +314,22 @@ const HEADERS = [
     canFilter: false,
     subMenu: "timings",
   },
-  ...RESPONSE_HEADERS
-    .map(header => ({
-      name: header,
-      boxName: "response-header",
-      canFilter: false,
-      subMenu: "responseHeaders",
-      noLocalization: true
-    })),
+  ...RESPONSE_HEADERS.map(header => ({
+    name: header,
+    boxName: "response-header",
+    canFilter: false,
+    subMenu: "responseHeaders",
+    noLocalization: true,
+  })),
   {
     name: "waterfall",
     canFilter: false,
-  }
+  },
 ];
 
-const HEADER_FILTERS = HEADERS
-  .filter(h => h.canFilter)
-  .map(h => h.filterKey || h.name);
+const HEADER_FILTERS = HEADERS.filter(h => h.canFilter).map(
+  h => h.filterKey || h.name
+);
 
 const FILTER_FLAGS = [
   ...HEADER_FILTERS,
@@ -296,6 +354,33 @@ const FILTER_TAGS = [
   "media",
   "ws",
   "other",
+];
+
+const WS_FRAMES_HEADERS = [
+  {
+    name: "data",
+    width: "40%",
+  },
+  {
+    name: "size",
+    width: "12%",
+  },
+  {
+    name: "opCode",
+    width: "9%",
+  },
+  {
+    name: "maskBit",
+    width: "9%",
+  },
+  {
+    name: "finBit",
+    width: "9%",
+  },
+  {
+    name: "time",
+    width: "22%",
+  },
 ];
 
 const REQUESTS_WATERFALL = {
@@ -327,18 +412,119 @@ const TIMING_KEYS = [
   "receive",
 ];
 
+// Minimal width of Network Monitor column is 30px, for Waterfall 150px
+// Default width of columns (which are not defined in DEFAULT_COLUMNS_DATA) is 8%
+const MIN_COLUMN_WIDTH = 30; // in px
+const DEFAULT_COLUMN_WIDTH = 8; // in %
+/**
+ * A mapping of HTTP status codes.
+ */
+const SUPPORTED_HTTP_CODES = [
+  "100",
+  "101",
+  "200",
+  "201",
+  "202",
+  "203",
+  "204",
+  "205",
+  "206",
+  "300",
+  "301",
+  "302",
+  "303",
+  "304",
+  "307",
+  "308",
+  "400",
+  "401",
+  "403",
+  "404",
+  "405",
+  "406",
+  "407",
+  "408",
+  "409",
+  "410",
+  "411",
+  "412",
+  "413",
+  "414",
+  "415",
+  "416",
+  "417",
+  "418",
+  "422",
+  "425",
+  "426",
+  "428",
+  "429",
+  "431",
+  "451",
+  "500",
+  "501",
+  "502",
+  "503",
+  "504",
+  "505",
+  "511",
+];
+
+// Keys are the codes provided by server, values are localization messages
+// prefixed by "netmonitor.blocked."
+const BLOCKED_REASON_MESSAGES = {
+  devtools: "Blocked by DevTools",
+  1001: "CORS disabled",
+  1002: "CORS Failed",
+  1003: "CORS Not HTTP",
+  1004: "CORS Multiple Origin Not Allowed",
+  1005: "CORS Missing Allow Origin",
+  1006: "CORS No Allow Credentials",
+  1007: "CORS Allow Origin Not Matching Origin",
+  1008: "CORS Missing Allow Credentials",
+  1009: "CORS Origin Header Missing",
+  1010: "CORS External Redirect Not Allowed",
+  1011: "CORS Preflight Did Not Succeed",
+  1012: "CORS Invalid Allow Method",
+  1013: "CORS Method Not Found",
+  1014: "CORS Invalid Allow Header",
+  1015: "CORS Missing Allow Header",
+  2001: "Malware",
+  2002: "Phishing",
+  2003: "Unwanted",
+  2004: "Tracking",
+  2005: "Blocked",
+  2006: "Harmful",
+  3001: "Mixed Block",
+  4000: "CSP",
+  4001: "CSP No Data Protocol",
+  4002: "CSP Web Extension",
+  4003: "CSP ContentBlocked",
+  4004: "CSP Data Document",
+  4005: "CSP Web Browser",
+  4006: "CSP Preload",
+};
+
 const general = {
   ACTIVITY_TYPE,
   EVENTS,
   FILTER_SEARCH_DELAY: 200,
   UPDATE_PROPS,
   HEADERS,
+  WS_FRAMES_HEADERS,
   RESPONSE_HEADERS,
   FILTER_FLAGS,
   FILTER_TAGS,
   REQUESTS_WATERFALL,
   PANELS,
   TIMING_KEYS,
+  MIN_COLUMN_WIDTH,
+  DEFAULT_COLUMN_WIDTH,
+  SUPPORTED_HTTP_CODES,
+  BLOCKED_REASON_MESSAGES,
+  SEARCH_STATUS,
+  AUTO_EXPAND_MAX_LEVEL: 7,
+  AUTO_EXPAND_MAX_NODES: 50,
 };
 
 // flatten constants

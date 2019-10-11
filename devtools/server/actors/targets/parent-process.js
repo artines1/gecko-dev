@@ -15,17 +15,19 @@
 
 const { Ci } = require("chrome");
 const Services = require("Services");
-const { DebuggerServer } = require("devtools/server/main");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 const {
   getChildDocShells,
   BrowsingContextTargetActor,
-  browsingContextTargetPrototype
+  browsingContextTargetPrototype,
 } = require("devtools/server/actors/targets/browsing-context");
 const makeDebugger = require("devtools/server/actors/utils/make-debugger");
 
 const { extend } = require("devtools/shared/extend");
 const { ActorClassWithSpec } = require("devtools/shared/protocol");
-const { parentProcessTargetSpec } = require("devtools/shared/specs/targets/parent-process");
+const {
+  parentProcessTargetSpec,
+} = require("devtools/shared/specs/targets/parent-process");
 
 /**
  * Protocol.js expects only the prototype object, and does not maintain the prototype
@@ -43,24 +45,29 @@ const parentProcessTargetPrototype = extend({}, browsingContextTargetPrototype);
  *
  * @param connection DebuggerServerConnection
  *        The connection to the client.
+ * @param window Window object (optional)
+ *        If the upper class already knows against which window the actor should attach,
+ *        it is passed as a constructor argument here.
  */
-parentProcessTargetPrototype.initialize = function(connection) {
+parentProcessTargetPrototype.initialize = function(connection, window) {
   BrowsingContextTargetActor.prototype.initialize.call(this, connection);
 
   // This creates a Debugger instance for chrome debugging all globals.
   this.makeDebugger = makeDebugger.bind(null, {
     findDebuggees: dbg => dbg.findAllGlobals(),
-    shouldAddNewGlobalAsDebuggee: () => true
+    shouldAddNewGlobalAsDebuggee: () => true,
   });
 
   // Ensure catching the creation of any new content docshell
   this.listenForNewDocShells = true;
 
   // Defines the default docshell selected for the target actor
-  let window = Services.wm.getMostRecentWindow(DebuggerServer.chromeWindowType);
+  if (!window) {
+    window = Services.wm.getMostRecentWindow(DebuggerServer.chromeWindowType);
+  }
 
   // Default to any available top level window if there is no expected window
-  // (for example when we open firefox with -webide argument)
+  // eg when running ./mach run --chrome chrome://browser/content/aboutTabCrashed.xhtml --jsdebugger
   if (!window) {
     window = Services.wm.getMostRecentWindow(null);
   }
@@ -68,18 +75,12 @@ parentProcessTargetPrototype.initialize = function(connection) {
   // We really want _some_ window at least, so fallback to the hidden window if
   // there's nothing else (such as during early startup).
   if (!window) {
-    try {
-      window = Services.appShell.hiddenDOMWindow;
-    } catch (e) {
-      // On XPCShell, the above line will throw.
-    }
+    window = Services.appShell.hiddenDOMWindow;
   }
 
-  // On XPCShell, there is no window/docshell
-  const docShell = window ? window.docShell : null;
   Object.defineProperty(this, "docShell", {
-    value: docShell,
-    configurable: true
+    value: window.docShell,
+    configurable: true,
   });
 };
 
@@ -93,15 +94,12 @@ Object.defineProperty(parentProcessTargetPrototype, "docShells", {
   get: function() {
     // Iterate over all top-level windows and all their docshells.
     let docShells = [];
-    const e = Services.ww.getWindowEnumerator();
-    while (e.hasMoreElements()) {
-      const window = e.getNext();
-      const docShell = window.docShell;
+    for (const { docShell } of Services.ww.getWindowEnumerator()) {
       docShells = docShells.concat(getChildDocShells(docShell));
     }
 
     return docShells;
-  }
+  },
 });
 
 parentProcessTargetPrototype.observe = function(subject, topic, data) {
@@ -131,10 +129,7 @@ parentProcessTargetPrototype._attach = function() {
   Services.obs.addObserver(this, "chrome-webnavigation-destroy");
 
   // Iterate over all top-level windows.
-  const e = Services.ww.getWindowEnumerator();
-  while (e.hasMoreElements()) {
-    const window = e.getNext();
-    const docShell = window.docShell;
+  for (const { docShell } of Services.ww.getWindowEnumerator()) {
     if (docShell == this.docShell) {
       continue;
     }
@@ -152,50 +147,18 @@ parentProcessTargetPrototype._detach = function() {
   Services.obs.removeObserver(this, "chrome-webnavigation-destroy");
 
   // Iterate over all top-level windows.
-  const e = Services.ww.getWindowEnumerator();
-  while (e.hasMoreElements()) {
-    const window = e.getNext();
-    const docShell = window.docShell;
+  for (const { docShell } of Services.ww.getWindowEnumerator()) {
     if (docShell == this.docShell) {
       continue;
     }
     this._progressListener.unwatch(docShell);
   }
 
-  BrowsingContextTargetActor.prototype._detach.call(this);
-  return undefined;
-};
-
-/* ThreadActor hooks. */
-
-/**
- * Prepare to enter a nested event loop by disabling debuggee events.
- */
-parentProcessTargetPrototype.preNest = function() {
-  // Disable events in all open windows.
-  const e = Services.wm.getEnumerator(null);
-  while (e.hasMoreElements()) {
-    const win = e.getNext();
-    const windowUtils = win.windowUtils;
-    windowUtils.suppressEventHandling(true);
-    windowUtils.suspendTimeouts();
-  }
-};
-
-/**
- * Prepare to exit a nested event loop by enabling debuggee events.
- */
-parentProcessTargetPrototype.postNest = function(nestData) {
-  // Enable events in all open windows.
-  const e = Services.wm.getEnumerator(null);
-  while (e.hasMoreElements()) {
-    const win = e.getNext();
-    const windowUtils = win.windowUtils;
-    windowUtils.resumeTimeouts();
-    windowUtils.suppressEventHandling(false);
-  }
+  return BrowsingContextTargetActor.prototype._detach.call(this);
 };
 
 exports.parentProcessTargetPrototype = parentProcessTargetPrototype;
-exports.ParentProcessTargetActor =
-  ActorClassWithSpec(parentProcessTargetSpec, parentProcessTargetPrototype);
+exports.ParentProcessTargetActor = ActorClassWithSpec(
+  parentProcessTargetSpec,
+  parentProcessTargetPrototype
+);

@@ -1,21 +1,27 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Types used to report parsing errors.
 
 #![deny(missing_docs)]
 
+use crate::selector_parser::SelectorImpl;
+use crate::stylesheets::UrlExtraData;
 use cssparser::{BasicParseErrorKind, ParseErrorKind, SourceLocation, Token};
+use selectors::SelectorList;
 use std::fmt;
 use style_traits::ParseError;
-use stylesheets::UrlExtraData;
 
 /// Errors that can be encountered while parsing CSS.
 #[derive(Debug)]
 pub enum ContextualParseError<'a> {
     /// A property declaration was not recognized.
-    UnsupportedPropertyDeclaration(&'a str, ParseError<'a>),
+    UnsupportedPropertyDeclaration(
+        &'a str,
+        ParseError<'a>,
+        Option<&'a SelectorList<SelectorImpl>>,
+    ),
     /// A font face descriptor was not recognized.
     UnsupportedFontFaceDescriptor(&'a str, ParseError<'a>),
     /// A font feature values descriptor was not recognized.
@@ -121,7 +127,7 @@ impl<'a> fmt::Display for ContextualParseError<'a> {
         }
 
         match *self {
-            ContextualParseError::UnsupportedPropertyDeclaration(decl, ref err) => {
+            ContextualParseError::UnsupportedPropertyDeclaration(decl, ref err, _selectors) => {
                 write!(f, "Unsupported property declaration: '{}', ", decl)?;
                 parse_error_to_str(err, f)
             },
@@ -239,7 +245,6 @@ impl ParseErrorReporter for RustLogReporter {
         location: SourceLocation,
         error: ContextualParseError,
     ) {
-        use log;
         if log_enabled!(log::Level::Info) {
             info!(
                 "Url:\t{}\n{}:{} {}",

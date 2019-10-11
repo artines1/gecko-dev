@@ -5,23 +5,18 @@
 #ifndef nsHtml5Module_h
 #define nsHtml5Module_h
 
-#include "nsIParser.h"
 #include "nsIThread.h"
 
-class nsHtml5Module
-{
-public:
+class nsHtml5Parser;
+
+class nsHtml5Module {
+ public:
   static void InitializeStatics();
   static void ReleaseStatics();
-  static already_AddRefed<nsIParser> NewHtml5Parser();
-  static nsresult Initialize(nsIParser* aParser,
-                             nsIDocument* aDoc,
-                             nsIURI* aURI,
-                             nsISupports* aContainer,
-                             nsIChannel* aChannel);
+  static already_AddRefed<nsHtml5Parser> NewHtml5Parser();
   static nsIThread* GetStreamParserThread();
 
-private:
+ private:
 #ifdef DEBUG
   static bool sNsHtml5ModuleInitialized;
 #endif
@@ -29,4 +24,4 @@ private:
   static nsIThread* sMainThread;
 };
 
-#endif // nsHtml5Module_h
+#endif  // nsHtml5Module_h

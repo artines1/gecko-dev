@@ -13,48 +13,43 @@ namespace mozilla {
 namespace gfx {
 class SourceSurface;
 }
-namespace dom {
-class VideoDecoderManagerChild;
-}
+class RemoteDecoderManagerChild;
+
 namespace layers {
 
-class GPUVideoTextureData : public TextureData
-{
-public:
-  GPUVideoTextureData(dom::VideoDecoderManagerChild* aManager,
+class GPUVideoTextureData : public TextureData {
+ public:
+  GPUVideoTextureData(RemoteDecoderManagerChild* aManager,
                       const SurfaceDescriptorGPUVideo& aSD,
                       const gfx::IntSize& aSize);
-  ~GPUVideoTextureData();
+  virtual ~GPUVideoTextureData();
 
-  virtual void FillInfo(TextureData::Info& aInfo) const override;
+  void FillInfo(TextureData::Info& aInfo) const override;
 
-  virtual bool Lock(OpenMode) override { return true; };
+  bool Lock(OpenMode) override { return true; };
 
-  virtual void Unlock() override {};
+  void Unlock() override{};
 
-  virtual bool Serialize(SurfaceDescriptor& aOutDescriptor) override;
+  bool Serialize(SurfaceDescriptor& aOutDescriptor) override;
 
-  virtual void Deallocate(LayersIPCChannel* aAllocator) override;
+  void Deallocate(LayersIPCChannel* aAllocator) override;
 
-  virtual void Forget(LayersIPCChannel* aAllocator) override;
+  void Forget(LayersIPCChannel* aAllocator) override;
 
   already_AddRefed<gfx::SourceSurface> GetAsSourceSurface();
 
-  virtual GPUVideoTextureData* AsGPUVideoTextureData() override
-  {
-    return this;
-  }
+  GPUVideoTextureData* AsGPUVideoTextureData() override { return this; }
 
-protected:
-  RefPtr<dom::VideoDecoderManagerChild> mManager;
+ protected:
+  RefPtr<RemoteDecoderManagerChild> mManager;
   SurfaceDescriptorGPUVideo mSD;
   gfx::IntSize mSize;
 
-public:
+ public:
   const decltype(mSD)& SD() const { return mSD; }
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // MOZILLA_GFX_GPUVIDEOTEXTURECLIENT_H
+#endif  // MOZILLA_GFX_GPUVIDEOTEXTURECLIENT_H

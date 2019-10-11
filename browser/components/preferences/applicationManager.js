@@ -13,30 +13,31 @@ var gAppManagerDialog = {
 
   async init() {
     this.handlerInfo = window.arguments[0];
-    Services.scriptloader.loadSubScript("chrome://browser/content/preferences/in-content/main.js",
-      window);
+    Services.scriptloader.loadSubScript(
+      "chrome://browser/content/preferences/in-content/main.js",
+      window
+    );
+
+    document.addEventListener("dialogaccept", function() {
+      gAppManagerDialog.onOK();
+    });
 
     const appDescElem = document.getElementById("appDescription");
-    if (this.handlerInfo.type == TYPE_MAYBE_FEED) {
-      document.l10n.setAttributes(appDescElem, "app-manager-handle-webfeeds");
-    } else if (this.handlerInfo.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) {
+    if (this.handlerInfo.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) {
       document.l10n.setAttributes(appDescElem, "app-manager-handle-file", {
-        type: this.handlerInfo.typeDescription,
+        type: this.handlerInfo.typeDescription.raw,
       });
     } else {
       document.l10n.setAttributes(appDescElem, "app-manager-handle-protocol", {
-        type: this.handlerInfo.typeDescription,
+        type: this.handlerInfo.typeDescription.raw,
       });
     }
 
     var list = document.getElementById("appList");
-    var apps = this.handlerInfo.possibleApplicationHandlers.enumerate();
-    while (apps.hasMoreElements()) {
-      let app = apps.getNext();
-      if (!gMainPane.isValidHandlerApp(app))
+    for (let app of this.handlerInfo.possibleApplicationHandlers.enumerate()) {
+      if (!gMainPane.isValidHandlerApp(app)) {
         continue;
-
-      app.QueryInterface(Ci.nsIHandlerApp);
+      }
 
       // Ensure the XBL binding is created eagerly.
       // eslint-disable-next-line no-undef
@@ -44,11 +45,11 @@ var gAppManagerDialog = {
       var item = list.lastChild;
       item.app = app;
 
-      var image = document.createElement("image");
+      var image = document.createXULElement("image");
       image.setAttribute("src", gMainPane._getIconURLForHandlerApp(app));
       item.appendChild(image);
 
-      var label = document.createElement("label");
+      var label = document.createXULElement("label");
       label.setAttribute("value", app.name);
       item.appendChild(label);
     }
@@ -60,24 +61,18 @@ var gAppManagerDialog = {
     // result will impact the size of the subdialog.
     await document.l10n.translateElements([
       appDescElem,
-      document.getElementById("appType")
+      document.getElementById("appType"),
     ]);
   },
 
   onOK: function appManager_onOK() {
-    if (!this._removed.length) {
-      // return early to avoid calling the |store| method.
-      return;
+    if (this._removed.length) {
+      for (var i = 0; i < this._removed.length; ++i) {
+        this.handlerInfo.removePossibleApplicationHandler(this._removed[i]);
+      }
+
+      this.handlerInfo.store();
     }
-
-    for (var i = 0; i < this._removed.length; ++i)
-      this.handlerInfo.removePossibleApplicationHandler(this._removed[i]);
-
-    this.handlerInfo.store();
-  },
-
-  onCancel: function appManager_onCancel() {
-    // do nothing
   },
 
   remove: function appManager_remove() {
@@ -93,8 +88,9 @@ var gAppManagerDialog = {
     } else {
       // Select the item at the same index, if we removed the last
       // item of the list, select the previous item
-      if (index == list.itemCount)
+      if (index == list.itemCount) {
         --index;
+      }
       list.selectedIndex = index;
     }
   },
@@ -108,14 +104,17 @@ var gAppManagerDialog = {
     document.getElementById("remove").disabled = false;
     var app = list.selectedItem.app;
     var address = "";
-    if (app instanceof Ci.nsILocalHandlerApp)
+    if (app instanceof Ci.nsILocalHandlerApp) {
       address = app.executable.path;
-    else if (app instanceof Ci.nsIWebHandlerApp)
+    } else if (app instanceof Ci.nsIWebHandlerApp) {
       address = app.uriTemplate;
+    }
     document.getElementById("appLocation").value = address;
-    const l10nId = app instanceof Ci.nsILocalHandlerApp ? "app-manager-local-app-info"
-                                                        : "app-manager-web-app-info";
+    const l10nId =
+      app instanceof Ci.nsILocalHandlerApp
+        ? "app-manager-local-app-info"
+        : "app-manager-web-app-info";
     const appTypeElem = document.getElementById("appType");
     document.l10n.setAttributes(appTypeElem, l10nId);
-  }
+  },
 };

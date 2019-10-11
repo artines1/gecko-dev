@@ -180,19 +180,24 @@ class TbplFormatter(BaseFormatter):
         if message and message[-1] == "\n":
             message = message[:-1]
 
+        status = data["status"]
+
         if "expected" in data:
-            if not message:
-                message = "- expected %s" % data["expected"]
-            failure_line = "TEST-UNEXPECTED-%s | %s | %s %s\n" % (
-                data["status"], data["test"], data["subtest"],
-                message)
-            if data["expected"] != "PASS":
-                info_line = "TEST-INFO | expected %s\n" % data["expected"]
-                return failure_line + info_line
-            return failure_line
+            if status in data.get("known_intermittent", []):
+                status = "KNOWN-INTERMITTENT-%s" % status
+            else:
+                if not message:
+                    message = "- expected %s" % data["expected"]
+                failure_line = "TEST-UNEXPECTED-%s | %s | %s %s\n" % (
+                    status, data["test"], data["subtest"],
+                    message)
+                if data["expected"] != "PASS":
+                    info_line = "TEST-INFO | expected %s\n" % data["expected"]
+                    return failure_line + info_line
+                return failure_line
 
         return "TEST-%s | %s | %s %s\n" % (
-            data["status"], data["test"], data["subtest"],
+            status, data["test"], data["subtest"],
             message)
 
     def test_end(self, data):
@@ -213,42 +218,52 @@ class TbplFormatter(BaseFormatter):
             time = data["time"] - start_time
             duration_msg = "took %ims" % time
 
+        screenshot_msg = ""
+        extra = data.get("extra", {})
+        if "reftest_screenshots" in extra:
+            screenshots = extra["reftest_screenshots"]
+            if len(screenshots) == 3:
+                screenshot_msg = ("\nREFTEST   IMAGE 1 (TEST): data:image/png;base64,%s\n"
+                                  "REFTEST   IMAGE 2 (REFERENCE): data:image/png;base64,%s") % (
+                                      screenshots[0]["screenshot"],
+                                      screenshots[2]["screenshot"])
+            elif len(screenshots) == 1:
+                screenshot_msg = ("\nREFTEST   IMAGE: data:image/png;base64,%s" %
+                                  screenshots[0]["screenshot"])
+
+        status = data['status']
+
         if "expected" in data:
-            message = data.get("message", "")
-            if not message:
-                message = "expected %s" % data["expected"]
-            if "stack" in data:
-                message += "\n%s" % data["stack"]
-            if message and message[-1] == "\n":
-                message = message[:-1]
-
-            extra = data.get("extra", {})
-            if "reftest_screenshots" in extra:
-                screenshots = extra["reftest_screenshots"]
-                if len(screenshots) == 3:
-                    message += ("\nREFTEST   IMAGE 1 (TEST): data:image/png;base64,%s\n"
-                                "REFTEST   IMAGE 2 (REFERENCE): data:image/png;base64,%s") % (
-                                    screenshots[0]["screenshot"],
-                                    screenshots[2]["screenshot"])
-                elif len(screenshots) == 1:
-                    message += "\nREFTEST   IMAGE: data:image/png;base64,%s" \
-                               % screenshots[0]["screenshot"]
-
-            failure_line = "TEST-UNEXPECTED-%s | %s | %s\n" % (
-                data["status"], test_id, message)
-
-            if data["expected"] not in ("PASS", "OK"):
-                expected_msg = "expected %s | " % data["expected"]
+            if status in data.get("known_intermittent", []):
+                status = "KNOWN-INTERMITTENT-%s" % status
             else:
-                expected_msg = ""
-            info_line = "TEST-INFO %s%s\n" % (expected_msg, duration_msg)
+                message = data.get("message", "")
+                if not message:
+                    message = "expected %s" % data["expected"]
+                if "stack" in data:
+                    message += "\n%s" % data["stack"]
+                if message and message[-1] == "\n":
+                    message = message[:-1]
 
-            return failure_line + info_line
+                message += screenshot_msg
 
-        sections = ["TEST-%s" % data['status'], test_id]
+                failure_line = "TEST-UNEXPECTED-%s | %s | %s\n" % (
+                    data["status"], test_id, message)
+
+                if data["expected"] not in ("PASS", "OK"):
+                    expected_msg = "expected %s | " % data["expected"]
+                else:
+                    expected_msg = ""
+                info_line = "TEST-INFO %s%s\n" % (expected_msg, duration_msg)
+
+                return failure_line + info_line
+
+        sections = ["TEST-%s" % status, test_id]
         if duration_msg:
             sections.append(duration_msg)
         rv.append(' | '.join(sections) + '\n')
+        if screenshot_msg:
+            rv.append(screenshot_msg[1:] + "\n")
         return "".join(rv)
 
     def suite_end(self, data):
@@ -292,18 +307,70 @@ class TbplFormatter(BaseFormatter):
                 "SUMMARY: AddressSanitizer: %d byte(s) leaked in %d allocation(s)." %
                 (level, data["bytes"], data["allocations"]))
 
+    def mozleak_object(self, data):
+        return ("TEST-INFO | leakcheck | %s leaked %d %s\n" %
+                (data["process"], data["bytes"], data["name"]))
+
+    def mozleak_total(self, data):
+        if data["bytes"] is None:
+            # We didn't see a line with name 'TOTAL'
+            if data.get("induced_crash", False):
+                return ("TEST-INFO | leakcheck | %s deliberate crash and thus no leak log\n"
+                        % data["process"])
+            if data.get("ignore_missing", False):
+                return ("TEST-INFO | leakcheck | "
+                        "%s ignoring missing output line for total leaks\n" %
+                        data["process"])
+
+            return ("TEST-UNEXPECTED-FAIL | leakcheck | "
+                    "%s missing output line for total leaks!\n" %
+                    data["process"])
+
+        if data["bytes"] == 0:
+            return ("TEST-PASS | leakcheck | %s no leaks detected!\n" %
+                    data["process"])
+
+        # Create a comma delimited string of the first N leaked objects found,
+        # to aid with bug summary matching in TBPL. Note: The order of the objects
+        # had no significance (they're sorted alphabetically).
+        max_objects = 5
+        object_summary = ', '.join(data["objects"][:max_objects])
+        if len(data["objects"]) > max_objects:
+            object_summary += ', ...'
+
+        message = "leakcheck | %s %d bytes leaked (%s)\n" % (
+            data["process"], data["bytes"], object_summary)
+
+        # data["bytes"] will include any expected leaks, so it can be off
+        # by a few thousand bytes.
+        if data["bytes"] > data["threshold"]:
+            return "TEST-UNEXPECTED-FAIL | %s\n" % message
+        else:
+            return "WARNING | %s\n" % message
+
     def _format_suite_summary(self, suite, summary):
         counts = summary['counts']
         logs = summary['unexpected_logs']
+        intermittent_logs = summary['intermittent_logs']
 
         total = sum(self.summary.aggregate('count', counts).values())
         expected = sum(self.summary.aggregate('expected', counts).values())
-        status_str = "{}/{}".format(expected, total)
+        intermittents = sum(self.summary.aggregate('known_intermittent', counts).values())
+        known = " ({} known intermittent tests)".format(intermittents) if intermittents else ""
+        status_str = "{}/{}{}".format(expected, total, known)
         rv = ["{}: {}".format(suite, status_str)]
 
         for results in logs.values():
             for data in results:
                 rv.append("  {}".format(self._format_status(data)))
+
+        if intermittent_logs:
+            rv.append("Known Intermittent tests:")
+            for results in intermittent_logs.values():
+                for data in results:
+                    data["subtest"] = data.get("subtest", "")
+                    rv.append("  {}".format(self._format_status(data)))
+
         return "\n".join(rv)
 
     def shutdown(self, data):

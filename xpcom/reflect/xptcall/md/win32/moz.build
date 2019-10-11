@@ -22,7 +22,7 @@ if CONFIG['CPU_ARCH'] == 'x86_64':
             'xptcinvoke_asm_x86_64.asm',
             'xptcstubs_asm_x86_64.asm'
         ]
-else:
+elif CONFIG['CPU_ARCH'] == 'x86':
     if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         SOURCES += [
             'xptcinvoke_x86_gnu.cpp',
@@ -35,6 +35,23 @@ else:
             'xptcstubs.cpp',
         ]
         SOURCES['xptcinvoke_asm_x86_msvc.asm'].flags += ['-safeseh']
+elif CONFIG['CPU_ARCH'] == 'aarch64':
+    SOURCES += [
+        'xptcinvoke_aarch64.cpp',
+        'xptcstubs_aarch64.cpp',
+    ]
+    asm_files = [
+        'xptcinvoke_asm_aarch64.asm',
+        'xptcstubs_asm_aarch64.asm',
+    ]
+
+    # make gets confused if the srcdir and objdir files have the same name, so
+    # we generate different names for the objdir files
+    for src in asm_files:
+        obj = src.replace('_asm_aarch64', '')
+        GeneratedFile(obj, script='preprocess.py', entry_point='preprocess',
+                      inputs=[src])
+        SOURCES += ['!%s' % obj]
 
 FINAL_LIBRARY = 'xul'
 

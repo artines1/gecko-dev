@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -10,7 +9,10 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,test Scratchpad eval function.");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html;charset=utf8,test Scratchpad eval function."
+  );
 }
 
 function reportErrorAndQuit(error) {
@@ -22,15 +24,12 @@ function reportErrorAndQuit(error) {
 function runTests(sw) {
   const sp = sw.Scratchpad;
 
-  /* eslint-disable brace-style */
+  // prettier-ignore
   const foo = "" + function main() { console.log(1); };
+  // prettier-ignore
   const bar = "var bar = " + (() => { console.log(2); });
-  /* eslint-enable brace-style */
 
-  const fullText =
-    foo + "\n" +
-    "\n" +
-    bar + "\n";
+  const fullText = foo + "\n" + "\n" + bar + "\n";
 
   sp.setText(fullText);
 
@@ -60,8 +59,11 @@ function runTests(sw) {
       return sp.evalTopLevelFunction();
     })
     .then(([text, error, result]) => {
-      is(text, fullText,
-         "Should get full text back since we didn't find a specific function.");
+      is(
+        text,
+        fullText,
+        "Should get full text back since we didn't find a specific function."
+      );
       ok(!error, "Should not have got an error.");
       ok(!result, "Should not have got a result.");
     })
@@ -73,12 +75,17 @@ function runTests(sw) {
       return sp.evalTopLevelFunction();
     })
     .then(([text, error, result]) => {
-      is(text, "function {}",
-         "Should get the full text back since there was a parse error.");
+      is(
+        text,
+        "function {}",
+        "Should get the full text back since there was a parse error."
+      );
       ok(!error, "Should not have got an error");
       ok(!result, "Should not have got a result");
-      ok(sp.getText().includes("SyntaxError"),
-         "We should have written the syntax error to the scratchpad.");
+      ok(
+        sp.getText().includes("SyntaxError"),
+        "We should have written the syntax error to the scratchpad."
+      );
     })
 
     .then(finish, reportErrorAndQuit);

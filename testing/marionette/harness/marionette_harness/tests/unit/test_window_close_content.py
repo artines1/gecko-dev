@@ -7,7 +7,7 @@ from __future__ import absolute_import
 import urllib
 
 from marionette_driver.by import By
-from marionette_harness import MarionetteTestCase, skip_if_mobile, WindowManagerMixin
+from marionette_harness import MarionetteTestCase, WindowManagerMixin
 
 
 def inline(doc):
@@ -22,38 +22,28 @@ class TestCloseWindow(WindowManagerMixin, MarionetteTestCase):
 
         super(TestCloseWindow, self).tearDown()
 
-    @skip_if_mobile("Interacting with chrome windows not available for Fennec")
     def test_close_chrome_window_for_browser_window(self):
-        win = self.open_window()
-        self.marionette.switch_to_window(win)
+        with self.marionette.using_context("chrome"):
+            new_window = self.open_window()
+        self.marionette.switch_to_window(new_window)
 
-        self.assertNotIn(win, self.marionette.window_handles)
+        self.assertIn(new_window, self.marionette.chrome_window_handles)
         chrome_window_handles = self.marionette.close_chrome_window()
-        self.assertNotIn(win, chrome_window_handles)
+        self.assertNotIn(new_window, chrome_window_handles)
         self.assertListEqual(self.start_windows, chrome_window_handles)
-        self.assertNotIn(win, self.marionette.window_handles)
+        self.assertNotIn(new_window, self.marionette.window_handles)
 
-    @skip_if_mobile("Interacting with chrome windows not available for Fennec")
     def test_close_chrome_window_for_non_browser_window(self):
+        new_window = self.open_chrome_window("chrome://marionette/content/test.xul")
+        self.marionette.switch_to_window(new_window)
 
-        def open_window_with_js():
-            with self.marionette.using_context("chrome"):
-                self.marionette.execute_script("""
-                  window.open('chrome://marionette/content/test.xul',
-                              'foo', 'chrome,centerscreen');
-                """)
-
-        win = self.open_window(trigger=open_window_with_js)
-        self.marionette.switch_to_window(win)
-
-        self.assertIn(win, self.marionette.chrome_window_handles)
-        self.assertNotIn(win, self.marionette.window_handles)
+        self.assertIn(new_window, self.marionette.chrome_window_handles)
+        self.assertNotIn(new_window, self.marionette.window_handles)
         chrome_window_handles = self.marionette.close_chrome_window()
-        self.assertNotIn(win, chrome_window_handles)
+        self.assertNotIn(new_window, chrome_window_handles)
         self.assertListEqual(self.start_windows, chrome_window_handles)
-        self.assertNotIn(win, self.marionette.window_handles)
+        self.assertNotIn(new_window, self.marionette.window_handles)
 
-    @skip_if_mobile("Interacting with chrome windows not available for Fennec")
     def test_close_chrome_window_for_last_open_window(self):
         self.close_all_windows()
 
@@ -62,19 +52,17 @@ class TestCloseWindow(WindowManagerMixin, MarionetteTestCase):
         self.assertListEqual([self.start_window], self.marionette.chrome_window_handles)
         self.assertIsNotNone(self.marionette.session)
 
-    @skip_if_mobile("Needs application independent method to open a new tab")
     def test_close_window_for_browser_tab(self):
-        tab = self.open_tab()
-        self.marionette.switch_to_window(tab)
+        new_tab = self.open_tab()
+        self.marionette.switch_to_window(new_tab)
 
         window_handles = self.marionette.close()
-        self.assertNotIn(tab, window_handles)
+        self.assertNotIn(new_tab, window_handles)
         self.assertListEqual(self.start_tabs, window_handles)
 
-    @skip_if_mobile("Needs application independent method to open a new tab")
     def test_close_window_with_dismissed_beforeunload_prompt(self):
-        tab = self.open_tab()
-        self.marionette.switch_to_window(tab)
+        new_tab = self.open_tab()
+        self.marionette.switch_to_window(new_tab)
 
         self.marionette.navigate(inline("""
           <input type="text">
@@ -88,14 +76,13 @@ class TestCloseWindow(WindowManagerMixin, MarionetteTestCase):
         self.marionette.find_element(By.TAG_NAME, "input").send_keys("foo")
         self.marionette.close()
 
-    @skip_if_mobile("Interacting with chrome windows not available for Fennec")
     def test_close_window_for_browser_window_with_single_tab(self):
-        win = self.open_window()
-        self.marionette.switch_to_window(win)
+        new_tab = self.open_window()
+        self.marionette.switch_to_window(new_tab)
 
-        self.assertEqual(len(self.start_tabs) + 1, len(self.marionette.window_handles))
+        self.assertEqual(len(self.marionette.window_handles), len(self.start_tabs) + 1)
         window_handles = self.marionette.close()
-        self.assertNotIn(win, window_handles)
+        self.assertNotIn(new_tab, window_handles)
         self.assertListEqual(self.start_tabs, window_handles)
         self.assertListEqual(self.start_windows, self.marionette.chrome_window_handles)
 
@@ -107,13 +94,12 @@ class TestCloseWindow(WindowManagerMixin, MarionetteTestCase):
         self.assertListEqual([self.start_window], self.marionette.chrome_window_handles)
         self.assertIsNotNone(self.marionette.session)
 
-    @skip_if_mobile("discardBrowser is only available in Firefox")
     def test_close_browserless_tab(self):
         self.close_all_tabs()
 
         test_page = self.marionette.absolute_url("windowHandles.html")
-        tab = self.open_tab()
-        self.marionette.switch_to_window(tab)
+        new_tab = self.open_tab()
+        self.marionette.switch_to_window(new_tab)
         self.marionette.navigate(test_page)
         self.marionette.switch_to_window(self.start_tab)
 
@@ -125,7 +111,7 @@ class TestCloseWindow(WindowManagerMixin, MarionetteTestCase):
               win.addEventListener("TabBrowserDiscarded", ev => {
                 arguments[0](true);
               }, { once: true});
-              win.gBrowser.discardBrowser(win.gBrowser.tabs[1].linkedBrowser);
+              win.gBrowser.discardBrowser(win.gBrowser.tabs[1]);
             """)
 
         window_handles = self.marionette.window_handles

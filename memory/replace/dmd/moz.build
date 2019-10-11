@@ -19,6 +19,10 @@ if not CONFIG['MOZ_REPLACE_MALLOC_STATIC']:
         '/mfbt/Poison.cpp',
         '/mozglue/misc/StackWalk.cpp',
     ]
+    if CONFIG['OS_ARCH'] == 'WINNT':
+        OS_LIBS += [
+            'dbghelp',
+        ]
 
 ReplaceMalloc('dmd')
 
@@ -30,12 +34,4 @@ if CONFIG['MOZ_OPTIMIZE']:
 
 DisableStlWrapping()
 
-if CONFIG['OS_ARCH'] == 'WINNT':
-    OS_LIBS += [
-        'dbghelp',
-    ]
-
 TEST_DIRS += ['test']
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

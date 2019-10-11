@@ -5,14 +5,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=508906
 -->
 <head>
   <title>Test for Bug 603008</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
 <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=508906">Mozilla Bug 603008</a>
 <p id="display"></p>
 <div id="content" style="display: none">
-  
+
 </div>
 <pre id="test">
 <script class="testbody" type="application/javascript">
@@ -93,7 +93,7 @@ function sendTouchEvent(windowUtils, aType, aEvent, aModifiers) {
   return windowUtils.sendTouchEvent(aType,
                                     ids, xs, ys, rxs, rys,
                                     rotations, forces,
-                                    ids.length, aModifiers, 0);
+                                    aModifiers, 0);
 }
 
 function touchEvent(aOptions) {
@@ -130,7 +130,7 @@ function testSingleTouch(name) {
   let touch1 = new testtouch({
     page: {x: Math.round(bcr.left + bcr.width/2),
            y: Math.round(bcr.top  + bcr.height/2)},
-    target: target
+    target
   });
   let event = new touchEvent({
     touches: [touch1],
@@ -176,7 +176,7 @@ function testSingleTouch2(name) {
     identifier: 0,
     page: {x: Math.round(bcr.left + bcr.width/2),
            y: Math.round(bcr.top  + bcr.height/2)},
-    target: target
+    target
   });
   let event1 = new touchEvent({
     touches: [touch1],
@@ -287,7 +287,7 @@ function testMultiTouch(name) {
   };
   window.addEventListener("touchmove", checkFunction2);
   sendTouchEvent(cwu, "touchmove", event, 0);
-  ok(touchMoveEvents, 2, "Correct number of touchmove events fired");
+  is(touchMoveEvents, 2, "Correct number of touchmove events fired");
   window.removeEventListener("touchmove", checkFunction2);
 
   // test removing just one finger
@@ -362,7 +362,7 @@ function testTouchChanged() {
   // test changing y radius
   event.touches[0].radius.y += 1;
   sendTouchEvent(cwu, "touchmove", event, 0);
-  
+
   // test changing x radius
   event.touches[0].radius.x += 1;
   sendTouchEvent(cwu, "touchmove", event, 0);
@@ -377,7 +377,7 @@ function testTouchChanged() {
 
   // changing nothing again
   sendTouchEvent(cwu, "touchmove", event, 0);
-  
+
   is(moveEvents, 7, "Six move events fired");
 
   window.removeEventListener("touchmove", onMove);
@@ -395,7 +395,7 @@ function testPreventDefault() {
   let touch1 = new testtouch({
     page: {x: bcr.left + bcr.width/2,
            y: bcr.top + bcr.height/2},
-    target: target
+    target
   });
   let event = new touchEvent({
     touches: [touch1],
@@ -406,8 +406,8 @@ function testPreventDefault() {
   let preventFunction = function(aEvent) {
     aEvent.preventDefault();
   }
-  
-  let tests = [
+
+  let subTests = [
     [{ name: "touchstart", prevent: false },
      { name: "touchmove", prevent: false },
      { name: "touchmove", prevent: false },
@@ -446,11 +446,11 @@ function testPreventDefault() {
       target.removeEventListener(aTest.name, preventFunction);
   }
 
-  for (var i = 0; i < tests.length; i++) {
-    for (var j = 0; j < tests[i].length; j++) {
-      dotest(tests[i][j]);
+  for (var i = 0; i < subTests.length; i++) {
+    for (var j = 0; j < subTests[i].length; j++) {
+      dotest(subTests[i][j]);
     }
-  } 
+  }
 
   nextTest();
 }
@@ -470,7 +470,7 @@ function testRemovingElement() {
     changedTouches: [touch1]
   });
 
-  var touchEvents = 0;  
+  var touchEvents = 0;
   var removeTarget = function(aEvent) {
     aEvent.target.remove();
   };
@@ -507,7 +507,7 @@ function testNAC() {
   let touch1 = new testtouch({
     page: {x: Math.round(bcr.left + bcr.width/2),
            y: Math.round(bcr.top  + bcr.height/2)},
-    target: target
+    target
   });
   let event = new touchEvent({
     touches: [touch1],

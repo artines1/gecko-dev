@@ -7,10 +7,12 @@ import re
 import sys
 from urlparse import urljoin
 
+from mozilla_version.gecko import GeckoVersion
+from mozilla_version.version import VersionType
 
 sys.path.insert(1, os.path.dirname(os.path.dirname(sys.path[0])))
 
-from mozharness.base.log import DEBUG, INFO, FATAL
+from mozharness.base.log import DEBUG, INFO, FATAL, WARNING
 from mozharness.base.script import BaseScript
 
 
@@ -117,6 +119,13 @@ class UpdateVerifyConfigCreator(BaseScript):
                     "'firefox-mozilla-release for x.y and x.y.z versions. "
                     "May be passed multiple times"
         }],
+        [["--override-certs"], {
+            "dest": "override_certs",
+            "default": None,
+            "help": "Certs to override the updater with prior to running update verify."
+                    "If passed, should be one of: dep, nightly, release"
+                    "If not passed, no certificate overriding will be configured"
+        }],
         [["--platform"], {
             "dest": "platform",
             "help": "The platform to generate the update verify config for, in FTP-style",
@@ -198,6 +207,25 @@ class UpdateVerifyConfigCreator(BaseScript):
             pattern, override_str = override.split(",", 1)
             self.config["mar_channel_id_overrides"][pattern] = override_str
 
+    def _get_branch_url(self, branch_prefix, version):
+        version = GeckoVersion.parse(version)
+        branch = None
+        if version.version_type == VersionType.BETA:
+            branch = "releases/{}-beta".format(branch_prefix)
+        elif version.version_type == VersionType.ESR:
+            branch = "releases/{}-esr{}".format(branch_prefix, version.major_number)
+        elif version.version_type == VersionType.RELEASE:
+            if branch_prefix == "comm":
+                # Thunderbird does not have ESR releases, regular releases
+                # go in an ESR branch
+                branch = "releases/{}-esr{}".format(branch_prefix, version.major_number)
+            else:
+                branch = "releases/{}-release".format(branch_prefix)
+        if not branch:
+            raise Exception("Cannot determine branch, cannot continue!")
+
+        return branch
+
     def _get_update_paths(self):
         from mozrelease.l10n import getPlatformLocales
         from mozrelease.paths import getCandidatesDir
@@ -214,22 +242,13 @@ class UpdateVerifyConfigCreator(BaseScript):
             "WARNING",
         )
         releases = json.load(ret)["releases"]
-        for release_name, release_info in reversed(sorted(releases.items())):
-            product, version = release_name.split("-", 1)
+        for release_name, release_info in \
+            reversed(sorted(releases.items(),
+                            key=lambda x: MozillaVersion(x[1]['version']))):
+            # we need to use releases_name instead of release_info since esr
+            # string is included in the name. later we rely on this.
+            product, version = release_name.split('-', 1)
             tag = "{}_{}_RELEASE".format(product.upper(), version.replace(".", "_"))
-            # Product details has a "category" for releases that we can use to
-            # determine the repo path. This will fail if any previous releases
-            # were built from a project branch - but that's not something we do
-            # at the time of writing.
-            branch = None
-            if release_info["category"] == "dev":
-                branch = "releases/{}-beta".format(self.config['branch_prefix'])
-            elif release_info["category"] == "esr":
-                branch = "releases/{}-esr{}".format(self.config['branch_prefix'], version[:2])
-            elif release_info["category"] in ("major", "stability"):
-                branch = "releases/{}-release".format(self.config['branch_prefix'])
-            if not branch:
-                raise Exception("Cannot determine branch, cannot continue!")
 
             # Exclude any releases that don't match one of our include version
             # regexes. This is generally to avoid including versions from other
@@ -280,6 +299,8 @@ class UpdateVerifyConfigCreator(BaseScript):
             ret = self._retry_download(info_file_url, "WARNING")
             buildID = ret.read().split("=")[1].strip()
 
+            branch = self._get_branch_url(self.config["branch_prefix"], version)
+
             shipped_locales_url = urljoin(
                 self.config["hg_server"],
                 "{}/raw-file/{}/{}/locales/shipped-locales".format(
@@ -312,10 +333,24 @@ class UpdateVerifyConfigCreator(BaseScript):
                     self.update_paths[version]["marChannelIds"] = mar_channel_ids
 
     def gather_info(self):
+        from mozilla_version.gecko import GeckoVersion
+
         self._get_update_paths()
         if self.update_paths:
             self.log("Found update paths:", level=DEBUG)
             self.log(pprint.pformat(self.update_paths), level=DEBUG)
+        elif (
+            GeckoVersion.parse(self.config["to_version"])
+            <= GeckoVersion.parse(self.config["last_watershed"])
+        ):
+            self.log(
+                "Didn't find any update paths, but to_version {} is before the last_"
+                "watershed {}, generating empty config".format(
+                    self.config['to_version'],
+                    self.config['last_watershed'],
+                ),
+                level=WARNING,
+            )
         else:
             self.log("Didn't find any update paths, cannot continue", level=FATAL)
 
@@ -347,6 +382,7 @@ class UpdateVerifyConfigCreator(BaseScript):
             to_build_id=self.config["to_buildid"],
             to_app_version=self.config["to_app_version"],
             to_display_version=to_display_version,
+            override_certs=self.config.get("override_certs"),
         )
 
         to_shipped_locales_url = urljoin(

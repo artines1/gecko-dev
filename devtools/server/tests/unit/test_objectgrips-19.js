@@ -4,60 +4,52 @@
 
 "use strict";
 
-var gDebuggee;
-var gThreadClient;
+Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+});
 
-function run_test() {
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-  do_test_pending();
-}
+add_task(
+  threadFrontTest(async ({ threadFront, debuggee, client }) => {
+    debuggee.eval(
+      function stopMe(arg1) {
+        debugger;
+      }.toString()
+    );
+    const tests = [
+      {
+        value: true,
+        class: "Boolean",
+      },
+      {
+        value: 123,
+        class: "Number",
+      },
+      {
+        value: "foo",
+        class: "String",
+      },
+      {
+        value: Symbol("bar"),
+        class: "Symbol",
+        name: "bar",
+      },
+    ];
+    for (const data of tests) {
+      await new Promise(function(resolve) {
+        threadFront.once("paused", async function(packet) {
+          const [grip] = packet.frame.arguments;
+          check_wrapped_primitive_grip(grip, data);
 
-async function run_test_with_server(server, callback) {
-  initTestDebuggerServer(server);
-  gDebuggee = gDebuggee = addTestGlobal("test-grips", server);
-  gDebuggee.eval(function stopMe(arg1) {
-    debugger;
-  }.toString());
-  const client = new DebuggerClient(server.connectPipe());
-  await client.connect();
-  const [,, threadClient] = await attachTestTabAndResume(client, "test-grips");
-  gThreadClient = threadClient;
-  await test_wrapped_primitive_grips();
-  await client.close();
-  callback();
-}
-
-async function test_wrapped_primitive_grips() {
-  const tests = [{
-    value: true,
-    class: "Boolean"
-  }, {
-    value: 123,
-    class: "Number"
-  }, {
-    value: "foo",
-    class: "String"
-  }, {
-    value: Symbol("bar"),
-    class: "Symbol",
-    name: "bar"
-  }];
-  for (const data of tests) {
-    await new Promise(function(resolve) {
-      gThreadClient.addOneTimeListener("paused", async function(event, packet) {
-        const [grip] = packet.frame.arguments;
-        check_wrapped_primitive_grip(grip, data);
-
-        await gThreadClient.resume();
-        resolve();
+          await threadFront.resume();
+          resolve();
+        });
+        debuggee.primitive = data.value;
+        debuggee.eval("stopMe(Object(primitive));");
       });
-      gDebuggee.primitive = data.value;
-      gDebuggee.eval("stopMe(Object(primitive));");
-    });
-  }
-}
+    }
+  })
+);
 
 function check_wrapped_primitive_grip(grip, data) {
   strictEqual(grip.class, data.class, "The grip has the proper class.");
@@ -70,8 +62,16 @@ function check_wrapped_primitive_grip(grip, data) {
 
   const value = grip.preview.wrappedValue;
   if (data.class === "Symbol") {
-    strictEqual(value.type, "symbol", "The wrapped value grip has symbol type.");
-    strictEqual(value.name, data.name, "The wrapped value grip has the proper name.");
+    strictEqual(
+      value.type,
+      "symbol",
+      "The wrapped value grip has symbol type."
+    );
+    strictEqual(
+      value.name,
+      data.name,
+      "The wrapped value grip has the proper name."
+    );
   } else {
     strictEqual(value, data.value, "The wrapped value is the primitive one.");
   }

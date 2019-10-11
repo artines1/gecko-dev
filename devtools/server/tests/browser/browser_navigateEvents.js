@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -9,8 +8,9 @@ const URL2 = MAIN_DOMAIN + "navigate-second.html";
 
 var isE10s = Services.appinfo.browserTabsRemoteAutostart;
 
-SpecialPowers.pushPrefEnv(
-  {"set": [["dom.require_user_interaction_for_beforeunload", false]]});
+SpecialPowers.pushPrefEnv({
+  set: [["dom.require_user_interaction_for_beforeunload", false]],
+});
 
 var signalAllEventsReceived;
 var onAllEventsReceived = new Promise(resolve => {
@@ -32,18 +32,29 @@ function assertEvent(event, data) {
       is(event, "unload-dialog", "We get the dialog on first page unload");
       break;
     case 3:
-      is(event, "will-navigate", "The very first event is will-navigate on server side");
+      is(
+        event,
+        "will-navigate",
+        "The very first event is will-navigate on server side"
+      );
       is(data.newURI, URL2, "newURI property is correct");
       break;
     case isE10s ? 4 : 5: // When e10s is disabled tabNavigated/request order is swapped
-      is(event, "tabNavigated", "After the request, the client receive tabNavigated");
+      is(
+        event,
+        "tabNavigated",
+        "After the request, the client receive tabNavigated"
+      );
       is(data.state, "start", "state is start");
       is(data.url, URL2, "url property is correct");
       is(data.nativeConsoleAPI, true, "nativeConsoleAPI is correct");
       break;
     case isE10s ? 5 : 4:
-      is(event, "request",
-        "RDP is async with messageManager, the request happens after will-navigate");
+      is(
+        event,
+        "request",
+        "RDP is async with messageManager, the request happens after will-navigate"
+      );
       is(data, URL2);
       break;
     case 6:
@@ -55,10 +66,16 @@ function assertEvent(event, data) {
       is(data.readyState, "complete");
       break;
     case 8:
-      is(event, "navigate",
-        "Then once the second doc is loaded, we get the navigate event");
-      is(data.readyState, "complete",
-        "navigate is emitted only once the document is fully loaded");
+      is(
+        event,
+        "navigate",
+        "Then once the second doc is loaded, we get the navigate event"
+      );
+      is(
+        data.readyState,
+        "complete",
+        "navigate is emitted only once the document is fully loaded"
+      );
       break;
     case 9:
       is(event, "tabNavigated", "Finally, the receive the client event");
@@ -72,13 +89,19 @@ function assertEvent(event, data) {
 }
 
 function waitForOnBeforeUnloadDialog(browser, callback) {
-  browser.addEventListener("DOMWillOpenModalDialog", async function(event) {
-    const stack = browser.parentNode;
-    const dialogs = stack.getElementsByTagName("tabmodalprompt");
-    await waitUntil(() => dialogs[0]);
-    const {button0, button1} = dialogs[0].ui;
-    callback(button0, button1);
-  }, {capture: true, once: true});
+  browser.addEventListener(
+    "DOMWillOpenModalDialog",
+    async function(event) {
+      const stack = browser.parentNode;
+      const dialogs = stack.getElementsByTagName("tabmodalprompt");
+      await waitUntil(() => dialogs[0]);
+      const { button0, button1 } = browser.tabModalPromptBox.prompts.get(
+        dialogs[0]
+      ).ui;
+      callback(button0, button1);
+    },
+    { capture: true, once: true }
+  );
 }
 
 var httpObserver = function(subject, topic, state) {
@@ -95,20 +118,14 @@ function onMessage({ data }) {
   assertEvent(data.event, data.data);
 }
 
-async function connectAndAttachTab() {
-  // Ensure having a minimal server
-  initDebuggerServer();
-
-  // Connect to this tab
-  const transport = DebuggerServer.connectPipe();
-  const client = new DebuggerClient(transport);
-  client.addListener("tabNavigated", function(event, packet) {
+async function connectAndAttachTab(tab) {
+  const target = await TargetFactory.forTab(tab);
+  await target.attach();
+  const actorID = target.targetForm.actor;
+  target.on("tabNavigated", function(packet) {
     assertEvent("tabNavigated", packet);
   });
-  const form = await connectDebuggerClient(client);
-  const actorID = form.actor;
-  await client.attachTab(actorID);
-  return { client, actorID };
+  return { target, actorID };
 }
 
 add_task(async function() {
@@ -125,10 +142,13 @@ add_task(async function() {
   // Listen for messages sent by the content task
   browser.messageManager.addMessageListener("devtools-test:event", onMessage);
 
-  const { client, actorID } = await connectAndAttachTab();
+  const tab = gBrowser.getTabForBrowser(browser);
+  const { target, actorID } = await connectAndAttachTab(tab);
   await ContentTask.spawn(browser, [actorID], async function(actorId) {
-    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-    const { DebuggerServer } = require("devtools/server/main");
+    const { require } = ChromeUtils.import(
+      "resource://devtools/shared/Loader.jsm"
+    );
+    const { DebuggerServer } = require("devtools/server/debugger-server");
     const EventEmitter = require("devtools/shared/event-emitter");
 
     // !Hack! Retrieve a server side object, the FrameTargetActor instance
@@ -137,28 +157,36 @@ add_task(async function() {
     EventEmitter.on(targetActor, "will-navigate", function(data) {
       sendSyncMessage("devtools-test:event", {
         event: "will-navigate",
-        data: { newURI: data.newURI }
+        data: { newURI: data.newURI },
       });
     });
     EventEmitter.on(targetActor, "navigate", function(data) {
       sendSyncMessage("devtools-test:event", {
         event: "navigate",
-        data: { readyState: content.document.readyState }
+        data: { readyState: content.document.readyState },
       });
     });
     // Forward DOMContentLoaded and load events
-    addEventListener("DOMContentLoaded", function() {
-      sendSyncMessage("devtools-test:event", {
-        event: "DOMContentLoaded",
-        data: { readyState: content.document.readyState }
-      });
-    }, { capture: true });
-    addEventListener("load", function() {
-      sendSyncMessage("devtools-test:event", {
-        event: "load",
-        data: { readyState: content.document.readyState }
-      });
-    }, { capture: true });
+    addEventListener(
+      "DOMContentLoaded",
+      function() {
+        sendSyncMessage("devtools-test:event", {
+          event: "DOMContentLoaded",
+          data: { readyState: content.document.readyState },
+        });
+      },
+      { capture: true }
+    );
+    addEventListener(
+      "load",
+      function() {
+        sendSyncMessage("devtools-test:event", {
+          event: "load",
+          data: { readyState: content.document.readyState },
+        });
+      },
+      { capture: true }
+    );
   });
 
   // Load another document in this doc to dispatch these events
@@ -169,8 +197,11 @@ add_task(async function() {
   await onAllEventsReceived;
 
   // Cleanup
-  browser.messageManager.removeMessageListener("devtools-test:event", onMessage);
-  await client.close();
+  browser.messageManager.removeMessageListener(
+    "devtools-test:event",
+    onMessage
+  );
+  await target.destroy();
   Services.obs.addObserver(httpObserver, "http-on-modify-request");
   DebuggerServer.destroy();
 });

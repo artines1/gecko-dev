@@ -17,32 +17,36 @@ add_task(async function() {
   const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
   const wait = waitForNetworkEvents(monitor, 1);
-  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  BrowserTestUtils.loadURI(tab.linkedBrowser, SIMPLE_URL);
   await wait;
 
   const chart = Chart.PieTable(document, {
     title: "Table title",
-    data: [{
-      size: 1,
-      label: 11.1
-    }, {
-      size: 2,
-      label: 12.2
-    }, {
-      size: 3,
-      label: 13.3
-    }],
+    data: [
+      {
+        size: 1,
+        label: 11.1,
+      },
+      {
+        size: 2,
+        label: 12.2,
+      },
+      {
+        size: 3,
+        label: 13.3,
+      },
+    ],
     strings: {
-      label2: (value, index) => value + ["foo", "bar", "baz"][index]
+      label2: (value, index) => value + ["foo", "bar", "baz"][index],
     },
     totals: {
       size: value => "Hello " + L10N.numberWithDecimals(value, 2),
-      label: value => "World " + L10N.numberWithDecimals(value, 2)
+      label: value => "World " + L10N.numberWithDecimals(value, 2),
     },
     header: {
       label1: "",
-      label2: ""
-    }
+      label2: "",
+    },
   });
 
   ok(chart.pie, "The pie chart proxy is accessible.");
@@ -52,18 +56,34 @@ add_task(async function() {
   const rows = node.querySelectorAll(".table-chart-row");
   const sums = node.querySelectorAll(".table-chart-summary-label");
 
-  ok(node.classList.contains("pie-table-chart-container"),
-    "A pie+table chart container was created successfully.");
+  ok(
+    node.classList.contains("pie-table-chart-container"),
+    "A pie+table chart container was created successfully."
+  );
 
-  ok(node.querySelector(".table-chart-title"),
-    "A title node was created successfully.");
-  ok(node.querySelector(".pie-chart-container"),
-    "A pie chart was created successfully.");
-  ok(node.querySelector(".table-chart-container"),
-    "A table chart was created successfully.");
+  ok(
+    node.querySelector(".table-chart-title"),
+    "A title node was created successfully."
+  );
+  ok(
+    node.querySelector(".pie-chart-container"),
+    "A pie chart was created successfully."
+  );
+  ok(
+    node.querySelector(".table-chart-container"),
+    "A table chart was created successfully."
+  );
 
-  is(rows.length, 4, "There should be 3 pie chart slices and 1 header created.");
-  is(rows.length, 4, "There should be 3 table chart rows and 1 header created.");
+  is(
+    rows.length,
+    4,
+    "There should be 3 pie chart slices and 1 header created."
+  );
+  is(
+    rows.length,
+    4,
+    "There should be 3 table chart rows and 1 header created."
+  );
   is(sums.length, 2, "There should be 2 total summaries and 1 header created.");
 
   await teardown(monitor);

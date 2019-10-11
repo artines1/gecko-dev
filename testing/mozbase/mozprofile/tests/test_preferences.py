@@ -7,13 +7,13 @@
 from __future__ import absolute_import
 
 import mozfile
-import mozhttpd
 import os
 import shutil
 import tempfile
 
 import mozunit
 import pytest
+from wptserve import server
 
 from mozprofile.cli import MozProfileCLI
 from mozprofile.prefs import Preferences, PreferencesReadError
@@ -72,8 +72,7 @@ def test_basic_prefs(compare_generated):
 
     _prefs = {"browser.startup.homepage": "http://planet.mozilla.org/"}
     commandline = []
-    _prefs = _prefs.items()
-    for pref, value in _prefs:
+    for pref, value in _prefs.items():
         commandline += ["--pref", "%s:%s" % (pref, value)]
     compare_generated(_prefs, commandline)
 
@@ -100,8 +99,8 @@ browser.startup.homepage = http://planet.mozilla.org/
 browser.startup.homepage = http://github.com/
 """
     try:
-        fd, name = tempfile.mkstemp(suffix='.ini')
-        os.write(fd, _ini)
+        fd, name = tempfile.mkstemp(suffix='.ini', text=True)
+        os.write(fd, _ini.encode())
         os.close(fd)
         commandline = ["--preferences", name]
 
@@ -126,16 +125,16 @@ def test_ini_keep_case(compare_generated):
     """
     # write the .ini file
     _ini = """[DEFAULT]
-general.warnOnAboutConfig = False
+network.dns.disableIPv6 = True
 """
     try:
-        fd, name = tempfile.mkstemp(suffix='.ini')
-        os.write(fd, _ini)
+        fd, name = tempfile.mkstemp(suffix='.ini', text=True)
+        os.write(fd, _ini.encode())
         os.close(fd)
         commandline = ["--preferences", name]
 
         # test the [DEFAULT] section
-        _prefs = {'general.warnOnAboutConfig': 'False'}
+        _prefs = {'network.dns.disableIPv6': 'True'}
         compare_generated(_prefs, commandline)
 
     finally:
@@ -294,7 +293,7 @@ def test_can_read_prefs_with_multiline_comments():
 
 user_pref("webgl.enabled_for_all_sites", true);
 user_pref("webgl.force-enabled", true);
-""")
+""".encode())
         assert Preferences.read_prefs(user_js.name) == [
                 ('webgl.enabled_for_all_sites', True),
                 ('webgl.force-enabled', True)
@@ -309,7 +308,7 @@ def test_json(compare_generated):
 
     # just repr it...could use the json module but we don't need it here
     with mozfile.NamedTemporaryFile(suffix='.json') as f:
-        f.write(json)
+        f.write(json.encode())
         f.flush()
 
         commandline = ["--preferences", f.name]
@@ -321,7 +320,7 @@ def test_json_datatypes():
     json = """{"zoom.minPercent": 30.1, "zoom.maxPercent": 300}"""
 
     with mozfile.NamedTemporaryFile(suffix='.json') as f:
-        f.write(json)
+        f.write(json.encode())
         f.flush()
 
         with pytest.raises(PreferencesReadError):
@@ -342,7 +341,7 @@ def test_prefs_write():
     path = None
     read_prefs = None
     try:
-        with mozfile.NamedTemporaryFile(suffix='.js', delete=False) as f:
+        with mozfile.NamedTemporaryFile(suffix='.js', delete=False, mode='w+t') as f:
             path = f.name
             preferences.write(f, _prefs)
 
@@ -384,13 +383,13 @@ def test_read_prefs_with_interpolation():
 
 
 def test_read_prefs_ttw():
-    """test reading preferences through the web via mozhttpd"""
+    """test reading preferences through the web via wptserve"""
 
-    # create a MozHttpd instance
+    # create a WebTestHttpd instance
     docroot = os.path.join(here, 'files')
     host = '127.0.0.1'
     port = 8888
-    httpd = mozhttpd.MozHttpd(host=host, port=port, docroot=docroot)
+    httpd = server.WebTestHttpd(host=host, port=port, doc_root=docroot)
 
     # create a preferences instance
     prefs = Preferences()

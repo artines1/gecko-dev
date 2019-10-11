@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -17,27 +15,28 @@ var tabs = [
   {
     title: "Tab 0",
     desc: "Toggles cache on.",
-    startToolbox: true
+    startToolbox: true,
   },
   {
     title: "Tab 1",
     desc: "Toolbox open before Tab 1 toggles cache.",
-    startToolbox: true
+    startToolbox: true,
   },
   {
     title: "Tab 2",
     desc: "Opens toolbox after Tab 1 has toggled cache. Also closes and opens.",
-    startToolbox: false
+    startToolbox: false,
   },
   {
     title: "Tab 3",
     desc: "No toolbox",
-    startToolbox: false
-  }];
+    startToolbox: false,
+  },
+];
 
 async function initTab(tabX, startToolbox) {
   tabX.tab = await addTab(TEST_URI);
-  tabX.target = TargetFactory.forTab(tabX.tab);
+  tabX.target = await TargetFactory.forTab(tabX.tab);
 
   if (startToolbox) {
     tabX.toolbox = await gDevTools.showToolbox(tabX.target, "options");
@@ -56,19 +55,27 @@ async function checkCacheEnabled(tabX, expected) {
 
   await reloadTab(tabX);
 
-  const oldGuid = await ContentTask.spawn(gBrowser.selectedBrowser, {}, function() {
-    const doc = content.document;
-    const h1 = doc.querySelector("h1");
-    return h1.textContent;
-  });
+  const oldGuid = await ContentTask.spawn(
+    gBrowser.selectedBrowser,
+    {},
+    function() {
+      const doc = content.document;
+      const h1 = doc.querySelector("h1");
+      return h1.textContent;
+    }
+  );
 
   await reloadTab(tabX);
 
-  const guid = await ContentTask.spawn(gBrowser.selectedBrowser, {}, function() {
-    const doc = content.document;
-    const h1 = doc.querySelector("h1");
-    return h1.textContent;
-  });
+  const guid = await ContentTask.spawn(
+    gBrowser.selectedBrowser,
+    {},
+    function() {
+      const doc = content.document;
+      const h1 = doc.querySelector("h1");
+      return h1.textContent;
+    }
+  );
 
   if (expected) {
     is(guid, oldGuid, tabX.title + " cache is enabled");
@@ -85,20 +92,23 @@ async function setDisableCacheCheckboxChecked(tabX, state) {
 
   if (cbx.checked !== state) {
     info("Setting disable cache checkbox to " + state + " for " + tabX.title);
+    const onReconfigured = tabX.toolbox.once("cache-reconfigured");
     cbx.click();
 
-    // We need to wait for all checkboxes to be updated and the docshells to
-    // apply the new cache settings.
-    await waitForTick();
+    // We have to wait for the reconfigure request to be finished before reloading
+    // the page.
+    await onReconfigured;
   }
 }
 
 function reloadTab(tabX) {
   const browser = gBrowser.selectedBrowser;
 
-  const reloadTabPromise = BrowserTestUtils.browserLoaded(browser).then(function() {
-    info("Reloaded tab " + tabX.title);
-  });
+  const reloadTabPromise = BrowserTestUtils.browserLoaded(browser).then(
+    function() {
+      info("Reloaded tab " + tabX.title);
+    }
+  );
 
   info("Reloading tab " + tabX.title);
   const mm = loadFrameScriptUtils();

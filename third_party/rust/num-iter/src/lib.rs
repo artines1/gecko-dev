@@ -9,17 +9,24 @@
 // except according to those terms.
 
 //! External iterators for generic mathematics
-#![doc(html_logo_url = "https://rust-num.github.io/num/rust-logo-128x128-blk-v2.png",
-       html_favicon_url = "https://rust-num.github.io/num/favicon.ico",
-       html_root_url = "https://rust-num.github.io/num/",
-       html_playground_url = "http://play.integer32.com/")]
+//!
+//! ## Compatibility
+//!
+//! The `num-iter` crate is tested for rustc 1.8 and greater.
+
+#![doc(html_root_url = "https://docs.rs/num-iter/0.1")]
+
+#![no_std]
+#[cfg(feature = "std")]
+extern crate std;
 
 extern crate num_traits as traits;
 extern crate num_integer as integer;
 
 use integer::Integer;
 use traits::{Zero, One, CheckedAdd, ToPrimitive};
-use std::ops::{Add, Sub};
+use core::ops::{Add, Sub};
+use core::usize;
 
 /// An iterator over the range [start, stop)
 #[derive(Clone)]
@@ -49,6 +56,30 @@ pub fn range<A>(start: A, stop: A) -> Range<A>
     Range{state: start, stop: stop, one: One::one()}
 }
 
+#[inline]
+#[cfg(has_i128)]
+fn unsigned<T: ToPrimitive>(x: &T) -> Option<u128> {
+    match x.to_u128() {
+        None => match x.to_i128() {
+            Some(i) => Some(i as u128),
+            None => None,
+        },
+        Some(u) => Some(u),
+    }
+}
+
+#[inline]
+#[cfg(not(has_i128))]
+fn unsigned<T: ToPrimitive>(x: &T) -> Option<u64> {
+    match x.to_u64() {
+        None => match x.to_i64() {
+            Some(i) => Some(i as u64),
+            None => None,
+        },
+        Some(u) => Some(u),
+    }
+}
+
 // FIXME: rust-lang/rust#10414: Unfortunate type bound
 impl<A> Iterator for Range<A>
     where A: Add<A, Output = A> + PartialOrd + Clone + ToPrimitive
@@ -68,34 +99,26 @@ impl<A> Iterator for Range<A>
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        // This first checks if the elements are representable as i64. If they aren't, try u64 (to
-        // handle cases like range(huge, huger)). We don't use usize/int because the difference of
-        // the i64/u64 might lie within their range.
-        let bound = match self.state.to_i64() {
-            Some(a) => {
-                let sz = self.stop.to_i64().map(|b| b.checked_sub(a));
-                match sz {
-                    Some(Some(bound)) => bound.to_usize(),
-                    _ => None,
-                }
-            },
-            None => match self.state.to_u64() {
-                Some(a) => {
-                    let sz = self.stop.to_u64().map(|b| b.checked_sub(a));
-                    match sz {
-                        Some(Some(bound)) => bound.to_usize(),
-                        _ => None
-                    }
-                },
-                None => None
-            }
-        };
-
-        match bound {
-            Some(b) => (b, Some(b)),
-            // Standard fallback for unbounded/unrepresentable bounds
-            None => (0, None)
+        // Check for empty ranges first.
+        if self.state >= self.stop {
+            return (0, Some(0));
         }
+
+        // Try to cast both ends to the largest unsigned primitive.
+        // Note that negative values will wrap to a large positive.
+        if let Some(a) = unsigned(&self.state) {
+            if let Some(b) = unsigned(&self.stop) {
+                // We've lost signs, but we already know state < stop, so
+                // a `wrapping_sub` will give the correct unsigned delta.
+                return match b.wrapping_sub(a).to_usize() {
+                    Some(len) => (len, Some(len)),
+                    None => (usize::MAX, None),
+                }
+            }
+        }
+
+        // Standard fallback for unbounded/unrepresentable bounds
+        (0, None)
     }
 }
 
@@ -264,9 +287,10 @@ impl<A> Iterator for RangeStepInclusive<A>
 
 #[cfg(test)]
 mod tests {
-    use std::usize;
-    use std::ops::{Add, Mul};
-    use std::cmp::Ordering;
+    use core::{isize, usize};
+    use core::ops::{Add, Mul};
+    use core::cmp::Ordering;
+    use core::iter;
     use traits::{One, ToPrimitive};
 
     #[test]
@@ -319,10 +343,12 @@ mod tests {
             }
         }
 
-        assert!(super::range(0, 5).collect::<Vec<isize>>() == vec![0, 1, 2, 3, 4]);
-        assert!(super::range(-10, -1).collect::<Vec<isize>>() ==
-                vec![-10, -9, -8, -7, -6, -5, -4, -3, -2]);
-        assert!(super::range(0, 5).rev().collect::<Vec<isize>>() == vec![4, 3, 2, 1, 0]);
+        assert!(super::range(0, 5)
+                .eq([0, 1, 2, 3, 4].iter().cloned()));
+        assert!(super::range(-10, -1)
+                .eq([-10, -9, -8, -7, -6, -5, -4, -3, -2].iter().cloned()));
+        assert!(super::range(0, 5).rev()
+                .eq([4, 3, 2, 1, 0].iter().cloned()));
         assert_eq!(super::range(200, -5).count(), 0);
         assert_eq!(super::range(200, -5).rev().count(), 0);
         assert_eq!(super::range(200, 200).count(), 0);
@@ -332,47 +358,141 @@ mod tests {
         // this test is only meaningful when sizeof usize < sizeof u64
         assert_eq!(super::range(usize::MAX - 1, usize::MAX).size_hint(), (1, Some(1)));
         assert_eq!(super::range(-10, -1).size_hint(), (9, Some(9)));
+        assert_eq!(super::range(isize::MIN, isize::MAX).size_hint(), (usize::MAX, Some(usize::MAX)));
+    }
+
+    #[test]
+    #[cfg(has_i128)]
+    fn test_range_128() {
+        use core::{i128, u128};
+
+        assert!(super::range(0i128, 5)
+                .eq([0, 1, 2, 3, 4].iter().cloned()));
+        assert!(super::range(-10i128, -1)
+                .eq([-10, -9, -8, -7, -6, -5, -4, -3, -2].iter().cloned()));
+        assert!(super::range(0u128, 5).rev()
+                .eq([4, 3, 2, 1, 0].iter().cloned()));
+
+        assert_eq!(super::range(i128::MIN, i128::MIN+1).size_hint(), (1, Some(1)));
+        assert_eq!(super::range(i128::MAX - 1, i128::MAX).size_hint(), (1, Some(1)));
+        assert_eq!(super::range(i128::MIN, i128::MAX).size_hint(), (usize::MAX, None));
+
+        assert_eq!(super::range(u128::MAX - 1, u128::MAX).size_hint(), (1, Some(1)));
+        assert_eq!(super::range(0, usize::MAX as u128).size_hint(), (usize::MAX, Some(usize::MAX)));
+        assert_eq!(super::range(0, usize::MAX as u128 + 1).size_hint(), (usize::MAX, None));
+        assert_eq!(super::range(0, i128::MAX).size_hint(), (usize::MAX, None));
     }
 
     #[test]
     fn test_range_inclusive() {
-        assert!(super::range_inclusive(0, 5).collect::<Vec<isize>>() ==
-                vec![0, 1, 2, 3, 4, 5]);
-        assert!(super::range_inclusive(0, 5).rev().collect::<Vec<isize>>() ==
-                vec![5, 4, 3, 2, 1, 0]);
+        assert!(super::range_inclusive(0, 5)
+                .eq([0, 1, 2, 3, 4, 5].iter().cloned()));
+        assert!(super::range_inclusive(0, 5).rev()
+                .eq([5, 4, 3, 2, 1, 0].iter().cloned()));
         assert_eq!(super::range_inclusive(200, -5).count(), 0);
         assert_eq!(super::range_inclusive(200, -5).rev().count(), 0);
-        assert!(super::range_inclusive(200, 200).collect::<Vec<isize>>() == vec![200]);
-        assert!(super::range_inclusive(200, 200).rev().collect::<Vec<isize>>() == vec![200]);
+        assert!(super::range_inclusive(200, 200)
+                .eq(iter::once(200)));
+        assert!(super::range_inclusive(200, 200).rev()
+                .eq(iter::once(200)));
+        assert_eq!(super::range_inclusive(isize::MIN, isize::MAX - 1).size_hint(),
+                   (usize::MAX, Some(usize::MAX)));
+        assert_eq!(super::range_inclusive(isize::MIN, isize::MAX).size_hint(),
+                   (usize::MAX, None));
+    }
+
+    #[test]
+    #[cfg(has_i128)]
+    fn test_range_inclusive_128() {
+        use core::i128;
+
+        assert!(super::range_inclusive(0u128, 5)
+                .eq([0, 1, 2, 3, 4, 5].iter().cloned()));
+        assert!(super::range_inclusive(0u128, 5).rev()
+                .eq([5, 4, 3, 2, 1, 0].iter().cloned()));
+        assert_eq!(super::range_inclusive(200i128, -5).count(), 0);
+        assert_eq!(super::range_inclusive(200i128, -5).rev().count(), 0);
+        assert!(super::range_inclusive(200u128, 200)
+                .eq(iter::once(200)));
+        assert!(super::range_inclusive(200u128, 200).rev()
+                .eq(iter::once(200)));
+        assert_eq!(super::range_inclusive(isize::MIN as i128, isize::MAX as i128 - 1).size_hint(),
+                   (usize::MAX, Some(usize::MAX)));
+        assert_eq!(super::range_inclusive(isize::MIN as i128, isize::MAX as i128).size_hint(),
+                   (usize::MAX, None));
+        assert_eq!(super::range_inclusive(isize::MIN as i128, isize::MAX as i128 + 1).size_hint(),
+                   (usize::MAX, None));
+        assert_eq!(super::range_inclusive(i128::MIN, i128::MAX).size_hint(),
+                   (usize::MAX, None));
     }
 
     #[test]
     fn test_range_step() {
-        assert!(super::range_step(0, 20, 5).collect::<Vec<isize>>() ==
-                vec![0, 5, 10, 15]);
-        assert!(super::range_step(20, 0, -5).collect::<Vec<isize>>() ==
-                vec![20, 15, 10, 5]);
-        assert!(super::range_step(20, 0, -6).collect::<Vec<isize>>() ==
-                vec![20, 14, 8, 2]);
-        assert!(super::range_step(200u8, 255, 50).collect::<Vec<u8>>() ==
-                vec![200u8, 250]);
-        assert!(super::range_step(200, -5, 1).collect::<Vec<isize>>() == vec![]);
-        assert!(super::range_step(200, 200, 1).collect::<Vec<isize>>() == vec![]);
+        assert!(super::range_step(0, 20, 5)
+                .eq([0, 5, 10, 15].iter().cloned()));
+        assert!(super::range_step(20, 0, -5)
+                .eq([20, 15, 10, 5].iter().cloned()));
+        assert!(super::range_step(20, 0, -6)
+                .eq([20, 14, 8, 2].iter().cloned()));
+        assert!(super::range_step(200u8, 255, 50)
+                .eq([200u8, 250].iter().cloned()));
+        assert!(super::range_step(200, -5, 1)
+                .eq(iter::empty()));
+        assert!(super::range_step(200, 200, 1)
+                .eq(iter::empty()));
+    }
+
+    #[test]
+    #[cfg(has_i128)]
+    fn test_range_step_128() {
+        use core::u128::MAX as UMAX;
+
+        assert!(super::range_step(0u128, 20, 5)
+                .eq([0, 5, 10, 15].iter().cloned()));
+        assert!(super::range_step(20i128, 0, -5)
+                .eq([20, 15, 10, 5].iter().cloned()));
+        assert!(super::range_step(20i128, 0, -6)
+                .eq([20, 14, 8, 2].iter().cloned()));
+        assert!(super::range_step(UMAX - 55, UMAX, 50)
+                .eq([UMAX - 55, UMAX - 5].iter().cloned()));
+        assert!(super::range_step(200i128, -5, 1)
+                .eq(iter::empty()));
+        assert!(super::range_step(200i128, 200, 1)
+                .eq(iter::empty()));
     }
 
     #[test]
     fn test_range_step_inclusive() {
-        assert!(super::range_step_inclusive(0, 20, 5).collect::<Vec<isize>>() ==
-                vec![0, 5, 10, 15, 20]);
-        assert!(super::range_step_inclusive(20, 0, -5).collect::<Vec<isize>>() ==
-                vec![20, 15, 10, 5, 0]);
-        assert!(super::range_step_inclusive(20, 0, -6).collect::<Vec<isize>>() ==
-                vec![20, 14, 8, 2]);
-        assert!(super::range_step_inclusive(200u8, 255, 50).collect::<Vec<u8>>() ==
-                vec![200u8, 250]);
-        assert!(super::range_step_inclusive(200, -5, 1).collect::<Vec<isize>>() ==
-                vec![]);
-        assert!(super::range_step_inclusive(200, 200, 1).collect::<Vec<isize>>() ==
-                vec![200]);
+        assert!(super::range_step_inclusive(0, 20, 5)
+                .eq([0, 5, 10, 15, 20].iter().cloned()));
+        assert!(super::range_step_inclusive(20, 0, -5)
+                .eq([20, 15, 10, 5, 0].iter().cloned()));
+        assert!(super::range_step_inclusive(20, 0, -6)
+                .eq([20, 14, 8, 2].iter().cloned()));
+        assert!(super::range_step_inclusive(200u8, 255, 50)
+                .eq([200u8, 250].iter().cloned()));
+        assert!(super::range_step_inclusive(200, -5, 1)
+                .eq(iter::empty()));
+        assert!(super::range_step_inclusive(200, 200, 1)
+                .eq(iter::once(200)));
+    }
+
+    #[test]
+    #[cfg(has_i128)]
+    fn test_range_step_inclusive_128() {
+        use core::u128::MAX as UMAX;
+
+        assert!(super::range_step_inclusive(0u128, 20, 5)
+                .eq([0, 5, 10, 15, 20].iter().cloned()));
+        assert!(super::range_step_inclusive(20i128, 0, -5)
+                .eq([20, 15, 10, 5, 0].iter().cloned()));
+        assert!(super::range_step_inclusive(20i128, 0, -6)
+                .eq([20, 14, 8, 2].iter().cloned()));
+        assert!(super::range_step_inclusive(UMAX - 55, UMAX, 50)
+                .eq([UMAX - 55, UMAX - 5].iter().cloned()));
+        assert!(super::range_step_inclusive(200i128, -5, 1)
+                .eq(iter::empty()));
+        assert!(super::range_step_inclusive(200i128, 200, 1)
+                .eq(iter::once(200)));
     }
 }

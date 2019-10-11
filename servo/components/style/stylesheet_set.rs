@@ -1,16 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! A centralized set of stylesheets for a document.
 
-use dom::TElement;
-use invalidation::stylesheets::StylesheetInvalidationSet;
-use media_queries::Device;
-use selector_parser::SnapshotMap;
-use shared_lock::SharedRwLockReadGuard;
+use crate::dom::TElement;
+use crate::invalidation::stylesheets::StylesheetInvalidationSet;
+use crate::media_queries::Device;
+use crate::selector_parser::SnapshotMap;
+use crate::shared_lock::SharedRwLockReadGuard;
+use crate::stylesheets::{Origin, OriginSet, OriginSetIterator, PerOrigin, StylesheetInDocument};
 use std::{mem, slice};
-use stylesheets::{Origin, OriginSet, OriginSetIterator, PerOrigin, StylesheetInDocument};
 
 /// Entry for a StylesheetSet.
 #[derive(MallocSizeOf)]
@@ -211,8 +211,6 @@ where
     type Item = (&'a S, SheetRebuildKind);
 
     fn next(&mut self) -> Option<Self::Item> {
-        use std::mem;
-
         loop {
             let potential_sheet = self.iter.next()?;
 
@@ -324,7 +322,8 @@ where
     fn insert_before(&mut self, sheet: S, before_sheet: &S) {
         debug_assert!(!self.contains(&sheet));
 
-        let index = self.entries
+        let index = self
+            .entries
             .iter()
             .position(|entry| entry.sheet == *before_sheet)
             .expect("`before_sheet` stylesheet not found");
@@ -342,14 +341,6 @@ where
 
         self.dirty = true;
         self.data_validity = cmp::max(validity, self.data_validity);
-    }
-
-    fn prepend(&mut self, sheet: S) {
-        debug_assert!(!self.contains(&sheet));
-        // Inserting stylesheets somewhere but at the end changes the validity
-        // of the cascade data, but not the invalidation data.
-        self.set_data_validity_at_least(DataValidity::CascadeInvalid);
-        self.entries.insert(0, StylesheetSetEntry::new(sheet));
     }
 
     /// Returns an iterator over the current list of stylesheets.
@@ -416,20 +407,6 @@ macro_rules! sheet_set_methods {
             collection.append(sheet);
         }
 
-        /// Prepend a new stylesheet to the current set.
-        pub fn prepend_stylesheet(
-            &mut self,
-            device: Option<&Device>,
-            sheet: S,
-            guard: &SharedRwLockReadGuard,
-        ) {
-            debug!(concat!($set_name, "::prepend_stylesheet"));
-            self.collect_invalidations_for(device, &sheet, guard);
-
-            let collection = self.collection_for(&sheet, guard);
-            collection.prepend(sheet);
-        }
-
         /// Insert a given stylesheet before another stylesheet in the document.
         pub fn insert_stylesheet_before(
             &mut self,
@@ -491,7 +468,14 @@ where
             .fold(0, |s, (item, _)| s + item.len())
     }
 
+    /// Returns the count of stylesheets for a given origin.
+    #[inline]
+    pub fn sheet_count(&self, origin: Origin) -> usize {
+        self.collections.borrow_for_origin(&origin).len()
+    }
+
     /// Returns the `index`th stylesheet in the set for the given origin.
+    #[inline]
     pub fn get(&self, origin: Origin, index: usize) -> Option<&S> {
         self.collections.borrow_for_origin(&origin).get(index)
     }
@@ -562,7 +546,7 @@ where
     }
 }
 
-/// The set of stylesheets effective for a given XBL binding or Shadow Root.
+/// The set of stylesheets effective for a given Shadow Root.
 #[derive(MallocSizeOf)]
 pub struct AuthorStylesheetSet<S>
 where
@@ -606,6 +590,16 @@ where
     /// Whether the collection is empty.
     pub fn is_empty(&self) -> bool {
         self.collection.len() == 0
+    }
+
+    /// Returns the `index`th stylesheet in the collection of author styles if present.
+    pub fn get(&self, index: usize) -> Option<&S> {
+        self.collection.get(index)
+    }
+
+    /// Returns the number of author stylesheets.
+    pub fn len(&self) -> usize {
+        self.collection.len()
     }
 
     fn collection_for(

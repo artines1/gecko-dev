@@ -16,7 +16,7 @@
 var { Cr } = require("chrome");
 var {
   BrowsingContextTargetActor,
-  browsingContextTargetPrototype
+  browsingContextTargetPrototype,
 } = require("devtools/server/actors/targets/browsing-context");
 
 const { extend } = require("devtools/shared/extend");
@@ -43,14 +43,18 @@ const frameTargetPrototype = extend({}, browsingContextTargetPrototype);
  */
 frameTargetPrototype.initialize = function(connection, chromeGlobal) {
   this._chromeGlobal = chromeGlobal;
-  BrowsingContextTargetActor.prototype.initialize.call(this, connection, chromeGlobal);
+  BrowsingContextTargetActor.prototype.initialize.call(
+    this,
+    connection,
+    chromeGlobal
+  );
   this.traits.reconfigure = false;
   this._sendForm = this._sendForm.bind(this);
   this._chromeGlobal.addMessageListener("debug:form", this._sendForm);
 
   Object.defineProperty(this, "docShell", {
     value: this._chromeGlobal.docShell,
-    configurable: true
+    configurable: true,
   });
 };
 
@@ -59,7 +63,7 @@ Object.defineProperty(frameTargetPrototype, "title", {
     return this.window.document.title;
   },
   enumerable: true,
-  configurable: true
+  configurable: true,
 });
 
 frameTargetPrototype.exit = function() {
@@ -90,4 +94,7 @@ frameTargetPrototype._sendForm = function() {
   this._chromeGlobal.sendAsyncMessage("debug:form", this.form());
 };
 
-exports.FrameTargetActor = ActorClassWithSpec(frameTargetSpec, frameTargetPrototype);
+exports.FrameTargetActor = ActorClassWithSpec(
+  frameTargetSpec,
+  frameTargetPrototype
+);

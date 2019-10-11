@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+ * vim: set ts=8 sts=2 et sw=2 tw=80:
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,34 +15,46 @@
 #include "js/RootingAPI.h"
 #include "vm/NativeObject.h"
 
+using UDateFormat = void*;
+
 namespace js {
 
-class FreeOp;
 class GlobalObject;
 
-class DateTimeFormatObject : public NativeObject
-{
-  public:
-    static const Class class_;
+class DateTimeFormatObject : public NativeObject {
+ public:
+  static const JSClass class_;
 
-    static constexpr uint32_t INTERNALS_SLOT = 0;
-    static constexpr uint32_t UDATE_FORMAT_SLOT = 1;
-    static constexpr uint32_t SLOT_COUNT = 2;
+  static constexpr uint32_t INTERNALS_SLOT = 0;
+  static constexpr uint32_t UDATE_FORMAT_SLOT = 1;
+  static constexpr uint32_t SLOT_COUNT = 2;
 
-    static_assert(INTERNALS_SLOT == INTL_INTERNALS_OBJECT_SLOT,
-                  "INTERNALS_SLOT must match self-hosting define for internals object slot");
+  static_assert(INTERNALS_SLOT == INTL_INTERNALS_OBJECT_SLOT,
+                "INTERNALS_SLOT must match self-hosting define for internals "
+                "object slot");
 
-  private:
-    static const ClassOps classOps_;
+  UDateFormat* getDateFormat() const {
+    const auto& slot = getFixedSlot(UDATE_FORMAT_SLOT);
+    if (slot.isUndefined()) {
+      return nullptr;
+    }
+    return static_cast<UDateFormat*>(slot.toPrivate());
+  }
 
-    static void finalize(FreeOp* fop, JSObject* obj);
+  void setDateFormat(UDateFormat* dateFormat) {
+    setFixedSlot(UDATE_FORMAT_SLOT, PrivateValue(dateFormat));
+  }
+
+ private:
+  static const JSClassOps classOps_;
+
+  static void finalize(JSFreeOp* fop, JSObject* obj);
 };
 
-extern JSObject*
-CreateDateTimeFormatPrototype(JSContext* cx, JS::Handle<JSObject*> Intl,
-                              JS::Handle<GlobalObject*> global,
-                              JS::MutableHandle<JSObject*> constructor,
-                              intl::DateTimeFormatOptions dtfOptions);
+extern JSObject* CreateDateTimeFormatPrototype(
+    JSContext* cx, JS::Handle<JSObject*> Intl, JS::Handle<GlobalObject*> global,
+    JS::MutableHandle<JSObject*> constructor,
+    intl::DateTimeFormatOptions dtfOptions);
 
 /**
  * Returns a new instance of the standard built-in DateTimeFormat constructor.
@@ -51,8 +63,8 @@ CreateDateTimeFormatPrototype(JSContext* cx, JS::Handle<JSObject*> Intl,
  *
  * Usage: dateTimeFormat = intl_DateTimeFormat(locales, options)
  */
-extern MOZ_MUST_USE bool
-intl_DateTimeFormat(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_DateTimeFormat(JSContext* cx, unsigned argc,
+                                             JS::Value* vp);
 
 /**
  * Returns an object indicating the supported locales for date and time
@@ -62,8 +74,9 @@ intl_DateTimeFormat(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: availableLocales = intl_DateTimeFormat_availableLocales()
  */
-extern MOZ_MUST_USE bool
-intl_DateTimeFormat_availableLocales(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_DateTimeFormat_availableLocales(JSContext* cx,
+                                                              unsigned argc,
+                                                              JS::Value* vp);
 
 /**
  * Returns an array with the calendar type identifiers per Unicode
@@ -73,8 +86,8 @@ intl_DateTimeFormat_availableLocales(JSContext* cx, unsigned argc, JS::Value* vp
  *
  * Usage: calendars = intl_availableCalendars(locale)
  */
-extern MOZ_MUST_USE bool
-intl_availableCalendars(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_availableCalendars(JSContext* cx, unsigned argc,
+                                                 JS::Value* vp);
 
 /**
  * Returns the calendar type identifier per Unicode Technical Standard 35,
@@ -83,8 +96,8 @@ intl_availableCalendars(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: calendar = intl_defaultCalendar(locale)
  */
-extern MOZ_MUST_USE bool
-intl_defaultCalendar(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_defaultCalendar(JSContext* cx, unsigned argc,
+                                              JS::Value* vp);
 
 /**
  * 6.4.1 IsValidTimeZoneName ( timeZone )
@@ -96,8 +109,8 @@ intl_defaultCalendar(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: ianaTimeZone = intl_IsValidTimeZoneName(timeZone)
  */
-extern MOZ_MUST_USE bool
-intl_IsValidTimeZoneName(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_IsValidTimeZoneName(JSContext* cx, unsigned argc,
+                                                  JS::Value* vp);
 
 /**
  * Return the canonicalized time zone name. Canonicalization resolves link
@@ -105,24 +118,25 @@ intl_IsValidTimeZoneName(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: ianaTimeZone = intl_canonicalizeTimeZone(timeZone)
  */
-extern MOZ_MUST_USE bool
-intl_canonicalizeTimeZone(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_canonicalizeTimeZone(JSContext* cx, unsigned argc,
+                                                   JS::Value* vp);
 
 /**
  * Return the default time zone name. The time zone name is not canonicalized.
  *
  * Usage: icuDefaultTimeZone = intl_defaultTimeZone()
  */
-extern MOZ_MUST_USE bool
-intl_defaultTimeZone(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_defaultTimeZone(JSContext* cx, unsigned argc,
+                                              JS::Value* vp);
 
 /**
  * Return the raw offset from GMT in milliseconds for the default time zone.
  *
  * Usage: defaultTimeZoneOffset = intl_defaultTimeZoneOffset()
  */
-extern MOZ_MUST_USE bool
-intl_defaultTimeZoneOffset(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_defaultTimeZoneOffset(JSContext* cx,
+                                                    unsigned argc,
+                                                    JS::Value* vp);
 
 /**
  * Return true if the given string is the default time zone as returned by
@@ -130,8 +144,8 @@ intl_defaultTimeZoneOffset(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: isIcuDefaultTimeZone = intl_isDefaultTimeZone(icuDefaultTimeZone)
  */
-extern MOZ_MUST_USE bool
-intl_isDefaultTimeZone(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_isDefaultTimeZone(JSContext* cx, unsigned argc,
+                                                JS::Value* vp);
 
 /**
  * Return a pattern in the date-time format pattern language of Unicode
@@ -141,8 +155,8 @@ intl_isDefaultTimeZone(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: pattern = intl_patternForSkeleton(locale, skeleton)
  */
-extern MOZ_MUST_USE bool
-intl_patternForSkeleton(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_patternForSkeleton(JSContext* cx, unsigned argc,
+                                                 JS::Value* vp);
 
 /**
  * Return a pattern in the date-time format pattern language of Unicode
@@ -170,8 +184,8 @@ intl_patternForSkeleton(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: pattern = intl_patternForStyle(locale, dateStyle, timeStyle, timeZone)
  */
-extern MOZ_MUST_USE bool
-intl_patternForStyle(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_patternForStyle(JSContext* cx, unsigned argc,
+                                              JS::Value* vp);
 
 /**
  * Returns a String value representing x (which must be a Number value)
@@ -182,9 +196,9 @@ intl_patternForStyle(JSContext* cx, unsigned argc, JS::Value* vp);
  *
  * Usage: formatted = intl_FormatDateTime(dateTimeFormat, x, formatToParts)
  */
-extern MOZ_MUST_USE bool
-intl_FormatDateTime(JSContext* cx, unsigned argc, JS::Value* vp);
+extern MOZ_MUST_USE bool intl_FormatDateTime(JSContext* cx, unsigned argc,
+                                             JS::Value* vp);
 
-} // namespace js
+}  // namespace js
 
 #endif /* builtin_intl_DateTimeFormat_h */

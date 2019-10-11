@@ -12,17 +12,21 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         '/accessible/windows/msaa',
     ]
 else:
-    DIRS += ['other']
+    DIRS += ['other', 'extension']
     LOCAL_INCLUDES += [
         '/accessible/ipc/other',
     ]
-    if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
+    if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
         LOCAL_INCLUDES += [
             '/accessible/atk',
         ]
     elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
         LOCAL_INCLUDES += [
             '/accessible/mac',
+        ]
+    elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+        LOCAL_INCLUDES += [
+            '/accessible/android',
         ]
     else:
         LOCAL_INCLUDES += [
@@ -62,6 +66,3 @@ FINAL_LIBRARY = 'xul'
 
 # Add libFuzzer configuration directives
 include('/tools/fuzzing/libfuzzer-config.mozbuild')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

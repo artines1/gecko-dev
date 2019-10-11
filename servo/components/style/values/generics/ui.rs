@@ -1,18 +1,26 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic values for UI properties.
 
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
-use style_traits::cursor::CursorKind;
+use values::specified::ui::CursorKind;
 
 /// A generic value for the `cursor` property.
 ///
 /// https://drafts.csswg.org/css-ui/#cursor
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(
+    Clone,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
 pub struct Cursor<Image> {
     /// The parsed images for the cursor.
     pub images: Box<[Image]>,
@@ -45,8 +53,16 @@ impl<Image: ToCss> ToCss for Cursor<Image> {
 }
 
 /// A generic value for item of `image cursors`.
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(
+    Clone,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
 pub struct CursorImage<ImageUrl, Number> {
     /// The url to parse images from.
     pub url: ImageUrl,
@@ -67,5 +83,46 @@ impl<ImageUrl: ToCss, Number: ToCss> ToCss for CursorImage<ImageUrl, Number> {
             y.to_css(dest)?;
         }
         Ok(())
+    }
+}
+
+/// A generic value for `scrollbar-color` property.
+///
+/// https://drafts.csswg.org/css-scrollbars-1/#scrollbar-color
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C, u8)]
+pub enum GenericScrollbarColor<Color> {
+    /// `auto`
+    Auto,
+    /// `<color>{2}`
+    Colors {
+        /// First `<color>`, for color of the scrollbar thumb.
+        thumb: Color,
+        /// Second `<color>`, for color of the scrollbar track.
+        track: Color,
+    },
+}
+
+pub use self::GenericScrollbarColor as ScrollbarColor;
+
+impl<Color> Default for ScrollbarColor<Color> {
+    #[inline]
+    fn default() -> Self {
+        ScrollbarColor::Auto
     }
 }

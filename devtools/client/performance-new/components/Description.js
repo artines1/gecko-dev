@@ -4,11 +4,12 @@
 "use strict";
 
 const { PureComponent } = require("devtools/client/shared/vendor/react");
-const { div, button, p } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  div,
+  button,
+  p,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 const { openDocLink } = require("devtools/client/shared/link");
-const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/vendor/react-redux");
-const selectors = require("devtools/client/performance-new/store/selectors");
 
 /**
  * This component provides a helpful description for what is going on in the component
@@ -16,10 +17,7 @@ const selectors = require("devtools/client/performance-new/store/selectors");
  */
 class Description extends PureComponent {
   static get propTypes() {
-    return {
-      // StateProps:
-      toolbox: PropTypes.object.isRequired
-    };
+    return {};
   }
 
   constructor(props) {
@@ -40,7 +38,7 @@ class Description extends PureComponent {
       {
         className: "perf-external-link",
         value: href,
-        onClick: this.handleLinkClick
+        onClick: this.handleLinkClick,
       },
       text
     );
@@ -49,21 +47,20 @@ class Description extends PureComponent {
   render() {
     return div(
       { className: "perf-description" },
-      p(null,
+      p(
+        null,
         "This new recording panel is a bit different from the existing " +
           "performance panel. It records the entire browser, and then opens up " +
           "and shares the profile with ",
-        this.renderLink(
-          "https://perf-html.io",
-          "perf-html.io"
-        ),
+        this.renderLink("https://profiler.firefox.com", "profiler.firefox.com"),
         ", a Mozilla performance analysis tool."
       ),
-      p(null,
+      p(
+        null,
         "This is still a prototype. Join along or file bugs at: ",
         this.renderLink(
-          "https://github.com/devtools-html/perf.html",
-          "github.com/devtools-html/perf.html"
+          "https://github.com/firefox-devtools/profiler",
+          "github.com/firefox-devtools/profiler"
         ),
         "."
       )
@@ -71,8 +68,4 @@ class Description extends PureComponent {
   }
 }
 
-const mapStateToProps = state => ({
-  toolbox: selectors.getToolbox(state)
-});
-
-module.exports = connect(mapStateToProps)(Description);
+module.exports = Description;

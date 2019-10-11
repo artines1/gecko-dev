@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function
+
 import hashlib
 import json
 import os
@@ -49,8 +51,7 @@ def get_generated_sources():
     # Next, return any Rust source files that were generated into the Rust
     # object directory.
     rust_build_kind = 'debug' if buildconfig.substs.get('MOZ_DEBUG_RUST') else 'release'
-    base = mozpath.join('toolkit/library',
-                        buildconfig.substs['RUST_TARGET'],
+    base = mozpath.join(buildconfig.substs['RUST_TARGET'],
                         rust_build_kind,
                         'build')
     finder = FileFinder(mozpath.join(buildconfig.topobjdir, base))

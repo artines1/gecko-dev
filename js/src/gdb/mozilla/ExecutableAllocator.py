@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 """
 All jitted code is allocated via the ExecutableAllocator class. Make GDB aware
 of them, such that we can query for pages which are containing code which are
@@ -48,23 +52,27 @@ class jsjitExecutableAllocator(object):
             self.allocator = allocator
             self.entryType = allocator.cache.ExecutablePool.pointer()
             # Emulate the HashSet::Range
-            self.table = allocator.value['m_pools']['impl']['table']
+            self.table = allocator.value['m_pools']['mImpl']['mTable']
             self.index = 0
             HASHNUMBER_BIT_SIZE = 32
-            self.max = 1 << (HASHNUMBER_BIT_SIZE - allocator.value['m_pools']['impl']['hashShift'])
+            hashShift = allocator.value['m_pools']['mImpl']['mHashShift']
+            self.max = 1 << (HASHNUMBER_BIT_SIZE - hashShift)
             if self.table == 0:
                 self.max = 0
 
         def __iter__(self):
             return self
 
+        def next(self):
+            return self.__next__()
+
         def __next__(self):
             cur = self.index
             if cur >= self.max:
                 raise StopIteration()
             self.index = self.index + 1
-            if self.table[cur]['keyHash'] > 1:  # table[i]->isLive()
-                return self.table[cur]['mem']['u']['mDummy'].cast(self.entryType)
+            if self.table[cur]['mKeyHash'] > 1:  # table[i]->isLive()
+                return self.table[cur]['mValueData'].cast(self.entryType)
             return self.__next__()
 
 

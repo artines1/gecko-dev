@@ -211,7 +211,7 @@ class Automation(object):
     env['XRE_NO_WINDOWS_CRASH_DIALOG'] = '1'
 
     # Set WebRTC logging in case it is not set yet
-    env.setdefault('MOZ_LOG', 'signaling:3,mtransport:4,DataChannel:4,jsep:4,MediaPipelineFactory:4')
+    env.setdefault('MOZ_LOG', 'signaling:3,mtransport:4,DataChannel:4,jsep:4')
     env.setdefault('R_LOG_LEVEL', '6')
     env.setdefault('R_LOG_DESTINATION', 'stderr')
     env.setdefault('R_LOG_VERBOSE', '1')
@@ -504,7 +504,7 @@ class Automation(object):
              debuggerInfo = None, symbolsPath = None,
              timeout = -1, maxTime = None, onLaunch = None,
              detectShutdownLeaks = False, screenshotOnFail=False, testPath=None, bisectChunk=None,
-             valgrindPath=None, valgrindArgs=None, valgrindSuppFiles=None, outputHandler=None):
+             valgrindPath=None, valgrindArgs=None, valgrindSuppFiles=None, outputHandler=None, e10s=True):
     """
     Run the app, log the duration it took to execute, return the status code.
     Kills the app if it runs for longer than |maxTime| seconds, or outputs nothing for |timeout| seconds.
@@ -521,7 +521,6 @@ class Automation(object):
 
     # copy env so we don't munge the caller's environment
     env = dict(env);
-    env["NO_EM_RESTART"] = "1"
     tmpfd, processLog = tempfile.mkstemp(suffix='pidlog')
     os.close(tmpfd)
     env["MOZ_PROCESS_LOG"] = processLog

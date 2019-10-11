@@ -6,7 +6,14 @@
 
 var EXPORTED_SYMBOLS = ["GlobalState"];
 
-const EXPORTED_METHODS = ["getState", "clear", "get", "set", "delete", "setFromState"];
+const EXPORTED_METHODS = [
+  "getState",
+  "clear",
+  "get",
+  "set",
+  "delete",
+  "setFromState",
+];
 /**
  * Module that contains global session data.
  */
@@ -80,5 +87,5 @@ GlobalStateInternal.prototype = {
    */
   setFromState(aState) {
     this.state = (aState && aState.global) || {};
-  }
+  },
 };

@@ -9,85 +9,75 @@
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
+var gThreadFront;
 
 function run_test() {
+  Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+  registerCleanupFunction(() => {
+    Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+  });
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-stack");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-stack",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_pause_frame();
-                           });
+    attachTestTabAndResume(gClient, "test-stack", function(
+      response,
+      targetFront,
+      threadFront
+    ) {
+      gThreadFront = threadFront;
+      test_pause_frame();
+    });
   });
   do_test_pending();
 }
 
-var gFrames = [
+var frameFixtures = [
   // Function calls...
-  { type: "call", callee: { name: "depth3" } },
-  { type: "call", callee: { name: "depth2" } },
-  { type: "call", callee: { name: "depth1" } },
+  { type: "call", displayName: "depth3" },
+  { type: "call", displayName: "depth2" },
+  { type: "call", displayName: "depth1" },
 
   // Anonymous function call in our eval...
-  { type: "call", callee: { name: undefined } },
+  { type: "call", displayName: undefined },
 
   // The eval itself.
-  { type: "eval", callee: { name: undefined } },
+  { type: "eval", displayName: "(eval)" },
 ];
 
-var gSliceTests = [
-  { start: 0, count: undefined, resetActors: true },
-  { start: 0, count: 1 },
-  { start: 2, count: 2 },
-  { start: 1, count: 15 },
-  { start: 15, count: undefined },
-];
+async function test_frame_packet() {
+  const response = await gThreadFront.getFrames(0, 1000);
+  for (let i = 0; i < response.frames.length; i++) {
+    const expected = frameFixtures[i];
+    const actual = response.frames[i];
 
-function test_frame_slice() {
-  if (gSliceTests.length == 0) {
-    gThreadClient.resume(() => finishClient(gClient));
-    return;
+    Assert.equal(expected.displayname, actual.displayname, "Frame displayname");
+    Assert.equal(expected.type, actual.type, "Frame displayname");
   }
 
-  const test = gSliceTests.shift();
-  gThreadClient.getFrames(test.start, test.count, function(response) {
-    const testFrames = gFrames.slice(test.start,
-                                   test.count ? test.start + test.count : undefined);
-    Assert.equal(testFrames.length, response.frames.length);
-    for (let i = 0; i < testFrames.length; i++) {
-      const expected = testFrames[i];
-      const actual = response.frames[i];
-
-      if (test.resetActors) {
-        expected.actor = actual.actor;
-      }
-
-      for (const key of ["type", "callee-name"]) {
-        Assert.equal(expected[key] || undefined, actual[key]);
-      }
-    }
-    test_frame_slice();
-  });
+  await gThreadFront.resume();
+  await finishClient(gClient);
 }
 
 function test_pause_frame() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    test_frame_slice();
+  gThreadFront.once("paused", function(packet) {
+    test_frame_packet();
   });
 
-  gDebuggee.eval("(" + function() {
-    function depth3() {
-      debugger;
-    }
-    function depth2() {
-      depth3();
-    }
-    function depth1() {
-      depth2();
-    }
-    depth1();
-  } + ")()");
+  gDebuggee.eval(
+    "(" +
+      function() {
+        function depth3() {
+          debugger;
+        }
+        function depth2() {
+          depth3();
+        }
+        function depth1() {
+          depth2();
+        }
+        depth1();
+      } +
+      ")()"
+  );
 }

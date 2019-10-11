@@ -1,15 +1,19 @@
-const TEST_URI = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") + "file_blocking_image.html";
+const TEST_URI =
+  getRootDirectory(gTestPath).replace(
+    "chrome://mochitests/content",
+    "https://example.com"
+  ) + "file_blocking_image.html";
 
 /**
  * Loading an image from https:// should work.
  */
 add_task(async function load_image_from_https_test() {
-  let tab = gBrowser.addTab(TEST_URI);
+  let tab = BrowserTestUtils.addTab(gBrowser, TEST_URI);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   gBrowser.selectedTab = tab;
 
-  await ContentTask.spawn(tab.linkedBrowser, { }, async function() {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     function imgListener(img) {
       return new Promise((resolve, reject) => {
         img.addEventListener("load", () => resolve());
@@ -38,12 +42,12 @@ add_task(async function load_image_from_https_test() {
  * Loading an image from http:// should be rejected.
  */
 add_task(async function load_image_from_http_test() {
-  let tab = gBrowser.addTab(TEST_URI);
+  let tab = BrowserTestUtils.addTab(gBrowser, TEST_URI);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   gBrowser.selectedTab = tab;
 
-  await ContentTask.spawn(tab.linkedBrowser, { }, async function () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     function imgListener(img) {
       return new Promise((resolve, reject) => {
         img.addEventListener("load", () => reject());
@@ -51,7 +55,7 @@ add_task(async function load_image_from_http_test() {
       });
     }
 
-    let img = content.document.createElement('img');
+    let img = content.document.createElement("img");
     img.src = "http://example.com/tests/image/test/mochitest/shaver.png";
     content.document.body.appendChild(img);
 
@@ -62,8 +66,11 @@ add_task(async function load_image_from_http_test() {
       Assert.ok(false);
     }
 
-    Assert.equal(img.imageBlockingStatus, Ci.nsIContentPolicy.REJECT_SERVER,
-                 "images from http should be blocked");
+    Assert.equal(
+      img.imageBlockingStatus,
+      Ci.nsIContentPolicy.REJECT_SERVER,
+      "images from http should be blocked"
+    );
   });
 
   gBrowser.removeTab(tab);
@@ -74,7 +81,7 @@ add_task(async function load_image_from_http_test() {
  * The load from https:// should be replaced.
  */
 add_task(async function load_https_and_http_test() {
-  let tab = gBrowser.addTab(TEST_URI);
+  let tab = BrowserTestUtils.addTab(gBrowser, TEST_URI);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   // Clear image cache, otherwise in non-e10s mode the image might be cached by
@@ -85,7 +92,7 @@ add_task(async function load_https_and_http_test() {
 
   gBrowser.selectedTab = tab;
 
-  await ContentTask.spawn(tab.linkedBrowser, { }, async function () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     function imgListener(img) {
       return new Promise((resolve, reject) => {
         img.addEventListener("load", () => reject());
@@ -106,8 +113,11 @@ add_task(async function load_https_and_http_test() {
       Assert.ok(false);
     }
 
-    Assert.equal(img.imageBlockingStatus, Ci.nsIContentPolicy.REJECT_SERVER,
-                 "image.src changed to http should be blocked");
+    Assert.equal(
+      img.imageBlockingStatus,
+      Ci.nsIContentPolicy.REJECT_SERVER,
+      "image.src changed to http should be blocked"
+    );
   });
 
   gBrowser.removeTab(tab);
@@ -121,12 +131,12 @@ add_task(async function load_https_and_http_test() {
  * the imageBlockingStatus value.
  */
 add_task(async function block_pending_request_test() {
-  let tab = gBrowser.addTab(TEST_URI);
+  let tab = BrowserTestUtils.addTab(gBrowser, TEST_URI);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   gBrowser.selectedTab = tab;
 
-  await ContentTask.spawn(tab.linkedBrowser, { }, async function () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     let wrapper = {
       _resolve: null,
       _sizeAvail: false,
@@ -151,14 +161,16 @@ add_task(async function block_pending_request_test() {
       },
 
       QueryInterface(aIID) {
-        if (aIID.equals(Ci.imgIScriptedNotificationObserver))
+        if (aIID.equals(Ci.imgIScriptedNotificationObserver)) {
           return this;
+        }
         throw Cr.NS_ERROR_NO_INTERFACE;
-      }
+      },
     };
 
-    let observer = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools)
-                     .createScriptedObserver(wrapper);
+    let observer = Cc["@mozilla.org/image/tools;1"]
+      .getService(Ci.imgITools)
+      .createScriptedObserver(wrapper);
 
     let img = content.document.createElement("img");
     img.src = "https://example.com/tests/image/test/mochitest/shaver.png";
@@ -176,8 +188,11 @@ add_task(async function block_pending_request_test() {
     // Now we change to load from http:// site, which will be blocked.
     img.src = "http://example.com/tests/image/test/mochitest/shaver.png";
 
-    Assert.equal(img.getRequest(Ci.nsIImageLoadingContent.CURRENT_REQUEST), req,
-                 "CURRENT_REQUEST shouldn't be replaced.");
+    Assert.equal(
+      img.getRequest(Ci.nsIImageLoadingContent.CURRENT_REQUEST),
+      req,
+      "CURRENT_REQUEST shouldn't be replaced."
+    );
     Assert.equal(img.imageBlockingStatus, Ci.nsIContentPolicy.ACCEPT);
   });
 

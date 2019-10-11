@@ -12,12 +12,20 @@ struct InitResponse
 {
 };
 
+struct InitTemporaryStorageResponse
+{
+};
+
 struct InitOriginResponse
 {
   bool created;
 };
 
 struct ClearOriginResponse
+{
+};
+
+struct ResetOriginResponse
 {
 };
 
@@ -42,17 +50,32 @@ struct PersistResponse
 {
 };
 
+struct EstimateResponse
+{
+  uint64_t usage;
+  uint64_t limit;
+};
+
+struct ListOriginsResponse
+{
+  nsCString[] origins;
+};
+
 union RequestResponse
 {
   nsresult;
   InitResponse;
+  InitTemporaryStorageResponse;
   InitOriginResponse;
   ClearOriginResponse;
+  ResetOriginResponse;
   ClearDataResponse;
   ClearAllResponse;
   ResetAllResponse;
   PersistedResponse;
   PersistResponse;
+  EstimateResponse;
+  ListOriginsResponse;
 };
 
 protocol PQuotaRequest

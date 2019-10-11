@@ -23,10 +23,6 @@ class ApplicationPanel {
   }
 
   async open() {
-    if (!this.toolbox.target.isRemote) {
-      await this.toolbox.target.makeRemote();
-    }
-
     await this.panelWin.Application.bootstrap({
       toolbox: this.toolbox,
       panel: this,
@@ -42,8 +38,6 @@ class ApplicationPanel {
     this.panelWin = null;
     this.toolbox = null;
     this.emit("destroyed");
-
-    return this;
   }
 }
 

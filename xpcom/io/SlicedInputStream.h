@@ -20,22 +20,22 @@ namespace mozilla {
 
 // A wrapper for a slice of an underlying input stream.
 
-class SlicedInputStream final : public nsIAsyncInputStream
-                              , public nsICloneableInputStream
-                              , public nsIIPCSerializableInputStream
-                              , public nsISeekableStream
-                              , public nsIInputStreamCallback
-                              , public nsIInputStreamLength
-                              , public nsIAsyncInputStreamLength
-                              , public nsIInputStreamLengthCallback
-{
-public:
+class SlicedInputStream final : public nsIAsyncInputStream,
+                                public nsICloneableInputStream,
+                                public nsIIPCSerializableInputStream,
+                                public nsISeekableStream,
+                                public nsIInputStreamCallback,
+                                public nsIInputStreamLength,
+                                public nsIAsyncInputStreamLength,
+                                public nsIInputStreamLengthCallback {
+ public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIINPUTSTREAM
   NS_DECL_NSIASYNCINPUTSTREAM
   NS_DECL_NSICLONEABLEINPUTSTREAM
   NS_DECL_NSIIPCSERIALIZABLEINPUTSTREAM
   NS_DECL_NSISEEKABLESTREAM
+  NS_DECL_NSITELLABLESTREAM
   NS_DECL_NSIINPUTSTREAMCALLBACK
   NS_DECL_NSIINPUTSTREAMLENGTH
   NS_DECL_NSIASYNCINPUTSTREAMLENGTH
@@ -58,14 +58,18 @@ public:
   // This CTOR is meant to be used just for IPC.
   SlicedInputStream();
 
-private:
+ private:
   ~SlicedInputStream();
 
-  void
-  SetSourceStream(already_AddRefed<nsIInputStream> aInputStream);
+  template <typename M>
+  void SerializeInternal(mozilla::ipc::InputStreamParams& aParams,
+                         FileDescriptorArray& aFileDescriptors,
+                         bool aDelayedStart, uint32_t aMaxSize,
+                         uint32_t* aSizeUsed, M* aManager);
 
-  uint64_t
-  AdjustRange(uint64_t aRange);
+  void SetSourceStream(already_AddRefed<nsIInputStream> aInputStream);
+
+  uint64_t AdjustRange(uint64_t aRange);
 
   nsCOMPtr<nsIInputStream> mInputStream;
 
@@ -73,6 +77,7 @@ private:
   nsICloneableInputStream* mWeakCloneableInputStream;
   nsIIPCSerializableInputStream* mWeakIPCSerializableInputStream;
   nsISeekableStream* mWeakSeekableInputStream;
+  nsITellableStream* mWeakTellableInputStream;
   nsIAsyncInputStream* mWeakAsyncInputStream;
   nsIInputStreamLength* mWeakInputStreamLength;
   nsIAsyncInputStreamLength* mWeakAsyncInputStreamLength;
@@ -97,6 +102,6 @@ private:
   Mutex mMutex;
 };
 
-} // mozilla namespace
+}  // namespace mozilla
 
-#endif // SlicedInputStream_h
+#endif  // SlicedInputStream_h

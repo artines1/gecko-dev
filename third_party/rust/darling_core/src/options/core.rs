@@ -1,12 +1,13 @@
 use ident_case::RenameRule;
 use syn;
 
-use {Result, Error, FromMetaItem};
-use ast::{Data, Style, Fields};
+use ast::{Data, Fields, Style};
 use codegen;
 use options::{DefaultExpression, InputField, InputVariant, ParseAttribute, ParseData};
+use util::Flag;
+use {Error, FromMeta, Result};
 
-/// A struct or enum which should have `FromMetaItem` or `FromDeriveInput` implementations
+/// A struct or enum which should have `FromMeta` or `FromDeriveInput` implementations
 /// generated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Core {
@@ -33,6 +34,9 @@ pub struct Core {
 
     /// The custom bound to apply to the generated impl
     pub bound: Option<Vec<syn::WherePredicate>>,
+
+    /// Whether or not unknown fields should produce an error at compilation time.
+    pub allow_unknown_fields: Flag,
 }
 
 impl Core {
@@ -45,22 +49,22 @@ impl Core {
             default: Default::default(),
             // See https://github.com/TedDriggs/darling/issues/10: We default to snake_case
             // for enums to help authors produce more idiomatic APIs.
-            rename_rule: if let syn::Data::Enum(_) = di.data{
+            rename_rule: if let syn::Data::Enum(_) = di.data {
                 RenameRule::SnakeCase
             } else {
                 Default::default()
             },
             map: Default::default(),
             bound: Default::default(),
+            allow_unknown_fields: Default::default(),
         }
     }
 
     fn as_codegen_default<'a>(&'a self) -> Option<codegen::DefaultExpression<'a>> {
-        self.default.as_ref().map(|expr| {
-            match *expr {
-                DefaultExpression::Explicit(ref path) => codegen::DefaultExpression::Explicit(path),
-                DefaultExpression::Inherit |
-                DefaultExpression::Trait => codegen::DefaultExpression::Trait,
+        self.default.as_ref().map(|expr| match *expr {
+            DefaultExpression::Explicit(ref path) => codegen::DefaultExpression::Explicit(path),
+            DefaultExpression::Inherit | DefaultExpression::Trait => {
+                codegen::DefaultExpression::Trait
             }
         })
     }
@@ -68,35 +72,37 @@ impl Core {
 
 impl ParseAttribute for Core {
     fn parse_nested(&mut self, mi: &syn::Meta) -> Result<()> {
-        match mi.name().as_ref() {
-            "default" => {
-                if self.default.is_some() {
-                    Err(Error::duplicate_field("default"))
-                } else {
-                    self.default = FromMetaItem::from_meta_item(mi)?;
-                    Ok(())
-                }
+        let path = mi.path();
+
+        if path.is_ident("default") {
+            if self.default.is_some() {
+                return Err(Error::duplicate_field("default").with_span(mi))
             }
-            "rename_all" => {
-                // WARNING: This may have been set based on body shape previously,
-                // so an overwrite may be permissible.
-                self.rename_rule = FromMetaItem::from_meta_item(mi)?;
-                Ok(())
+
+            self.default = FromMeta::from_meta(mi)?;
+        } else if path.is_ident("rename_all") {
+            // WARNING: This may have been set based on body shape previously,
+            // so an overwrite may be permissible.
+            self.rename_rule = FromMeta::from_meta(mi)?;
+        } else if path.is_ident("map") {
+            if self.map.is_some() {
+                return Err(Error::duplicate_field("map").with_span(mi))
             }
-            "map" => {
-                if self.map.is_some() {
-                    Err(Error::duplicate_field("map"))
-                } else {
-                    self.map = FromMetaItem::from_meta_item(mi)?;
-                    Ok(())
-                }
+
+            self.map = FromMeta::from_meta(mi)?;
+        } else if path.is_ident("bound") {
+            self.bound = FromMeta::from_meta(mi)?;
+        } else if path.is_ident("allow_unknown_fields") {
+            if self.allow_unknown_fields.is_some() {
+                return Err(Error::duplicate_field("allow_unknown_fields").with_span(mi))
             }
-            "bound" => {
-                self.bound = FromMetaItem::from_meta_item(mi)?;
-                Ok(())
-            }
-            n => Err(Error::unknown_field(n.as_ref())),
+
+            self.allow_unknown_fields = FromMeta::from_meta(mi)?;
+        } else {
+            return Err(Error::unknown_field_path(&path).with_span(mi))
         }
+
+        Ok(())
     }
 }
 
@@ -117,9 +123,9 @@ impl ParseData for Core {
         let f = InputField::from_field(field, Some(&self))?;
 
         match self.data {
-            Data::Struct(Fields { style: Style::Unit, .. }) => {
-                panic!("Core::parse_field should not be called on unit")
-            }
+            Data::Struct(Fields {
+                style: Style::Unit, ..
+            }) => panic!("Core::parse_field should not be called on unit"),
             Data::Struct(Fields { ref mut fields, .. }) => {
                 fields.push(f);
                 Ok(())
@@ -134,13 +140,15 @@ impl<'a> From<&'a Core> for codegen::TraitImpl<'a> {
         codegen::TraitImpl {
             ident: &v.ident,
             generics: &v.generics,
-            data: v.data
+            data: v
+                .data
                 .as_ref()
                 .map_struct_fields(InputField::as_codegen_field)
                 .map_enum_variants(|variant| variant.as_codegen_variant(&v.ident)),
             default: v.as_codegen_default(),
             map: v.map.as_ref(),
             bound: v.bound.as_ref().map(|i| i.as_slice()),
+            allow_unknown_fields: v.allow_unknown_fields.into(),
         }
     }
 }

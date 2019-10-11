@@ -82,19 +82,6 @@ class LocationBar(UIBaseLib):
         self._autocomplete_results = None
         self._identity_popup = None
 
-    @property
-    def autocomplete_results(self):
-        """Provides access to and methods for the location bar
-        autocomplete results.
-
-        See the :class:`AutocompleteResults` reference."""
-        if not self._autocomplete_results:
-            popup = self.marionette.find_element(By.ID, 'PopupAutoCompleteRichResult')
-            self._autocomplete_results = AutocompleteResults(self.marionette,
-                                                             self.window, popup)
-
-        return self._autocomplete_results
-
     def clear(self):
         """Clears the contents of the url bar (via the DELETE shortcut)."""
         self.focus('shortcut')
@@ -102,29 +89,6 @@ class LocationBar(UIBaseLib):
         Wait(self.marionette).until(
             lambda _: self.value == '',
             message='Contents of location bar could not be cleared.')
-
-    def close_context_menu(self):
-        """Closes the Location Bar context menu by a key event."""
-        # TODO: This method should be implemented via the menu API.
-        self.contextmenu.send_keys(keys.Keys.ESCAPE)
-
-    @property
-    def connection_icon(self):
-        """ Provides access to the urlbar connection icon.
-
-        :returns: Reference to the connection icon element.
-        """
-        return self.marionette.find_element(By.ID, 'connection-icon')
-
-    @property
-    def contextmenu(self):
-        """Provides access to the urlbar context menu.
-
-        :returns: Reference to the urlbar context menu.
-        """
-        # TODO: This method should be implemented via the menu API.
-        parent = self.urlbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'moz-input-box'})
-        return parent.find_element(By.ANON_ATTRIBUTE, {'anonid': 'input-box-contextmenu'})
 
     @property
     def focused(self):
@@ -159,27 +123,6 @@ class LocationBar(UIBaseLib):
         Wait(self.marionette).until(
             lambda _: self.focused,
             message='Location bar has not be focused.')
-
-    def get_contextmenu_entry(self, action):
-        """Retrieves the urlbar context menu entry corresponding
-        to the given action.
-
-        :param action: The action corresponding to the retrieved value.
-        :returns: Reference to the urlbar contextmenu entry.
-        """
-        # TODO: This method should be implemented via the menu API.
-        entries = self.contextmenu.find_elements(By.CSS_SELECTOR, 'menuitem')
-        filter_on = 'cmd_%s' % action
-        found = [e for e in entries if e.get_attribute('cmd') == filter_on]
-        return found[0] if len(found) else None
-
-    @property
-    def history_drop_marker(self):
-        """Provides access to the history drop marker.
-
-        :returns: Reference to the history drop marker.
-        """
-        return self.urlbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'historydropmarker'})
 
     @property
     def identity_box(self):
@@ -292,7 +235,7 @@ class LocationBar(UIBaseLib):
 
         :returns: Reference to the urlbar input.
         """
-        return self.urlbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'input'})
+        return self.marionette.find_element(By.ID, 'urlbar-input')
 
     @property
     def value(self):
@@ -300,7 +243,7 @@ class LocationBar(UIBaseLib):
 
         :returns: The urlbar value.
         """
-        return self.urlbar.get_property('value')
+        return self.urlbar_input.get_property('value')
 
 
 class AutocompleteResults(UIBaseLib):
@@ -524,12 +467,12 @@ class IdentityPopupMainView(IdentityPopupView):
         return self.element.find_element(By.CLASS_NAME, 'identity-popup-expander')
 
     @property
-    def host(self):
-        """The DOM element which represents the identity-popup content host.
+    def header(self):
+        """The DOM element which represents the identity-popup header.
 
-        :returns: Reference to the identity-popup content host.
+        :returns: Reference to the identity-popup header.
         """
-        return self.element.find_element(By.CLASS_NAME, 'identity-popup-host')
+        return self.element.find_element(By.ID, 'identity-popup-mainView-panel-header-span')
 
     @property
     def insecure_connection_label(self):
@@ -590,7 +533,7 @@ class IdentityPopupSecurityView(IdentityPopupView):
 
         :returns: Reference to the identity-popup content host.
         """
-        return self.element.find_element(By.CLASS_NAME, 'identity-popup-host')
+        return self.element.find_element(By.ID, 'identity-popup-host')
 
     @property
     def insecure_connection_label(self):

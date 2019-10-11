@@ -1,26 +1,26 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! [@document rules](https://www.w3.org/TR/2012/WD-css3-conditional-20120911/#at-document)
 //! initially in CSS Conditional Rules Module Level 3, @document has been postponed to the level 4.
 //! We implement the prefixed `@-moz-document`.
 
+use crate::media_queries::Device;
+use crate::parser::{Parse, ParserContext};
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::CssRules;
+use crate::values::CssUrl;
 use cssparser::{Parser, SourceLocation};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use media_queries::Device;
-use parser::{Parse, ParserContext};
 use servo_arc::Arc;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use stylesheets::CssRules;
-use values::CssUrl;
 
-#[derive(Debug)]
+#[derive(Debug, ToShmem)]
 /// A @-moz-document rule
 pub struct DocumentRule {
     /// The parsed condition
@@ -72,7 +72,7 @@ impl DeepCloneWithLock for DocumentRule {
 }
 
 /// The kind of media document that the rule will match.
-#[derive(Clone, Copy, Debug, Parse, PartialEq, ToCss)]
+#[derive(Clone, Copy, Debug, Parse, PartialEq, ToCss, ToShmem)]
 #[allow(missing_docs)]
 pub enum MediaDocumentKind {
     All,
@@ -82,7 +82,7 @@ pub enum MediaDocumentKind {
 }
 
 /// A matching function for a `@document` rule's condition.
-#[derive(Clone, Debug, ToCss)]
+#[derive(Clone, Debug, ToCss, ToShmem)]
 pub enum DocumentMatchingFunction {
     /// Exact URL matching function. It evaluates to true whenever the
     /// URL of the document being styled is exactly the URL given.
@@ -109,7 +109,7 @@ pub enum DocumentMatchingFunction {
     Regexp(String),
     /// Matching function for a media document.
     #[css(function)]
-    MediaDocument(MediaDocumentKind)
+    MediaDocument(MediaDocumentKind),
 }
 
 macro_rules! parse_quoted_or_unquoted_string {
@@ -136,7 +136,7 @@ impl DocumentMatchingFunction {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self, ParseError<'i>> {
         if let Ok(url) = input.try(|input| CssUrl::parse(context, input)) {
-            return Ok(DocumentMatchingFunction::Url(url))
+            return Ok(DocumentMatchingFunction::Url(url));
         }
 
         let location = input.current_source_location();
@@ -172,8 +172,8 @@ impl DocumentMatchingFunction {
     #[cfg(feature = "gecko")]
     /// Evaluate a URL matching function.
     pub fn evaluate(&self, device: &Device) -> bool {
-        use gecko_bindings::bindings::Gecko_DocumentRule_UseForPresentation;
-        use gecko_bindings::structs::DocumentMatchingFunction as GeckoDocumentMatchingFunction;
+        use crate::gecko_bindings::bindings::Gecko_DocumentRule_UseForPresentation;
+        use crate::gecko_bindings::structs::DocumentMatchingFunction as GeckoDocumentMatchingFunction;
         use nsstring::nsCStr;
 
         let func = match *self {
@@ -181,7 +181,9 @@ impl DocumentMatchingFunction {
             DocumentMatchingFunction::UrlPrefix(_) => GeckoDocumentMatchingFunction::URLPrefix,
             DocumentMatchingFunction::Domain(_) => GeckoDocumentMatchingFunction::Domain,
             DocumentMatchingFunction::Regexp(_) => GeckoDocumentMatchingFunction::RegExp,
-            DocumentMatchingFunction::MediaDocument(_) => GeckoDocumentMatchingFunction::MediaDocument,
+            DocumentMatchingFunction::MediaDocument(_) => {
+                GeckoDocumentMatchingFunction::MediaDocument
+            },
         };
 
         let pattern = nsCStr::from(match *self {
@@ -189,16 +191,14 @@ impl DocumentMatchingFunction {
             DocumentMatchingFunction::UrlPrefix(ref pat) |
             DocumentMatchingFunction::Domain(ref pat) |
             DocumentMatchingFunction::Regexp(ref pat) => pat,
-            DocumentMatchingFunction::MediaDocument(kind) => {
-                match kind {
-                    MediaDocumentKind::All => "all",
-                    MediaDocumentKind::Image => "image",
-                    MediaDocumentKind::Plugin => "plugin",
-                    MediaDocumentKind::Video => "video",
-                }
-            }
+            DocumentMatchingFunction::MediaDocument(kind) => match kind {
+                MediaDocumentKind::All => "all",
+                MediaDocumentKind::Image => "image",
+                MediaDocumentKind::Plugin => "plugin",
+                MediaDocumentKind::Video => "video",
+            },
         });
-        unsafe { Gecko_DocumentRule_UseForPresentation(device.pres_context(), &*pattern, func) }
+        unsafe { Gecko_DocumentRule_UseForPresentation(device.document(), &*pattern, func) }
     }
 
     #[cfg(not(feature = "gecko"))]
@@ -216,7 +216,7 @@ impl DocumentMatchingFunction {
 /// URL matching functions, and the condition evaluates to true whenever any
 /// one of those functions evaluates to true.
 #[css(comma)]
-#[derive(Clone, Debug, ToCss)]
+#[derive(Clone, Debug, ToCss, ToShmem)]
 pub struct DocumentCondition(#[css(iterable)] Vec<DocumentMatchingFunction>);
 
 impl DocumentCondition {
@@ -253,20 +253,18 @@ impl DocumentCondition {
 
     #[cfg(feature = "gecko")]
     fn allowed_in(&self, context: &ParserContext) -> bool {
-        use gecko_bindings::structs;
-        use stylesheets::Origin;
+        use crate::stylesheets::Origin;
+        use static_prefs::pref;
 
         if context.stylesheet_origin != Origin::Author {
             return true;
         }
 
-        if unsafe { structs::StaticPrefs_sVarCache_layout_css_moz_document_content_enabled } {
+        if pref!("layout.css.moz-document.content.enabled") {
             return true;
         }
 
-        if !unsafe {
-            structs::StaticPrefs_sVarCache_layout_css_moz_document_url_prefix_hack_enabled
-        } {
+        if !pref!("layout.css.moz-document.url-prefix-hack.enabled") {
             return false;
         }
 

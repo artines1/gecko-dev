@@ -14,16 +14,18 @@ service('ToolkitChromeRegistryService', 'nsIToolkitChromeRegistry',
         "@mozilla.org/chrome/chrome-registry;1")
 service('XULChromeRegistryService', 'nsIXULChromeRegistry',
         "@mozilla.org/chrome/chrome-registry;1")
+service('DirectoryService', 'nsIProperties',
+        "@mozilla.org/file/directory_service;1"),
 service('IOService', 'nsIIOService',
         "@mozilla.org/network/io-service;1")
 service('ObserverService', 'nsIObserverService',
         "@mozilla.org/observer-service;1")
 service('StringBundleService', 'nsIStringBundleService',
         "@mozilla.org/intl/stringbundle;1")
-service('XPConnect', 'nsIXPConnect',
-        "@mozilla.org/js/xpc/XPConnect;1")
 service('PermissionManager', 'nsIPermissionManager',
         "@mozilla.org/permissionmanager;1")
+service('PreferencesService', 'nsIPrefService',
+        "@mozilla.org/preferences-service;1")
 service('ServiceWorkerManager', 'nsIServiceWorkerManager',
         "@mozilla.org/serviceworkers/manager;1")
 service('AsyncShutdown', 'nsIAsyncShutdownService',
@@ -46,6 +48,13 @@ service('HistoryService', 'mozilla::IHistory',
         "@mozilla.org/browser/history;1")
 service('ThirdPartyUtil', 'mozIThirdPartyUtil',
         "@mozilla.org/thirdpartyutil;1")
+service('URIFixup', 'nsIURIFixup',
+        "@mozilla.org/docshell/urifixup;1")
+service('Bits', 'nsIBits',
+        "@mozilla.org/bits;1")
+# NB: this should also expose nsIXULAppInfo, as does Services.jsm.
+service('AppInfoService', 'nsIXULRuntime',
+        "@mozilla.org/xre/app-info;1")
 
 # The definition file needs access to the definitions of the particular
 # interfaces. If you add a new interface here, make sure the necessary includes
@@ -67,6 +76,7 @@ CPP_INCLUDES = """
 #include "IHistory.h"
 #include "nsIXPConnect.h"
 #include "nsIPermissionManager.h"
+#include "nsIPrefService.h"
 #include "nsIServiceWorkerManager.h"
 #include "nsICacheStorageService.h"
 #include "nsIStreamTransportService.h"
@@ -76,6 +86,9 @@ CPP_INCLUDES = """
 #include "nsIAsyncShutdown.h"
 #include "nsIUUIDGenerator.h"
 #include "nsIGfxInfo.h"
+#include "nsIURIFixup.h"
+#include "nsIBits.h"
+#include "nsIXULRuntime.h"
 """
 
 #####
@@ -113,7 +126,7 @@ def services_h(output):
 #ifdef MOZILLA_INTERNAL_API
 extern "C" {
 /**
- * NOTE: Don't call this method directly, instead call mozilla::services::Get{0}.
+ * NOTE: Don't call this method directly, instead call mozilla::services::Get%(name)s.
  * It is used to expose XPCOM services to rust code. The return value is already addrefed.
  */
 %(type)s* XPCOMService_Get%(name)s();
@@ -153,7 +166,7 @@ static %(type)s* g%(name)s = nullptr;
 
 extern "C" {
 /**
- * NOTE: Don't call this method directly, instead call `mozilla::services::Get{0}`.
+ * NOTE: Don't call this method directly, instead call `mozilla::services::Get%(name)s`.
  * This method is extern "C" to expose XPCOM services to rust code.
  * The return value is already addrefed.
  */

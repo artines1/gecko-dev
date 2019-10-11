@@ -25,17 +25,17 @@ panelmultiview .toolbaritem-combined-buttons > spacer.before-label {
   padding-inline-start: 18px;
 }
 
-#appMenu-fxa-container[fxastatus="signedin"] > #appMenu-fxa-status > #appMenu-fxa-label {
+#appMenu-fxa-status[fxastatus="signedin"] > #appMenu-fxa-label {
   /* 18px space before the avatar, then 16px for the avatar */
   padding-inline-start: 34px;
   margin-inline-start: -34px;
 }
 
-#appMenu-fxa-container[fxastatus="signedin"] > #appMenu-fxa-status > #appMenu-fxa-avatar {
+#appMenu-fxa-status[fxastatus="signedin"] > #appMenu-fxa-avatar {
   margin-inline-start: 18px;
 }
 
-.subviewbutton:not(:-moz-any([image],[targetURI],.cui-withicon, .bookmark-item)) > .menu-iconic-left {
+.subviewbutton:not(:-moz-any([image],[targetURI],.bookmark-item)) > .menu-iconic-left {
   display: none;
 }
 
@@ -44,7 +44,7 @@ panelmultiview .toolbaritem-combined-buttons > spacer.before-label {
   background: transparent;
 }
 
-#BMB_bookmarksPopup menupopup[placespopup=true] > hbox:-moz-lwtheme {
+#BMB_bookmarksPopup menupopup[placespopup=true]:-moz-lwtheme::part(innerbox) {
   background: var(--arrowpanel-background);
   border-radius: var(--arrowpanel-border-radius);
   box-shadow: 0 0 0 1px var(--arrowpanel-border-color);
@@ -52,6 +52,7 @@ panelmultiview .toolbaritem-combined-buttons > spacer.before-label {
   border: none;
   margin: 1px;
 }
+
 
 /* Override OSX-specific toolkit styles for the bookmarks panel */
 menu.subviewbutton > .menu-right {
@@ -79,4 +80,24 @@ menu.subviewbutton > .menu-right {
 
 #PanelUI-remotetabs-tabslist {
   padding-bottom: 4px;
+}
+
+.panel-button {
+  -moz-appearance: none;
+  border-radius: 2px;
+  background-color: var(--arrowpanel-dimmed);
+  color: inherit;
+  padding: 2px 6px;
+}
+
+.panel-button@buttonStateHover@ {
+  background-color: var(--arrowpanel-dimmed-further);
+}
+
+.panel-button@buttonStateActive@ {
+  background-color: var(--arrowpanel-dimmed-even-further);
+}
+
+.panel-button:-moz-focusring {
+  box-shadow: var(--focus-ring-box-shadow);
 }

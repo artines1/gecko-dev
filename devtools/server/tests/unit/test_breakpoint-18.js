@@ -8,74 +8,55 @@
  * breaking on. Bug 907278.
  */
 
-var gDebuggee;
-var gClient;
-var gThreadClient;
-var gCallback;
+add_task(
+  threadFrontTest(async ({ threadFront, client, debuggee }) => {
+    const packet = await executeOnNextTickAndWaitForPause(
+      () => evaluateTestCode(debuggee),
+      threadFront
+    );
 
-function run_test() {
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-  do_test_pending();
-}
+    const source = await getSourceById(threadFront, packet.frame.where.actor);
+    const location = { sourceUrl: source.url, line: 3 };
+    threadFront.setBreakpoint(location, {});
+    await client.waitForRequestsToSettle();
 
-function run_test_with_server(server, callback) {
-  gCallback = callback;
-  initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-breakpoints", server);
-  gDebuggee.console = { log: x => void x };
-  gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function() {
-    attachTestTabAndResume(gClient,
-                           "test-breakpoints",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             setUpCode();
-                           });
-  });
-}
+    debuggee.console = { log: x => void x };
 
-function setUpCode() {
-  gClient.addOneTimeListener("paused", setBreakpoint);
+    await resume(threadFront);
+
+    const packet2 = await executeOnNextTickAndWaitForPause(
+      debuggee.test,
+      threadFront
+    );
+    Assert.equal(packet2.why.type, "breakpoint");
+
+    threadFront.resume();
+
+    const packet3 = await waitForPause(threadFront);
+    testDbgStatement(packet3);
+
+    await resume(threadFront);
+  })
+);
+
+function evaluateTestCode(debuggee) {
   Cu.evalInSandbox(
     "debugger;\n" +
-    function test() {
-      console.log("foo bar");
-      debugger;
-    },
-    gDebuggee,
+      function test() {
+        console.log("foo bar");
+        debugger;
+      },
+    debuggee,
     "1.8",
     "http://example.com/",
     1
   );
 }
 
-function setBreakpoint(event, packet) {
-  const source = gThreadClient.source(packet.frame.where.source);
-  gClient.addOneTimeListener("resumed", runCode);
-
-  source.setBreakpoint({ line: 2 }).then(() => {
-    gThreadClient.resume();
-  });
-}
-
-function runCode() {
-  gClient.addOneTimeListener("paused", testBPHit);
-  gDebuggee.test();
-}
-
-function testBPHit(event, { why }) {
-  Assert.equal(why.type, "breakpoint");
-  gClient.addOneTimeListener("paused", testDbgStatement);
-  gThreadClient.resume();
-}
-
-function testDbgStatement(event, { why }) {
+function testDbgStatement({ why }) {
   // Should continue to the debugger statement.
   Assert.equal(why.type, "debuggerStatement");
   // Not break on another offset from the same line (that isn't an entry point
   // to the line)
   Assert.notEqual(why.type, "breakpoint");
-  gClient.close().then(gCallback);
 }

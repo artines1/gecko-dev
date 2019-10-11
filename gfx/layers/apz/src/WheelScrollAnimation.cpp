@@ -8,47 +8,56 @@
 #include "ScrollAnimationBezierPhysics.h"
 
 #include "AsyncPanZoomController.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs_general.h"
 #include "nsPoint.h"
 
 namespace mozilla {
 namespace layers {
 
-static ScrollAnimationBezierPhysicsSettings
-SettingsForDeltaType(ScrollWheelInput::ScrollDeltaType aDeltaType)
-{
+static ScrollAnimationBezierPhysicsSettings SettingsForDeltaType(
+    ScrollWheelInput::ScrollDeltaType aDeltaType) {
   int32_t minMS = 0;
   int32_t maxMS = 0;
 
   switch (aDeltaType) {
     case ScrollWheelInput::SCROLLDELTA_PAGE:
-      maxMS = clamped(gfxPrefs::PageSmoothScrollMaxDurationMs(), 0, 10000);
-      minMS = clamped(gfxPrefs::PageSmoothScrollMinDurationMs(), 0, maxMS);
+      maxMS = clamped(StaticPrefs::general_smoothScroll_pages_durationMaxMS(),
+                      0, 10000);
+      minMS = clamped(StaticPrefs::general_smoothScroll_pages_durationMinMS(),
+                      0, maxMS);
       break;
     case ScrollWheelInput::SCROLLDELTA_PIXEL:
-      maxMS = clamped(gfxPrefs::PixelSmoothScrollMaxDurationMs(), 0, 10000);
-      minMS = clamped(gfxPrefs::PixelSmoothScrollMinDurationMs(), 0, maxMS);
+      maxMS = clamped(StaticPrefs::general_smoothScroll_pixels_durationMaxMS(),
+                      0, 10000);
+      minMS = clamped(StaticPrefs::general_smoothScroll_pixels_durationMinMS(),
+                      0, maxMS);
       break;
     case ScrollWheelInput::SCROLLDELTA_LINE:
-      maxMS = clamped(gfxPrefs::WheelSmoothScrollMaxDurationMs(), 0, 10000);
-      minMS = clamped(gfxPrefs::WheelSmoothScrollMinDurationMs(), 0, maxMS);
+      maxMS =
+          clamped(StaticPrefs::general_smoothScroll_mouseWheel_durationMaxMS(),
+                  0, 10000);
+      minMS =
+          clamped(StaticPrefs::general_smoothScroll_mouseWheel_durationMinMS(),
+                  0, maxMS);
       break;
   }
 
   // The pref is 100-based int percentage, while mIntervalRatio is 1-based ratio
-  double intervalRatio = ((double)gfxPrefs::SmoothScrollDurationToIntervalRatio()) / 100.0;
+  double intervalRatio =
+      ((double)StaticPrefs::general_smoothScroll_durationToIntervalRatio()) /
+      100.0;
   intervalRatio = std::max(1.0, intervalRatio);
-  return ScrollAnimationBezierPhysicsSettings { minMS, maxMS, intervalRatio };
+  return ScrollAnimationBezierPhysicsSettings{minMS, maxMS, intervalRatio};
 }
 
-WheelScrollAnimation::WheelScrollAnimation(AsyncPanZoomController& aApzc,
-                                           const nsPoint& aInitialPosition,
-                                           ScrollWheelInput::ScrollDeltaType aDeltaType)
-  : GenericScrollAnimation(aApzc, aInitialPosition, SettingsForDeltaType(aDeltaType))
-{
+WheelScrollAnimation::WheelScrollAnimation(
+    AsyncPanZoomController& aApzc, const nsPoint& aInitialPosition,
+    ScrollWheelInput::ScrollDeltaType aDeltaType)
+    : GenericScrollAnimation(aApzc, aInitialPosition,
+                             SettingsForDeltaType(aDeltaType)) {
   mDirectionForcedToOverscroll =
-    mApzc.mScrollMetadata.GetDisregardedDirection();
+      mApzc.mScrollMetadata.GetDisregardedDirection();
 }
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla

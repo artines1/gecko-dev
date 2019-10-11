@@ -7,22 +7,24 @@
 
 var EXPORTED_SYMBOLS = ["MediaPlayerApp"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/Messaging.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { EventDispatcher } = ChromeUtils.import(
+  "resource://gre/modules/Messaging.jsm"
+);
 
 // Helper function for sending commands to Java.
 function send(type, data, callback) {
   let msg = {
-    type: type
+    type: type,
   };
 
   for (let i in data) {
     msg[i] = data[i];
   }
 
-  EventDispatcher.instance.sendRequestForResult(msg)
-    .then(result => callback(result, null),
-          error => callback(null, error));
+  EventDispatcher.instance
+    .sendRequestForResult(msg)
+    .then(result => callback(result, null), error => callback(null, error));
 }
 
 /* These apps represent players supported natively by the platform. This class will proxy commands
@@ -55,7 +57,6 @@ MediaPlayerApp.prototype = {
       callback(new RemoteMedia(this.id, listener));
     }
   },
-
 };
 
 /* RemoteMedia provides a proxy to a native media player session.
@@ -154,5 +155,5 @@ RemoteMedia.prototype = {
   _send: function(msg, data, callback) {
     data.id = this._id;
     send(msg, data, callback);
-  }
+  },
 };

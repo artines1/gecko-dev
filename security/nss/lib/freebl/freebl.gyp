@@ -7,6 +7,30 @@
   ],
   'targets': [
     {
+      'target_name': 'intel-gcm-s_lib',
+      'type': 'static_library',
+      'sources': [
+        'intel-aes.s',
+        'intel-gcm.s',
+      ],
+      'dependencies': [
+        '<(DEPTH)/exports.gyp:nss_exports'
+      ],
+      'conditions': [
+        [ 'cc_is_clang==1', {
+          'cflags': [
+            '-no-integrated-as',
+          ],
+          'cflags_mozilla': [
+            '-no-integrated-as',
+          ],
+          'asflags_mozilla': [
+            '-no-integrated-as',
+          ],
+        }],
+      ],
+    },
+    {
       'target_name': 'intel-gcm-wrap_c_lib',
       'type': 'static_library',
       'sources': [
@@ -15,12 +39,19 @@
       'dependencies': [
         '<(DEPTH)/exports.gyp:nss_exports'
       ],
+      'conditions': [
+        [ '(OS=="linux" or OS=="android") and target_arch=="x64"', {
+          'dependencies': [
+            'intel-gcm-s_lib',
+          ],
+        }],
+      ],
       'cflags': [
-        '-mssse3'
+        '-mssse3',
       ],
       'cflags_mozilla': [
         '-mssse3'
-      ]
+      ],
     },
     {
       # TODO: make this so that all hardware accelerated code is in here.
@@ -45,11 +76,11 @@
             '__SSSE3__',
           ],
         }],
-        [ 'OS=="android"', {
-          # On Android we can't use any of the hardware acceleration :(
-          'defines!': [
-            '__ARM_NEON__',
-            '__ARM_NEON',
+        [ 'target_arch=="arm"', {
+          # Gecko doesn't support non-NEON platform on Android, but tier-3
+          # platform such as Linux/arm will need it
+          'cflags_mozilla': [
+            '-mfpu=neon'
           ],
         }],
       ],
@@ -76,13 +107,29 @@
           ],
         }],
         # macOS build doesn't use cflags.
-        [ 'OS=="mac"', {
+        [ 'OS=="mac" or OS=="ios"', {
           'xcode_settings': {
             'OTHER_CFLAGS': [
               '-mpclmul', '-maes'
             ],
           },
         }]
+      ]
+    },
+    {
+      'target_name': 'gcm-aes-aarch64_c_lib',
+      'type': 'static_library',
+      'sources': [
+        'gcm-aarch64.c'
+      ],
+      'dependencies': [
+        '<(DEPTH)/exports.gyp:nss_exports'
+      ],
+      'cflags': [
+        '-march=armv8-a+crypto'
+      ],
+      'cflags_mozilla': [
+        '-march=armv8-a+crypto'
       ]
     },
     {
@@ -95,9 +142,9 @@
         '<(DEPTH)/exports.gyp:nss_exports'
       ]
     },
-    # For test builds, build a static freebl library so we can statically
-    # link it into the test build binary. This way we don't have to
-    # dlopen() the shared lib but can directly call freebl functions.
+    # Build a static freebl library so we can statically link it into
+    # the binary. This way we don't have to dlopen() the shared lib
+    # but can directly call freebl functions.
     {
       'target_name': 'freebl_static',
       'type': 'static_library',
@@ -114,6 +161,11 @@
             'gcm-aes-x86_c_lib',
           ],
         }],
+        [ 'target_arch=="arm64" or target_arch=="aarch64"', {
+          'dependencies': [
+            'gcm-aes-aarch64_c_lib',
+          ],
+        }],
         [ 'OS=="linux"', {
           'defines!': [
             'FREEBL_NO_DEPEND',
@@ -123,7 +175,7 @@
           ],
           'conditions': [
             [ 'target_arch=="x64"', {
-              # The AES assembler code doesn't work in static test builds.
+              # The AES assembler code doesn't work in static builds.
               # The linker complains about non-relocatable code, and I
               # currently don't know how to fix this properly.
               'sources!': [
@@ -151,7 +203,12 @@
             'gcm-aes-x86_c_lib',
           ]
         }],
-        [ 'OS!="linux" and OS!="android"', {
+        [ 'target_arch=="arm64" or target_arch=="aarch64"', {
+          'dependencies': [
+            'gcm-aes-aarch64_c_lib',
+          ],
+        }],
+        [ 'OS!="linux"', {
           'conditions': [
             [ 'moz_fold_libs==0', {
               'dependencies': [
@@ -163,7 +220,8 @@
               ],
             }],
           ],
-        }, 'target_arch=="x64"', {
+        }],
+        [ '(OS=="linux" or OS=="android") and target_arch=="x64"', {
           'dependencies': [
             'intel-gcm-wrap_c_lib',
           ],
@@ -189,6 +247,43 @@
          }],
        ]
       },
+    },
+    {
+      'target_name': 'freebl_64int_3',
+      'includes': [
+        'freebl_base.gypi',
+      ],
+      'type': 'shared_library',
+      'dependencies': [
+        '<(DEPTH)/exports.gyp:nss_exports',
+        'hw-acc-crypto',
+      ],
+    },
+    {
+      'target_name': 'freebl_64fpu_3',
+      'includes': [
+        'freebl_base.gypi',
+      ],
+      'type': 'shared_library',
+      'sources': [
+        'mpi/mpi_sparc.c',
+        'mpi/mpv_sparcv9.s',
+        'mpi/montmulfv9.s',
+      ],
+      'dependencies': [
+        '<(DEPTH)/exports.gyp:nss_exports',
+        'hw-acc-crypto',
+      ],
+      'asflags_mozilla': [
+        '-mcpu=v9', '-Wa,-xarch=v9a'
+      ],
+      'defines': [
+        'MP_NO_MP_WORD',
+        'MP_USE_UINT_DIGIT',
+        'MP_ASSEMBLY_MULTIPLY',
+        'MP_USING_MONT_MULF',
+        'MP_MONT_USE_MP_MUL',
+      ],
     },
   ],
   'conditions': [

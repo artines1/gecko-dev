@@ -9,6 +9,8 @@
   --focus-cell-border-color: rgba(255,255,255,0.5);
   --row-alt-background-color: rgba(86, 117, 185, 0.15);
   --row-hover-background-color: rgba(86, 117, 185, 0.25);
+  --link-color: var(--blue-40);
+  --link-color-active: var(--blue-30);
 }
 
 .theme-light {
@@ -17,6 +19,8 @@
   --focus-cell-border-color: rgba(0,0,0,0.3);
   --row-alt-background-color: rgba(76,158,217,0.1);
   --row-hover-background-color: rgba(76,158,217,0.2);
+  --link-color: var(--blue-60);
+  --link-color-active: var(--blue-70);
 }
 
 html, body, #app, #memory-tool {
@@ -50,7 +54,8 @@ html, body, #app, #memory-tool {
    * and aligned vertically in the middle of the container.
    */
   display: flex;
-  align-items: center;
+  line-height: initial;
+  align-items: stretch;
 }
 
 .devtools-toolbar > .toolbar-group:nth-of-type(1) {
@@ -87,21 +92,13 @@ html, body, #app, #memory-tool {
   margin-inline-end: 5px;
 }
 
-.devtools-toolbar > .toolbar-group > label.display-by > span {
-  margin-inline-end: 5px;
-}
-
-.devtools-toolbar > .toolbar-group > label.label-by > span {
-  margin-inline-end: 5px;
-}
-
 .devtools-toolbar > label {
   margin-inline-end: 5px;
   display: flex;
   align-items: center;
 }
 
-#select-view {
+.devtools-toolbar-select {
   margin-inline-start: 5px;
 }
 
@@ -132,8 +129,8 @@ html, body, #app, #memory-tool {
 }
 
 #filter {
-  align-self: stretch;
-  margin: 2px;
+  box-sizing: border-box;
+  height: 100%;
 }
 
 /**
@@ -241,7 +238,7 @@ html, body, #app, #memory-tool {
 .snapshot-list-item > .snapshot-state,
 .snapshot-list-item > .snapshot-totals {
   font-size: 90%;
-  color: var(--theme-body-color-alt);
+  color: var(--theme-text-color-alt);
 }
 
 .snapshot-list-item.selected > .snapshot-state,
@@ -278,7 +275,7 @@ html, body, #app, #memory-tool {
   /**
    * Flex: contains a .heap-view-panel which needs to fill out all the
    * available space, horizontally and vertically.
-   */;
+   */
   display: flex;
   /**
    * Flexing to fill out remaining horizontal space. The preceeding sibling
@@ -400,7 +397,10 @@ html, body, #app, #memory-tool {
 }
 
 .children-pointer {
-  padding-inline-end: 5px;
+  display: inline-block;
+  /* We use transform to reverse the icon in RTL,
+   * so `padding-right` will get reversed as well. */
+  padding-right: 5px;
 }
 
 .children-pointer:dir(rtl) {
@@ -489,10 +489,6 @@ html, body, #app, #memory-tool {
   vertical-align: middle;
 }
 
-.heap-tree-item-name .frame-link {
-  display: inline-block;
-}
-
 /**
  * Heap tree view subcolumns
  */
@@ -506,7 +502,7 @@ html, body, #app, #memory-tool {
 .heap-tree-number {
   padding: 0 3px;
   flex: 1;
-  color: var(--theme-content-color3);
+  color: var(--theme-text-color-alt);
   /* Make sure number doesn't appear backwards on RTL locales */
   direction: ltr;
 }
@@ -554,6 +550,19 @@ html, body, #app, #memory-tool {
   overflow: hidden;
 }
 
+.load-more-link {
+  cursor: pointer;
+  color: var(--link-color);
+}
+
+.load-more-link:hover {
+  text-decoration: underline;
+}
+
+.load-more-link:active {
+  color: var(--link-color-active);
+}
+
 /**
  * Heap tree errors.
  */
@@ -561,20 +570,16 @@ html, body, #app, #memory-tool {
 .error::before {
   content: "";
   display: inline-block;
+  vertical-align: -2px;
   width: 12px;
   height: 12px;
   max-height: 12px;
-  background-image: url(chrome://devtools/skin/images/webconsole.svg);
-  background-size: 72px 60px;
-  background-position: -24px -24px;
-  background-repeat: no-repeat;
-  margin: 0px;
-  margin-top: 2px;
   margin-inline-end: 5px;
-}
-
-.theme-light .error::before {
-  background-image: url(chrome://devtools/skin/images/webconsole.svg#light-icons);
+  background-image: url(chrome://devtools/skin/images/alert-small.svg);
+  background-repeat: no-repeat;
+  background-size: contain;
+  -moz-context-properties: fill;
+  fill: var(--yellow-60);
 }
 
 /**
@@ -611,7 +616,7 @@ svg {
 }
 
 .theme-dark svg {
-  --arrow-color: var(--theme-body-color-alt);
+  --arrow-color: var(--theme-text-color-alt);
 }
 
 svg #arrowhead {

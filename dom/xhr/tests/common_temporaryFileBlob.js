@@ -1,10 +1,16 @@
+// This file expects next() to be defined in the scope it is imported into.
+/* global next */
 var data = new Array(256).join("1234567890ABCDEF");
 
 function createXHR() {
   var xhr = new XMLHttpRequest();
   xhr.open("POST", "temporaryFileBlob.sjs");
-  xhr.responseType = 'blob';
-  xhr.send({toString: function() { return data; }});
+  xhr.responseType = "blob";
+  xhr.send({
+    toString() {
+      return data;
+    },
+  });
   return xhr;
 }
 
@@ -15,6 +21,14 @@ function test_simple() {
 
   xhr.onloadend = function() {
     ok(xhr.response instanceof Blob, "We have a blob!");
+    ok(!(xhr.response instanceof File), "Our blob is not a file!");
+    if ("SpecialPowers" in self) {
+      is(
+        SpecialPowers.wrap(xhr.response).blobImplType,
+        "StreamBlobImpl[TemporaryBlobImpl]",
+        "We have a blob stored into a stream file"
+      );
+    }
     is(xhr.response.size, data.length, "Data length matches");
 
     var fr = new FileReader();
@@ -22,8 +36,8 @@ function test_simple() {
     fr.onload = function() {
       is(fr.result, data, "Data content matches");
       next();
-    }
-  }
+    };
+  };
 }
 
 function test_abort() {
@@ -33,12 +47,12 @@ function test_abort() {
 
   xhr.onprogress = function() {
     xhr.abort();
-  }
+  };
 
   xhr.onloadend = function() {
     ok(!xhr.response, "We should not have a Blob!");
     next();
-  }
+  };
 }
 
 function test_reuse() {
@@ -49,6 +63,14 @@ function test_reuse() {
   var count = 0;
   xhr.onloadend = function() {
     ok(xhr.response instanceof Blob, "We have a blob!");
+    ok(!(xhr.response instanceof File), "Our blob is not a file!");
+    if ("SpecialPowers" in self) {
+      is(
+        SpecialPowers.wrap(xhr.response).blobImplType,
+        "StreamBlobImpl[TemporaryBlobImpl]",
+        "We have a blob stored into a stream file"
+      );
+    }
     is(xhr.response.size, data.length, "Data length matches");
 
     var fr = new FileReader();
@@ -61,40 +83,44 @@ function test_reuse() {
       }
 
       xhr.open("POST", "temporaryFileBlob.sjs");
-      xhr.responseType = 'blob';
-      xhr.send({toString: function() { return data; }});
-    }
-  }
+      xhr.responseType = "blob";
+      xhr.send({
+        toString() {
+          return data;
+        },
+      });
+    };
+  };
 }
 
 function test_worker_generic(test) {
-  var w = new Worker('worker_temporaryFileBlob.js');
+  var w = new Worker("worker_temporaryFileBlob.js");
   w.onmessage = function(e) {
-    if (e.data.type == 'info') {
+    if (e.data.type == "info") {
       info(e.data.msg);
-    } else if (e.data.type == 'check') {
+    } else if (e.data.type == "check") {
       ok(e.data.what, e.data.msg);
-    } else if (e.data.type == 'finish') {
+    } else if (e.data.type == "finish") {
       next();
     } else {
-      ok(false, 'Something wrong happened');
+      ok(false, "Something wrong happened");
     }
-  }
+  };
 
   w.postMessage(test);
 }
 
 function test_worker() {
   info("XHR in workers");
-  test_worker_generic('simple');
+  test_worker_generic("simple");
 }
 
 function test_worker_abort() {
   info("XHR in workers");
-  test_worker_generic('abort');
+  test_worker_generic("abort");
 }
 
 function test_worker_reuse() {
   info("XHR in workers");
-  test_worker_generic('reuse');
+  test_worker_generic("reuse");
 }

@@ -7,6 +7,7 @@ include('../../../webrtc.mozbuild')
 
 LOCAL_INCLUDES += [
     '!/ipc/ipdl/_ipdlheaders',
+    '/dom/media/gmp', # for GMPLog.h
     '/ipc/chromium/src',
     '/media/libyuv/libyuv/include',
     '/media/mtransport',
@@ -14,18 +15,22 @@ LOCAL_INCLUDES += [
     '/media/webrtc/signaling/src/common',
     '/media/webrtc/signaling/src/common/browser_logging',
     '/media/webrtc/signaling/src/common/time_profiling',
+    '/media/webrtc/signaling/src/media-conduit',
     '/media/webrtc/signaling/src/peerconnection',
     '/media/webrtc/trunk',
+    '/media/webrtc/trunk/webrtc',
 ]
 
 UNIFIED_SOURCES += [
     'AudioConduit.cpp',
     'GmpVideoCodec.cpp',
-    'MediaDataDecoderCodec.cpp',
+    'MediaDataCodec.cpp',
     'RtpSourceObserver.cpp',
     'VideoConduit.cpp',
+    'VideoStreamFactory.cpp',
     'WebrtcGmpVideoCodec.cpp',
     'WebrtcMediaDataDecoderCodec.cpp',
+    'WebrtcMediaDataEncoderCodec.cpp',
 ]
 
 if CONFIG['OS_TARGET'] == 'Android':
@@ -35,6 +40,3 @@ if CONFIG['OS_TARGET'] == 'Android':
     ]
 
 FINAL_LIBRARY = 'xul'
-
-if CONFIG['MOZ_ASAN'] and CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1306642

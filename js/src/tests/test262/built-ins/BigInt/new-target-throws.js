@@ -1,4 +1,3 @@
-// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright (C) 2017 Robin Templeton. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,6 +9,7 @@ info: |
   ...
 features: [BigInt]
 ---*/
+assert.sameValue(typeof BigInt, 'function');
 
 assert.throws(TypeError, function() {
   new BigInt();

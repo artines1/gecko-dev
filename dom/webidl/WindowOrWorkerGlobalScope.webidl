@@ -11,8 +11,8 @@
  */
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope-mixin
-[NoInterfaceObject, Exposed=(Window,Worker)]
-interface WindowOrWorkerGlobalScope {
+[Exposed=(Window,Worker)]
+interface mixin WindowOrWorkerGlobalScope {
   [Replaceable] readonly attribute USVString origin;
 
   // base64 utility methods
@@ -35,6 +35,9 @@ interface WindowOrWorkerGlobalScope {
   long setInterval(DOMString handler, optional long timeout = 0, any... unused);
   void clearInterval(optional long handle = 0);
 
+  // microtask queuing
+  void queueMicrotask(VoidFunction callback);
+
   // ImageBitmap
   [Throws]
   Promise<ImageBitmap> createImageBitmap(ImageBitmapSource aImage);
@@ -43,40 +46,25 @@ interface WindowOrWorkerGlobalScope {
 };
 
 // https://fetch.spec.whatwg.org/#fetch-method
-partial interface WindowOrWorkerGlobalScope {
+partial interface mixin WindowOrWorkerGlobalScope {
   [NewObject, NeedsCallerType]
-  Promise<Response> fetch(RequestInfo input, optional RequestInit init);
+  Promise<Response> fetch(RequestInfo input, optional RequestInit init = {});
 };
 
 // https://w3c.github.io/webappsec-secure-contexts/#monkey-patching-global-object
-partial interface WindowOrWorkerGlobalScope {
+partial interface mixin WindowOrWorkerGlobalScope {
   readonly attribute boolean isSecureContext;
 };
 
 // http://w3c.github.io/IndexedDB/#factory-interface
-partial interface WindowOrWorkerGlobalScope {
+partial interface mixin WindowOrWorkerGlobalScope {
    // readonly attribute IDBFactory indexedDB;
    [Throws]
    readonly attribute IDBFactory? indexedDB;
 };
 
 // https://w3c.github.io/ServiceWorker/#self-caches
-partial interface WindowOrWorkerGlobalScope {
-  [Throws, Func="mozilla::dom::DOMPrefs::DOMCachesEnabled", SameObject]
+partial interface mixin WindowOrWorkerGlobalScope {
+  [Throws, Pref="dom.caches.enabled", SameObject]
   readonly attribute CacheStorage caches;
-};
-
-// Mozilla extensions
-partial interface WindowOrWorkerGlobalScope {
-  // Extensions to ImageBitmap bits.
-  // Bug 1141979 - [FoxEye] Extend ImageBitmap with interfaces to access its
-  // underlying image data
-  //
-  // Note:
-  // Overloaded functions cannot have different "extended attributes",
-  // so I cannot add preference on the extended version of createImageBitmap().
-  // To work around, I will then check the preference at run time and throw if
-  // the preference is set to be false.
-  [Throws]
-  Promise<ImageBitmap> createImageBitmap(ImageBitmapSource aImage, long aOffset, long aLength, ImageBitmapFormat aFormat, ImagePixelLayout aLayout);
 };

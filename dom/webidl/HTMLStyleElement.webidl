@@ -8,7 +8,8 @@
  * http://www.whatwg.org/specs/web-apps/current-work/#other-elements,-attributes-and-apis
  */
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLStyleElement : HTMLElement {
            [Pure]
            attribute boolean disabled;
@@ -17,5 +18,5 @@ interface HTMLStyleElement : HTMLElement {
            [CEReactions, SetterThrows, Pure]
            attribute DOMString type;
 };
-HTMLStyleElement implements LinkStyle;
+HTMLStyleElement includes LinkStyle;
 

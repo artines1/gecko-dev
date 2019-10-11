@@ -15,7 +15,7 @@ add_task(async function() {
   await runTests();
 
   info("Close Toolbox");
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
 
   info("Set a toolbox height of 1000px");
@@ -52,8 +52,9 @@ async function runTests() {
 }
 
 function checkCellValues(order) {
-  const cells = [...gPanelWindow.document
-                              .querySelectorAll("#name .table-widget-cell")];
+  const cells = [
+    ...gPanelWindow.document.querySelectorAll("#name .table-widget-cell"),
+  ];
   cells.forEach(function(cell, index, arr) {
     const i = order === "ASC" ? index + 1 : arr.length - index;
     is(cell.value, `item-${i}`, `Cell value is correct (${order}).`);

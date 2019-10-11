@@ -73,16 +73,12 @@ from its prototype:
     `FunctionDeclaration`, or `FunctionExpression` productions in the
     ECMAScript standard.
 
-    **If the instance refers to WebAssembly code**, the serialized text
-    representation. The format is yet to be specified in the WebAssembly
-    standard. Currently, the text is an s-expression based syntax. The text
-    generation is disabled if the Debugger has the `allowWasmBinarySource`
-    property set, the `"[wasm]"` value will be returned in this case.
+    **If the instance refers to WebAssembly code**, the `"[wasm]"` value will
+    be returned.
 
 `binary`
-:   **If the instance refers to WebAssembly code** and the Debugger has
-    the `allowWasmBinarySource` property set, a Uint8Array that contains the
-    WebAssembly bytecode.
+:   **If the instance refers to WebAssembly code**, a Uint8Array that contains
+    the WebAssembly bytecode.
 
 `url`
 :   **If the instance refers to JavaScript source**, the filename or URL from
@@ -108,6 +104,16 @@ from its prototype:
 
     **If the instance refers to WebAssembly code**, the URL of the script that
     called `new WebAssembly.Module` with the string `"> wasm"` appended.
+
+`startLine`
+:   **If the instance refers to JavaScript source**, the start line of the
+    source within the file or URL it was loaded from. This is normally `1`, but
+    may have another value if the source is part of an HTML document.
+
+`id`
+:   **If the instance refers to JavaScript source**, an int32 counter that identifies
+    the source within the current process.  This ID is used in other places in Gecko
+    that weakly refer to sources, such as nsIScriptError.
 
 `sourceMapURL`
 :   **If the instance refers to JavaScript source**, if this source was
@@ -155,7 +161,7 @@ from its prototype:
       must appear elsewhere.)
 
     (If the sources attached to a DOM element change, the `Debugger.Source`
-    instances representing superceded code still refer to the DOM element;
+    instances representing superseded code still refer to the DOM element;
     this accessor only reflects origins, not current relationships.)
 
 `elementAttributeName`
@@ -236,3 +242,15 @@ from its prototype:
     **If the instance refers to WebAssembly code**, `introductionScript` is
     the [`Debugger.Script`][script] instance referring to the same underlying
     WebAssembly module. `introductionOffset` is `undefined`.
+
+## Function Properties of the Debugger.Source Prototype Object
+
+The functions described below may only be called with a `this` value
+referring to a `Debugger.Source` instance; they may not be used as
+methods of other kinds of objects.
+
+`reparse()`
+:  **If the instance refers to JavaScript source**, and if the source has text
+    available, return a `Debugger.Script` instance referring to a new script
+    created by reparsing this source's text. Debugger `onNewScript` hooks will
+    not be invoked for the new script. Otherwise, throw an `Error`.

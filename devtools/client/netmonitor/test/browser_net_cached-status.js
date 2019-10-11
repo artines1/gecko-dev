@@ -16,10 +16,9 @@ add_task(async function() {
 
   const { document, store, windowRequire } = monitor.panelWin;
   const Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  const {
-    getDisplayedRequests,
-    getSortedRequests,
-  } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  const { getDisplayedRequests, getSortedRequests } = windowRequire(
+    "devtools/client/netmonitor/src/selectors/index"
+  );
 
   store.dispatch(Actions.batchEnable(false));
 
@@ -31,8 +30,8 @@ add_task(async function() {
         status: 200,
         statusText: "OK",
         type: "plain",
-        fullMimeType: "text/plain; charset=utf-8"
-      }
+        fullMimeType: "text/plain; charset=utf-8",
+      },
     },
     {
       method: "GET",
@@ -41,8 +40,8 @@ add_task(async function() {
         status: 301,
         statusText: "Moved Permanently",
         type: "html",
-        fullMimeType: "text/html; charset=utf-8"
-      }
+        fullMimeType: "text/html; charset=utf-8",
+      },
     },
     {
       method: "GET",
@@ -51,8 +50,8 @@ add_task(async function() {
         status: 404,
         statusText: "Not Found",
         type: "html",
-        fullMimeType: "text/html; charset=utf-8"
-      }
+        fullMimeType: "text/html; charset=utf-8",
+      },
     },
     {
       method: "GET",
@@ -62,8 +61,8 @@ add_task(async function() {
         statusText: "OK (cached)",
         displayedStatus: "cached",
         type: "plain",
-        fullMimeType: "text/plain; charset=utf-8"
-      }
+        fullMimeType: "text/plain; charset=utf-8",
+      },
     },
     {
       method: "GET",
@@ -73,8 +72,8 @@ add_task(async function() {
         statusText: "Moved Permanently (cached)",
         displayedStatus: "cached",
         type: "html",
-        fullMimeType: "text/html; charset=utf-8"
-      }
+        fullMimeType: "text/html; charset=utf-8",
+      },
     },
     {
       method: "GET",
@@ -83,9 +82,9 @@ add_task(async function() {
         status: 404,
         statusText: "Not Found",
         type: "html",
-        fullMimeType: "text/html; charset=utf-8"
-      }
-    }
+        fullMimeType: "text/html; charset=utf-8",
+      },
+    },
   ];
 
   info("Performing requests #1...");

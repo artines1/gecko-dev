@@ -1,7 +1,6 @@
-// Basic structured cloning tests (specific to SpiderMonkey shell)
+// |jit-test| skip-if: !wasmThreadsSupported()
 
-if (!wasmThreadsSupported())
-    quit(0);
+// Basic structured cloning tests (specific to SpiderMonkey shell)
 
 // Should *not* be possible to serialize and deserialize memories that are not
 // shared, whether we transfer them or not.
@@ -25,7 +24,7 @@ if (!wasmThreadsSupported())
 
     // Serialization and deserialization of shared memories work:
 
-    let mem2 = deserialize(serialize(mem1));
+    let mem2 = deserialize(serialize(mem1, [], {SharedArrayBuffer: 'allow'}));
     assertEq(mem2 instanceof WebAssembly.Memory, true);
     let buf2 = mem2.buffer;
     assertEq(buf2 instanceof SharedArrayBuffer, true);
@@ -56,7 +55,7 @@ if (!wasmThreadsSupported())
     // then we grow mem1
     wasmEvalText(`(module
 		   (memory (import "" "memory") 2 4 shared)
-		   (func (export "g") (drop (grow_memory (i32.const 1)))))`,
+		   (func (export "g") (drop (memory.grow (i32.const 1)))))`,
 		 {"": {memory: mem1}}).exports.g();
 
     // after growing mem1, mem2 can be accessed at index
@@ -80,7 +79,7 @@ if (!wasmThreadsSupported())
 {
     let mem = new WebAssembly.Memory({initial: 2, maximum: 4, shared: true});
     let buf = mem.buffer;
-    let clonedbuf = serialize(buf);
+    let clonedbuf = serialize(buf, [], {SharedArrayBuffer: 'allow'});
     mem.grow(1);
     let buf2 = deserialize(clonedbuf);
     assertEq(buf.byteLength, buf2.byteLength);

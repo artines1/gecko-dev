@@ -24,7 +24,7 @@ class TestMerge(unittest.TestCase):
 </resources>
 ''')
         self.assertEqual(
-            merge_channels(self.name, *channels), b'''\
+            merge_channels(self.name, channels), b'''\
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <!-- bar -->
@@ -47,12 +47,36 @@ class TestMerge(unittest.TestCase):
 </resources>
 ''')
         self.assertEqual(
-            merge_channels(self.name, *channels), b'''\
+            merge_channels(self.name, channels), b'''\
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <!-- Bar -->
   <string name="bar">other value</string>
   <!-- Foo -->
   <string name="foo">value</string>
+</resources>
+''')
+
+    def test_namespaces(self):
+        channels = (
+            b'''\
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:ns1">
+    <string ns1:one="test">string</string>
+</resources>
+''',
+            b'''\
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns2="urn:ns2">
+    <string ns2:two="test">string</string>
+</resources>
+'''
+        )
+        self.assertEqual(
+            merge_channels(self.name, channels), b'''\
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns2="urn:ns2" xmlns:ns1="urn:ns1">
+    <string ns2:two="test">string</string>
+    <string ns1:one="test">string</string>
 </resources>
 ''')

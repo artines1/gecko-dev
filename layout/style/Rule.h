@@ -16,28 +16,23 @@
 #include "nsISupports.h"
 #include "nsWrapperCache.h"
 
-class nsIDocument;
 struct nsRuleData;
-template<class T> struct already_AddRefed;
+template <class T>
+struct already_AddRefed;
 class nsHTMLCSSStyleSheet;
 
 namespace mozilla {
 namespace css {
 class GroupRule;
 
-class Rule : public nsISupports
-           , public nsWrapperCache
-{
-protected:
-  Rule(StyleSheet* aSheet,
-       Rule* aParentRule,
-       uint32_t aLineNumber,
+class Rule : public nsISupports, public nsWrapperCache {
+ protected:
+  Rule(StyleSheet* aSheet, Rule* aParentRule, uint32_t aLineNumber,
        uint32_t aColumnNumber)
-    : mSheet(aSheet)
-    , mParentRule(aParentRule)
-    , mLineNumber(aLineNumber)
-    , mColumnNumber(aColumnNumber)
-  {
+      : mSheet(aSheet),
+        mParentRule(aParentRule),
+        mLineNumber(aLineNumber),
+        mColumnNumber(aColumnNumber) {
 #ifdef DEBUG
     // Would be nice to check that this->Type() is KEYFRAME_RULE when
     // mParentRule->Tye() is KEYFRAMES_RULE, but we can't call
@@ -53,17 +48,14 @@ protected:
   }
 
   Rule(const Rule& aCopy)
-    : mSheet(aCopy.mSheet),
-      mParentRule(aCopy.mParentRule),
-      mLineNumber(aCopy.mLineNumber),
-      mColumnNumber(aCopy.mColumnNumber)
-  {
-  }
+      : mSheet(aCopy.mSheet),
+        mParentRule(aCopy.mParentRule),
+        mLineNumber(aCopy.mLineNumber),
+        mColumnNumber(aCopy.mColumnNumber) {}
 
   virtual ~Rule() = default;
 
-public:
-
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(Rule)
   // Return true if this rule is known to be a cycle collection leaf, in the
@@ -79,8 +71,7 @@ public:
   // Return the document the rule applies to, if any.
   //
   // Suitable for style updates, and that's about it.
-  nsIDocument* GetComposedDoc() const
-  {
+  dom::Document* GetComposedDoc() const {
     return mSheet ? mSheet->GetComposedDoc() : nullptr;
   }
 
@@ -88,13 +79,9 @@ public:
   virtual void DropSheetReference();
 
   // Clear the mParentRule pointer on this rule.
-  void DropParentRuleReference()
-  {
-    mParentRule = nullptr;
-  }
+  void DropParentRuleReference() { mParentRule = nullptr; }
 
-  void DropReferences()
-  {
+  void DropReferences() {
     DropSheetReference();
     DropParentRuleReference();
   }
@@ -102,10 +89,13 @@ public:
   uint32_t GetLineNumber() const { return mLineNumber; }
   uint32_t GetColumnNumber() const { return mColumnNumber; }
 
+  // Whether this a rule in a read only style sheet.
+  bool IsReadOnly() const;
+
   // This is pure virtual because all of Rule's data members are non-owning and
   // thus measured elsewhere.
-  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const MOZ_MUST_OVERRIDE = 0;
+  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+      MOZ_MUST_OVERRIDE = 0;
 
   // WebIDL interface
   virtual uint16_t Type() const = 0;
@@ -113,8 +103,7 @@ public:
   void SetCssText(const nsAString& aCssText);
   Rule* GetParentRule() const;
   StyleSheet* GetParentStyleSheet() const { return GetStyleSheet(); }
-  nsINode* GetParentObject() const
-  {
+  nsINode* GetParentObject() const {
     if (!mSheet) {
       return nullptr;
     }
@@ -122,9 +111,13 @@ public:
     return associated ? &associated->AsNode() : nullptr;
   }
 
-protected:
+ protected:
   // True if we're known-live for cycle collection purposes.
   bool IsKnownLive() const;
+
+  // Hook subclasses can use to properly unlink the nsWrapperCache of
+  // their declarations.
+  void UnlinkDeclarationWrapper(nsWrapperCache& aDecl);
 
   // mSheet should only ever be null when we create a synthetic CSSFontFaceRule
   // for an InspectorFontFace.
@@ -136,11 +129,11 @@ protected:
   Rule* MOZ_NON_OWNING_REF mParentRule;
 
   // Keep the same type so that MSVC packs them.
-  uint32_t          mLineNumber;
-  uint32_t          mColumnNumber;
+  uint32_t mLineNumber;
+  uint32_t mColumnNumber;
 };
 
-} // namespace css
-} // namespace mozilla
+}  // namespace css
+}  // namespace mozilla
 
 #endif /* mozilla_css_Rule_h___ */

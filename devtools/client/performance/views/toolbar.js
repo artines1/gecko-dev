@@ -1,15 +1,22 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
-/* import-globals-from ../performance-controller.js */
-/* import-globals-from ../performance-view.js */
-/* globals document */
+/* globals $, $$, PerformanceController */
 "use strict";
+
+const EVENTS = require("../events");
+const { TIMELINE_BLUEPRINT } = require("../modules/markers");
+const { MarkerBlueprintUtils } = require("../modules/marker-blueprint-utils");
+
+const { OptionsView } = require("devtools/client/shared/options-view");
+const EventEmitter = require("devtools/shared/event-emitter");
+
+const BRANCH_NAME = "devtools.performance.ui.";
 
 /**
  * View handler for toolbar events (mostly option toggling and triggering)
  */
-var ToolbarView = {
+const ToolbarView = {
   /**
    * Sets up the view with event binding.
    */
@@ -22,7 +29,7 @@ var ToolbarView = {
 
     this.optionsView = new OptionsView({
       branchName: BRANCH_NAME,
-      menupopup: this._popup
+      menupopup: this._popup,
     });
 
     // Set the visibility of experimental UI options on load
@@ -35,20 +42,28 @@ var ToolbarView = {
 
     this._buildMarkersFilterPopup();
     this._updateHiddenMarkersPopup();
-    $("#performance-filter-menupopup").addEventListener("popupshowing",
-                                                        this._onFilterPopupShowing);
-    $("#performance-filter-menupopup").addEventListener("popuphiding",
-                                                        this._onFilterPopupHiding);
+    $("#performance-filter-menupopup").addEventListener(
+      "popupshowing",
+      this._onFilterPopupShowing
+    );
+    $("#performance-filter-menupopup").addEventListener(
+      "popuphiding",
+      this._onFilterPopupHiding
+    );
   },
 
   /**
    * Unbinds events and cleans up view.
    */
   destroy: function() {
-    $("#performance-filter-menupopup").removeEventListener("popupshowing",
-                                                           this._onFilterPopupShowing);
-    $("#performance-filter-menupopup").removeEventListener("popuphiding",
-                                                           this._onFilterPopupHiding);
+    $("#performance-filter-menupopup").removeEventListener(
+      "popupshowing",
+      this._onFilterPopupShowing
+    );
+    $("#performance-filter-menupopup").removeEventListener(
+      "popuphiding",
+      this._onFilterPopupHiding
+    );
     this._popup = null;
 
     this.optionsView.off("pref-changed", this._onPrefChanged);
@@ -59,14 +74,18 @@ var ToolbarView = {
    * Creates the timeline markers filter popup.
    */
   _buildMarkersFilterPopup: function() {
-    for (const [markerName, markerDetails] of Object.entries(TIMELINE_BLUEPRINT)) {
-      const menuitem = document.createElement("menuitem");
+    for (const [markerName, markerDetails] of Object.entries(
+      TIMELINE_BLUEPRINT
+    )) {
+      const menuitem = document.createXULElement("menuitem");
       menuitem.setAttribute("closemenu", "none");
       menuitem.setAttribute("type", "checkbox");
       menuitem.setAttribute("align", "center");
       menuitem.setAttribute("flex", "1");
-      menuitem.setAttribute("label",
-                            MarkerBlueprintUtils.getMarkerGenericName(markerName));
+      menuitem.setAttribute(
+        "label",
+        MarkerBlueprintUtils.getMarkerGenericName(markerName)
+      );
       menuitem.setAttribute("marker-type", markerName);
       menuitem.className = `marker-color-${markerDetails.colorName}`;
 
@@ -134,9 +153,12 @@ var ToolbarView = {
    * Fired when a menu item in the markers filter popup is checked or unchecked.
    */
   _onHiddenMarkersChanged: function() {
-    const checkedMenuItems =
-      $$("#performance-filter-menupopup menuitem[marker-type]:not([checked])");
-    const hiddenMarkers = Array.map(checkedMenuItems, e => e.getAttribute("marker-type"));
+    const checkedMenuItems = $$(
+      "#performance-filter-menupopup menuitem[marker-type]:not([checked])"
+    );
+    const hiddenMarkers = Array.from(checkedMenuItems, e =>
+      e.getAttribute("marker-type")
+    );
     PerformanceController.setPref("hidden-markers", hiddenMarkers);
   },
 
@@ -154,7 +176,9 @@ var ToolbarView = {
     this.emit(EVENTS.UI_PREF_CHANGED, prefName, value);
   },
 
-  toString: () => "[object ToolbarView]"
+  toString: () => "[object ToolbarView]",
 };
 
 EventEmitter.decorate(ToolbarView);
+
+exports.ToolbarView = window.ToolbarView = ToolbarView;

@@ -103,32 +103,8 @@ endif
 # The VERSION_NUMBER is suffixed onto the end of the DLLs we ship.
 VERSION_NUMBER		= 50
 
-ifeq ($(HOST_OS_ARCH),WINNT)
-  ifeq ($(MOZILLA_DIR),$(topsrcdir))
-    win_srcdir := $(subst $(topsrcdir),$(WIN_TOP_SRC),$(srcdir))
-  else
-    # This means we're in comm-central's topsrcdir, so we need to adjust
-    # WIN_TOP_SRC (which points to mozilla's topsrcdir) for the substitution
-    # to win_srcdir.
-		cc_WIN_TOP_SRC := $(WIN_TOP_SRC:%/mozilla=%)
-    win_srcdir := $(subst $(topsrcdir),$(cc_WIN_TOP_SRC),$(srcdir))
-  endif
-  BUILD_TOOLS = $(WIN_TOP_SRC)/build/unix
-else
-  win_srcdir := $(srcdir)
-  BUILD_TOOLS = $(MOZILLA_DIR)/build/unix
-endif
-
 CONFIG_TOOLS	= $(MOZ_BUILD_ROOT)/config
 AUTOCONF_TOOLS	= $(MOZILLA_DIR)/build/autoconf
-
-ifdef _MSC_VER
-# clang-cl is smart enough to generate dependencies directly.
-ifndef CLANG_CL
-CC_WRAPPER ?= $(call py_action,cl)
-CXX_WRAPPER ?= $(call py_action,cl)
-endif # CLANG_CL
-endif # _MSC_VER
 
 CC := $(CC_WRAPPER) $(CC)
 CXX := $(CXX_WRAPPER) $(CXX)
@@ -157,7 +133,8 @@ endif
 # Enable profile-based feedback
 ifneq (1,$(NO_PROFILE_GUIDED_OPTIMIZE))
 ifdef MOZ_PROFILE_GENERATE
-PGO_CFLAGS += $(if $(filter $(notdir $<),$(notdir $(NO_PROFILE_GUIDED_OPTIMIZE))),,$(PROFILE_GEN_CFLAGS) $(COMPUTED_PROFILE_GEN_DYN_CFLAGS))
+PGO_CFLAGS += -DNS_FREE_PERMANENT_DATA=1
+PGO_CFLAGS += $(if $(filter $(notdir $<),$(notdir $(NO_PROFILE_GUIDED_OPTIMIZE))),,$(PROFILE_GEN_CFLAGS))
 PGO_LDFLAGS += $(PROFILE_GEN_LDFLAGS)
 ifeq (WINNT,$(OS_ARCH))
 AR_FLAGS += -LTCG
@@ -199,17 +176,22 @@ INCLUDES = \
 
 include $(MOZILLA_DIR)/config/static-checking-config.mk
 
-LDFLAGS		= $(COMPUTED_LDFLAGS) $(PGO_LDFLAGS) $(MK_LDFLAGS)
+ifndef MOZ_LTO
+MOZ_LTO_CFLAGS :=
+MOZ_LTO_LDFLAGS :=
+endif
 
-COMPILE_CFLAGS	= $(COMPUTED_CFLAGS) $(PGO_CFLAGS) $(_DEPEND_CFLAGS) $(MK_COMPILE_DEFINES)
-COMPILE_CXXFLAGS = $(COMPUTED_CXXFLAGS) $(PGO_CFLAGS) $(_DEPEND_CFLAGS) $(MK_COMPILE_DEFINES)
-COMPILE_CMFLAGS = $(OS_COMPILE_CMFLAGS) $(MOZBUILD_CMFLAGS)
-COMPILE_CMMFLAGS = $(OS_COMPILE_CMMFLAGS) $(MOZBUILD_CMMFLAGS)
+LDFLAGS		= $(MOZ_LTO_LDFLAGS) $(COMPUTED_LDFLAGS) $(PGO_LDFLAGS) $(MK_LDFLAGS)
+
+COMPILE_CFLAGS	= $(MOZ_LTO_CFLAGS) $(COMPUTED_CFLAGS) $(PGO_CFLAGS) $(_DEPEND_CFLAGS) $(MK_COMPILE_DEFINES)
+COMPILE_CXXFLAGS = $(MOZ_LTO_CFLAGS) $(COMPUTED_CXXFLAGS) $(PGO_CFLAGS) $(_DEPEND_CFLAGS) $(MK_COMPILE_DEFINES)
+COMPILE_CMFLAGS = $(MOZ_LTO_CFLAGS) $(OS_COMPILE_CMFLAGS) $(MOZBUILD_CMFLAGS)
+COMPILE_CMMFLAGS = $(MOZ_LTO_CFLAGS) $(OS_COMPILE_CMMFLAGS) $(MOZBUILD_CMMFLAGS)
 ASFLAGS = $(COMPUTED_ASFLAGS)
 SFLAGS = $(COMPUTED_SFLAGS)
 
-HOST_CFLAGS = $(COMPUTED_HOST_CFLAGS) $(_DEPEND_CFLAGS)
-HOST_CXXFLAGS = $(COMPUTED_HOST_CXXFLAGS) $(_DEPEND_CFLAGS)
+HOST_CFLAGS = $(COMPUTED_HOST_CFLAGS) $(_HOST_DEPEND_CFLAGS)
+HOST_CXXFLAGS = $(COMPUTED_HOST_CXXFLAGS) $(_HOST_DEPEND_CFLAGS)
 HOST_C_LDFLAGS = $(COMPUTED_HOST_C_LDFLAGS)
 HOST_CXX_LDFLAGS = $(COMPUTED_HOST_CXX_LDFLAGS)
 
@@ -290,6 +272,10 @@ export CCACHE_CPP2=1
 endif
 endif
 
+ifdef CCACHE_PREFIX
+export CCACHE_PREFIX
+endif
+
 # Set link flags according to whether we want a console.
 ifeq ($(OS_ARCH),WINNT)
 ifdef MOZ_WINCONSOLE
@@ -304,14 +290,31 @@ WIN32_EXE_LDFLAGS	+= $(WIN32_CONSOLE_EXE_LDFLAGS)
 endif
 endif # WINNT
 
-ifdef _MSC_VER
-ifeq ($(CPU_ARCH),x86_64)
-ifdef MOZ_ASAN
-# ASan could have 3x stack memory usage of normal builds.
-WIN32_EXE_LDFLAGS	+= -STACK:6291456
+ifeq ($(OS_ARCH),WINNT)
+ifneq (,$(filter msvc clang-cl,$(CC_TYPE)))
+ifneq ($(CPU_ARCH),x86)
+# Normal operation on 64-bit Windows needs 2 MB of stack. (Bug 582910)
+# ASAN requires 6 MB of stack.
+# Setting the stack to 8 MB to match the capability of other systems
+# to deal with frame construction for unreasonably deep DOM trees
+# with worst-case styling. This uses address space unnecessarily for
+# non-main threads, but that should be tolerable on 64-bit systems.
+# (Bug 256180)
+WIN32_EXE_LDFLAGS      += -STACK:8388608
 else
-# set stack to 2MB on x64 build.  See bug 582910
-WIN32_EXE_LDFLAGS	+= -STACK:2097152
+# Since this setting affects the default stack size for non-main
+# threads, too, to avoid burning the address space, increase only
+# 512 KB over the default. Just enough to be able to deal with
+# reasonable styling applied to DOM trees whose depth is near what
+# Blink's HTML parser can output, esp.
+# layout/base/crashtests/507119.html (Bug 256180)
+WIN32_EXE_LDFLAGS      += -STACK:1572864
+endif
+else
+ifneq ($(CPU_ARCH),x86)
+MOZ_PROGRAM_LDFLAGS += -Wl,-Xlink=-STACK:8388608
+else
+MOZ_PROGRAM_LDFLAGS += -Wl,-Xlink=-STACK:1572864
 endif
 endif
 endif
@@ -370,10 +373,6 @@ include $(MOZILLA_DIR)/config/AB_rCD.mk
 # Many locales directories want this definition.
 ACDEFINES += -DAB_CD=$(AB_CD)
 
-ifndef L10NBASEDIR
-  L10NBASEDIR = $(error L10NBASEDIR not defined by configure)
-endif
-
 EXPAND_LOCALE_SRCDIR = $(if $(filter en-US,$(AB_CD)),$(LOCALE_TOPDIR)/$(1)/en-US,$(or $(realpath $(L10NBASEDIR)),$(abspath $(L10NBASEDIR)))/$(AB_CD)/$(subst /locales,,$(1)))
 
 ifdef relativesrcdir
@@ -425,17 +424,6 @@ ifneq (WINNT,$(OS_ARCH))
 RUN_TEST_PROGRAM = $(DIST)/bin/run-mozilla.sh
 endif # ! WINNT
 
-#
-# Java macros
-#
-
-# Make sure any compiled classes work with at least JVM 1.4
-JAVAC_FLAGS += -source 1.4
-
-ifdef MOZ_DEBUG
-JAVAC_FLAGS += -g
-endif
-
 # autoconf.mk sets OBJ_SUFFIX to an error to avoid use before including
 # this file
 OBJ_SUFFIX := $(_OBJ_SUFFIX)
@@ -459,8 +447,7 @@ endif
 
 PLY_INCLUDE = -I$(MOZILLA_DIR)/other-licenses/ply
 
-export CL_INCLUDES_PREFIX
-# Make sure that the build system can handle non-ASCII characters
-# in environment variables to prevent it from breking silently on
-# non-English systems.
-export NONASCII
+# Enable verbose logs when not using `make -s`
+ifeq (,$(findstring s, $(filter-out --%, $(MAKEFLAGS))))
+BUILD_VERBOSE_LOG = 1
+endif

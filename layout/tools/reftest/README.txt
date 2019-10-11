@@ -114,22 +114,39 @@ must be one of the following:
                          fast on a 32-bit system but inordinately slow on a
                          64-bit system).
 
-      fuzzy(maxDiff,maxPixelCount)
       fuzzy(minDiff-maxDiff,minPixelCount-maxPixelCount)
           This allows a test to pass if the pixel value differences are between
           minDiff and maxDiff, inclusive, and the total number of different
           pixels is between minPixelCount and maxPixelCount, inclusive.
-          If the minDiff and/or minPixelCount values are not specified, they
-          are assumed to be zero.
           It can also be used with '!=' to ensure that the difference is
           outside the specified interval. Note that with '!=' tests the
           minimum bounds of the ranges must be zero.
 
-      fuzzy-if(condition,maxDiff,diffCount)
+          Fuzzy tends to be used for two different sorts of cases.  The main
+          case is tests that are expected to be equal, but actually fail in a
+          minor way (e.g., an antialiasing difference), and we want to ensure
+          that the test doesn't regress further so we don't want to mark the
+          test as failing.  For these cases, test annotations should be the
+          tightest bounds possible:  if the behavior is entirely deterministic
+          this means a range like fuzzy(1-1,8-8), and if at all possible, the
+          ranges should not include 0.  In cases where the test only sometimes
+          fails, this unfortunately requires using 0 in both ranges, which
+          means that we won't get reports of an unexpected pass if the problem
+          is fixed (allowing us to remove the fuzzy() annotation and expect
+          the test to pass from then on).
+
+          The second case where fuzzy is used is tests that are supposed
+          to allow some amount of variability (i.e., tests where the
+          specification allows variability such that we can't assert
+          that all pixels are the same).  Such tests should generally be
+          avoided (for example, by covering up the pixels that can vary
+          with another element), but when they are needed, the ranges in
+          the fuzzy() annotation should generally include 0.
+
       fuzzy-if(condition,minDiff-maxDiff,minPixelCount-maxPixelCount)
           If the condition is met, the test is treated as if 'fuzzy' had been
           specified. This is useful if there are differences on particular
-          platforms.
+          platforms.  See fuzzy() above.
 
       require-or(cond1&&cond2&&...,fallback)
           Require some particular setup be performed or environmental
@@ -161,6 +178,14 @@ must be one of the following:
       asserts-if(condition,count)
       asserts-if(condition,minCount-maxCount)
           Same as above, but only if condition is true.
+
+      noautofuzz
+          Disables the autofuzzing behaviour hard-coded in the reftest harness
+          for specific platform configurations. The autofuzzing is intended to
+          compensate for inherent nondeterminism that results in intermittently
+          fuzzy results (with small amounts of fuzz) across many/all tests on
+          a given platform. Specifying 'noautofuzz' on the test will disable
+          the autofuzzing for that test and require an exact match.
 
       Conditions are JavaScript expressions *without spaces* in them.
       They are evaluated in a sandbox in which a limited set of
@@ -377,8 +402,9 @@ that do not depend on XUL, or even ones testing other layout engines.
 Running Tests
 =============
 
-(If you're not using a DEBUG build, first set browser.dom.window.dump.enabled
-to true (in about:config, in the profile you'll be using to run the tests).
+(If you're not using a DEBUG build, first set browser.dom.window.dump.enabled,
+devtools.console.stdout.chrome and devtools.console.stdout.content to true (in
+about:config, in the profile you'll be using to run the tests).
 Create the option as a new boolean if it doesn't exist already. If you skip
 this step you won't get any output in the terminal.)
 
@@ -569,6 +595,20 @@ If either of the "reftest-scrollport-w" and "reftest-scrollport-h" attributes on
 the root element are non-zero, sets the scroll-position-clamping scroll-port
 size to the given size in CSS pixels. This does not affect the size of the
 snapshot that is taken.
+
+Setting Resolution: reftest-resolution="<float>"
+================================================
+
+If the root element of a test has a "reftest-resolution" attribute, the page
+is rendered with the specified resolution (as if the user pinch-zoomed in
+to that scale). Note that the difference between reftest-async-zoom and
+reftest-resolution is that reftest-async-zoom only applies the scale in
+the compositor, while reftest-resolution causes the page to be paint at that
+resolution. This attribute can be used together with initial-scale in meta
+viewport tag, in such cases initial-scale is applied first then
+reftest-resolution changes the scale.
+
+This attributes requires the pref apz.allow_zooming=true to have an effect.
 
 Setting Async Scroll Mode: reftest-async-scroll attribute
 =========================================================

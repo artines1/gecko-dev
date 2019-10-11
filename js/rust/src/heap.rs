@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 use glue;
 use jsapi::root::*;
 use rust::GCMethods;
@@ -30,6 +34,14 @@ pub unsafe trait Trace {
  * C/C++ stack must use Rooted/Handle/MutableHandle instead.
  *
  * Type T must be a public GC pointer type.
+ *
+ * Note that the rust version of Heap<T> implements different barriers to the
+ * C++ version, which also provides features to help integration with
+ * cycle-collected C++ objects. That version has a read barrier which performs
+ * gray unmarking and also marks the contents during an incremental GC. This
+ * version has a pre-write barrier instead, and this enforces the
+ * snapshot-at-the-beginning invariant which is necessary for incremental GC in
+ * the absence of the read barrier.
  */
 #[repr(C)]
 #[derive(Debug)]
@@ -51,7 +63,7 @@ impl<T: GCMethods + Copy> Heap<T> {
             let ptr = self.ptr.get();
             let prev = *ptr;
             *ptr = v;
-            T::post_barrier(ptr, prev, v);
+            T::write_barriers(ptr, prev, v);
         }
     }
 
@@ -114,7 +126,7 @@ impl<T: GCMethods + Copy> Drop for Heap<T> {
     fn drop(&mut self) {
         unsafe {
             let prev = self.ptr.get();
-            T::post_barrier(prev, *prev, T::initial());
+            T::write_barriers(prev, *prev, T::initial());
         }
     }
 }

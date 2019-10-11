@@ -4,15 +4,26 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-loader.lazyRequireGetter(this, "setNamedTimeout",
-  "devtools/client/shared/widgets/view-helpers", true);
-loader.lazyRequireGetter(this, "clearNamedTimeout",
-  "devtools/client/shared/widgets/view-helpers", true);
-loader.lazyRequireGetter(this, "naturalSortCaseInsensitive",
-  "devtools/client/shared/natural-sort", true);
-const {KeyCodes} = require("devtools/client/shared/keycodes");
+loader.lazyRequireGetter(
+  this,
+  "setNamedTimeout",
+  "devtools/client/shared/widgets/view-helpers",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "clearNamedTimeout",
+  "devtools/client/shared/widgets/view-helpers",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "naturalSortCaseInsensitive",
+  "devtools/shared/natural-sort",
+  true
+);
+const { KeyCodes } = require("devtools/client/shared/keycodes");
 
-const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const AFTER_SCROLL_DELAY = 100;
 
@@ -31,12 +42,12 @@ const EVENTS = {
   ROW_UPDATED: "row-updated",
   TABLE_CLEARED: "table-cleared",
   TABLE_FILTERED: "table-filtered",
-  SCROLL_END: "scroll-end"
+  SCROLL_END: "scroll-end",
 };
 Object.defineProperty(this, "EVENTS", {
   value: EVENTS,
   enumerable: true,
-  writable: false
+  writable: false,
 });
 
 /**
@@ -67,8 +78,16 @@ function TableWidget(node, options = {}) {
   this.window = this.document.defaultView;
   this._parent = node;
 
-  const {initialColumns, emptyText, uniqueId, highlightUpdated, removableColumns,
-       firstColumn, wrapTextInElements, cellContextMenuId} = options;
+  const {
+    initialColumns,
+    emptyText,
+    uniqueId,
+    highlightUpdated,
+    removableColumns,
+    firstColumn,
+    wrapTextInElements,
+    cellContextMenuId,
+  } = options;
   this.emptyText = emptyText || "";
   this.uniqueId = uniqueId || "name";
   this.wrapTextInElements = wrapTextInElements || false;
@@ -77,7 +96,7 @@ function TableWidget(node, options = {}) {
   this.removableColumns = removableColumns !== false;
   this.cellContextMenuId = cellContextMenuId;
 
-  this.tbody = this.document.createElementNS(XUL_NS, "hbox");
+  this.tbody = this.document.createXULElement("hbox");
   this.tbody.className = "table-widget-body theme-body";
   this.tbody.setAttribute("flex", "1");
   this.tbody.setAttribute("tabindex", "0");
@@ -85,7 +104,7 @@ function TableWidget(node, options = {}) {
   this.afterScroll = this.afterScroll.bind(this);
   this.tbody.addEventListener("scroll", this.onScroll.bind(this));
 
-  this.placeholder = this.document.createElementNS(XUL_NS, "label");
+  this.placeholder = this.document.createXULElement("label");
   this.placeholder.className = "plain table-widget-empty-text";
   this.placeholder.setAttribute("flex", "1");
   this._parent.appendChild(this.placeholder);
@@ -123,7 +142,6 @@ function TableWidget(node, options = {}) {
 }
 
 TableWidget.prototype = {
-
   items: null,
   editBookmark: null,
   scrollIntoViewOnUpdate: null,
@@ -152,15 +170,17 @@ TableWidget.prototype = {
     }
   },
 
-/**
- * Is a row currently selected?
- *
- * @return {Boolean}
- *         true or false.
- */
+  /**
+   * Is a row currently selected?
+   *
+   * @return {Boolean}
+   *         true or false.
+   */
   get hasSelectedRow() {
-    return this.columns.get(this.uniqueId) &&
-           this.columns.get(this.uniqueId).selectedRow;
+    return (
+      this.columns.get(this.uniqueId) &&
+      this.columns.get(this.uniqueId).selectedRow
+    );
   },
 
   /**
@@ -268,14 +288,14 @@ TableWidget.prototype = {
       field: colName,
       oldValue: data.change.oldValue,
       newValue: data.change.newValue,
-      items: items
+      items: items,
     };
 
     // A rows position in the table can change as the result of an edit. In
     // order to ensure that the correct row is highlighted after an edit we
     // save the uniqueId in editBookmark.
-    this.editBookmark = colName === uniqueId ? change.newValue
-                                             : items[uniqueId];
+    this.editBookmark =
+      colName === uniqueId ? change.newValue : items[uniqueId];
     this.emit(EVENTS.CELL_EDIT, change);
   },
 
@@ -378,6 +398,9 @@ TableWidget.prototype = {
     // the case that the previous edit will cause the row to move.
     const cell = this.getEditedCellOnTab(event, column);
     editor.edit(cell);
+
+    // Prevent default input tabbing behaviour
+    event.preventDefault();
   },
 
   /**
@@ -494,8 +517,9 @@ TableWidget.prototype = {
     // e.g. because they contain a unique compound key for cookies that is never
     // displayed in the UI. To do this we get all selected cells and filter out
     // any that are hidden.
-    const selectedCells = [...this.tbody.querySelectorAll(".theme-selected")]
-                                        .filter(cell => cell.clientWidth > 0);
+    const selectedCells = [
+      ...this.tbody.querySelectorAll(".theme-selected"),
+    ].filter(cell => cell.clientWidth > 0);
     // Select the first visible selected cell.
     const selectedCell = selectedCells[0];
     if (!selectedCell) {
@@ -554,10 +578,10 @@ TableWidget.prototype = {
    * rows. This method clears any inline editors if an area outside a textbox or
    * label is clicked.
    */
-  onMousedown: function({target}) {
-    const nodeName = target.nodeName;
+  onMousedown: function({ target }) {
+    const localName = target.localName;
 
-    if (nodeName === "textbox" || !this._editableFieldsEngine) {
+    if (localName === "input" || !this._editableFieldsEngine) {
       return;
     }
 
@@ -595,7 +619,7 @@ TableWidget.prototype = {
         root: this.tbody,
         onTab: this.onEditorTab,
         onTriggerEvent: "dblclick",
-        selectors: selectors
+        selectors: selectors,
       });
 
       this._editableFieldsEngine.on("change", this.onChange);
@@ -644,11 +668,11 @@ TableWidget.prototype = {
   setupHeadersContextMenu: function() {
     let popupset = this.document.getElementsByTagName("popupset")[0];
     if (!popupset) {
-      popupset = this.document.createElementNS(XUL_NS, "popupset");
+      popupset = this.document.createXULElement("popupset");
       this.document.documentElement.appendChild(popupset);
     }
 
-    this.menupopup = this.document.createElementNS(XUL_NS, "menupopup");
+    this.menupopup = this.document.createXULElement("menupopup");
     this.menupopup.id = "table-widget-column-select";
     this.menupopup.addEventListener("command", this.onPopupCommand);
     popupset.appendChild(this.menupopup);
@@ -678,7 +702,7 @@ TableWidget.prototype = {
         continue;
       }
 
-      const menuitem = this.document.createElementNS(XUL_NS, "menuitem");
+      const menuitem = this.document.createXULElement("menuitem");
       menuitem.setAttribute("label", column.header.getAttribute("value"));
       menuitem.setAttribute("data-id", column.id);
       menuitem.setAttribute("type", "checkbox");
@@ -728,8 +752,12 @@ TableWidget.prototype = {
    *        allows us to e.g. have an invisible compound primary key for a
    *        table's rows.
    */
-  setColumns: function(columns, sortOn = this.sortedOn, hiddenColumns = [],
-                        privateColumns = []) {
+  setColumns: function(
+    columns,
+    sortOn = this.sortedOn,
+    hiddenColumns = [],
+    privateColumns = []
+  ) {
     for (const column of this.columns.values()) {
       column.destroy();
     }
@@ -745,8 +773,10 @@ TableWidget.prototype = {
     }
 
     if (this.firstColumn) {
-      this.columns.set(this.firstColumn,
-        new Column(this, this.firstColumn, columns[this.firstColumn]));
+      this.columns.set(
+        this.firstColumn,
+        new Column(this, this.firstColumn, columns[this.firstColumn])
+      );
     }
 
     for (const id in columns) {
@@ -1010,7 +1040,7 @@ TableWidget.prototype = {
     if (this.tbody.scrollTop >= 0.9 * maxScrollTop) {
       this.emit("scroll-end");
     }
-  }
+  },
 };
 
 TableWidget.EVENTS = EVENTS;
@@ -1045,13 +1075,13 @@ function Column(table, id, header) {
 
   // This wrapping element is required solely so that position:sticky works on
   // the headers of the columns.
-  this.wrapper = this.document.createElementNS(XUL_NS, "vbox");
+  this.wrapper = this.document.createXULElement("vbox");
   this.wrapper.className = "table-widget-wrapper";
   this.wrapper.setAttribute("flex", "1");
   this.wrapper.setAttribute("tabindex", "0");
   this.tbody.appendChild(this.wrapper);
 
-  this.splitter = this.document.createElementNS(XUL_NS, "splitter");
+  this.splitter = this.document.createXULElement("splitter");
   this.splitter.className = "devtools-side-splitter";
   this.tbody.appendChild(this.splitter);
 
@@ -1060,7 +1090,7 @@ function Column(table, id, header) {
   this.column.className = "table-widget-column";
   this.wrapper.appendChild(this.column);
 
-  this.header = this.document.createElementNS(XUL_NS, "label");
+  this.header = this.document.createXULElement("label");
   this.header.className = "devtools-toolbar table-widget-column-header";
   this.header.setAttribute("value", header);
   this.column.appendChild(this.header);
@@ -1086,7 +1116,6 @@ function Column(table, id, header) {
 }
 
 Column.prototype = {
-
   // items is a cell-id to cell-index map. It is basically a reverse map of the
   // this.cells object and is used to quickly reverse lookup a cell by its id
   // instead of looping through the cells array. This reverse map is not kept
@@ -1144,8 +1173,10 @@ Column.prototype = {
     if (!value) {
       this.header.removeAttribute("sorted");
     } else {
-      this.header.setAttribute("sorted",
-        value == 1 ? "ascending" : "descending");
+      this.header.setAttribute(
+        "sorted",
+        value == 1 ? "ascending" : "descending"
+      );
     }
     this._sortState = value;
   },
@@ -1276,7 +1307,9 @@ Column.prototype = {
    */
   selectRowAt: function(index) {
     if (this.selectedRow != null) {
-      this.cells[this.items[this.selectedRow]].classList.remove("theme-selected");
+      this.cells[this.items[this.selectedRow]].classList.remove(
+        "theme-selected"
+      );
     }
 
     const cell = this.cells[index];
@@ -1462,24 +1495,26 @@ Column.prototype = {
     // Only sort the array if we are sorting based on this column
     if (this.sorted == 1) {
       items.sort((a, b) => {
-        const val1 = (a[this.id] instanceof Node) ?
-            a[this.id].textContent : a[this.id];
-        const val2 = (b[this.id] instanceof Node) ?
-            b[this.id].textContent : b[this.id];
+        const val1 =
+          a[this.id] instanceof Node ? a[this.id].textContent : a[this.id];
+        const val2 =
+          b[this.id] instanceof Node ? b[this.id].textContent : b[this.id];
         return naturalSortCaseInsensitive(val1, val2);
       });
     } else if (this.sorted > 1) {
       items.sort((a, b) => {
-        const val1 = (a[this.id] instanceof Node) ?
-            a[this.id].textContent : a[this.id];
-        const val2 = (b[this.id] instanceof Node) ?
-            b[this.id].textContent : b[this.id];
+        const val1 =
+          a[this.id] instanceof Node ? a[this.id].textContent : a[this.id];
+        const val2 =
+          b[this.id] instanceof Node ? b[this.id].textContent : b[this.id];
         return naturalSortCaseInsensitive(val2, val1);
       });
     }
 
     if (this.selectedRow) {
-      this.cells[this.items[this.selectedRow]].classList.remove("theme-selected");
+      this.cells[this.items[this.selectedRow]].classList.remove(
+        "theme-selected"
+      );
     }
     this.items = {};
     // Otherwise, just use the sorted array passed to update the cells value.
@@ -1531,9 +1566,11 @@ Column.prototype = {
   onMousedown: function(event) {
     const target = event.originalTarget;
 
-    if (target.nodeType !== target.ELEMENT_NODE ||
-        target == this.column ||
-        target == this.header) {
+    if (
+      target.nodeType !== target.ELEMENT_NODE ||
+      target == this.column ||
+      target == this.header
+    ) {
       return;
     }
     if (event.button == 0) {
@@ -1565,7 +1602,7 @@ function Cell(column, item, nextCell) {
   const document = column.document;
 
   this.wrapTextInElements = column.wrapTextInElements;
-  this.label = document.createElementNS(XUL_NS, "label");
+  this.label = document.createXULElement("label");
   this.label.setAttribute("crop", "end");
   this.label.className = "plain table-widget-cell";
 
@@ -1577,7 +1614,7 @@ function Cell(column, item, nextCell) {
 
   if (column.table.cellContextMenuId) {
     this.label.setAttribute("context", column.table.cellContextMenuId);
-    this.label.addEventListener("contextmenu", (event) => {
+    this.label.addEventListener("contextmenu", event => {
       // Make the ID of the clicked cell available as a property on the table.
       // It's then available for the popupshowing or command handler.
       column.table.contextMenuRowId = this.id;
@@ -1589,7 +1626,6 @@ function Cell(column, item, nextCell) {
 }
 
 Cell.prototype = {
-
   set id(value) {
     this._id = value;
     this.label.setAttribute("data-id", value);
@@ -1675,7 +1711,7 @@ Cell.prototype = {
   destroy: function() {
     this.label.remove();
     this.label = null;
-  }
+  },
 };
 
 /**
@@ -1727,7 +1763,7 @@ EditableFieldsEngine.prototype = {
   INPUT_ID: "inlineEditor",
 
   get changePending() {
-    return this.isEditing && (this.textbox.value !== this.currentValue);
+    return this.isEditing && this.textbox.value !== this.currentValue;
   },
 
   get isEditing() {
@@ -1737,10 +1773,8 @@ EditableFieldsEngine.prototype = {
   get textbox() {
     if (!this._textbox) {
       const doc = this.root.ownerDocument;
-      this._textbox = doc.createElementNS(XUL_NS, "textbox");
+      this._textbox = doc.createElementNS(HTML_NS, "input");
       this._textbox.id = this.INPUT_ID;
-
-      this._textbox.setAttribute("flex", "1");
 
       this.onKeydown = this.onKeydown.bind(this);
       this._textbox.addEventListener("keydown", this.onKeydown);
@@ -1758,7 +1792,7 @@ EditableFieldsEngine.prototype = {
    * @param  {EventTarget} target
    *         Calling event's target.
    */
-  onTrigger: function({target}) {
+  onTrigger: function({ target }) {
     this.edit(target);
   },
 
@@ -1851,8 +1885,8 @@ EditableFieldsEngine.prototype = {
         change: {
           field: this.currentTarget,
           oldValue: oldValue,
-          newValue: newValue
-        }
+          newValue: newValue,
+        },
       };
 
       this.emit("change", data);
@@ -1906,7 +1940,7 @@ EditableFieldsEngine.prototype = {
       "marginBottom",
       "marginLeft",
       "marginInlineStart",
-      "marginInlineEnd"
+      "marginInlineEnd",
     ];
 
     for (const prop of props) {

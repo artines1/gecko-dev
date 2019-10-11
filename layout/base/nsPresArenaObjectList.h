@@ -8,16 +8,16 @@
    preprocessing */
 
 // These are objects that can be stored in the pres arena
-
-PRES_ARENA_OBJECT(GeckoComputedStyle)
-
+//
+// FIXME(emilio): Including abstract frame classes in the arena is a bit
+// wasteful, but it simplifies the allocation code.
+#define FRAME_ID(classname, ...) PRES_ARENA_OBJECT(classname)
+#define ABSTRACT_FRAME_ID(classname) PRES_ARENA_OBJECT(classname)
+#include "mozilla/FrameIdList.h"
+#undef FRAME_ID
+#undef ABSTRACT_FRAME_ID
 PRES_ARENA_OBJECT(nsLineBox)
-PRES_ARENA_OBJECT(nsRuleNode)
 PRES_ARENA_OBJECT(DisplayItemData)
-PRES_ARENA_OBJECT(nsInheritedStyleData)
-PRES_ARENA_OBJECT(nsResetStyleData)
-PRES_ARENA_OBJECT(nsConditionalResetStyleData)
-PRES_ARENA_OBJECT(nsConditionalResetStyleDataEntry)
 PRES_ARENA_OBJECT(nsFrameList)
 PRES_ARENA_OBJECT(CustomCounterStyle)
 PRES_ARENA_OBJECT(DependentBuiltinCounterStyle)

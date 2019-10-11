@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     name='run-missing-tests',
     title='Run Missing Tests',
-    kind='hook',
     generic=True,
     symbol='rmt',
     description=(
@@ -27,10 +26,10 @@ logger = logging.getLogger(__name__)
         "This action is for use on pushes that will be merged into another branch,"
         "to check that optimization hasn't hidden any failures."
     ),
-    order=100,  # Useful for sheriffs, but not top of the list
+    order=250,
     context=[],  # Applies to decision task
 )
-def run_missing_tests(parameters, graph_config, input, task_group_id, task_id, task):
+def run_missing_tests(parameters, graph_config, input, task_group_id, task_id):
     decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
         parameters, graph_config)
     target_tasks = get_artifact(decision_task_id, "public/target-tasks.json")
@@ -49,7 +48,14 @@ def run_missing_tests(parameters, graph_config, input, task_group_id, task_id, t
             continue
         to_run.append(label)
 
-    create_tasks(to_run, full_task_graph, label_to_taskid, parameters, decision_task_id)
+    create_tasks(
+        graph_config,
+        to_run,
+        full_task_graph,
+        label_to_taskid,
+        parameters,
+        decision_task_id,
+    )
 
     logger.info('Out of {} test tasks, {} already existed and the action created {}'.format(
         already_run + len(to_run), already_run, len(to_run)))

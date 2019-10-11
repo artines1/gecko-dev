@@ -5,56 +5,100 @@
 
 "use strict";
 
-function run_test() {
-  Assert.ok(!Services.search.isInitialized, "search isn't initialized yet");
+add_task(function test_setup() {
+  useTestEngineConfig();
 
-  run_next_test();
-}
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
+    true
+  );
+  Services.prefs.setCharPref("browser.search.region", "US");
+});
 
-// Override list.json with test data from data/list.json
-// and check that different locale is working
 add_task(async function test_listJSONlocale() {
-  let url = "resource://test/data/";
-  let resProt = Services.io.getProtocolHandler("resource")
-                        .QueryInterface(Ci.nsIResProtocolHandler);
-  resProt.setSubstitution("search-plugins", Services.io.newURI(url));
+  Services.locale.availableLocales = ["de"];
+  Services.locale.requestedLocales = ["de"];
 
-  Services.locale.setAvailableLocales(["de"]);
-  Services.locale.setRequestedLocales(["de"]);
-
-  await asyncInit();
+  await AddonTestUtils.promiseStartupManager();
+  await Services.search.init();
 
   Assert.ok(Services.search.isInitialized, "search initialized");
 
-  let sortedEngines = Services.search.getEngines();
+  let sortedEngines = await Services.search.getEngines();
   Assert.equal(sortedEngines.length, 1, "Should have only one engine");
-});
 
+  Assert.equal(
+    Services.search.defaultEngine.name,
+    getDefaultEngineName(false, false),
+    "Should have the correct default engine"
+  );
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    // 'de' only displays google, so we'll be using the same engine as the
+    // normal default.
+    getDefaultEngineName(false, false),
+    "Should have the correct private default engine"
+  );
+});
 
 // Check that switching locale switches search engines
 add_task(async function test_listJSONlocaleSwitch() {
-  let promise = waitForSearchNotification("reinit-complete");
+  let promise = SearchTestUtils.promiseSearchNotification("reinit-complete");
 
-  Services.locale.setAvailableLocales(["fr"]);
-  Services.locale.setRequestedLocales(["fr"]);
+  let defaultBranch = Services.prefs.getDefaultBranch(
+    SearchUtils.BROWSER_SEARCH_PREF
+  );
+  defaultBranch.setCharPref("param.code", "good&id=unique");
+
+  Services.locale.availableLocales = ["fr"];
+  Services.locale.requestedLocales = ["fr"];
 
   await promise;
 
   Assert.ok(Services.search.isInitialized, "search initialized");
 
-  let sortedEngines = Services.search.getEngines();
-  Assert.equal(sortedEngines.length, 2, "Should have two engines");
+  let sortedEngines = await Services.search.getEngines();
+  Assert.deepEqual(
+    sortedEngines.map(e => e.name),
+    ["Test search engine", "engine-pref", "engine-resourceicon"],
+    "Should have the correct engine list"
+  );
+
+  Assert.equal(
+    Services.search.defaultEngine.name,
+    "Test search engine",
+    "Should have the correct default engine"
+  );
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    "engine-pref",
+    "Should have the correct private default engine"
+  );
 });
 
 // Check that region overrides apply
 add_task(async function test_listJSONRegionOverride() {
   Services.prefs.setCharPref("browser.search.region", "RU");
 
-  await asyncReInit();
+  await asyncReInit({ skipReset: true });
 
   Assert.ok(Services.search.isInitialized, "search initialized");
 
-  let sortedEngines = Services.search.getEngines();
-  Assert.equal(sortedEngines.length, 2, "Should have two engines");
-  Assert.equal(sortedEngines[0].identifier, "engine-chromeicon", "Engine should have been overridden by engine-chromeicon");
+  let sortedEngines = await Services.search.getEngines();
+  Assert.deepEqual(
+    sortedEngines.map(e => e.name),
+    ["Test search engine", "engine-pref", "engine-chromeicon"],
+    "Should have the correct engine list"
+  );
+
+  Assert.equal(
+    Services.search.defaultEngine.name,
+    "Test search engine",
+    "Should have the correct default engine"
+  );
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    "engine-pref",
+    "Should have the correct private default engine"
+  );
 });

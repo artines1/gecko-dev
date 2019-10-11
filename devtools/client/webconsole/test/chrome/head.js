@@ -4,9 +4,11 @@
 
 "use strict";
 
-var { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
+var { BrowserLoader } = ChromeUtils.import(
+  "resource://devtools/client/shared/browser-loader.js"
+);
 
 var { require: browserRequire } = BrowserLoader({
   baseURI: "resource://devtools/client/webconsole/",
-  window
+  window,
 });

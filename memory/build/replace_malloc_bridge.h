@@ -52,22 +52,20 @@ MOZ_BEGIN_EXTERN_C
 
 #ifndef REPLACE_MALLOC_IMPL
 // Returns the replace-malloc bridge if there is one to be returned.
-MFBT_API ReplaceMallocBridge*
-get_bridge();
+MFBT_API ReplaceMallocBridge* get_bridge();
 #endif
 
 // Table of malloc functions.
 //   e.g. void* (*malloc)(size_t), etc.
 
-#define MALLOC_DECL(name, return_type, ...)                                    \
+#define MALLOC_DECL(name, return_type, ...) \
   typedef return_type(name##_impl_t)(__VA_ARGS__);
 
 #include "malloc_decls.h"
 
 #define MALLOC_DECL(name, return_type, ...) name##_impl_t* name;
 
-typedef struct
-{
+typedef struct {
 #include "malloc_decls.h"
 } malloc_table_t;
 
@@ -88,28 +86,25 @@ MOZ_END_EXTERN_C
 // other allocation functions, like calloc_hook.
 namespace mozilla {
 namespace detail {
-template<typename R, typename... Args>
-struct AllocHookType
-{
+template <typename R, typename... Args>
+struct AllocHookType {
   using Type = R (*)(R, Args...);
 };
 
-template<typename... Args>
-struct AllocHookType<void, Args...>
-{
+template <typename... Args>
+struct AllocHookType<void, Args...> {
   using Type = void (*)(Args...);
 };
 
-} // namespace detail
-} // namespace mozilla
+}  // namespace detail
+}  // namespace mozilla
 
-#define MALLOC_DECL(name, return_type, ...)                                    \
-  typename mozilla::detail::AllocHookType<return_type, ##__VA_ARGS__>::Type    \
-    name##_hook;
+#  define MALLOC_DECL(name, return_type, ...)                                 \
+    typename mozilla::detail::AllocHookType<return_type, ##__VA_ARGS__>::Type \
+        name##_hook;
 
-typedef struct
-{
-#include "malloc_decls.h"
+typedef struct {
+#  include "malloc_decls.h"
   // Like free_hook, but called before realloc_hook. free_hook is called
   // instead of not given.
   void (*realloc_hook_before)(void* aPtr);
@@ -118,25 +113,24 @@ typedef struct
 namespace mozilla {
 namespace dmd {
 struct DMDFuncs;
-} // namespace dmd
+}  // namespace dmd
+
+namespace phc {
+class AddrInfo;
+}  // namespace phc
 
 // Callbacks to register debug file handles for Poison IO interpose.
 // See Mozilla(|Un)RegisterDebugHandle in xpcom/build/PoisonIOInterposer.h
-struct DebugFdRegistry
-{
+struct DebugFdRegistry {
   virtual void RegisterHandle(intptr_t aFd);
 
   virtual void UnRegisterHandle(intptr_t aFd);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-struct ReplaceMallocBridge
-{
-  ReplaceMallocBridge()
-    : mVersion(3)
-  {
-  }
+struct ReplaceMallocBridge {
+  ReplaceMallocBridge() : mVersion(4) {}
 
   // This method was added in version 1 of the bridge.
   virtual mozilla::dmd::DMDFuncs* GetDMDFuncs() { return nullptr; }
@@ -161,47 +155,63 @@ struct ReplaceMallocBridge
   // a brief time after RegisterHook returns.
   // This method was added in version 3 of the bridge.
   virtual const malloc_table_t* RegisterHook(
-    const char* aName,
-    const malloc_table_t* aTable,
-    const malloc_hook_table_t* aHookTable)
-  {
+      const char* aName, const malloc_table_t* aTable,
+      const malloc_hook_table_t* aHookTable) {
     return nullptr;
   }
 
-#ifndef REPLACE_MALLOC_IMPL
+  // If this is a PHC-handled address, return true, and if an AddrInfo is
+  // provided, fill in all of its fields. Otherwise, return false and leave
+  // AddrInfo unchanged.
+  // This method was added in version 4 of the bridge.
+  virtual bool IsPHCAllocation(const void*, mozilla::phc::AddrInfo*) {
+    return false;
+  }
+
+  // Disable PHC allocations on the current thread. Only useful for tests. Note
+  // that PHC deallocations will still occur as needed.
+  // This method was added in version 4 of the bridge.
+  virtual void DisablePHCOnCurrentThread() {}
+
+  // Re-enable PHC allocations on the current thread. Only useful for tests.
+  // This method was added in version 4 of the bridge.
+  virtual void ReenablePHCOnCurrentThread() {}
+
+  // Test whether PHC allocations are enabled on the current thread. Only
+  // useful for tests.
+  // This method was added in version 4 of the bridge.
+  virtual bool IsPHCEnabledOnCurrentThread() { return false; }
+
+#  ifndef REPLACE_MALLOC_IMPL
   // Returns the replace-malloc bridge if its version is at least the
   // requested one.
-  static ReplaceMallocBridge* Get(int aMinimumVersion)
-  {
+  static ReplaceMallocBridge* Get(int aMinimumVersion) {
     static ReplaceMallocBridge* sSingleton = get_bridge();
     return (sSingleton && sSingleton->mVersion >= aMinimumVersion) ? sSingleton
                                                                    : nullptr;
   }
-#endif
+#  endif
 
-protected:
+ protected:
   const int mVersion;
 };
 
-#ifndef REPLACE_MALLOC_IMPL
+#  ifndef REPLACE_MALLOC_IMPL
 // Class containing wrappers for calls to ReplaceMallocBridge methods.
 // Those wrappers need to be static methods in a class because compilers
 // complain about unused static global functions, and linkers complain
 // about multiple definitions of non-static global functions.
 // Using a separate class from ReplaceMallocBridge allows the function
 // names to be identical.
-struct ReplaceMalloc
-{
+struct ReplaceMalloc {
   // Don't call this method from performance critical code. Use
   // mozilla::dmd::DMDFuncs::Get() instead, it has less overhead.
-  static mozilla::dmd::DMDFuncs* GetDMDFuncs()
-  {
+  static mozilla::dmd::DMDFuncs* GetDMDFuncs() {
     auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 1);
     return singleton ? singleton->GetDMDFuncs() : nullptr;
   }
 
-  static void InitDebugFd(mozilla::DebugFdRegistry& aRegistry)
-  {
+  static void InitDebugFd(mozilla::DebugFdRegistry& aRegistry) {
     auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 2);
     if (singleton) {
       singleton->InitDebugFd(aRegistry);
@@ -209,17 +219,39 @@ struct ReplaceMalloc
   }
 
   static const malloc_table_t* RegisterHook(
-    const char* aName,
-    const malloc_table_t* aTable,
-    const malloc_hook_table_t* aHookTable)
-  {
+      const char* aName, const malloc_table_t* aTable,
+      const malloc_hook_table_t* aHookTable) {
     auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 3);
     return singleton ? singleton->RegisterHook(aName, aTable, aHookTable)
                      : nullptr;
   }
+
+  static bool IsPHCAllocation(const void* aPtr, mozilla::phc::AddrInfo* aOut) {
+    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
+    return singleton ? singleton->IsPHCAllocation(aPtr, aOut) : false;
+  }
+
+  static void DisablePHCOnCurrentThread() {
+    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
+    if (singleton) {
+      singleton->DisablePHCOnCurrentThread();
+    }
+  }
+
+  static void ReenablePHCOnCurrentThread() {
+    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
+    if (singleton) {
+      singleton->ReenablePHCOnCurrentThread();
+    }
+  }
+
+  static bool IsPHCEnabledOnCurrentThread() {
+    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
+    return singleton ? singleton->IsPHCEnabledOnCurrentThread() : false;
+  }
 };
-#endif
+#  endif
 
-#endif // __cplusplus
+#endif  // __cplusplus
 
-#endif // replace_malloc_bridge_h
+#endif  // replace_malloc_bridge_h

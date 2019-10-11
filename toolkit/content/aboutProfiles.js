@@ -4,9 +4,10 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
 XPCOMUtils.defineLazyServiceGetter(
   this,
@@ -15,39 +16,42 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIToolkitProfileService"
 );
 
-const bundle = Services.strings.createBundle(
-  "chrome://global/locale/aboutProfiles.properties");
-
-// nsIToolkitProfileService.selectProfile can be used only during the selection
-// of the profile in the ProfileManager. If we are showing about:profiles in a
-// tab, the selectedProfile returns the default profile.
-// In this function we use the ProfD to find the current profile.
-function findCurrentProfile() {
-  let cpd;
+async function flush() {
   try {
-    cpd = Services.dirsvc.get("ProfD", Ci.nsIFile);
-  } catch (e) {}
-
-  if (cpd) {
-    let itr = ProfileService.profiles;
-    while (itr.hasMoreElements()) {
-      let profile = itr.getNext().QueryInterface(Ci.nsIToolkitProfile);
-      if (profile.rootDir.path == cpd.path) {
-        return profile;
-      }
-    }
-  }
-
-  // selectedProfile can throw if nothing is selected or if the selected profile
-  // has been deleted.
-  try {
-    return ProfileService.selectedProfile;
+    ProfileService.flush();
+    rebuildProfileList();
   } catch (e) {
-    return null;
+    let [title, msg, button] = await document.l10n.formatValues([
+      { id: "profiles-flush-fail-title" },
+      {
+        id:
+          e.result == Cr.NS_ERROR_DATABASE_CHANGED
+            ? "profiles-flush-conflict"
+            : "profiles-flush-failed",
+      },
+      { id: "profiles-flush-restart-button" },
+    ]);
+
+    const PS = Ci.nsIPromptService;
+    let result = Services.prompt.confirmEx(
+      window,
+      title,
+      msg,
+      PS.BUTTON_POS_0 * PS.BUTTON_TITLE_CANCEL +
+        PS.BUTTON_POS_1 * PS.BUTTON_TITLE_IS_STRING,
+      null,
+      button,
+      null,
+      null,
+      {}
+    );
+    if (result == 1) {
+      restart(false);
+    }
   }
 }
 
-function refreshUI() {
+function rebuildProfileList() {
   let parent = document.getElementById("profiles");
   while (parent.firstChild) {
     parent.firstChild.remove();
@@ -58,11 +62,9 @@ function refreshUI() {
     defaultProfile = ProfileService.defaultProfile;
   } catch (e) {}
 
-  let currentProfile = findCurrentProfile();
+  let currentProfile = ProfileService.currentProfile;
 
-  let iter = ProfileService.profiles;
-  while (iter.hasMoreElements()) {
-    let profile = iter.getNext().QueryInterface(Ci.nsIToolkitProfile);
+  for (let profile of ProfileService.profiles) {
     let isCurrentProfile = profile == currentProfile;
     let isInUse = isCurrentProfile;
     if (!isInUse) {
@@ -70,7 +72,13 @@ function refreshUI() {
         let lock = profile.lock({});
         lock.unlock();
       } catch (e) {
-        isInUse = true;
+        if (
+          e.result != Cr.NS_ERROR_FILE_TARGET_DOES_NOT_EXIST &&
+          e.result != Cr.NS_ERROR_FILE_NOT_DIRECTORY &&
+          e.result != Cr.NS_ERROR_FILE_NOT_FOUND
+        ) {
+          isInUse = true;
+        }
       }
     }
     display({
@@ -80,25 +88,6 @@ function refreshUI() {
       isInUse,
     });
   }
-
-  let createButton = document.getElementById("create-button");
-  createButton.onclick = createProfileWizard;
-
-  let restartSafeModeButton = document.getElementById("restart-in-safe-mode-button");
-  if (!Services.policies || Services.policies.isAllowed("safeMode")) {
-    restartSafeModeButton.onclick = function() { restart(true); };
-  } else {
-    restartSafeModeButton.setAttribute("disabled", "true");
-  }
-
-  let restartNormalModeButton = document.getElementById("restart-button");
-  restartNormalModeButton.onclick = function() { restart(false); };
-}
-
-function openDirectory(dir) {
-  let nsLocalFile = Components.Constructor("@mozilla.org/file/local;1",
-                                           "nsIFile", "initWithPath");
-  new nsLocalFile(dir).reveal();
 }
 
 function display(profileData) {
@@ -107,22 +96,20 @@ function display(profileData) {
   let div = document.createElement("div");
   parent.appendChild(div);
 
-  let nameStr = bundle.formatStringFromName("name", [profileData.profile.name], 1);
-
   let name = document.createElement("h2");
-  name.appendChild(document.createTextNode(nameStr));
 
   div.appendChild(name);
+  document.l10n.setAttributes(name, "profiles-name", {
+    name: profileData.profile.name,
+  });
 
   if (profileData.isCurrentProfile) {
     let currentProfile = document.createElement("h3");
-    let currentProfileStr = bundle.GetStringFromName("currentProfile");
-    currentProfile.appendChild(document.createTextNode(currentProfileStr));
+    document.l10n.setAttributes(currentProfile, "profiles-current-profile");
     div.appendChild(currentProfile);
   } else if (profileData.isInUse) {
     let currentProfile = document.createElement("h3");
-    let currentProfileStr = bundle.GetStringFromName("inUseProfile");
-    currentProfile.appendChild(document.createTextNode(currentProfileStr));
+    document.l10n.setAttributes(currentProfile, "profiles-in-use-profile");
     div.appendChild(currentProfile);
   }
 
@@ -138,43 +125,44 @@ function display(profileData) {
 
     let th = document.createElement("th");
     th.setAttribute("class", "column");
-    th.appendChild(document.createTextNode(title));
+    document.l10n.setAttributes(th, title);
     tr.appendChild(th);
 
     let td = document.createElement("td");
-    td.appendChild(document.createTextNode(value));
     tr.appendChild(td);
 
     if (dir) {
-      td.appendChild(document.createTextNode(" "));
-      let button = document.createElement("button");
-      let string = "openDir";
-      if (AppConstants.platform == "win") {
-        string = "winOpenDir2";
-      } else if (AppConstants.platform == "macosx") {
-        string = "macOpenDir";
-      }
-      let buttonText = document.createTextNode(bundle.GetStringFromName(string));
-      button.appendChild(buttonText);
-      td.appendChild(button);
+      td.appendChild(document.createTextNode(value.path));
 
-      button.addEventListener("click", function(e) {
-        openDirectory(value);
-      });
+      if (value.exists()) {
+        let button = document.createElement("button");
+        button.setAttribute("class", "opendir");
+        document.l10n.setAttributes(button, "profiles-opendir");
+
+        td.appendChild(button);
+
+        button.addEventListener("click", function(e) {
+          value.reveal();
+        });
+      }
+    } else {
+      document.l10n.setAttributes(td, value);
     }
   }
 
-  createItem(bundle.GetStringFromName("isDefault"),
-             profileData.isDefault ? bundle.GetStringFromName("yes") : bundle.GetStringFromName("no"));
+  createItem(
+    "profiles-is-default",
+    profileData.isDefault ? "profiles-yes" : "profiles-no"
+  );
 
-  createItem(bundle.GetStringFromName("rootDir"), profileData.profile.rootDir.path, true);
+  createItem("profiles-rootdir", profileData.profile.rootDir, true);
 
   if (profileData.profile.localDir.path != profileData.profile.rootDir.path) {
-    createItem(bundle.GetStringFromName("localDir"), profileData.profile.localDir.path, true);
+    createItem("profiles-localdir", profileData.profile.localDir, true);
   }
 
   let renameButton = document.createElement("button");
-  renameButton.appendChild(document.createTextNode(bundle.GetStringFromName("rename")));
+  document.l10n.setAttributes(renameButton, "profiles-rename");
   renameButton.onclick = function() {
     renameProfile(profileData.profile);
   };
@@ -182,7 +170,7 @@ function display(profileData) {
 
   if (!profileData.isInUse) {
     let removeButton = document.createElement("button");
-    removeButton.appendChild(document.createTextNode(bundle.GetStringFromName("remove")));
+    document.l10n.setAttributes(removeButton, "profiles-remove");
     removeButton.onclick = function() {
       removeProfile(profileData.profile);
     };
@@ -192,7 +180,7 @@ function display(profileData) {
 
   if (!profileData.isDefault) {
     let defaultButton = document.createElement("button");
-    defaultButton.appendChild(document.createTextNode(bundle.GetStringFromName("setAsDefault")));
+    document.l10n.setAttributes(defaultButton, "profiles-set-as-default");
     defaultButton.onclick = function() {
       defaultProfile(profileData.profile);
     };
@@ -201,7 +189,7 @@ function display(profileData) {
 
   if (!profileData.isInUse) {
     let runButton = document.createElement("button");
-    runButton.appendChild(document.createTextNode(bundle.GetStringFromName("launchProfile")));
+    document.l10n.setAttributes(runButton, "profiles-launch-profile");
     runButton.onclick = function() {
       openProfile(profileData.profile);
     };
@@ -212,26 +200,31 @@ function display(profileData) {
   div.appendChild(sep);
 }
 
+// This is called from the createProfileWizard.xul dialog.
 function CreateProfile(profile) {
-  ProfileService.selectedProfile = profile;
-  ProfileService.flush();
-  refreshUI();
+  // The wizard created a profile, just make it the default.
+  defaultProfile(profile);
 }
 
 function createProfileWizard() {
   // This should be rewritten in HTML eventually.
-  window.openDialog("chrome://mozapps/content/profile/createProfileWizard.xul",
-                    "", "centerscreen,chrome,modal,titlebar",
-                    ProfileService);
+  window.docShell.rootTreeItem.domWindow.openDialog(
+    "chrome://mozapps/content/profile/createProfileWizard.xul",
+    "",
+    "centerscreen,chrome,modal,titlebar",
+    ProfileService,
+    { CreateProfile }
+  );
 }
 
-function renameProfile(profile) {
-  let title = bundle.GetStringFromName("renameProfileTitle");
-  let msg = bundle.formatStringFromName("renameProfile", [profile.name], 1);
+async function renameProfile(profile) {
   let newName = { value: profile.name };
+  let [title, msg] = await document.l10n.formatValues([
+    { id: "profiles-rename-profile-title" },
+    { id: "profiles-rename-profile", args: { name: profile.name } },
+  ]);
 
-  if (Services.prompt.prompt(window, title, msg, newName, null,
-                             { value: 0 })) {
+  if (Services.prompt.prompt(window, title, msg, newName, null, { value: 0 })) {
     newName = newName.value;
 
     if (newName == profile.name) {
@@ -241,33 +234,50 @@ function renameProfile(profile) {
     try {
       profile.name = newName;
     } catch (e) {
-      let title = bundle.GetStringFromName("invalidProfileNameTitle");
-      let msg = bundle.formatStringFromName("invalidProfileName", [newName], 1);
+      let [title, msg] = await document.l10n.formatValues([
+        { id: "profiles-invalid-profile-name-title" },
+        { id: "profiles-invalid-profile-name", args: { name: newName } },
+      ]);
+
       Services.prompt.alert(window, title, msg);
       return;
     }
 
-    ProfileService.flush();
-    refreshUI();
+    flush();
   }
 }
 
-function removeProfile(profile) {
+async function removeProfile(profile) {
   let deleteFiles = false;
 
   if (profile.rootDir.exists()) {
-    let title = bundle.GetStringFromName("deleteProfileTitle");
-    let msg = bundle.formatStringFromName("deleteProfileConfirm",
-                                          [profile.rootDir.path], 1);
-
-    let buttonPressed = Services.prompt.confirmEx(window, title, msg,
-                          (Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0) +
-                          (Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1) +
-                          (Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_2),
-                          bundle.GetStringFromName("dontDeleteFiles"),
-                          null,
-                          bundle.GetStringFromName("deleteFiles"),
-                          null, {value: 0});
+    let [
+      title,
+      msg,
+      dontDeleteStr,
+      deleteStr,
+    ] = await document.l10n.formatValues([
+      { id: "profiles-delete-profile-title" },
+      {
+        id: "profiles-delete-profile-confirm",
+        args: { dir: profile.rootDir.path },
+      },
+      { id: "profiles-dont-delete-files" },
+      { id: "profiles-delete-files" },
+    ]);
+    let buttonPressed = Services.prompt.confirmEx(
+      window,
+      title,
+      msg,
+      Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0 +
+        Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
+        Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_2,
+      dontDeleteStr,
+      null,
+      deleteStr,
+      null,
+      { value: 0 }
+    );
     if (buttonPressed == 1) {
       return;
     }
@@ -277,32 +287,26 @@ function removeProfile(profile) {
     }
   }
 
-  // If we are deleting the selected or the default profile we must choose a
-  // different one.
-  let isSelected = false;
-  try {
-    isSelected = ProfileService.selectedProfile == profile;
-  } catch (e) {}
-
+  // If we are deleting the default profile we must choose a different one.
   let isDefault = false;
   try {
     isDefault = ProfileService.defaultProfile == profile;
   } catch (e) {}
 
-  if (isSelected || isDefault) {
-    let itr = ProfileService.profiles;
-    while (itr.hasMoreElements()) {
-      let p = itr.getNext().QueryInterface(Ci.nsIToolkitProfile);
+  if (isDefault) {
+    for (let p of ProfileService.profiles) {
       if (profile == p) {
         continue;
       }
 
-      if (isSelected) {
-        ProfileService.selectedProfile = p;
-      }
-
       if (isDefault) {
-        ProfileService.defaultProfile = p;
+        try {
+          ProfileService.defaultProfile = p;
+        } catch (e) {
+          // This can happen on dev-edition if a non-default profile is in use.
+          // In such a case the next time that dev-edition is started it will
+          // find no default profile and just create a new one.
+        }
       }
 
       break;
@@ -312,27 +316,42 @@ function removeProfile(profile) {
   try {
     profile.removeInBackground(deleteFiles);
   } catch (e) {
-    let title = bundle.GetStringFromName("deleteProfileFailedTitle");
-    let msg = bundle.GetStringFromName("deleteProfileFailedMessage");
+    let [title, msg] = await document.l10n.formatValues([
+      { id: "profiles-delete-profile-failed-title" },
+      { id: "profiles-delete-profile-failed-message" },
+    ]);
+
     Services.prompt.alert(window, title, msg);
     return;
   }
 
-  ProfileService.flush();
-  refreshUI();
+  flush();
 }
 
-function defaultProfile(profile) {
-  ProfileService.defaultProfile = profile;
-  ProfileService.selectedProfile = profile;
-  ProfileService.flush();
-  refreshUI();
+async function defaultProfile(profile) {
+  try {
+    ProfileService.defaultProfile = profile;
+    flush();
+  } catch (e) {
+    // This can happen on dev-edition.
+    let [title, msg] = await document.l10n.formatValues([
+      { id: "profiles-cannot-set-as-default-title" },
+      { id: "profiles-cannot-set-as-default-message" },
+    ]);
+
+    Services.prompt.alert(window, title, msg);
+  }
 }
 
 function openProfile(profile) {
-  let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-                     .createInstance(Ci.nsISupportsPRBool);
-  Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+  let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(
+    Ci.nsISupportsPRBool
+  );
+  Services.obs.notifyObservers(
+    cancelQuit,
+    "quit-application-requested",
+    "restart"
+  );
 
   if (cancelQuit.data) {
     return;
@@ -342,15 +361,20 @@ function openProfile(profile) {
 }
 
 function restart(safeMode) {
-  let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-                     .createInstance(Ci.nsISupportsPRBool);
-  Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+  let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(
+    Ci.nsISupportsPRBool
+  );
+  Services.obs.notifyObservers(
+    cancelQuit,
+    "quit-application-requested",
+    "restart"
+  );
 
   if (cancelQuit.data) {
     return;
   }
 
-  let flags = Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestartNotSameProfile;
+  let flags = Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart;
 
   if (safeMode) {
     Services.startup.restartInSafeMode(flags);
@@ -359,6 +383,34 @@ function restart(safeMode) {
   }
 }
 
-window.addEventListener("DOMContentLoaded", function() {
-  refreshUI();
-}, {once: true});
+window.addEventListener(
+  "DOMContentLoaded",
+  function() {
+    let createButton = document.getElementById("create-button");
+    createButton.addEventListener("click", createProfileWizard);
+
+    let restartSafeModeButton = document.getElementById(
+      "restart-in-safe-mode-button"
+    );
+    if (!Services.policies || Services.policies.isAllowed("safeMode")) {
+      restartSafeModeButton.addEventListener("click", () => {
+        restart(true);
+      });
+    } else {
+      restartSafeModeButton.setAttribute("disabled", "true");
+    }
+
+    let restartNormalModeButton = document.getElementById("restart-button");
+    restartNormalModeButton.addEventListener("click", () => {
+      restart(false);
+    });
+
+    if (ProfileService.isListOutdated) {
+      document.getElementById("owned").hidden = true;
+    } else {
+      document.getElementById("conflict").hidden = true;
+      rebuildProfileList();
+    }
+  },
+  { once: true }
+);

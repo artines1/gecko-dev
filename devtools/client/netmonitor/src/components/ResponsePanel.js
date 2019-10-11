@@ -4,17 +4,28 @@
 
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const {
+  connect,
+} = require("devtools/client/shared/redux/visibility-handler-connect");
+const Services = require("Services");
 const { L10N } = require("../utils/l10n");
 const {
   decodeUnicodeBase64,
   fetchNetworkUpdatePacket,
   formDataURI,
   getUrlBaseName,
+  isJSON,
 } = require("../utils/request-utils");
 const { Filters } = require("../utils/filter-predicates");
+const {
+  setTargetSearchResult,
+} = require("devtools/client/netmonitor/src/actions/search");
 
 // Components
 const PropertiesView = createFactory(require("./PropertiesView"));
@@ -27,10 +38,12 @@ const RESPONSE_IMG_DIMENSIONS = L10N.getStr("netmonitor.response.dimensions");
 const RESPONSE_IMG_MIMETYPE = L10N.getStr("netmonitor.response.mime");
 const RESPONSE_PAYLOAD = L10N.getStr("responsePayload");
 const RESPONSE_PREVIEW = L10N.getStr("responsePreview");
+const RESPONSE_EMPTY_TEXT = L10N.getStr("responseEmptyText");
+const RESPONSE_TRUNCATED = L10N.getStr("responseTruncated");
 
 const JSON_VIEW_MIME_TYPE = "application/vnd.mozilla.json.view";
 
-/*
+/**
  * Response panel component
  * Displays the GET parameters and POST data of a request
  */
@@ -39,6 +52,8 @@ class ResponsePanel extends Component {
     return {
       request: PropTypes.object.isRequired,
       openLink: PropTypes.func,
+      targetSearchResult: PropTypes.object,
+      resetTargetSearchResult: PropTypes.func,
       connector: PropTypes.object.isRequired,
     };
   }
@@ -53,21 +68,39 @@ class ResponsePanel extends Component {
       },
     };
 
-    this.updateImageDimemsions = this.updateImageDimemsions.bind(this);
-    this.isJSON = this.isJSON.bind(this);
+    this.updateImageDimensions = this.updateImageDimensions.bind(this);
   }
 
   componentDidMount() {
     const { request, connector } = this.props;
-    fetchNetworkUpdatePacket(connector.requestData, request, ["responseContent"]);
+    fetchNetworkUpdatePacket(connector.requestData, request, [
+      "responseContent",
+    ]);
   }
 
   componentWillReceiveProps(nextProps) {
     const { request, connector } = nextProps;
-    fetchNetworkUpdatePacket(connector.requestData, request, ["responseContent"]);
+    fetchNetworkUpdatePacket(connector.requestData, request, [
+      "responseContent",
+    ]);
   }
 
-  updateImageDimemsions({ target }) {
+  /**
+   * Update only if:
+   * 1) The rendered object has changed
+   * 2) The user selected another search result target.
+   * 3) Internal state changes
+   */
+  shouldComponentUpdate(nextProps, nextState) {
+    return (
+      this.state !== nextState ||
+      this.props.request !== nextProps.request ||
+      (this.props.targetSearchResult !== nextProps.targetSearchResult &&
+        nextProps.targetSearchResult !== null)
+    );
+  }
+
+  updateImageDimensions({ target }) {
     this.setState({
       imageDimensions: {
         width: target.naturalWidth,
@@ -76,23 +109,30 @@ class ResponsePanel extends Component {
     });
   }
 
-  // Handle json, which we tentatively identify by checking the MIME type
-  // for "json" after any word boundary. This works for the standard
-  // "application/json", and also for custom types like "x-bigcorp-json".
-  // Additionally, we also directly parse the response text content to
-  // verify whether it's json or not, to handle responses incorrectly
-  // labeled as text/plain instead.
-  isJSON(mimeType, response) {
-    let json, error;
-    try {
-      json = JSON.parse(response);
-    } catch (err) {
-      try {
-        json = JSON.parse(atob(response));
-      } catch (err64) {
-        error = err;
-      }
+  /**
+   * Handle json, which we tentatively identify by checking the
+   * MIME type for "json" after any word boundary. This works
+   * for the standard "application/json", and also for custom
+   * types like "x-bigcorp-json". Additionally, we also
+   * directly parse the response text content to verify whether
+   * it's json or not, to handle responses incorrectly labeled
+   * as text/plain instead.
+   */
+  handleJSONResponse(mimeType, response) {
+    const limit = Services.prefs.getIntPref(
+      "devtools.netmonitor.responseBodyLimit"
+    );
+    const { request } = this.props;
+
+    // Check if the response has been truncated, in which case no parse should
+    // be attempted.
+    if (limit > 0 && limit <= request.responseContent.content.size) {
+      const result = {};
+      result.error = RESPONSE_TRUNCATED;
+      return result;
     }
+
+    let { json, error } = isJSON(response);
 
     if (/\bjson/.test(mimeType) || json) {
       // Extract the actual json substring in case this might be a "JSONP".
@@ -133,11 +173,15 @@ class ResponsePanel extends Component {
   }
 
   render() {
-    const { openLink, request } = this.props;
+    const { openLink, request, targetSearchResult } = this.props;
     const { responseContent, url } = request;
 
-    if (!responseContent || typeof responseContent.content.text !== "string") {
-      return null;
+    if (
+      !responseContent ||
+      typeof responseContent.content.text !== "string" ||
+      !responseContent.content.text
+    ) {
+      return div({ className: "empty-notice" }, RESPONSE_EMPTY_TEXT);
     }
 
     let { encoding, mimeType, text } = responseContent.content;
@@ -145,25 +189,27 @@ class ResponsePanel extends Component {
     if (mimeType.includes("image/")) {
       const { width, height } = this.state.imageDimensions;
 
-      return (
-        div({ className: "panel-container response-image-box devtools-monospace" },
-          img({
-            className: "response-image",
-            src: formDataURI(mimeType, encoding, text),
-            onLoad: this.updateImageDimemsions,
-          }),
-          div({ className: "response-summary" },
-            div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_NAME),
-            div({ className: "tabpanel-summary-value" }, getUrlBaseName(url)),
-          ),
-          div({ className: "response-summary" },
-            div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_DIMENSIONS),
-            div({ className: "tabpanel-summary-value" }, `${width} × ${height}`),
-          ),
-          div({ className: "response-summary" },
-            div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_MIMETYPE),
-            div({ className: "tabpanel-summary-value" }, mimeType),
-          ),
+      return div(
+        { className: "panel-container response-image-box devtools-monospace" },
+        img({
+          className: "response-image",
+          src: formDataURI(mimeType, encoding, text),
+          onLoad: this.updateImageDimensions,
+        }),
+        div(
+          { className: "response-summary" },
+          div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_NAME),
+          div({ className: "tabpanel-summary-value" }, getUrlBaseName(url))
+        ),
+        div(
+          { className: "response-summary" },
+          div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_DIMENSIONS),
+          div({ className: "tabpanel-summary-value" }, `${width} × ${height}`)
+        ),
+        div(
+          { className: "response-summary" },
+          div({ className: "tabpanel-summary-label" }, RESPONSE_IMG_MIMETYPE),
+          div({ className: "tabpanel-summary-value" }, mimeType)
         )
       );
     }
@@ -174,7 +220,8 @@ class ResponsePanel extends Component {
     }
 
     // Display Properties View
-    const { json, jsonpCallback, error } = this.isJSON(mimeType, text) || {};
+    const { json, jsonpCallback, error } =
+      this.handleJSONResponse(mimeType, text) || {};
     const object = {};
     let sectionName;
 
@@ -190,8 +237,16 @@ class ResponsePanel extends Component {
     // Display HTML under Properties View
     if (Filters.html(this.props.request)) {
       object[RESPONSE_PREVIEW] = {
-        HTML_PREVIEW: { responseContent }
+        HTML_PREVIEW: { responseContent },
       };
+    }
+
+    let scrollToLine;
+    let expandedNodes;
+
+    if (targetSearchResult && targetSearchResult.line) {
+      scrollToLine = targetSearchResult.line;
+      expandedNodes = new Set(["/" + RESPONSE_PAYLOAD]);
     }
 
     // Others like text/html, text/plain, application/javascript
@@ -199,6 +254,7 @@ class ResponsePanel extends Component {
       EDITOR_CONFIG: {
         text,
         mode: json ? "application/json" : mimeType.replace(/;.+/, ""),
+        scrollToLine,
       },
     };
 
@@ -207,20 +263,24 @@ class ResponsePanel extends Component {
       classList.push("contains-html-preview");
     }
 
-    return (
-      div({ className: classList.join(" ") },
-        error && div({ className: "response-error-header", title: error },
-          error
-        ),
-        PropertiesView({
-          object,
-          filterPlaceHolder: JSON_FILTER_TEXT,
-          sectionNames: Object.keys(object),
-          openLink,
-        }),
-      )
+    return div(
+      { className: classList.join(" ") },
+      error && div({ className: "response-error-header", title: error }, error),
+      PropertiesView({
+        object,
+        expandedNodes,
+        filterPlaceHolder: JSON_FILTER_TEXT,
+        sectionNames: Object.keys(object),
+        openLink,
+        targetSearchResult,
+      })
     );
   }
 }
 
-module.exports = ResponsePanel;
+module.exports = connect(
+  null,
+  dispatch => ({
+    resetTargetSearchResult: () => dispatch(setTargetSearchResult(null)),
+  })
+)(ResponsePanel);

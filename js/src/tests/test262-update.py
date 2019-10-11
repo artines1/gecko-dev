@@ -16,30 +16,40 @@ import sys
 
 from functools import partial
 from itertools import chain
+from operator import itemgetter
 
 # Skip all tests which use features not supported in SpiderMonkey.
 UNSUPPORTED_FEATURES = set([
     "tail-call-optimization",
-    "class-fields-public",
+    "class-static-fields-public",
     "class-fields-private",
+    "class-static-fields-private",
+    "class-methods-private",
+    "class-static-methods-private",
     "regexp-dotall",
     "regexp-lookbehind",
     "regexp-named-groups",
     "regexp-unicode-property-escapes",
-    "numeric-separator-literal",
-    "Intl.Locale",
-    "String.prototype.matchAll",
-    "Symbol.matchAll",
-    "Symbol.prototype.description",
-    "global",
     "export-star-as-namespace-from-module",
+    "Intl.DateTimeFormat-quarter",
+    "Intl.DateTimeFormat-datetimestyle",
+    "Intl.DateTimeFormat-dayPeriod",
+    "Intl.DateTimeFormat-formatRange",
+    "Intl.ListFormat",
+    "Intl.Segmenter",
+    "WeakRef",
+    "FinalizationGroup",
+    "optional-chaining",
+    "top-level-await",
 ])
 FEATURE_CHECK_NEEDED = {
     "Atomics": "!this.hasOwnProperty('Atomics')",
-    "BigInt": "!this.hasOwnProperty('BigInt')",
     "SharedArrayBuffer": "!this.hasOwnProperty('SharedArrayBuffer')",
 }
-RELEASE_OR_BETA = set()
+RELEASE_OR_BETA = set([
+    "Intl.NumberFormat-unified",
+    "Intl.DateTimeFormat-fractionalSecondDigits",
+])
 
 
 @contextlib.contextmanager
@@ -84,10 +94,10 @@ def tryParseTestFile(test262parser, source, testName):
         return None
 
 
-def createRefTestEntry(skip, skipIf, error, isModule):
+def createRefTestEntry(skip, skipIf, error, isModule, isAsync):
     """
-    Creates the |reftest| entry from the input list. Or the empty string if no
-    reftest entry is required.
+    Returns the |reftest| tuple (terms, comments) from the input arguments. Or a
+    tuple of empty strings if no reftest entry is required.
     """
 
     terms = []
@@ -107,11 +117,21 @@ def createRefTestEntry(skip, skipIf, error, isModule):
     if isModule:
         terms.append("module")
 
-    line = " ".join(terms)
-    if comments:
-        line += " -- " + ", ".join(comments)
+    if isAsync:
+        terms.append("async")
 
-    return line
+    return (" ".join(terms), ", ".join(comments))
+
+
+def createRefTestLine(terms, comments):
+    """
+    Creates the |reftest| line using the given terms and comments.
+    """
+
+    refTest = terms
+    if comments:
+        refTest += " -- " + comments
+    return refTest
 
 
 def createSource(testSource, refTest, prologue, epilogue):
@@ -195,7 +215,9 @@ def writeShellAndBrowserFiles(test262OutDir, harnessDir, includesMap, localInclu
 
     # Write the concatenated include sources to shell.js.
     with io.open(os.path.join(test262OutDir, relPath, "shell.js"), "wb") as shellFile:
-        shellFile.write(includeSource)
+        if includeSource:
+            shellFile.write(b"// GENERATED, DO NOT EDIT\n")
+            shellFile.write(includeSource)
 
     # The browser.js file is always empty for test262 tests.
     with io.open(os.path.join(test262OutDir, relPath, "browser.js"), "wb") as browserFile:
@@ -205,10 +227,6 @@ def writeShellAndBrowserFiles(test262OutDir, harnessDir, includesMap, localInclu
 def pathStartsWith(path, *args):
     prefix = os.path.join(*args)
     return os.path.commonprefix([path, prefix]) == prefix
-
-
-def fileNameEndsWith(filePath, suffix):
-    return os.path.splitext(os.path.basename(filePath))[0].endswith(suffix)
 
 
 def convertTestFile(test262parser, testSource, testName, includeSet, strictTests):
@@ -242,8 +260,8 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
 
     # Async tests are marked with the "async" attribute. It is an error for a
     # test to use the $DONE function without specifying the "async" attribute.
-    async = "async" in testRec
-    assert b"$DONE" not in testSource or async, "Missing async attribute in: %s" % testName
+    isAsync = "async" in testRec
+    assert b"$DONE" not in testSource or isAsync, "Missing async attribute in: %s" % testName
 
     # When the "module" attribute is set, the source code is module code.
     isModule = "module" in testRec
@@ -256,6 +274,11 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
     assert not isNegative or type(testRec["negative"]) == dict
     errorType = testRec["negative"]["type"] if isNegative else None
 
+    # Test262 contains tests both marked "negative" and "async". In this case
+    # "negative" is expected to overrule the "async" attribute.
+    if isNegative and isAsync:
+        isAsync = False
+
     # CanBlockIsFalse is set when the test expects that the implementation
     # cannot block on the main thread.
     if "CanBlockIsFalse" in testRec:
@@ -265,11 +288,6 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
     # can block on the main thread.
     if "CanBlockIsTrue" in testRec:
         refTestSkipIf.append(("!xulRuntime.shell", "browser cannot block main thread"))
-
-    # Skip non-test files.
-    isSupportFile = fileNameEndsWith(testName, "FIXTURE")
-    if isSupportFile:
-        refTestSkip.append("not a test file")
 
     # Skip tests with unsupported features.
     if "features" in testRec:
@@ -289,6 +307,11 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
                                       "%s is not enabled unconditionally" % ",".join(
                                           featureCheckNeeded)))
 
+            if "Atomics" in testRec["features"] and "SharedArrayBuffer" in testRec["features"]:
+                refTestSkipIf.append(("(this.hasOwnProperty('getBuildConfiguration')"
+                                      "&&getBuildConfiguration()['arm64-simulator'])",
+                                      "ARM64 Simulator cannot emulate atomics"))
+
     # Includes for every test file in a directory is collected in a single
     # shell.js file per directory level. This is done to avoid adding all
     # test harness files to the top level shell.js file.
@@ -297,15 +320,22 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
         includeSet.update(testRec["includes"])
 
     # Add reportCompare() after all positive, synchronous tests.
-    if not isNegative and not async and not isSupportFile:
+    if not isNegative and not isAsync:
         testEpilogue = "reportCompare(0, 0);"
     else:
         testEpilogue = ""
 
-    refTest = createRefTestEntry(refTestSkip, refTestSkipIf, errorType, isModule)
+    (terms, comments) = createRefTestEntry(refTestSkip, refTestSkipIf, errorType, isModule,
+                                           isAsync)
+    if raw:
+        refTest = ""
+        externRefTest = (terms, comments)
+    else:
+        refTest = createRefTestLine(terms, comments)
+        externRefTest = None
 
-    # Don't write a strict-mode variant for raw, module or support files.
-    noStrictVariant = raw or isModule or isSupportFile
+    # Don't write a strict-mode variant for raw or module files.
+    noStrictVariant = raw or isModule
     assert not (noStrictVariant and (onlyStrict or noStrict)),\
         "Unexpected onlyStrict or noStrict attribute: %s" % testName
 
@@ -314,7 +344,7 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
         testPrologue = ""
         nonStrictSource = createSource(testSource, refTest, testPrologue, testEpilogue)
         testFileName = testName
-        yield (testFileName, nonStrictSource)
+        yield (testFileName, nonStrictSource, externRefTest)
 
     # Write strict mode test.
     if not noStrictVariant and (onlyStrict or (not noStrict and strictTests)):
@@ -323,10 +353,31 @@ def convertTestFile(test262parser, testSource, testName, includeSet, strictTests
         testFileName = testName
         if not noStrict:
             testFileName = addSuffixToFileName(testFileName, "-strict")
-        yield (testFileName, strictSource)
+        yield (testFileName, strictSource, externRefTest)
 
 
-def process_test262(test262Dir, test262OutDir, strictTests):
+def convertFixtureFile(fixtureSource, fixtureName):
+    """
+    Convert a test262 fixture file to a compatible jstests test file.
+    """
+
+    # jsreftest meta data
+    refTestSkip = ["not a test file"]
+    refTestSkipIf = []
+    errorType = None
+    isModule = False
+    isAsync = False
+
+    (terms, comments) = createRefTestEntry(refTestSkip, refTestSkipIf, errorType, isModule,
+                                           isAsync)
+    refTest = createRefTestLine(terms, comments)
+
+    source = createSource(fixtureSource, refTest, "", "")
+    externRefTest = None
+    yield (fixtureName, source, externRefTest)
+
+
+def process_test262(test262Dir, test262OutDir, strictTests, externManifests):
     """
     Process all test262 files and converts them into jstests compatible tests.
     """
@@ -367,10 +418,8 @@ def process_test262(test262Dir, test262OutDir, strictTests):
                                                                  "detachArrayBuffer.js", "nans.js"]
     explicitIncludes[os.path.join("built-ins", "TypedArrays")] = ["detachArrayBuffer.js"]
 
-    # Intl.RelativeTimeFormat isn't yet enabled by default.
-    localIncludesMap[os.path.join("intl402", "RelativeTimeFormat")] = [
-        "test262-intl-relativetimeformat.js"
-    ]
+    # Intl.Locale isn't yet enabled by default.
+    localIncludesMap[os.path.join("intl402")] = ["test262-intl-locale.js"]
 
     # Process all test directories recursively.
     for (dirPath, dirNames, fileNames) in os.walk(testDir):
@@ -400,13 +449,28 @@ def process_test262(test262Dir, test262OutDir, strictTests):
                 shutil.copyfile(filePath, os.path.join(test262OutDir, testName))
                 continue
 
+            # Files ending with "_FIXTURE.js" are fixture files:
+            # https://github.com/tc39/test262/blob/master/INTERPRETING.md#modules
+            isFixtureFile = fileName.endswith("_FIXTURE.js")
+
             # Read the original test source and preprocess it for the jstests harness.
             with io.open(filePath, "rb") as testFile:
                 testSource = testFile.read()
 
-            for (newFileName, newSource) in convertTestFile(test262parser, testSource, testName,
-                                                            includeSet, strictTests):
+            if isFixtureFile:
+                convert = convertFixtureFile(testSource, testName)
+            else:
+                convert = convertTestFile(test262parser, testSource, testName,
+                                          includeSet, strictTests)
+
+            for (newFileName, newSource, externRefTest) in convert:
                 writeTestFile(test262OutDir, newFileName, newSource)
+
+                if externRefTest is not None:
+                    externManifests.append({
+                        "name": newFileName,
+                        "reftest": externRefTest,
+                    })
 
         # Add shell.js and browers.js files for the current directory.
         writeShellAndBrowserFiles(test262OutDir, harnessDir,
@@ -499,7 +563,7 @@ def fetch_local_changes(inDir, outDir, srcDir, strictTests):
         shutil.rmtree(outDir)
     os.makedirs(outDir)
 
-    process_test262(inDir, outDir, strictTests)
+    process_test262(inDir, outDir, strictTests, [])
 
 
 def fetch_pr_files(inDir, outDir, prNumber, strictTests):
@@ -553,7 +617,7 @@ def fetch_pr_files(inDir, outDir, prNumber, strictTests):
         with io.open(os.path.join(inDir, *filename.split("/")), "wb") as output_file:
             output_file.write(fileText.encode('utf8'))
 
-    process_test262(inDir, prTestsOutDir, strictTests)
+    process_test262(inDir, prTestsOutDir, strictTests, [])
 
 
 def general_update(inDir, outDir, strictTests):
@@ -588,7 +652,21 @@ def general_update(inDir, outDir, strictTests):
         subprocess.check_call(["git", "-C", inDir, "log", "-1"], stdout=info)
 
     # Copy the test files.
-    process_test262(inDir, outDir, strictTests)
+    externManifests = []
+    process_test262(inDir, outDir, strictTests, externManifests)
+
+    # Create the external reftest manifest file.
+    with io.open(os.path.join(outDir, "jstests.list"), "wb") as manifestFile:
+        manifestFile.write(b"# GENERATED, DO NOT EDIT\n\n")
+        for externManifest in sorted(externManifests, key=itemgetter("name")):
+            (terms, comments) = externManifest["reftest"]
+            if terms:
+                entry = "%s script %s%s\n" % (
+                    terms,
+                    externManifest["name"],
+                    (" # %s" % comments) if comments else ""
+                )
+                manifestFile.write(entry.encode("utf-8"))
 
     # Move test262/local back.
     if restoreLocalTestsDir:

@@ -7,83 +7,65 @@
 #ifndef mozilla_recordreplay_ChildInternal_h
 #define mozilla_recordreplay_ChildInternal_h
 
+#include "Channel.h"
 #include "ChildIPC.h"
 #include "JSControl.h"
+#include "MiddlemanCall.h"
 #include "Monitor.h"
+
+// This file has internal definitions for communication between the main
+// record/replay infrastructure and child side IPC code.
 
 namespace mozilla {
 namespace recordreplay {
-
-// The navigation namespace has definitions for managing breakpoints and all
-// other state that persists across rewinds, and for keeping track of the
-// precise execution position of the child process. The middleman will send the
-// child process Resume messages to travel forward and backward, but it is up
-// to the child process to keep track of the rewinding and resuming necessary
-// to find the next or previous point where a breakpoint or checkpoint is hit.
-namespace navigation {
-
-// Navigation state is initialized when the first checkpoint is reached.
-bool IsInitialized();
-
-// In a recording process, get the current execution point, aka the endpoint
-// of the recording.
-js::ExecutionPoint GetRecordingEndpoint();
-
-// In a replaying process, set the recording endpoint. |index| is used to
-// differentiate different endpoints that have been sequentially written to
-// the recording file as it has been flushed.
-void SetRecordingEndpoint(size_t aIndex, const js::ExecutionPoint& aEndpoint);
-
-// Save temporary checkpoints at all opportunities during navigation.
-void AlwaysSaveTemporaryCheckpoints();
-
-// Process incoming requests from the middleman.
-void DebuggerRequest(js::CharBuffer* aBuffer);
-void SetBreakpoint(size_t aId, const js::BreakpointPosition& aPosition);
-void Resume(bool aForward);
-void RestoreCheckpoint(size_t aId);
-void RunToPoint(const js::ExecutionPoint& aPoint);
-
-// Attempt to diverge from the recording so that new recorded events cause
-// the process to rewind. Returns false if the divergence failed: either we
-// can't rewind, or already diverged here and then had an unhandled divergence.
-bool MaybeDivergeFromRecording();
-
-// Notify navigation that a position was hit.
-void PositionHit(const js::BreakpointPosition& aPosition);
-
-// Get an execution point for hitting the specified position right now.
-js::ExecutionPoint CurrentExecutionPoint(const js::BreakpointPosition& aPosition);
-
-// Convert an identifier from NewTimeWarpTarget() which we have seen while
-// executing into an ExecutionPoint.
-js::ExecutionPoint TimeWarpTargetExecutionPoint(ProgressCounter aTarget);
-
-// Called when running forward, immediately before hitting a normal or
-// temporary checkpoint.
-void BeforeCheckpoint();
-
-// Called immediately after hitting a normal or temporary checkpoint, either
-// when running forward or immediately after rewinding.
-void AfterCheckpoint(const CheckpointId& aCheckpoint);
-
-} // namespace navigation
-
-// IPC activity that can be triggered by navigation.
 namespace child {
 
-void RespondToRequest(const js::CharBuffer& aBuffer);
+// Optional information about a crash that occurred. If not provided to
+// ReportFatalError, the current thread will be treated as crashed.
+struct MinidumpInfo {
+  int mExceptionType;
+  int mCode;
+  int mSubcode;
+  mach_port_t mThread;
 
-void HitCheckpoint(size_t aId, bool aRecordingEndpoint);
+  MinidumpInfo(int aExceptionType, int aCode, int aSubcode, mach_port_t aThread)
+      : mExceptionType(aExceptionType),
+        mCode(aCode),
+        mSubcode(aSubcode),
+        mThread(aThread) {}
+};
 
-void HitBreakpoint(bool aRecordingEndpoint, const uint32_t* aBreakpoints, size_t aNumBreakpoints);
+// Generate a minidump and report a fatal error to the middleman process.
+void ReportFatalError(const Maybe<MinidumpInfo>& aMinidumpInfo,
+                      const char* aFormat, ...);
+
+// Get the unique ID of this child.
+size_t GetId();
 
 // Monitor used for various synchronization tasks.
 extern Monitor* gMonitor;
 
-} // namespace child
+// Whether the middleman runs developer tools server code.
+bool DebuggerRunsInMiddleman();
 
-} // namespace recordreplay
-} // namespace mozilla
+// Notify the middleman that the last manifest was finished.
+void ManifestFinished(const js::CharBuffer& aResponse);
 
-#endif // mozilla_recordreplay_ChildInternal_h
+// Send messages operating on middleman calls.
+void SendMiddlemanCallRequest(const char* aInputData, size_t aInputSize,
+                              InfallibleVector<char>* aOutputData);
+void SendResetMiddlemanCalls();
+
+// Return whether a repaint is in progress and is not allowed to trigger an
+// unhandled recording divergence per preferences.
+bool CurrentRepaintCannotFail();
+
+// Paint according to the current process state, then convert it to an image
+// and serialize it in aData.
+bool Repaint(nsAString& aData);
+
+}  // namespace child
+}  // namespace recordreplay
+}  // namespace mozilla
+
+#endif  // mozilla_recordreplay_ChildInternal_h

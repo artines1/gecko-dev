@@ -10,31 +10,27 @@ const { parseFontVariationAxes } = require("../utils/font-utils");
 const {
   APPLY_FONT_VARIATION_INSTANCE,
   RESET_EDITOR,
+  SET_FONT_EDITOR_DISABLED,
   UPDATE_AXIS_VALUE,
-  UPDATE_CUSTOM_INSTANCE,
   UPDATE_EDITOR_STATE,
   UPDATE_PROPERTY_VALUE,
   UPDATE_WARNING_MESSAGE,
 } = require("../actions/index");
+
+const CUSTOM_INSTANCE_NAME = getStr("fontinspector.customInstanceName");
 
 const INITIAL_STATE = {
   // Variable font axes.
   axes: {},
   // Copy of the most recent axes values. Used to revert from a named instance.
   customInstanceValues: [],
-  // Font families declared on the selected element
-  families: {
-    // Names of font families used
-    used: [],
-    // Names of font families declared but not used
-    notUsed: []
-  },
-  // Fonts whose family names are declared in CSS font-family and used
-  // on the selected element.
+  // When true, prevent users from interacting with inputs in the font editor.
+  disabled: false,
+  // Fonts used on the selected element.
   fonts: [],
   // Current selected font variation instance.
   instance: {
-    name: getStr("fontinspector.customInstanceName"),
+    name: CUSTOM_INSTANCE_NAME,
     values: [],
   },
   // CSS font properties defined on the selected rule.
@@ -42,11 +38,10 @@ const INITIAL_STATE = {
   // Unique identifier for the selected element.
   id: "",
   // Warning message with the reason why the font editor cannot be shown.
-  warning: getStr("fontinspector.noFontsOnSelectedElement"),
+  warning: getStr("fontinspector.noFontsUsedOnCurrentElement"),
 };
 
 const reducers = {
-
   // Update font editor with the axes and values defined by a font variation instance.
   [APPLY_FONT_VARIATION_INSTANCE](state, { name, values }) {
     const newState = { ...state };
@@ -70,27 +65,35 @@ const reducers = {
   [UPDATE_AXIS_VALUE](state, { axis, value }) {
     const newState = { ...state };
     newState.axes[axis] = value;
-    return newState;
-  },
 
-  // Copy state of current axes in the format of the "values" property of a named font
-  // variation instance.
-  [UPDATE_CUSTOM_INSTANCE](state) {
-    const newState = { ...state };
-    newState.customInstanceValues = Object.keys(state.axes).map(axis => {
-      return { axis: [axis], value: state.axes[axis] };
+    // Cache the latest axes and their values to restore them when switching back from
+    // a named font variation instance to the custom font variation instance.
+    newState.customInstanceValues = Object.keys(state.axes).map(axisName => {
+      return { axis: [axisName], value: state.axes[axisName] };
     });
+
+    // As soon as an axis value is manually updated, mark the custom font variation
+    // instance as selected.
+    newState.instance.name = CUSTOM_INSTANCE_NAME;
+
     return newState;
   },
 
-  [UPDATE_EDITOR_STATE](state, { fonts, families, properties, id }) {
+  [SET_FONT_EDITOR_DISABLED](state, { disabled }) {
+    return { ...state, disabled };
+  },
+
+  [UPDATE_EDITOR_STATE](state, { fonts, properties, id }) {
     const axes = parseFontVariationAxes(properties["font-variation-settings"]);
 
     // If not defined in font-variation-settings, setup "wght" axis with the value of
     // "font-weight" if it is numeric and not a keyword.
     const weight = properties["font-weight"];
-    if (axes.wght === undefined && parseFloat(weight).toString() === weight.toString()) {
-      axes.wght = weight;
+    if (
+      axes.wght === undefined &&
+      parseFloat(weight).toString() === weight.toString()
+    ) {
+      axes.wght = parseFloat(weight);
     }
 
     // If not defined in font-variation-settings, setup "wdth" axis with the percentage
@@ -100,10 +103,10 @@ const reducers = {
     // If there's a match, the number is the second item in the match array.
     const match = stretch.trim().match(/^(\d+(.\d+)?)%$/);
     if (axes.wdth === undefined && match && match[1]) {
-      axes.wdth = match[1];
+      axes.wdth = parseFloat(match[1]);
     }
 
-    return { ...state, axes, fonts, families, properties, id };
+    return { ...state, axes, fonts, properties, id };
   },
 
   [UPDATE_PROPERTY_VALUE](state, { property, value }) {
@@ -115,7 +118,6 @@ const reducers = {
   [UPDATE_WARNING_MESSAGE](state, { warning }) {
     return { ...state, warning };
   },
-
 };
 
 module.exports = function(state = INITIAL_STATE, action) {

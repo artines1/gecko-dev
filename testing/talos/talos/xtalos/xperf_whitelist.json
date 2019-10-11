@@ -14,6 +14,9 @@
   "c:\\$mft": {
     "ignore": true
   },
+  "z:\\$mft": {
+    "ignore": true
+  },
   "c:\\$secure": {
     "ignore": true
   },
@@ -71,17 +74,77 @@
   "c:\\windows\\prefetch\\{prefetch}.pf": {
     "ignore": true
   },
+  "c:\\windows\\system32\\inputhost.dll": {
+    "mincount": 0,
+    "maxcount": 2,
+    "minbytes": 0,
+    "maxbytes": 32768
+  },
+  "c:\\windows\\system32\\advapi32.dll": {
+    "mincount": 0,
+    "maxcount": 2,
+    "minbytes": 0,
+    "maxbytes": 24576
+  },
+  "c:\\windows\\system32\\apphelp.dll": {
+    "mincount": 0,
+    "maxcount": 2,
+    "minbytes": 0,
+    "maxbytes": 32768
+  },
+  "c:\\windows\\system32\\windows.storage.dll": {
+    "mincount": 2,
+    "maxcount": 2,
+    "minbytes": 0,
+    "maxbytes": 24576
+  },
+  "c:\\windows\\system32\\ole32.dll": {
+    "mincount": 4,
+    "maxcount": 4,
+    "minbytes": 0,
+    "maxbytes": 65536
+  },
+  "c:\\windows\\system32\\ucrtbase.dll": {
+    "mincount": 4,
+    "maxcount": 4,
+    "minbytes": 16384,
+    "maxbytes": 32768
+  },
+  "c:\\windows\\system32\\user32.dll": {
+    "mincount": 4,
+    "maxcount": 4,
+    "minbytes": 0,
+    "maxbytes": 65536
+  },
   "c:\\windows\\system32\\audioses.dll": {
     "mincount": 4,
     "maxcount": 4,
     "minbytes": 16384,
     "maxbytes": 32768
   },
+  "c:\\windows\\system32\\d3d10warp.dll": {
+    "mincount": 6,
+    "maxcount": 6,
+    "minbytes": 81920,
+    "maxbytes": 81920
+  },
+  "c:\\windows\\system32\\d3d11.dll": {
+    "mincount": 10,
+    "maxcount": 10,
+    "minbytes": 139264,
+    "maxbytes": 139264
+  },
   "c:\\windows\\system32\\dwrite.dll": {
     "mincount": 4,
     "maxcount": 4,
     "minbytes": 16384,
     "maxbytes": 90112
+  },
+  "c:\\windows\\system32\\dxgi.dll": {
+    "mincount": 2,
+    "maxcount": 2,
+    "minbytes": 32768,
+    "maxbytes": 32768
   },
   "c:\\windows\\system32\\gdi32.dll": {
     "mincount": 0,
@@ -106,6 +169,12 @@
     "maxcount": 2,
     "minbytes": 0,
     "maxbytes": 65536
+  },
+  "c:\\windows\\system32\\setupapi.dll": {
+    "mincount": 0,
+    "maxcount": 8,
+    "minbytes": 0,
+    "maxbytes": 87040
   },
   "c:\\windows\\system32\\spool\\drivers\\color": {
     "mincount": 0,
@@ -146,11 +215,11 @@
     "minbytes": 0,
     "maxbytes": 8192
   },
-  "{firefox}\\browser\\features\\aushelper@mozilla.org.xpi": {
+  "{firefox}\\browser\\features\\formautofill@mozilla.org.xpi": {
     "mincount": 0,
-    "maxcount": 2,
+    "maxcount": 6,
     "minbytes": 0,
-    "maxbytes": 24576
+    "maxbytes": 393216
   },
   "{firefox}\\browser\\features\\flyweb@mozilla.org.xpi": {
     "mincount": 0,
@@ -407,6 +476,12 @@
     "minbytes": 4424,
     "maxbytes": 4424
   },
+  "{profile}\\permissions.sqlite-journal": {
+    "mincount": 0,
+    "maxcount": 18,
+    "minbytes": 0,
+    "maxbytes": 7208
+  },
   "{profile}\\pkcs11.txt": {
     "mincount": 0,
     "maxcount": 4,
@@ -514,6 +589,12 @@
     "maxcount": 0,
     "minbytes": 0,
     "maxbytes": 702
+  },
+  "{profile}\\xulstore\\data.mdb": {
+    "mincount": 0,
+    "maxcount": 4,
+    "minbytes": 0,
+    "maxbytes": 608
   },
   "{talos}\\talos\\tests\\{tp5n_files}": {
     "mincount": 0,

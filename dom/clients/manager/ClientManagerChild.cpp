@@ -11,17 +11,13 @@
 #include "ClientNavigateOpChild.h"
 #include "ClientSourceChild.h"
 
+#include "mozilla/dom/WorkerRef.h"
+
 namespace mozilla {
 namespace dom {
 
-void
-ClientManagerChild::ActorDestroy(ActorDestroyReason aReason)
-{
-  if (mWorkerHolderToken) {
-    mWorkerHolderToken->RemoveListener(this);
-    mWorkerHolderToken = nullptr;
-
-  }
+void ClientManagerChild::ActorDestroy(ActorDestroyReason aReason) {
+  mIPCWorkerRef = nullptr;
 
   if (mManager) {
     mManager->RevokeActor(this);
@@ -32,105 +28,98 @@ ClientManagerChild::ActorDestroy(ActorDestroyReason aReason)
   }
 }
 
-PClientHandleChild*
-ClientManagerChild::AllocPClientHandleChild(const IPCClientInfo& aClientInfo)
-{
+PClientHandleChild* ClientManagerChild::AllocPClientHandleChild(
+    const IPCClientInfo& aClientInfo) {
   return new ClientHandleChild();
 }
 
-bool
-ClientManagerChild::DeallocPClientHandleChild(PClientHandleChild* aActor)
-{
+bool ClientManagerChild::DeallocPClientHandleChild(PClientHandleChild* aActor) {
   delete aActor;
   return true;
 }
 
-PClientManagerOpChild*
-ClientManagerChild::AllocPClientManagerOpChild(const ClientOpConstructorArgs& aArgs)
-{
-  MOZ_ASSERT_UNREACHABLE("ClientManagerOpChild must be explicitly constructed.");
+PClientManagerOpChild* ClientManagerChild::AllocPClientManagerOpChild(
+    const ClientOpConstructorArgs& aArgs) {
+  MOZ_ASSERT_UNREACHABLE(
+      "ClientManagerOpChild must be explicitly constructed.");
   return nullptr;
 }
 
-bool
-ClientManagerChild::DeallocPClientManagerOpChild(PClientManagerOpChild* aActor)
-{
+bool ClientManagerChild::DeallocPClientManagerOpChild(
+    PClientManagerOpChild* aActor) {
   delete aActor;
   return true;
 }
 
-PClientNavigateOpChild*
-ClientManagerChild::AllocPClientNavigateOpChild(const ClientNavigateOpConstructorArgs& aArgs)
-{
+PClientNavigateOpChild* ClientManagerChild::AllocPClientNavigateOpChild(
+    const ClientNavigateOpConstructorArgs& aArgs) {
   return new ClientNavigateOpChild();
 }
 
-bool
-ClientManagerChild::DeallocPClientNavigateOpChild(PClientNavigateOpChild* aActor)
-{
+bool ClientManagerChild::DeallocPClientNavigateOpChild(
+    PClientNavigateOpChild* aActor) {
   delete aActor;
   return true;
 }
 
-mozilla::ipc::IPCResult
-ClientManagerChild::RecvPClientNavigateOpConstructor(PClientNavigateOpChild* aActor,
-                                                     const ClientNavigateOpConstructorArgs& aArgs)
-{
+mozilla::ipc::IPCResult ClientManagerChild::RecvPClientNavigateOpConstructor(
+    PClientNavigateOpChild* aActor,
+    const ClientNavigateOpConstructorArgs& aArgs) {
   auto actor = static_cast<ClientNavigateOpChild*>(aActor);
   actor->Init(aArgs);
   return IPC_OK();
 }
 
-PClientSourceChild*
-ClientManagerChild::AllocPClientSourceChild(const ClientSourceConstructorArgs& aArgs)
-{
+PClientSourceChild* ClientManagerChild::AllocPClientSourceChild(
+    const ClientSourceConstructorArgs& aArgs) {
   return new ClientSourceChild(aArgs);
 }
 
-bool
-ClientManagerChild::DeallocPClientSourceChild(PClientSourceChild* aActor)
-{
+bool ClientManagerChild::DeallocPClientSourceChild(PClientSourceChild* aActor) {
   delete aActor;
   return true;
 }
 
-void
-ClientManagerChild::WorkerShuttingDown()
-{
-  MaybeStartTeardown();
-}
+// static
+ClientManagerChild* ClientManagerChild::Create() {
+  ClientManagerChild* actor = new ClientManagerChild();
 
-ClientManagerChild::ClientManagerChild(WorkerHolderToken* aWorkerHolderToken)
-  : mManager(nullptr)
-  , mWorkerHolderToken(aWorkerHolderToken)
-  , mTeardownStarted(false)
-{
-  MOZ_ASSERT_IF(!NS_IsMainThread(), mWorkerHolderToken);
+  if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_DIAGNOSTIC_ASSERT(workerPrivate);
 
-  if (mWorkerHolderToken) {
-    mWorkerHolderToken->AddListener(this);
+    RefPtr<IPCWorkerRefHelper<ClientManagerChild>> helper =
+        new IPCWorkerRefHelper<ClientManagerChild>(actor);
+
+    actor->mIPCWorkerRef = IPCWorkerRef::Create(
+        workerPrivate, "ClientManagerChild",
+        [helper] { helper->Actor()->MaybeStartTeardown(); });
+
+    if (NS_WARN_IF(!actor->mIPCWorkerRef)) {
+      delete actor;
+      return nullptr;
+    }
   }
+
+  return actor;
 }
 
-void
-ClientManagerChild::SetOwner(ClientThing<ClientManagerChild>* aThing)
-{
+ClientManagerChild::ClientManagerChild()
+    : mManager(nullptr), mTeardownStarted(false) {}
+
+void ClientManagerChild::SetOwner(ClientThing<ClientManagerChild>* aThing) {
   MOZ_DIAGNOSTIC_ASSERT(aThing);
   MOZ_DIAGNOSTIC_ASSERT(!mManager);
   mManager = aThing;
 }
 
-void
-ClientManagerChild::RevokeOwner(ClientThing<ClientManagerChild>* aThing)
-{
+void ClientManagerChild::RevokeOwner(ClientThing<ClientManagerChild>* aThing) {
   MOZ_DIAGNOSTIC_ASSERT(mManager);
   MOZ_DIAGNOSTIC_ASSERT(mManager == aThing);
   mManager = nullptr;
 }
 
-void
-ClientManagerChild::MaybeStartTeardown()
-{
+void ClientManagerChild::MaybeStartTeardown() {
   if (mTeardownStarted) {
     return;
   }
@@ -138,14 +127,12 @@ ClientManagerChild::MaybeStartTeardown()
   SendTeardown();
 }
 
-WorkerPrivate*
-ClientManagerChild::GetWorkerPrivate() const
-{
-  if (!mWorkerHolderToken) {
+WorkerPrivate* ClientManagerChild::GetWorkerPrivate() const {
+  if (!mIPCWorkerRef) {
     return nullptr;
   }
-  return mWorkerHolderToken->GetWorkerPrivate();
+  return mIPCWorkerRef->Private();
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

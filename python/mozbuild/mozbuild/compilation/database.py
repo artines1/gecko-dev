@@ -4,6 +4,8 @@
 
 # This modules provides functionality for dealing with code completion.
 
+from __future__ import absolute_import, print_function
+
 import os
 import types
 
@@ -13,11 +15,8 @@ from mozbuild.frontend.data import (
     Sources,
     GeneratedSources,
     DirectoryTraversal,
-    Linkable,
-    LocalInclude,
     PerSourceFlag,
     VariablePassthru,
-    SimpleProgram,
 )
 from mozbuild.shellutil import (
     quote as shell_quote,
@@ -126,6 +125,12 @@ class CompileDBBackend(CommonBackend):
             json.dump(db, jsonout, indent=0)
 
     def _process_unified_sources(self, obj):
+        if not obj.have_unified_mapping:
+            for f in list(sorted(obj.files)):
+                self._build_db_line(obj.objdir, obj.relsrcdir, obj.config, f,
+                                    obj.canonical_suffix)
+            return
+
         # For unified sources, only include the unified source file.
         # Note that unified sources are never used for host sources.
         for f in obj.unified_source_mapping:
@@ -170,8 +175,8 @@ class CompileDBBackend(CommonBackend):
         if canonical_suffix not in self.COMPILERS:
             return
         db = self._db.setdefault((objdir, filename, unified),
-            cenv.substs[self.COMPILERS[canonical_suffix]].split() +
-            ['-o', '/dev/null', '-c'])
+                                 cenv.substs[self.COMPILERS[canonical_suffix]].split() +
+                                 ['-o', '/dev/null', '-c'])
         reldir = reldir or mozpath.relpath(objdir, cenv.topobjdir)
 
         def append_var(name):

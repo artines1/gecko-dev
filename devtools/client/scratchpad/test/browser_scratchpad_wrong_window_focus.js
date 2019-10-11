@@ -1,4 +1,3 @@
-/* vim:set ts=2 sw=2 sts=2 et: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 /* Bug 661762 */
@@ -22,12 +21,14 @@ function test() {
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(function() {
       const sw = gScratchpadWindow;
-      const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-      const {TargetFactory} = require("devtools/client/framework/target");
+      const { require } = ChromeUtils.import(
+        "resource://devtools/shared/Loader.jsm"
+      );
+      const { TargetFactory } = require("devtools/client/framework/target");
 
-      openScratchpad(function() {
-        const target = TargetFactory.forTab(gBrowser.selectedTab);
-        gDevTools.showToolbox(target, "webconsole").then((toolbox) => {
+      openScratchpad(async function() {
+        const target = await TargetFactory.forTab(gBrowser.selectedTab);
+        gDevTools.showToolbox(target, "webconsole").then(toolbox => {
           const hud = toolbox.getCurrentPanel().hud;
           hud.ui.clearOutput(true);
           testFocus(sw, hud);
@@ -36,7 +37,10 @@ function test() {
     });
   });
 
-  gBrowser.loadURI("data:text/html;charset=utf8,<p>test window focus for Scratchpad.");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html;charset=utf8,<p>test window focus for Scratchpad."
+  );
 }
 
 function testFocus(sw, hud) {
@@ -48,22 +52,33 @@ function testFocus(sw, hud) {
 
     var loc = node.querySelector(".frame-link");
     ok(loc, "location element exists");
-    is(loc.getAttribute("data-url"), sw.Scratchpad.uniqueName, "location value is correct");
+    is(
+      loc.getAttribute("data-url"),
+      sw.Scratchpad.uniqueName,
+      "location value is correct"
+    );
     is(loc.getAttribute("data-line"), "1", "line value is correct");
-    is(loc.getAttribute("data-column"), "1", "column value is correct");
+    is(loc.getAttribute("data-column"), "9", "column value is correct");
 
-    sw.addEventListener("focus", function() {
-      const win = Services.wm.getMostRecentWindow("devtools:scratchpad");
+    sw.addEventListener(
+      "focus",
+      function() {
+        const win = Services.wm.getMostRecentWindow("devtools:scratchpad");
 
-      ok(win, "there are active Scratchpad windows");
-      is(win.Scratchpad.uniqueName, sw.Scratchpad.uniqueName,
-          "correct window is in focus");
+        ok(win, "there are active Scratchpad windows");
+        is(
+          win.Scratchpad.uniqueName,
+          sw.Scratchpad.uniqueName,
+          "correct window is in focus"
+        );
 
-      // gScratchpadWindow will be closed automatically but we need to
-      // close the second window ourselves.
-      sw.close();
-      finish();
-    }, {capture: true, once: true});
+        // gScratchpadWindow will be closed automatically but we need to
+        // close the second window ourselves.
+        sw.close();
+        finish();
+      },
+      { capture: true, once: true }
+    );
 
     // Simulate a click on the "Scratchpad/N:1" link.
     EventUtils.synthesizeMouse(loc, 2, 2, {}, hud.iframeWindow);

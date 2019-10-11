@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import print_function
+
 import os
 import sys
 
@@ -65,6 +67,12 @@ class TypeVisitor:
     def visitArrayType(self, a, *args):
         a.basetype.accept(self, *args)
 
+    def visitMaybeType(self, m, *args):
+        m.basetype.accept(self, *args)
+
+    def visitUniquePtrType(self, m, *args):
+        m.basetype.accept(self, *args)
+
     def visitShmemType(self, s, *args):
         pass
 
@@ -78,6 +86,9 @@ class TypeVisitor:
         pass
 
     def visitEndpointType(self, s, *args):
+        pass
+
+    def visitManagedEndpointType(self, s, *args):
         pass
 
 
@@ -104,12 +115,20 @@ class Type:
     def isAtom(self):
         return False
 
+    def isRefcounted(self):
+        return False
+
+    def isUniquePtr(self):
+        return False
+
     def typename(self):
         return self.__class__.__name__
 
-    def name(self): raise Exception, 'NYI'
+    def name(self):
+        raise NotImplementedError
 
-    def fullname(self): raise Exception, 'NYI'
+    def fullname(self):
+        raise NotImplementedError
 
     def accept(self, visitor, *args):
         visit = getattr(visitor, 'visit' + self.__class__.__name__, None)
@@ -128,9 +147,6 @@ class VoidType(Type):
     def isAtom(self):
         return True
 
-    def isRefcounted(self):
-        return False
-
     def name(self): return 'void'
 
     def fullname(self): return 'void'
@@ -142,11 +158,12 @@ VOID = VoidType()
 
 
 class ImportedCxxType(Type):
-    def __init__(self, qname, refcounted):
+    def __init__(self, qname, refcounted, moveonly):
         assert isinstance(qname, QualifiedId)
         self.loc = qname.loc
         self.qname = qname
         self.refcounted = refcounted
+        self.moveonly = moveonly
 
     def isCxx(self):
         return True
@@ -156,6 +173,9 @@ class ImportedCxxType(Type):
 
     def isRefcounted(self):
         return self.refcounted
+
+    def isMoveonly(self):
+        return self.moveonly
 
     def name(self):
         return self.qname.baseid
@@ -181,6 +201,8 @@ class IPDLType(Type):
 
     def isArray(self): return False
 
+    def isMaybe(self): return False
+
     def isAtom(self): return True
 
     def isCompound(self): return False
@@ -193,6 +215,8 @@ class IPDLType(Type):
 
     def isEndpoint(self): return False
 
+    def isManagedEndpoint(self): return False
+
     def isAsync(self): return self.sendSemantics == ASYNC
 
     def isSync(self): return self.sendSemantics == SYNC
@@ -200,6 +224,8 @@ class IPDLType(Type):
     def isInterrupt(self): return self.sendSemantics is INTR
 
     def hasReply(self): return (self.isSync() or self.isInterrupt())
+
+    def hasBaseType(self): return False
 
     @classmethod
     def convertsTo(cls, lesser, greater):
@@ -267,16 +293,20 @@ class MessageType(IPDLType):
 
 
 class ProtocolType(IPDLType):
-    def __init__(self, qname, nested, sendSemantics):
+    def __init__(self, qname, nested, sendSemantics, refcounted):
         self.qname = qname
         self.nestedRange = (NOT_NESTED, nested)
         self.sendSemantics = sendSemantics
         self.managers = []           # ProtocolType
         self.manages = []
         self.hasDelete = False
-        self.hasReentrantDelete = False
+        self.refcounted = refcounted
 
-    def isProtocol(self): return True
+    def isProtocol(self):
+        return True
+
+    def isRefcounted(self):
+        return self.refcounted
 
     def name(self):
         return self.qname.baseid
@@ -332,11 +362,15 @@ class ProtocolType(IPDLType):
 
 
 class ActorType(IPDLType):
-    def __init__(self, protocol, nullable=0):
+    def __init__(self, protocol, nullable=False):
         self.protocol = protocol
         self.nullable = nullable
 
-    def isActor(self): return True
+    def isActor(self):
+        return True
+
+    def isRefcounted(self):
+        return self.protocol.isRefcounted()
 
     def name(self):
         return self.protocol.name()
@@ -370,7 +404,7 @@ looks for such a cycle and returns True if found.'''
             return False
         elif t is self or t in self.mutualRec:
             return True
-        elif t.isArray():
+        elif t.hasBaseType():
             isrec = self.mutuallyRecursiveWith(t.basetype, exploring)
             if isrec:
                 self.mutualRec.add(t)
@@ -430,9 +464,26 @@ class ArrayType(IPDLType):
 
     def isArray(self): return True
 
+    def hasBaseType(self): return True
+
     def name(self): return self.basetype.name() + '[]'
 
     def fullname(self): return self.basetype.fullname() + '[]'
+
+
+class MaybeType(IPDLType):
+    def __init__(self, basetype):
+        self.basetype = basetype
+
+    def isAtom(self): return False
+
+    def isMaybe(self): return True
+
+    def hasBaseType(self): return True
+
+    def name(self): return self.basetype.name() + '?'
+
+    def fullname(self): return self.basetype.fullname() + '?'
 
 
 class ShmemType(IPDLType):
@@ -487,6 +538,36 @@ class EndpointType(IPDLType):
         return str(self.qname)
 
 
+class ManagedEndpointType(IPDLType):
+    def __init__(self, qname):
+        self.qname = qname
+
+    def isManagedEndpoint(self): return True
+
+    def name(self):
+        return self.qname.baseid
+
+    def fullname(self):
+        return str(self.qname)
+
+
+class UniquePtrType(IPDLType):
+    def __init__(self, basetype):
+        self.basetype = basetype
+
+    def isAtom(self): return False
+
+    def isUniquePtr(self): return True
+
+    def hasBaseType(self): return True
+
+    def name(self):
+        return 'UniquePtr<' + self.basetype.name() + '>'
+
+    def fullname(self):
+        return 'mozilla::UniquePtr<' + self.basetype.fullname() + '>'
+
+
 def iteractortypes(t, visited=None):
     """Iterate over any actor(s) buried in |type|."""
     if visited is None:
@@ -497,7 +578,7 @@ def iteractortypes(t, visited=None):
         return
     elif t.isActor():
         yield t
-    elif t.isArray():
+    elif t.hasBaseType():
         for actor in iteractortypes(t.basetype, visited):
             yield actor
     elif t.isCompound() and t not in visited:
@@ -638,7 +719,7 @@ With this information, it type checks the AST.'''
 
     def reportErrors(self, errout):
         for error in self.errors:
-            print >>errout, error
+            print(error, file=errout)
 
 
 class TcheckVisitor(Visitor):
@@ -705,7 +786,7 @@ class GatherDecls(TcheckVisitor):
             fullname = str(qname)
             p.decl = self.declare(
                 loc=p.loc,
-                type=ProtocolType(qname, p.nested, p.sendSemantics),
+                type=ProtocolType(qname, p.nested, p.sendSemantics, p.refcounted),
                 shortname=p.name,
                 fullname=None if 0 == len(qname.quals) else fullname)
 
@@ -719,6 +800,19 @@ class GatherDecls(TcheckVisitor):
                 type=EndpointType(QualifiedId(p.loc, 'Endpoint<' +
                                               fullname + 'Child>', ['mozilla', 'ipc'])),
                 shortname='Endpoint<' + p.name + 'Child>')
+
+            p.parentManagedEndpointDecl = self.declare(
+                loc=p.loc,
+                type=ManagedEndpointType(QualifiedId(p.loc, 'ManagedEndpoint<' +
+                                                     fullname + 'Parent>',
+                                                     ['mozilla', 'ipc'])),
+                shortname='ManagedEndpoint<' + p.name + 'Parent>')
+            p.childManagedEndpointDecl = self.declare(
+                loc=p.loc,
+                type=ManagedEndpointType(QualifiedId(p.loc, 'ManagedEndpoint<' +
+                                                     fullname + 'Child>',
+                                                     ['mozilla', 'ipc'])),
+                shortname='ManagedEndpoint<' + p.name + 'Child>')
 
             # XXX ugh, this sucks.  but we need this information to compute
             # what friend decls we need in generated C++
@@ -788,6 +882,8 @@ class GatherDecls(TcheckVisitor):
             self.symtab.declare(inc.tu.protocol.decl)
             self.symtab.declare(inc.tu.protocol.parentEndpointDecl)
             self.symtab.declare(inc.tu.protocol.childEndpointDecl)
+            self.symtab.declare(inc.tu.protocol.parentManagedEndpointDecl)
+            self.symtab.declare(inc.tu.protocol.childManagedEndpointDecl)
         else:
             # This is a header.  Import its "exported" globals into
             # our scope.
@@ -839,7 +935,10 @@ class GatherDecls(TcheckVisitor):
 
     def visitUsingStmt(self, using):
         fullname = str(using.type)
-        if using.type.basename() == fullname:
+        if (using.type.basename() == fullname) or using.type.uniqueptr:
+            # Prevent generation of typedefs.  If basename == fullname then
+            # there is nothing to typedef.  With UniquePtrs, basenames
+            # are generic so typedefs would be illegal.
             fullname = None
         if fullname == 'mozilla::ipc::Shmem':
             ipdltype = ShmemType(using.type.spec)
@@ -848,11 +947,14 @@ class GatherDecls(TcheckVisitor):
         elif fullname == 'mozilla::ipc::FileDescriptor':
             ipdltype = FDType(using.type.spec)
         else:
-            ipdltype = ImportedCxxType(using.type.spec, using.isRefcounted())
+            ipdltype = ImportedCxxType(using.type.spec, using.isRefcounted(), using.isMoveonly())
             existingType = self.symtab.lookup(ipdltype.fullname())
             if existingType and existingType.fullname == ipdltype.fullname():
                 if ipdltype.isRefcounted() != existingType.type.isRefcounted():
                     self.error(using.loc, "inconsistent refcounted status of type `%s`",
+                               str(using.type))
+                if ipdltype.isMoveonly() != existingType.type.isMoveonly():
+                    self.error(using.loc, "inconsistent moveonly status of type `%s`",
                                str(using.type))
                 using.decl = existingType
                 return
@@ -881,7 +983,7 @@ class GatherDecls(TcheckVisitor):
             managed.manager = p
             managed.accept(self)
 
-        if 0 == len(p.managers) and 0 == len(p.messageDecls):
+        if not (p.managers or p.messageDecls or p.managesStmts):
             self.error(p.loc,
                        "top-level protocol `%s' cannot be empty",
                        p.name)
@@ -897,19 +999,6 @@ class GatherDecls(TcheckVisitor):
                 p.loc,
                 "destructor declaration `%s(...)' required for managed protocol `%s'",
                 _DELETE_MSG, p.name)
-
-        p.decl.type.hasReentrantDelete = p.decl.type.hasDelete and self.symtab.lookup(
-            _DELETE_MSG).type.isInterrupt()
-
-        for managed in p.managesStmts:
-            mgdname = managed.name
-            ctordecl = self.symtab.lookup(mgdname + 'Constructor')
-
-            if not (ctordecl and ctordecl.type.isCtor()):
-                self.error(
-                    managed.loc,
-                    "constructor declaration required for managed protocol `%s' (managed by protocol `%s')",  # NOQA: E501
-                    mgdname, p.name)
 
         # FIXME/cjones declare all the little C++ thingies that will
         # be generated.  they're not relevant to IPDL itself, but
@@ -1044,6 +1133,12 @@ class GatherDecls(TcheckVisitor):
         if typespec.array:
             itype = ArrayType(itype)
 
+        if typespec.maybe:
+            itype = MaybeType(itype)
+
+        if typespec.uniqueptr:
+            itype = UniquePtrType(itype)
+
         return itype
 
 
@@ -1087,7 +1182,7 @@ def fullyDefined(t, exploring=None):
 
     if t.isAtom():
         return True
-    elif t.isArray():
+    elif t.hasBaseType():
         return fullyDefined(t.basetype, exploring)
     elif t.defined:
         return True

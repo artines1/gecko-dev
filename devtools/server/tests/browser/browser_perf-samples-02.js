@@ -12,16 +12,10 @@
 // Time in ms
 const WAIT_TIME = 1000;
 
-const { PerformanceFront } = require("devtools/shared/fronts/performance");
-
 add_task(async function() {
-  await addTab(MAIN_DOMAIN + "doc_perf.html");
+  const target = await addTabTarget(MAIN_DOMAIN + "doc_perf.html");
 
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = PerformanceFront(client, form);
-  await front.connect();
+  const front = await target.getFront("performance");
 
   const rec = await front.startRecording();
   // allow the profiler module to sample some cpu activity
@@ -39,16 +33,20 @@ add_task(async function() {
 
       const stack = getInflatedStackLocations(thread, sample);
       if (stack[0] != "(root)") {
-        ok(false, "The sample " + stack.toSource() + " doesn't have a root node.");
+        ok(
+          false,
+          "The sample " + stack.toSource() + " doesn't have a root node."
+        );
       }
     }
   }
 
-  ok(sampleCount > 0,
-    "At least some samples have been iterated over, checking for root nodes.");
+  ok(
+    sampleCount > 0,
+    "At least some samples have been iterated over, checking for root nodes."
+  );
 
-  await front.destroy();
-  await client.close();
+  await target.getFront("performance");
   gBrowser.removeCurrentTab();
 });
 

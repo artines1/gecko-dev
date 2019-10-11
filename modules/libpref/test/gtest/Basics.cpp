@@ -30,7 +30,7 @@ TEST(PrefsBasics, Errors)
   Preferences::SetFloat("foo.float", 3.33f, PrefValueKind::Default);
   Preferences::SetFloat("foo.float", 4.44f, PrefValueKind::User);
   ASSERT_FLOAT_EQ(
-    Preferences::GetFloat("foo.float", 1.0f, PrefValueKind::Default), 3.33f);
+      Preferences::GetFloat("foo.float", 1.0f, PrefValueKind::Default), 3.33f);
   ASSERT_FLOAT_EQ(Preferences::GetFloat("foo.float", 1.0f, PrefValueKind::User),
                   4.44f);
 }

@@ -11,12 +11,11 @@
                  type="text/css"?>
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         title="Expanded state change events tests for comboboxes and autocompletes.">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js" />
 
   <script type="application/javascript"
           src="../autocomplete.js" />
@@ -101,8 +100,9 @@
         </menupopup>
       </menulist>
 
-      <textbox id="autocomplete" type="autocomplete"
-               autocompletesearch="test-a11y-search"/>
+      <html:input is="autocomplete-input"
+                  id="autocomplete"
+                  autocompletesearch="test-a11y-search"/>
 
       <searchbar id="searchbar"/>
     </vbox>

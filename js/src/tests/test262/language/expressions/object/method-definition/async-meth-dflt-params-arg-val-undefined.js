@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-arg-val-undefined.case
 // - src/function-forms/default/async-meth.template
 /*---
 description: Use of initializer when argument value is `undefined` (async method)
 esid: sec-async-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.6 Async Function Definitions

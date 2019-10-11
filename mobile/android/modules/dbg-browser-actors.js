@@ -11,14 +11,27 @@
  */
 
 const { RootActor } = require("devtools/server/actors/root");
-const { DebuggerServer } = require("devtools/server/main");
-const { BrowserTabList, BrowserAddonList, sendShutdownEvent } =
-  require("devtools/server/actors/webbrowser");
+const {
+  ActorRegistry,
+} = require("devtools/server/actors/utils/actor-registry");
+const {
+  BrowserTabList,
+  BrowserAddonList,
+  sendShutdownEvent,
+} = require("devtools/server/actors/webbrowser");
+const {
+  ServiceWorkerRegistrationActorList,
+} = require("devtools/server/actors/worker/service-worker-registration-list");
+const {
+  WorkerTargetActorList,
+} = require("devtools/server/actors/worker/worker-target-actor-list");
+
+const { ProcessActorList } = require("devtools/server/actors/process");
 
 /**
  * Construct a root actor appropriate for use in a server running in a
  * browser on Android. The returned root actor:
- * - respects the factories registered with DebuggerServer.addGlobalActor,
+ * - respects the factories registered with ActorRegistry.addGlobalActor,
  * - uses a MobileTabList to supply tab actors,
  * - sends all navigator:browser window documents a Debugger:Shutdown event
  *   when it exits.
@@ -30,8 +43,13 @@ exports.createRootActor = function createRootActor(aConnection) {
   let parameters = {
     tabList: new MobileTabList(aConnection),
     addonList: new BrowserAddonList(aConnection),
-    globalActorFactories: DebuggerServer.globalActorFactories,
-    onShutdown: sendShutdownEvent
+    workerList: new WorkerTargetActorList(aConnection, {}),
+    serviceWorkerRegistrationList: new ServiceWorkerRegistrationActorList(
+      aConnection
+    ),
+    processList: new ProcessActorList(),
+    globalActorFactories: ActorRegistry.globalActorFactories,
+    onShutdown: sendShutdownEvent,
   };
   return new RootActor(aConnection, parameters);
 };

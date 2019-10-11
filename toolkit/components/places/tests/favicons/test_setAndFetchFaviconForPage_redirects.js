@@ -11,11 +11,15 @@ add_task(async function same_host_redirect() {
   let destUrl = "https://other.bookmarked.com/";
   await PlacesTestUtils.addVisits([
     { uri: srcUrl, transition: TRANSITION_LINK },
-    { uri: destUrl, transition: TRANSITION_REDIRECT_TEMPORARY, referrer: srcUrl }
+    {
+      uri: destUrl,
+      transition: TRANSITION_REDIRECT_TEMPORARY,
+      referrer: srcUrl,
+    },
   ]);
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-    url: srcUrl
+    url: srcUrl,
   });
 
   registerCleanupFunction(async function() {
@@ -23,20 +27,31 @@ add_task(async function same_host_redirect() {
     await PlacesUtils.history.clear();
   });
 
-  let promise = PlacesTestUtils.waitForNotification("onPageChanged", (uri, prop, value, guid) => {
-    return prop == Ci.nsINavHistoryObserver.ATTRIBUTE_FAVICON &&
-           uri.spec == srcUrl &&
-           value == SMALLPNG_DATA_URI.spec;
-  }, "history");
+  let promise = PlacesTestUtils.waitForNotification(
+    "onPageChanged",
+    (uri, prop, value, guid) => {
+      return (
+        prop == Ci.nsINavHistoryObserver.ATTRIBUTE_FAVICON &&
+        uri.spec == srcUrl &&
+        value == SMALLPNG_DATA_URI.spec
+      );
+    },
+    "history"
+  );
 
-  PlacesUtils.favicons.setAndFetchFaviconForPage(Services.io.newURI(destUrl),
-    SMALLPNG_DATA_URI, true, PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
-    Services.scriptSecurityManager.getSystemPrincipal());
+  PlacesUtils.favicons.setAndFetchFaviconForPage(
+    Services.io.newURI(destUrl),
+    SMALLPNG_DATA_URI,
+    true,
+    PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
+    null,
+    Services.scriptSecurityManager.getSystemPrincipal()
+  );
 
   await promise;
 
   // The favicon should be set also on the bookmarked url that redirected.
-  let {dataLen} = await PlacesUtils.promiseFaviconData(srcUrl);
+  let { dataLen } = await PlacesUtils.promiseFaviconData(srcUrl);
   Assert.equal(dataLen, SMALLPNG_DATA_LEN, "Check favicon dataLen");
 });
 
@@ -47,25 +62,42 @@ add_task(async function other_host_redirect() {
   let destUrl = "https://notfirst.com/";
   await PlacesTestUtils.addVisits([
     { uri: srcUrl, transition: TRANSITION_LINK },
-    { uri: destUrl, transition: TRANSITION_REDIRECT_TEMPORARY, referrer: srcUrl }
+    {
+      uri: destUrl,
+      transition: TRANSITION_REDIRECT_TEMPORARY,
+      referrer: srcUrl,
+    },
   ]);
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
-    url: srcUrl
+    url: srcUrl,
   });
 
   let promise = Promise.race([
-    PlacesTestUtils.waitForNotification("onPageChanged", (uri, prop, value, guid) => {
-      return prop == Ci.nsINavHistoryObserver.ATTRIBUTE_FAVICON &&
-            uri.spec == srcUrl &&
-            value == SMALLPNG_DATA_URI.spec;
-    }, "history"),
-    new Promise((resolve, reject) => do_timeout(300, () => reject(new Error("timeout"))))
+    PlacesTestUtils.waitForNotification(
+      "onPageChanged",
+      (uri, prop, value, guid) => {
+        return (
+          prop == Ci.nsINavHistoryObserver.ATTRIBUTE_FAVICON &&
+          uri.spec == srcUrl &&
+          value == SMALLPNG_DATA_URI.spec
+        );
+      },
+      "history"
+    ),
+    new Promise((resolve, reject) =>
+      do_timeout(300, () => reject(new Error("timeout")))
+    ),
   ]);
 
-  PlacesUtils.favicons.setAndFetchFaviconForPage(Services.io.newURI(destUrl),
-    SMALLPNG_DATA_URI, true, PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
-    Services.scriptSecurityManager.getSystemPrincipal());
+  PlacesUtils.favicons.setAndFetchFaviconForPage(
+    Services.io.newURI(destUrl),
+    SMALLPNG_DATA_URI,
+    true,
+    PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
+    null,
+    Services.scriptSecurityManager.getSystemPrincipal()
+  );
 
   await Assert.rejects(promise, /timeout/);
 });

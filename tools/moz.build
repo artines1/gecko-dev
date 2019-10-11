@@ -17,16 +17,19 @@ with Files("compare-locales/mach_commands.py"):
     BUG_COMPONENT = ("Localization Infrastructure and Tools", "compare-locales")
 
 with Files("coverity/**"):
-    BUG_COMPONENT = ("Core", "Rewriting and Analysis")
+    BUG_COMPONENT = ("Firefox Build System", "Source Code Analysis")
 
 with Files("docs/**"):
     BUG_COMPONENT = ("Firefox Build System", "Generated Documentation")
     SCHEDULES.exclusive = ['docs']
 
 with Files("lint/**"):
-    BUG_COMPONENT = ("Testing", "Lint")
+    BUG_COMPONENT = ("Firefox Build System", "Lint and Formatting")
 
 with Files("profiler/**"):
+    BUG_COMPONENT = ("Core", "Gecko Profiler")
+
+with Files("performance/**"):
     BUG_COMPONENT = ("Core", "Gecko Profiler")
 
 with Files("quitter/**"):
@@ -36,13 +39,19 @@ with Files("rb/**"):
     BUG_COMPONENT = ("Core", "XPCOM")
 
 with Files("rewriting/**"):
-    BUG_COMPONENT = ("Core", "Rewriting and Analysis")
+    BUG_COMPONENT = ("Firefox Build System", "Source Code Analysis")
 
 with Files("tryselect/**"):
-    BUG_COMPONENT = ("Testing", "General")
+    BUG_COMPONENT = ("Firefox Build System", "Try")
+
+with Files("tryselect/selectors/release.py"):
+    BUG_COMPONENT = ("Release Engineering", "General")
 
 with Files("update-packaging/**"):
     BUG_COMPONENT = ("Release Engineering", "Other")
+
+with Files("update-verify/**"):
+    BUG_COMPONENT = ("Release Engineering", "Release Automation: Updates")
 
 SPHINX_TREES['lint'] = 'lint/docs'
 
@@ -65,5 +74,6 @@ CRAMTEST_MANIFESTS += [
 
 PYTHON_UNITTEST_MANIFESTS += [
     'lint/test/python.ini',
+    'rb/python.ini',
     'tryselect/test/python.ini',
 ]

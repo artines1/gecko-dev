@@ -37,10 +37,6 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
             "type": int,
             "help": "Number of checksums file to download concurrently",
         }],
-        [["--scm-level"], {
-            "dest": "scm_level",
-            "help": "dummy option",
-        }],
         [["--branch"], {
             "dest": "branch",
             "help": "dummy option",
@@ -90,10 +86,14 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
             self.config["includes"] = [
                 r"^.*\.tar\.bz2$",
                 r"^.*\.tar\.xz$",
+                r"^.*\.snap$",
                 r"^.*\.dmg$",
+                r"^.*\.pkg$",
                 r"^.*\.bundle$",
                 r"^.*\.mar$",
                 r"^.*Setup.*\.exe$",
+                r"^.*Installer\.exe$",
+                r"^.*\.msi$",
                 r"^.*\.xpi$",
                 r"^.*fennec.*\.apk$",
                 r"^.*/jsshell.*$",
@@ -167,6 +167,11 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
                 for pattern in self.config["includes"]:
                     if re.search(pattern, f):
                         if f in self.checksums:
+                            if info == self.checksums[f]:
+                                self.debug("Duplicate checksum for file {}"
+                                           " but the data matches;"
+                                           " continuing...".format(f))
+                                continue
                             self.fatal("Found duplicate checksum entry for {}, "
                                        "don't know which one to pick.".format(f))
                         if not set(self.config["formats"]) <= set(info["hashes"]):

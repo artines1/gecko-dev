@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -11,11 +9,22 @@ const { Toolbox } = require("devtools/client/framework/toolbox");
 
 const EXTENSION = "@reorder.test";
 
-const TEST_STARTING_ORDER = ["inspector", "webconsole", "jsdebugger", "styleeditor",
-                             "performance", "memory", "netmonitor", "storage", EXTENSION];
+const TEST_STARTING_ORDER = [
+  "inspector",
+  "webconsole",
+  "jsdebugger",
+  "styleeditor",
+  "performance",
+  "memory",
+  "netmonitor",
+  "storage",
+  "accessibility",
+  EXTENSION,
+];
 
 add_task(async function() {
   const extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
     manifest: {
       devtools_page: "extension.html",
       applications: {
@@ -45,22 +54,44 @@ add_task(async function() {
   await extension.startup();
 
   const tab = await addTab("about:blank");
-  const toolbox = await openToolboxForTab(tab, "webconsole", Toolbox.HostType.BOTTOM);
+  const toolbox = await openToolboxForTab(
+    tab,
+    "webconsole",
+    Toolbox.HostType.BOTTOM
+  );
   await extension.awaitMessage("devtools-page-ready");
 
-  const originalPreference = Services.prefs.getCharPref("devtools.toolbox.tabsOrder");
+  const originalPreference = Services.prefs.getCharPref(
+    "devtools.toolbox.tabsOrder"
+  );
   const win = getWindow(toolbox);
-  const { outerWidth: originalWindowWidth, outerHeight: originalWindowHeight } = win;
+  const {
+    outerWidth: originalWindowWidth,
+    outerHeight: originalWindowHeight,
+  } = win;
   registerCleanupFunction(() => {
-    Services.prefs.setCharPref("devtools.toolbox.tabsOrder", originalPreference);
+    Services.prefs.setCharPref(
+      "devtools.toolbox.tabsOrder",
+      originalPreference
+    );
     win.resizeTo(originalWindowWidth, originalWindowHeight);
   });
 
   info("Test for DragAndDrop the extension tab");
   let dragTarget = EXTENSION;
   let dropTarget = "webconsole";
-  let expectedOrder = ["inspector", EXTENSION, "webconsole", "jsdebugger", "styleeditor",
-                       "performance", "memory", "netmonitor", "storage"];
+  let expectedOrder = [
+    "inspector",
+    EXTENSION,
+    "webconsole",
+    "jsdebugger",
+    "styleeditor",
+    "performance",
+    "memory",
+    "netmonitor",
+    "storage",
+    "accessibility",
+  ];
   prepareToolTabReorderTest(toolbox, TEST_STARTING_ORDER);
   await dndToolTab(toolbox, dragTarget, dropTarget);
   assertToolTabOrder(toolbox, expectedOrder);
@@ -73,16 +104,38 @@ add_task(async function() {
   await toolbox.selectTool("storage");
   dragTarget = "storage";
   dropTarget = "inspector";
-  expectedOrder = ["storage", "inspector", "webconsole", "jsdebugger",
-                   "styleeditor", "performance", "memory", "netmonitor", EXTENSION];
+  expectedOrder = [
+    "storage",
+    "inspector",
+    "webconsole",
+    "jsdebugger",
+    "styleeditor",
+    "performance",
+    "memory",
+    "netmonitor",
+    "accessibility",
+    EXTENSION,
+  ];
   await dndToolTab(toolbox, dragTarget, dropTarget);
   assertToolTabPreferenceOrder(expectedOrder);
+  await resizeWindow(toolbox, originalWindowWidth, originalWindowHeight);
 
-  info("Test for saving the preference updated after destroying");
+  info("Test the preference after uninstalling extension");
+  prepareToolTabReorderTest(toolbox, TEST_STARTING_ORDER);
   await extension.unload();
-  const target = gDevTools.getTargetForTab(tab);
-  await gDevTools.closeToolbox(target);
-  await target.destroy();
-  assertToolTabPreferenceOrder(["storage", "inspector", "webconsole", "jsdebugger",
-                                "styleeditor", "performance", "memory", "netmonitor"]);
+  dragTarget = "webconsole";
+  dropTarget = "inspector";
+  expectedOrder = [
+    "webconsole",
+    "inspector",
+    "jsdebugger",
+    "styleeditor",
+    "performance",
+    "memory",
+    "netmonitor",
+    "storage",
+    "accessibility",
+  ];
+  await dndToolTab(toolbox, dragTarget, dropTarget);
+  assertToolTabPreferenceOrder(expectedOrder);
 });

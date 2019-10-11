@@ -8,13 +8,15 @@
 "use strict";
 
 // eslint-disable-next-line no-unused-vars
-ChromeUtils.import("resource://formautofill/FormAutofill.jsm");
-ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
+const { FormAutofill } = ChromeUtils.import(
+  "resource://formautofill/FormAutofill.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "formAutofillStorage",
-                               "resource://formautofill/FormAutofillStorage.jsm");
-ChromeUtils.defineModuleGetter(this, "MasterPassword",
-                               "resource://formautofill/MasterPassword.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "formAutofillStorage",
+  "resource://formautofill/FormAutofillStorage.jsm"
+);
 
 class AutofillEditDialog {
   constructor(subStorageName, elements, record) {
@@ -23,10 +25,11 @@ class AutofillEditDialog {
     this._elements = elements;
     this._record = record;
     this.localizeDocument();
-    window.addEventListener("DOMContentLoaded", this, {once: true});
+    window.addEventListener("DOMContentLoaded", this, { once: true });
   }
 
   async init() {
+    this.updateSaveButtonState();
     this.attachEventListeners();
     // For testing only: signal to tests that the dialog is ready for testing.
     // This is likely no longer needed since retrieving from storage is fully
@@ -51,9 +54,9 @@ class AutofillEditDialog {
   async saveRecord(record, guid) {
     let storage = await this.getStorage();
     if (guid) {
-      storage.update(guid, record);
+      await storage.update(guid, record);
     } else {
-      storage.add(record);
+      await storage.add(record);
     }
   }
 
@@ -81,8 +84,10 @@ class AutofillEditDialog {
         break;
       }
       case "contextmenu": {
-        if (!(event.target instanceof HTMLInputElement) &&
-            !(event.target instanceof HTMLTextAreaElement)) {
+        if (
+          !(event.target instanceof HTMLInputElement) &&
+          !(event.target instanceof HTMLTextAreaElement)
+        ) {
           event.preventDefault();
         }
         break;
@@ -110,13 +115,7 @@ class AutofillEditDialog {
    * @param  {DOMEvent} event
    */
   handleInput(event) {
-    // Toggle disabled attribute on the save button based on
-    // whether the form is filled or empty.
-    if (Object.keys(this._elements.fieldContainer.buildFormObject()).length == 0) {
-      this._elements.save.setAttribute("disabled", true);
-    } else {
-      this._elements.save.removeAttribute("disabled");
-    }
+    this.updateSaveButtonState();
   }
 
   /**
@@ -127,6 +126,16 @@ class AutofillEditDialog {
   handleKeyPress(event) {
     if (event.keyCode == KeyEvent.DOM_VK_ESCAPE) {
       window.close();
+    }
+  }
+
+  updateSaveButtonState() {
+    // Toggle disabled attribute on the save button based on
+    // whether the form is filled or empty.
+    if (!Object.keys(this._elements.fieldContainer.buildFormObject()).length) {
+      this._elements.save.setAttribute("disabled", true);
+    } else {
+      this._elements.save.removeAttribute("disabled");
     }
   }
 
@@ -156,7 +165,10 @@ class EditAddressDialog extends AutofillEditDialog {
   }
 
   async handleSubmit() {
-    await this.saveRecord(this._elements.fieldContainer.buildFormObject(), this._record ? this._record.guid : null);
+    await this.saveRecord(
+      this._elements.fieldContainer.buildFormObject(),
+      this._record ? this._record.guid : null
+    );
     window.close();
   }
 }
@@ -178,15 +190,14 @@ class EditCreditCardDialog extends AutofillEditDialog {
       return;
     }
 
-    // TODO: "MasterPassword.ensureLoggedIn" can be removed after the storage
-    // APIs are refactored to be async functions (bug 1399367).
-    if (await MasterPassword.ensureLoggedIn()) {
-      try {
-        await this.saveRecord(creditCard, this._record ? this._record.guid : null);
-        window.close();
-      } catch (ex) {
-        Cu.reportError(ex);
-      }
+    try {
+      await this.saveRecord(
+        creditCard,
+        this._record ? this._record.guid : null
+      );
+      window.close();
+    } catch (ex) {
+      Cu.reportError(ex);
     }
   }
 }

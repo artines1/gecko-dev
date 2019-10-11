@@ -4,10 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.import("resource:///modules/SitePermissions.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { SitePermissions } = ChromeUtils.import(
+  "resource:///modules/SitePermissions.jsm"
+);
 
-const PERMISSIONS_URL = "chrome://browser/content/preferences/sitePermissions.xul";
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+
+const PERMISSIONS_URL =
+  "chrome://browser/content/preferences/sitePermissions.xul";
 const URL = "http://www.example.com";
 const URI = Services.io.newURI(URL);
 var sitePermissionsDialog;
@@ -15,13 +19,11 @@ var sitePermissionsDialog;
 function checkPermissionItem(origin, state) {
   let doc = sitePermissionsDialog.document;
 
-  let label = doc.getElementsByTagName("label")[0];
+  let label = doc.getElementsByTagName("label")[3];
   Assert.equal(label.value, origin);
 
   let menulist = doc.getElementsByTagName("menulist")[0];
-  let selectedIndex = menulist.selectedIndex;
-  let selectedItem = menulist.querySelectorAll("menuitem")[selectedIndex];
-  Assert.equal(selectedItem.value, state);
+  Assert.equal(menulist.value, state);
 }
 
 async function openPermissionsDialog() {
@@ -38,7 +40,7 @@ async function openPermissionsDialog() {
 }
 
 add_task(async function openSitePermissionsDialog() {
-  await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
   await openPermissionsDialog();
 });
 
@@ -47,61 +49,93 @@ add_task(async function addPermission() {
   let richlistbox = doc.getElementById("permissionsBox");
 
   // First item in the richlistbox contains column headers.
-  Assert.equal(richlistbox.itemCount, 0,
-               "Number of permission items is 0 initially");
+  Assert.equal(
+    richlistbox.itemCount,
+    0,
+    "Number of permission items is 0 initially"
+  );
 
   // Add notification permission for a website.
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Observe the added permission changes in the dialog UI.
   Assert.equal(richlistbox.itemCount, 1);
   checkPermissionItem(URL, Services.perms.ALLOW_ACTION);
 
-  SitePermissions.remove(URL, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 });
 
 add_task(async function observePermissionChange() {
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Change the permission.
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.BLOCK);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.DENY_ACTION
+  );
 
   checkPermissionItem(URL, Services.perms.DENY_ACTION);
 
-  SitePermissions.remove(URL, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 });
 
 add_task(async function observePermissionDelete() {
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
 
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
-  Assert.equal(richlistbox.itemCount, 1,
-               "The box contains one permission item initially");
+  Assert.equal(
+    richlistbox.itemCount,
+    1,
+    "The box contains one permission item initially"
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 
   Assert.equal(richlistbox.itemCount, 0);
 });
 
 add_task(async function onPermissionChange() {
   let doc = sitePermissionsDialog.document;
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Change the permission state in the UI.
   doc.getElementsByAttribute("value", SitePermissions.BLOCK)[0].click();
 
-  Assert.equal(SitePermissions.get(URI, "desktop-notification").state,
-               SitePermissions.ALLOW,
-               "Permission state does not change before saving changes");
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION,
+    "Permission state does not change before saving changes"
+  );
 
   doc.getElementById("btnApplyChanges").click();
 
-  await TestUtils.waitForCondition(() =>
-    SitePermissions.get(URI, "desktop-notification").state == SitePermissions.BLOCK);
+  await TestUtils.waitForCondition(
+    () =>
+      PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+        .capability == Services.perms.DENY_ACTION
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 });
 
 add_task(async function onPermissionDelete() {
@@ -110,21 +144,31 @@ add_task(async function onPermissionDelete() {
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
 
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   richlistbox.selectItem(richlistbox.getItemAtIndex(0));
   doc.getElementById("removePermission").click();
 
   await TestUtils.waitForCondition(() => richlistbox.itemCount == 0);
 
-  Assert.equal(SitePermissions.get(URI, "desktop-notification").state,
-               SitePermissions.ALLOW,
-               "Permission is not deleted before saving changes");
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION,
+    "Permission is not deleted before saving changes"
+  );
 
   doc.getElementById("btnApplyChanges").click();
 
-  await TestUtils.waitForCondition(() =>
-    SitePermissions.get(URI, "desktop-notification").state == SitePermissions.UNKNOWN);
+  await TestUtils.waitForCondition(
+    () =>
+      PermissionTestUtils.getPermissionObject(URI, "desktop-notification") ==
+      null
+  );
 });
 
 add_task(async function onAllPermissionsDelete() {
@@ -133,23 +177,41 @@ add_task(async function onAllPermissionsDelete() {
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
 
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
   let u = Services.io.newURI("http://www.test.com");
-  SitePermissions.set(u, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    u,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   doc.getElementById("removeAllPermissions").click();
   await TestUtils.waitForCondition(() => richlistbox.itemCount == 0);
 
-  Assert.equal(SitePermissions.get(URI, "desktop-notification").state,
-     SitePermissions.ALLOW);
-  Assert.equal(SitePermissions.get(u, "desktop-notification").state,
-    SitePermissions.ALLOW, "Permissions are not deleted before saving changes");
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION
+  );
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(u, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION,
+    "Permissions are not deleted before saving changes"
+  );
 
   doc.getElementById("btnApplyChanges").click();
 
-  await TestUtils.waitForCondition(() =>
-    (SitePermissions.get(URI, "desktop-notification").state == SitePermissions.UNKNOWN) &&
-      (SitePermissions.get(u, "desktop-notification").state == SitePermissions.UNKNOWN));
+  await TestUtils.waitForCondition(
+    () =>
+      PermissionTestUtils.getPermissionObject(URI, "desktop-notification") ==
+        null &&
+      PermissionTestUtils.getPermissionObject(u, "desktop-notification") == null
+  );
 });
 
 add_task(async function onPermissionChangeAndDelete() {
@@ -158,7 +220,11 @@ add_task(async function onPermissionChangeAndDelete() {
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
 
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Change the permission state in the UI.
   doc.getElementsByAttribute("value", SitePermissions.BLOCK)[0].click();
@@ -171,26 +237,36 @@ add_task(async function onPermissionChangeAndDelete() {
 
   doc.getElementById("btnApplyChanges").click();
 
-  await TestUtils.waitForCondition(() =>
-    SitePermissions.get(URI, "desktop-notification").state == SitePermissions.UNKNOWN);
+  await TestUtils.waitForCondition(
+    () =>
+      PermissionTestUtils.getPermissionObject(URI, "desktop-notification") ==
+      null
+  );
 });
 
 add_task(async function onPermissionChangeCancel() {
   await openPermissionsDialog();
 
   let doc = sitePermissionsDialog.document;
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Change the permission state in the UI.
   doc.getElementsByAttribute("value", SitePermissions.BLOCK)[0].click();
 
   doc.getElementById("cancel").click();
 
-  Assert.equal(SitePermissions.get(URI, "desktop-notification").state,
-               SitePermissions.ALLOW,
-               "Permission state does not change on clicking cancel");
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION,
+    "Permission state does not change on clicking cancel"
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 });
 
 add_task(async function onPermissionDeleteCancel() {
@@ -198,7 +274,11 @@ add_task(async function onPermissionDeleteCancel() {
 
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
   // Remove that permission by clicking the "Remove" button.
   richlistbox.selectItem(richlistbox.getItemAtIndex(0));
@@ -208,11 +288,14 @@ add_task(async function onPermissionDeleteCancel() {
 
   doc.getElementById("cancel").click();
 
-  Assert.equal(SitePermissions.get(URI, "desktop-notification").state,
-               SitePermissions.ALLOW,
-               "Permission state does not change on clicking cancel");
+  Assert.equal(
+    PermissionTestUtils.getPermissionObject(URI, "desktop-notification")
+      .capability,
+    Services.perms.ALLOW_ACTION,
+    "Permission state does not change on clicking cancel"
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
 });
 
 add_task(async function onSearch() {
@@ -221,62 +304,110 @@ add_task(async function onSearch() {
   let richlistbox = doc.getElementById("permissionsBox");
   let searchBox = doc.getElementById("searchBox");
 
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
   searchBox.value = "www.example.com";
 
   let u = Services.io.newURI("http://www.test.com");
-  SitePermissions.set(u, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    u,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
 
-  Assert.equal(doc.getElementsByAttribute("origin", "http://www.test.com")[0], null);
-  Assert.equal(doc.getElementsByAttribute("origin", "http://www.example.com")[0],
-               richlistbox.getItemAtIndex(0));
+  Assert.equal(
+    doc.getElementsByAttribute("origin", "http://www.test.com")[0],
+    null
+  );
+  Assert.equal(
+    doc.getElementsByAttribute("origin", "http://www.example.com")[0],
+    richlistbox.getItemAtIndex(0)
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
-  SitePermissions.remove(u, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(u, "desktop-notification");
 
   doc.getElementById("cancel").click();
 });
 
 add_task(async function onPermissionsSort() {
-  SitePermissions.set(URI, "desktop-notification", SitePermissions.ALLOW);
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
   let u = Services.io.newURI("http://www.test.com");
-  SitePermissions.set(u, "desktop-notification", SitePermissions.BLOCK);
+  PermissionTestUtils.add(
+    u,
+    "desktop-notification",
+    Services.perms.DENY_ACTION
+  );
 
   await openPermissionsDialog();
   let doc = sitePermissionsDialog.document;
   let richlistbox = doc.getElementById("permissionsBox");
 
   // Test default arrangement(Allow followed by Block).
-  Assert.equal(richlistbox.getItemAtIndex(0).getAttribute("origin"), "http://www.example.com");
-  Assert.equal(richlistbox.getItemAtIndex(1).getAttribute("origin"), "http://www.test.com");
+  Assert.equal(
+    richlistbox.getItemAtIndex(0).getAttribute("origin"),
+    "http://www.example.com"
+  );
+  Assert.equal(
+    richlistbox.getItemAtIndex(1).getAttribute("origin"),
+    "http://www.test.com"
+  );
 
   doc.getElementById("statusCol").click();
 
   // Test the rearrangement(Block followed by Allow).
-  Assert.equal(richlistbox.getItemAtIndex(0).getAttribute("origin"), "http://www.test.com");
-  Assert.equal(richlistbox.getItemAtIndex(1).getAttribute("origin"), "http://www.example.com");
+  Assert.equal(
+    richlistbox.getItemAtIndex(0).getAttribute("origin"),
+    "http://www.test.com"
+  );
+  Assert.equal(
+    richlistbox.getItemAtIndex(1).getAttribute("origin"),
+    "http://www.example.com"
+  );
 
   doc.getElementById("siteCol").click();
 
   // Test the rearrangement(Website names arranged in alphabhetical order).
-  Assert.equal(richlistbox.getItemAtIndex(0).getAttribute("origin"), "http://www.example.com");
-  Assert.equal(richlistbox.getItemAtIndex(1).getAttribute("origin"), "http://www.test.com");
+  Assert.equal(
+    richlistbox.getItemAtIndex(0).getAttribute("origin"),
+    "http://www.example.com"
+  );
+  Assert.equal(
+    richlistbox.getItemAtIndex(1).getAttribute("origin"),
+    "http://www.test.com"
+  );
 
   doc.getElementById("siteCol").click();
 
   // Test the rearrangement(Website names arranged in reverse alphabhetical order).
-  Assert.equal(richlistbox.getItemAtIndex(0).getAttribute("origin"), "http://www.test.com");
-  Assert.equal(richlistbox.getItemAtIndex(1).getAttribute("origin"), "http://www.example.com");
+  Assert.equal(
+    richlistbox.getItemAtIndex(0).getAttribute("origin"),
+    "http://www.test.com"
+  );
+  Assert.equal(
+    richlistbox.getItemAtIndex(1).getAttribute("origin"),
+    "http://www.example.com"
+  );
 
-  SitePermissions.remove(URI, "desktop-notification");
-  SitePermissions.remove(u, "desktop-notification");
+  PermissionTestUtils.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(u, "desktop-notification");
 
   doc.getElementById("cancel").click();
 });
 
 add_task(async function onPermissionDisable() {
   // Enable desktop-notification permission prompts.
-  Services.prefs.setIntPref("permissions.default.desktop-notification", SitePermissions.UNKNOWN);
+  Services.prefs.setIntPref(
+    "permissions.default.desktop-notification",
+    SitePermissions.UNKNOWN
+  );
 
   await openPermissionsDialog();
   let doc = sitePermissionsDialog.document;
@@ -290,7 +421,9 @@ add_task(async function onPermissionDisable() {
   doc.getElementById("cancel").click();
 
   // Check that the permission is not disabled yet.
-  let perm = Services.prefs.getIntPref("permissions.default.desktop-notification");
+  let perm = Services.prefs.getIntPref(
+    "permissions.default.desktop-notification"
+  );
   Assert.equal(perm, SitePermissions.UNKNOWN);
 
   // Open the dialog once again.
@@ -314,12 +447,18 @@ add_task(async function onPermissionDisable() {
 
   // Close the dialog and clean up.
   doc.getElementById("cancel").click();
-  Services.prefs.setIntPref("permissions.default.desktop-notification", SitePermissions.UNKNOWN);
+  Services.prefs.setIntPref(
+    "permissions.default.desktop-notification",
+    SitePermissions.UNKNOWN
+  );
 });
 
 add_task(async function checkDefaultPermissionState() {
   // Set default permission state to ALLOW.
-  Services.prefs.setIntPref("permissions.default.desktop-notification", SitePermissions.ALLOW);
+  Services.prefs.setIntPref(
+    "permissions.default.desktop-notification",
+    SitePermissions.ALLOW
+  );
 
   await openPermissionsDialog();
   let doc = sitePermissionsDialog.document;
@@ -336,11 +475,71 @@ add_task(async function checkDefaultPermissionState() {
   doc.getElementById("btnApplyChanges").click();
 
   // Check if the default permission state is retained (and not automatically set to SitePermissions.UNKNOWN).
-  let state = Services.prefs.getIntPref("permissions.default.desktop-notification");
+  let state = Services.prefs.getIntPref(
+    "permissions.default.desktop-notification"
+  );
   Assert.equal(state, SitePermissions.ALLOW);
 
   // Clean up.
-  Services.prefs.setIntPref("permissions.default.desktop-notification", SitePermissions.UNKNOWN);
+  Services.prefs.setIntPref(
+    "permissions.default.desktop-notification",
+    SitePermissions.UNKNOWN
+  );
+});
+
+add_task(async function testTabBehaviour() {
+  // Test tab behaviour inside the permissions setting dialog when site permissions are selected.
+  // Only selected items in the richlistbox should be tabable for accessibility reasons.
+
+  // Force tabfocus for all elements on OSX.
+  SpecialPowers.pushPrefEnv({ set: [["accessibility.tabfocus", 7]] });
+
+  PermissionTestUtils.add(
+    URI,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
+  let u = Services.io.newURI("http://www.test.com");
+  PermissionTestUtils.add(
+    u,
+    "desktop-notification",
+    Services.perms.ALLOW_ACTION
+  );
+
+  await openPermissionsDialog();
+  let doc = sitePermissionsDialog.document;
+
+  EventUtils.synthesizeKey("KEY_Tab", {}, sitePermissionsDialog);
+  let richlistbox = doc.getElementById("permissionsBox");
+  is(
+    richlistbox,
+    doc.activeElement.closest("#permissionsBox"),
+    "The richlistbox is focused after pressing tab once."
+  );
+
+  EventUtils.synthesizeKey("KEY_ArrowDown", {}, sitePermissionsDialog);
+  EventUtils.synthesizeKey("KEY_Tab", {}, sitePermissionsDialog);
+  let menulist = doc
+    .getElementById("permissionsBox")
+    .itemChildren[1].getElementsByTagName("menulist")[0];
+  is(
+    menulist,
+    doc.activeElement,
+    "The menulist inside the selected richlistitem is focused now"
+  );
+
+  EventUtils.synthesizeKey("KEY_Tab", {}, sitePermissionsDialog);
+  let removeButton = doc.getElementById("removePermission");
+  is(
+    removeButton,
+    doc.activeElement,
+    "The focus moves outside the richlistbox and onto the remove button"
+  );
+
+  PermissionTestUtils.remove(URI, "desktop-notification");
+  PermissionTestUtils.remove(u, "desktop-notification");
+
+  doc.getElementById("cancel").click();
 });
 
 add_task(async function removeTab() {

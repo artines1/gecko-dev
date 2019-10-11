@@ -10,20 +10,22 @@ import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.process.GeckoProcessManager;
 import org.mozilla.gecko.util.GeckoBundle;
-import org.mozilla.gecko.util.FileUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
-import org.mozilla.geckoview.GeckoRuntimeSettings;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.MessageQueue;
+import android.os.Process;
 import android.os.SystemClock;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.Log;
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.StringTokenizer;
 
 public class GeckoThread extends Thread {
@@ -70,10 +73,10 @@ public class GeckoThread extends Thread {
          * components are shut down and become unavailable. EXITING has the same rank as
          * LIBS_READY because both states have a similar amount of components available.
          */
-        private final int rank;
+        private final int mRank;
 
-        private State(int rank) {
-            this.rank = rank;
+        private State(final int rank) {
+            mRank = rank;
         }
 
         @Override
@@ -84,7 +87,7 @@ public class GeckoThread extends Thread {
         @Override
         public boolean isAtLeast(final NativeQueue.State other) {
             if (other instanceof State) {
-                return this.rank >= ((State) other).rank;
+                return mRank >= ((State) other).mRank;
             }
             return false;
         }
@@ -125,11 +128,14 @@ public class GeckoThread extends Thread {
     @WrapForJNI
     private static int uiThreadId;
 
+    private static TelemetryUtils.Timer sInitTimer;
+
     // Main process parameters
     public static final int FLAG_DEBUGGING = 1 << 0; // Debugging mode.
     public static final int FLAG_PRELOAD_CHILD = 1 << 1; // Preload child during main thread start.
-    public static final int FLAG_ENABLE_NATIVE_CRASHREPORTER = 1 << 2; // Enable native crash reporting
-    public static final int FLAG_ENABLE_JAVA_CRASHREPORTER = 1 << 3; // Enable java crash reporting
+    public static final int FLAG_ENABLE_NATIVE_CRASHREPORTER = 1 << 2; // Enable native crash reporting.
+
+    public static final long DEFAULT_TIMEOUT = 5000;
 
     /* package */ static final String EXTRA_ARGS = "args";
     private static final String EXTRA_PREFS_FD = "prefsFd";
@@ -139,66 +145,75 @@ public class GeckoThread extends Thread {
     private static final String EXTRA_CRASH_ANNOTATION_FD = "crashAnnotationFd";
 
     private boolean mInitialized;
-    private GeckoProfile mProfile;
-    private String[] mArgs;
-    private Bundle mExtras;
-    private int mFlags;
+    private InitInfo mInitInfo;
+
+    public static class InitInfo {
+        public GeckoProfile profile;
+        public String[] args;
+        public Bundle extras;
+        public int flags;
+        public Map<String, Object> prefs;
+
+        public int prefsFd;
+        public int prefMapFd;
+        public int ipcFd;
+        public int crashFd;
+        public int crashAnnotationFd;
+    }
 
     GeckoThread() {
-        setName("Gecko");
+        // Request more (virtual) stack space to avoid overflows in the CSS frame
+        // constructor. 8 MB matches desktop.
+        super(null, null, "Gecko", 8 * 1024 * 1024);
     }
 
     @WrapForJNI
     private static boolean isChildProcess() {
-        return INSTANCE.mExtras.getInt(EXTRA_IPC_FD, -1) != -1;
+        final InitInfo info = INSTANCE.mInitInfo;
+        return info != null && info.extras.getInt(EXTRA_IPC_FD, -1) != -1;
     }
 
-    private synchronized boolean init(final GeckoProfile profile, final String[] args,
-                                      final Bundle extras, final int flags,
-                                      final int prefsFd, final int prefMapFd,
-                                      final int ipcFd,
-                                      final int crashFd,
-                                      final int crashAnnotationFd) {
+    public static boolean init(final InitInfo info) {
+        return INSTANCE.initInternal(info);
+    }
+
+    private synchronized boolean initInternal(final InitInfo info) {
         ThreadUtils.assertOnUiThread();
-        uiThreadId = android.os.Process.myTid();
+        uiThreadId = Process.myTid();
 
         if (mInitialized) {
             return false;
         }
 
-        mProfile = profile;
-        mArgs = args;
-        mFlags = flags;
+        sInitTimer = new TelemetryUtils.UptimeTimer("GV_STARTUP_RUNTIME_MS");
 
-        mExtras = (extras != null) ? new Bundle(extras) : new Bundle(3);
-        mExtras.putInt(EXTRA_PREFS_FD, prefsFd);
-        mExtras.putInt(EXTRA_PREF_MAP_FD, prefMapFd);
-        mExtras.putInt(EXTRA_IPC_FD, ipcFd);
-        mExtras.putInt(EXTRA_CRASH_FD, crashFd);
-        mExtras.putInt(EXTRA_CRASH_ANNOTATION_FD, crashAnnotationFd);
+        mInitInfo = info;
+
+        mInitInfo.extras = (info.extras != null) ? new Bundle(info.extras) : new Bundle(3);
+
+        if (info.prefsFd > 0) {
+            mInitInfo.extras.putInt(EXTRA_PREFS_FD, info.prefsFd);
+        }
+
+        if (info.prefMapFd > 0) {
+            mInitInfo.extras.putInt(EXTRA_PREF_MAP_FD, info.prefMapFd);
+        }
+
+        if (info.ipcFd > 0) {
+            mInitInfo.extras.putInt(EXTRA_IPC_FD, info.ipcFd);
+        }
+
+        if (info.crashFd > 0) {
+            mInitInfo.extras.putInt(EXTRA_CRASH_FD, info.crashFd);
+        }
+
+        if (info.crashAnnotationFd > 0) {
+            mInitInfo.extras.putInt(EXTRA_CRASH_ANNOTATION_FD, info.crashAnnotationFd);
+        }
 
         mInitialized = true;
         notifyAll();
         return true;
-    }
-
-    public static boolean initMainProcess(final GeckoProfile profile, final String[] args,
-                                          final Bundle extras, final int flags) {
-        return INSTANCE.init(profile, args, extras, flags, /* fd */ -1,
-                             /* fd */ -1, /* fd */ -1, /* fd */ -1,
-                             /* fd */ -1);
-    }
-
-    public static boolean initChildProcess(final String[] args,
-                                           final Bundle extras,
-                                           final int flags,
-                                           final int prefsFd,
-                                           final int prefMapFd,
-                                           final int ipcFd,
-                                           final int crashFd,
-                                           final int crashAnnotationFd) {
-        return INSTANCE.init(/* profile */ null, args, extras, flags,
-                             prefsFd, prefMapFd, ipcFd, crashFd, crashAnnotationFd);
     }
 
     private static boolean canUseProfile(final Context context, final GeckoProfile profile,
@@ -231,32 +246,6 @@ public class GeckoThread extends Thread {
                              profileName, profileDir);
     }
 
-    public static boolean initMainProcessWithProfile(final String profileName,
-                                                     final File profileDir,
-                                                     final String[] args,
-                                                     final Bundle extras) {
-        if (profileName == null) {
-            throw new IllegalArgumentException("Null profile name");
-        }
-
-        final Context context = GeckoAppShell.getApplicationContext();
-        final GeckoProfile profile = getActiveProfile();
-
-        if (!canUseProfile(context, profile, profileName, profileDir)) {
-            // Profile is incompatible with current profile.
-            return false;
-        }
-
-        if (profile != null) {
-            // We already have a compatible profile.
-            return true;
-        }
-
-        // We haven't initialized yet; okay to initialize now.
-        return initMainProcess(GeckoProfile.get(context, profileName, profileDir), args,
-                               extras, /* flags */ 0);
-    }
-
     public static boolean launch() {
         ThreadUtils.assertOnUiThread();
 
@@ -276,18 +265,15 @@ public class GeckoThread extends Thread {
         return isState(State.RUNNING);
     }
 
-    private static void loadGeckoLibs(final Context context, final String resourcePath) {
-        GeckoLoader.loadSQLiteLibs(context, resourcePath);
-        GeckoLoader.loadNSSLibs(context, resourcePath);
-        GeckoLoader.loadGeckoLibs(context, resourcePath);
+    private static void loadGeckoLibs(final Context context) {
+        GeckoLoader.loadSQLiteLibs(context);
+        GeckoLoader.loadNSSLibs(context);
+        GeckoLoader.loadGeckoLibs(context);
         setState(State.LIBS_READY);
     }
 
     private static void initGeckoEnvironment() {
         final Context context = GeckoAppShell.getApplicationContext();
-        GeckoLoader.loadMozGlue(context);
-        setState(State.MOZGLUE_READY);
-
         final Locale locale = Locale.getDefault();
         final Resources res = context.getResources();
         if (locale.toString().equalsIgnoreCase("zh_hk")) {
@@ -298,28 +284,9 @@ public class GeckoThread extends Thread {
             res.updateConfiguration(config, null);
         }
 
-        final String resourcePath = context.getPackageResourcePath();
+        GeckoSystemStateListener.getInstance().initialize(context);
 
-        try {
-            loadGeckoLibs(context, resourcePath);
-            return;
-        } catch (final Exception e) {
-            // Cannot load libs; try clearing the cached files.
-            Log.w(LOGTAG, "Clearing cache after load libs exception", e);
-        }
-
-        FileUtils.delTree(GeckoLoader.getCacheDir(context),
-                          new FileUtils.FilenameRegexFilter(".*\\.so(?:\\.crc)?$"),
-                          /* recurse */ true);
-
-        if (!GeckoLoader.verifyCRCs(resourcePath)) {
-            setState(State.CORRUPT_APK);
-            EventDispatcher.getInstance().dispatch("Gecko:CorruptAPK", null);
-            return;
-        }
-
-        // Then try loading again. If this throws again, we actually crash.
-        loadGeckoLibs(context, resourcePath);
+        loadGeckoLibs(context);
     }
 
     private String[] getMainProcessArgs() {
@@ -341,11 +308,11 @@ public class GeckoThread extends Thread {
             args.add(profile.getName());
         }
 
-        if (mArgs != null) {
-            args.addAll(Arrays.asList(mArgs));
+        if (mInitInfo.args != null) {
+            args.addAll(Arrays.asList(mInitInfo.args));
         }
 
-        final String extraArgs = mExtras.getString(EXTRA_ARGS, null);
+        final String extraArgs = mInitInfo.extras.getString(EXTRA_ARGS, null);
         if (extraArgs != null) {
             final StringTokenizer st = new StringTokenizer(extraArgs);
             while (st.hasMoreTokens()) {
@@ -365,11 +332,11 @@ public class GeckoThread extends Thread {
     }
 
     @RobocopTarget
-    public static GeckoProfile getActiveProfile() {
+    public static @Nullable GeckoProfile getActiveProfile() {
         return INSTANCE.getProfile();
     }
 
-    public synchronized GeckoProfile getProfile() {
+    public synchronized @Nullable GeckoProfile getProfile() {
         if (!mInitialized) {
             return null;
         }
@@ -377,11 +344,12 @@ public class GeckoThread extends Thread {
             throw new UnsupportedOperationException(
                     "Cannot access profile from child process");
         }
-        if (mProfile == null) {
+        if (mInitInfo.profile == null) {
             final Context context = GeckoAppShell.getApplicationContext();
-            mProfile = GeckoProfile.initFromArgs(context, mExtras.getString(EXTRA_ARGS, null));
+            mInitInfo.profile = GeckoProfile.initFromArgs(context,
+                    mInitInfo.extras.getString(EXTRA_ARGS, null));
         }
-        return mProfile;
+        return mInitInfo.profile;
     }
 
     public static @Nullable Bundle getActiveExtras() {
@@ -389,7 +357,7 @@ public class GeckoThread extends Thread {
             if (!INSTANCE.mInitialized) {
                 return null;
             }
-            return new Bundle(INSTANCE.mExtras);
+            return new Bundle(INSTANCE.mInitInfo.extras);
         }
     }
 
@@ -399,7 +367,7 @@ public class GeckoThread extends Thread {
                 return 0;
             }
 
-            return INSTANCE.mFlags;
+            return INSTANCE.mInitInfo.flags;
         }
     }
 
@@ -446,9 +414,40 @@ public class GeckoThread extends Thread {
         };
         Looper.myQueue().addIdleHandler(idleHandler);
 
+        // Wait until initialization before preparing environment.
+        synchronized (this) {
+            while (!mInitialized) {
+                try {
+                    wait();
+                } catch (final InterruptedException e) {
+                }
+            }
+        }
+
+        final Context context = GeckoAppShell.getApplicationContext();
+        final List<String> env = getEnvFromExtras(mInitInfo.extras);
+
+        // In Gecko, the native crash reporter is enabled by default in opt builds, and
+        // disabled by default in debug builds.
+        if ((mInitInfo.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) == 0 && !BuildConfig.DEBUG_BUILD) {
+            env.add(0, "MOZ_CRASHREPORTER_DISABLE=1");
+        } else if ((mInitInfo.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) != 0 && BuildConfig.DEBUG_BUILD) {
+            env.add(0, "MOZ_CRASHREPORTER=1");
+        }
+
+        // Very early -- before we load mozglue -- wait for Java debuggers.  This allows to connect
+        // a dual/hybrid debugger as well, allowing to debug child processes -- including the
+        // mozglue loading process.
+        maybeWaitForJavaDebugger(context, env);
+
+        GeckoLoader.loadMozGlue(context);
+        setState(State.MOZGLUE_READY);
+
+        GeckoLoader.setupGeckoEnvironment(context, context.getFilesDir().getPath(), env, mInitInfo.prefs);
+
         initGeckoEnvironment();
 
-        if ((mFlags & FLAG_PRELOAD_CHILD) != 0) {
+        if ((mInitInfo.flags & FLAG_PRELOAD_CHILD) != 0) {
             ThreadUtils.postToBackgroundThread(new Runnable() {
                 @Override
                 public void run() {
@@ -458,17 +457,7 @@ public class GeckoThread extends Thread {
             });
         }
 
-        // Wait until initialization before calling Gecko entry point.
-        synchronized (this) {
-            while (!mInitialized || !isState(State.LIBS_READY)) {
-                try {
-                    wait();
-                } catch (final InterruptedException e) {
-                }
-            }
-        }
-
-        if ((mFlags & FLAG_DEBUGGING) != 0) {
+        if ((mInitInfo.flags & FLAG_DEBUGGING) != 0) {
             try {
                 Thread.sleep(5 * 1000 /* 5 seconds */);
             } catch (final InterruptedException e) {
@@ -477,36 +466,19 @@ public class GeckoThread extends Thread {
 
         Log.w(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() + " - runGecko");
 
-        final Context context = GeckoAppShell.getApplicationContext();
-        final String[] args = isChildProcess() ? mArgs : getMainProcessArgs();
+        final String[] args = isChildProcess() ? mInitInfo.args : getMainProcessArgs();
 
-        if ((mFlags & FLAG_DEBUGGING) != 0) {
+        if ((mInitInfo.flags & FLAG_DEBUGGING) != 0) {
             Log.i(LOGTAG, "RunGecko - args = " + TextUtils.join(" ", args));
         }
 
-        final List<String> env = getEnvFromExtras(mExtras);
-
-        // In Gecko, the native crash reporter is enabled by default in opt builds, and
-        // disabled by default in debug builds.
-        if ((mFlags & FLAG_ENABLE_NATIVE_CRASHREPORTER) == 0 && !BuildConfig.DEBUG_BUILD) {
-            env.add(0, "MOZ_CRASHREPORTER_DISABLE=1");
-        } else if ((mFlags & FLAG_ENABLE_NATIVE_CRASHREPORTER) != 0 && BuildConfig.DEBUG_BUILD) {
-            env.add(0, "MOZ_CRASHREPORTER=1");
-        }
-
-        if ((mFlags & FLAG_ENABLE_JAVA_CRASHREPORTER) != 0) {
-            GeckoAppShell.ensureCrashHandling();
-        }
-
-        GeckoLoader.setupGeckoEnvironment(context, context.getFilesDir().getPath(), env);
-
         // And go.
         GeckoLoader.nativeRun(args,
-                              mExtras.getInt(EXTRA_PREFS_FD, -1),
-                              mExtras.getInt(EXTRA_PREF_MAP_FD, -1),
-                              mExtras.getInt(EXTRA_IPC_FD, -1),
-                              mExtras.getInt(EXTRA_CRASH_FD, -1),
-                              mExtras.getInt(EXTRA_CRASH_ANNOTATION_FD, -1));
+                              mInitInfo.extras.getInt(EXTRA_PREFS_FD, -1),
+                              mInitInfo.extras.getInt(EXTRA_PREF_MAP_FD, -1),
+                              mInitInfo.extras.getInt(EXTRA_IPC_FD, -1),
+                              mInitInfo.extras.getInt(EXTRA_CRASH_FD, -1),
+                              mInitInfo.extras.getInt(EXTRA_CRASH_ANNOTATION_FD, -1));
 
         // And... we're done.
         final boolean restarting = isState(State.RESTARTING);
@@ -520,13 +492,65 @@ public class GeckoThread extends Thread {
         Looper.myQueue().removeIdleHandler(idleHandler);
     }
 
-    public static int getCrashReporterJobId() {
-        synchronized (INSTANCE) {
-            if (!INSTANCE.mInitialized) {
-                return 1024;        // speculative, unique value
+    private static void maybeWaitForJavaDebugger(final @NonNull Context context, final @NonNull List<String> env) {
+        for (final String e : env) {
+            if (e == null) {
+                continue;
             }
-            return INSTANCE.mExtras.getInt(GeckoRuntimeSettings.EXTRA_CRASH_REPORTING_JOB_ID, 1024);
+
+            if (e.equals("MOZ_DEBUG_WAIT_FOR_JAVA_DEBUGGER=1")) {
+                if (!isChildProcess()) {
+                    final String processName = getProcessName(context);
+                    waitForJavaDebugger(processName);
+                }
+            }
+
+            if (e.startsWith("MOZ_DEBUG_CHILD_WAIT_FOR_JAVA_DEBUGGER=")) {
+                String filter = e.substring("MOZ_DEBUG_CHILD_WAIT_FOR_JAVA_DEBUGGER=".length());
+                if (isChildProcess()) {
+                    final String processName = getProcessName(context);
+                    if (processName == null || processName.endsWith(filter)) {
+                        waitForJavaDebugger(processName);
+                    }
+                }
+            }
         }
+    }
+
+    private static @Nullable String getProcessName(final @NonNull Context context) {
+        final int pid = Process.myPid();
+        final ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+
+        // This can be quite slow, and it can return null.
+        List<ActivityManager.RunningAppProcessInfo> processInfos = manager.getRunningAppProcesses();
+
+        if (processInfos == null) {
+            return null;
+        }
+
+        for (ActivityManager.RunningAppProcessInfo processInfo : processInfos) {
+            if (processInfo.pid == pid) {
+                return processInfo.processName;
+            }
+        }
+
+        return null;
+    }
+
+    private static void waitForJavaDebugger(final @Nullable String processName) {
+        final int pid = Process.myPid();
+        final String processIdentification = (isChildProcess() ? "Child process " : "Main process ") +
+                (processName != null ? processName : "<unknown>") +
+                " (" + pid + ")";
+
+        if (Debug.isDebuggerConnected()) {
+            Log.i(LOGTAG, processIdentification + ": Waiting for Java debugger ... " + " already connected");
+            return;
+        }
+
+        Log.w(LOGTAG, processIdentification + ": Waiting for Java debugger ...");
+        Debug.waitForDebugger();
+        Log.w(LOGTAG, processIdentification + ": Waiting for Java debugger ... connected");
     }
 
     @WrapForJNI(calledFrom = "gecko")
@@ -602,6 +626,11 @@ public class GeckoThread extends Thread {
         final boolean result = sNativeQueue.checkAndSetState(expectedState, newState);
         if (result) {
             Log.d(LOGTAG, "State changed to " + newState);
+
+            if (sInitTimer != null && isRunning()) {
+                sInitTimer.stop();
+                sInitTimer = null;
+            }
         }
         return result;
     }
@@ -618,8 +647,21 @@ public class GeckoThread extends Thread {
                              "speculativeConnectNative", uri);
     }
 
-    @WrapForJNI @RobocopTarget
-    public static native void waitOnGecko();
+    @WrapForJNI(stubName = "WaitOnGecko")
+    @RobocopTarget
+    private static native boolean nativeWaitOnGecko(long timeoutMillis);
+
+    public static void waitOnGeckoForever() {
+        nativeWaitOnGecko(0);
+    }
+
+    public static boolean waitOnGecko() {
+        return waitOnGecko(DEFAULT_TIMEOUT);
+    }
+
+    public static boolean waitOnGecko(final long timeoutMillis) {
+        return nativeWaitOnGecko(timeoutMillis);
+    }
 
     @WrapForJNI(stubName = "OnPause", dispatchTo = "gecko")
     private static native void nativeOnPause();
@@ -667,7 +709,7 @@ public class GeckoThread extends Thread {
     public static native void crash();
 
     @WrapForJNI
-    private static void requestUiThreadCallback(long delay) {
+    private static void requestUiThreadCallback(final long delay) {
         ThreadUtils.getUiHandler().postDelayed(UI_THREAD_CALLBACK, delay);
     }
 

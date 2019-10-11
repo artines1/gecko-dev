@@ -12,14 +12,18 @@ namespace gfx {
 // Describes the status of a graphics feature, in terms of whether or not we've
 // attempted to initialize the feature, and if so, whether or not it succeeded
 // (and if not, why).
-enum class FeatureStatus
-{
+enum class FeatureStatus {
   // This feature has not been requested.
   Unused,
 
   // This feature is unavailable due to Safe Mode, not being included with
   // the operating system, or a dependent feature being disabled.
   Unavailable,
+  UnavailableInSafeMode,
+  UnavailableNoGpuProcess,
+  UnavailableNoHwCompositing,
+  UnavailableNotBuilt,
+  UnavailableNoAngle,
 
   // This feature crashed immediately when we tried to initialize it, but we
   // were able to recover via SEH (or something similar).
@@ -28,6 +32,19 @@ enum class FeatureStatus
   // This feature was blocked for reasons outside the blacklist, such as a
   // runtime test failing.
   Blocked,
+  BlockedDeviceUnknown,
+  BlockedDeviceTooOld,
+  BlockedVendorUnsupported,
+  BlockedHasBattery,
+  BlockedScreenTooLarge,
+  BlockedScreenUnknown,
+  BlockedNoGfxInfo,
+  BlockedOverride,
+  BlockedReleaseChannelIntel,
+  BlockedReleaseChannelAMD,
+  BlockedReleaseChannelNvidia,
+  BlockedReleaseChannelBattery,
+  BlockedReleaseChannelAndroid,
 
   // This feature has been blocked by the graphics blacklist.
   Blacklisted,
@@ -62,13 +79,9 @@ const char* FeatureStatusToString(FeatureStatus aStatus);
 bool IsFeatureStatusFailure(FeatureStatus aStatus);
 bool IsFeatureStatusSuccess(FeatureStatus aStatus);
 
-enum class TelemetryDeviceCode : uint32_t {
-  Content = 0,
-  Image = 1,
-  D2D1 = 2
-};
+enum class TelemetryDeviceCode : uint32_t { Content = 0, Image = 1, D2D1 = 2 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
-#endif // gfx_src_gfxTelemetry_h__
+#endif  // gfx_src_gfxTelemetry_h__

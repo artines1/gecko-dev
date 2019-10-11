@@ -7,7 +7,9 @@
 
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
-const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+const { PromiseTestUtils } = ChromeUtils.import(
+  "resource://testing-common/PromiseTestUtils.jsm"
+);
 PromiseTestUtils.whitelistRejectionsGlobally(/this\.worker is null/);
 PromiseTestUtils.whitelistRejectionsGlobally(/Component not initialized/);
 
@@ -18,8 +20,6 @@ const JS_URL = `${TEST_ROOT}code_inline_bundle.js`;
 const ORIGINAL_URL = "webpack:///code_inline_original.js";
 
 add_task(async function() {
-  await pushPref("devtools.debugger.new-debugger-frontend", true);
-
   const toolbox = await openNewTabAndToolbox(PAGE_URL, "jsdebugger");
   const service = toolbox.sourceMapURLService;
 

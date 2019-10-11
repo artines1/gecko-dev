@@ -7,7 +7,7 @@
 #define DeleteTextTransaction_h
 
 #include "mozilla/EditTransactionBase.h"
-#include "mozilla/dom/CharacterData.h"
+#include "mozilla/dom/Text.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsID.h"
@@ -22,47 +22,38 @@ class RangeUpdater;
 /**
  * A transaction that removes text from a content node.
  */
-class DeleteTextTransaction final : public EditTransactionBase
-{
-protected:
-  DeleteTextTransaction(EditorBase& aEditorBase,
-                        dom::CharacterData& aCharData,
-                        uint32_t aOffset,
-                        uint32_t aLengthToDelete);
+class DeleteTextTransaction final : public EditTransactionBase {
+ protected:
+  DeleteTextTransaction(EditorBase& aEditorBase, dom::Text& aTextNode,
+                        uint32_t aOffset, uint32_t aLengthToDelete);
 
-public:
-
+ public:
   /**
    * Creates a delete text transaction to remove given range.  This returns
    * nullptr if it cannot modify the text node.
    *
    * @param aEditorBase         The provider of basic editing operations.
-   * @param aCharData           The content node to remove text from.
+   * @param aTextNode           The content node to remove text from.
    * @param aOffset             The location in aElement to begin the deletion.
    * @param aLenthToDelete      The length to delete.
    */
-  static already_AddRefed<DeleteTextTransaction>
-  MaybeCreate(EditorBase& aEditorBase,
-              dom::CharacterData& aCharData,
-              uint32_t aOffset,
-              uint32_t aLengthToDelete);
+  static already_AddRefed<DeleteTextTransaction> MaybeCreate(
+      EditorBase& aEditorBase, dom::Text& aTextNode, uint32_t aOffset,
+      uint32_t aLengthToDelete);
 
   /**
    * Creates a delete text transaction to remove a previous or next character.
    * Those methods MAY return nullptr.
    *
    * @param aEditorBase         The provider of basic editing operations.
-   * @param aCharData           The content node to remove text from.
+   * @param aTextNode           The content node to remove text from.
    * @param aOffset             The location in aElement to begin the deletion.
    */
   static already_AddRefed<DeleteTextTransaction>
-  MaybeCreateForPreviousCharacter(EditorBase& aEditorBase,
-                                  dom::CharacterData& aCharData,
+  MaybeCreateForPreviousCharacter(EditorBase& aEditorBase, dom::Text& aTextNode,
                                   uint32_t aOffset);
-  static already_AddRefed<DeleteTextTransaction>
-  MaybeCreateForNextCharacter(EditorBase& aEditorBase,
-                              dom::CharacterData& aCharData,
-                              uint32_t aOffset);
+  static already_AddRefed<DeleteTextTransaction> MaybeCreateForNextCharacter(
+      EditorBase& aEditorBase, dom::Text& aTextNode, uint32_t aOffset);
 
   /**
    * CanDoIt() returns true if there are enough members and can modify the
@@ -80,14 +71,14 @@ public:
 
   uint32_t LengthToDelete() { return mLengthToDelete; }
 
-protected:
+ protected:
   // The provider of basic editing operations.
   RefPtr<EditorBase> mEditorBase;
 
   // The CharacterData node to operate upon.
-  RefPtr<dom::CharacterData> mCharData;
+  RefPtr<dom::Text> mTextNode;
 
-  // The offset into mCharData where the deletion is to take place.
+  // The offset into mTextNode where the deletion is to take place.
   uint32_t mOffset;
 
   // The length to delete.
@@ -97,6 +88,6 @@ protected:
   nsString mDeletedText;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // #ifndef DeleteTextTransaction_h
+#endif  // #ifndef DeleteTextTransaction_h

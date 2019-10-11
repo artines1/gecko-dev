@@ -1,10 +1,9 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 from __future__ import absolute_import, print_function
 
-
-from ConfigParser import (
-    ConfigParser,
-    RawConfigParser
-)
 import datetime
 import os
 import posixpath
@@ -13,12 +12,11 @@ import tempfile
 import time
 
 from mozdevice import ADBHost, ADBError
-from mozprocess import ProcessHandler
+from six.moves.configparser import ConfigParser, RawConfigParser
 
 
 class Device(object):
     connected = False
-    logcat_proc = None
 
     def __init__(self, app_ctx, logdir=None, serial=None, restore=True):
         self.app_ctx = app_ctx
@@ -61,14 +59,26 @@ class Device(object):
         """
         remote_dump_dir = posixpath.join(self.app_ctx.remote_profile, 'minidumps')
         local_dump_dir = tempfile.mkdtemp()
+        if not self.device.is_dir(remote_dump_dir):
+            # This may be a hint that something went wrong during browser
+            # start-up if (MOZ_CRASHREPORTER=1)
+            print("WARNING: No crash directory {} found on remote device".format(remote_dump_dir))
         try:
             self.device.pull(remote_dump_dir, local_dump_dir)
         except ADBError as e:
             # OK if directory not present -- sometimes called before browser start
             if 'does not exist' not in str(e):
-                raise
+                try:
+                    shutil.rmtree(local_dump_dir)
+                except Exception:
+                    pass
+                finally:
+                    raise e
+            else:
+                print("WARNING: {}".format(e))
         if os.listdir(local_dump_dir):
             self.device.rm(remote_dump_dir, recursive=True)
+            self.device.mkdir(remote_dump_dir)
         return local_dump_dir
 
     def setup_profile(self, profile):
@@ -119,7 +129,7 @@ class Device(object):
             self.app_ctx.setup_profile(profile)
 
     def _get_online_devices(self):
-        adbhost = ADBHost()
+        adbhost = ADBHost(adb=self.app_ctx.adb)
         devices = adbhost.devices()
         return [d['device_serial'] for d in devices
                 if d['state'] != 'offline'
@@ -140,28 +150,6 @@ class Device(object):
         self.serial = online_devices[0]
 
         self.connected = True
-
-        if self.logdir:
-            # save logcat
-            logcat_log = os.path.join(self.logdir, '%s.log' % self.serial)
-            if os.path.isfile(logcat_log):
-                self._rotate_log(logcat_log)
-            self.logcat_proc = self.start_logcat(self.serial, logfile=logcat_log)
-
-    def start_logcat(self, serial, logfile=None, stream=None, filterspec=None):
-        logcat_args = [self.app_ctx.adb, '-s', '%s' % serial,
-                       'logcat', '-v', 'time', '-b', 'main', '-b', 'radio']
-        # only log filterspec
-        if filterspec:
-            logcat_args.extend(['-s', filterspec])
-        process_args = {}
-        if logfile:
-            process_args['logfile'] = logfile
-        elif stream:
-            process_args['stream'] = stream
-        proc = ProcessHandler(logcat_args, **process_args)
-        proc.run()
-        return proc
 
     def reboot(self):
         """
@@ -211,7 +199,7 @@ class Device(object):
                 self.app_ctx.cleanup_profile()
 
             # Remove the test profile
-            self.device.rm(self.app_ctx.remote_profile, recursive=True)
+            self.device.rm(self.app_ctx.remote_profile, force=True, recursive=True)
         except Exception as e:
             print("cleanup aborted: %s" % str(e))
 

@@ -4,6 +4,8 @@
 
 from __future__ import absolute_import
 
+import os
+
 import manifestparser
 import mozunit
 import pytest
@@ -296,7 +298,7 @@ def test_add_test_directory(runner):
             runner.add_test(test_dir)
     assert isdir.called and walk.called
     for test in runner.tests:
-        assert test_dir in test['filepath']
+        assert os.path.normpath(test_dir) in test['filepath']
     assert len(runner.tests) == 2
 
 
@@ -456,7 +458,6 @@ def test_option_e10s_sets_prefs(mach_parsed_kwargs, e10s):
     runner = MarionetteTestRunner(**mach_parsed_kwargs)
     e10s_prefs = {
         'browser.tabs.remote.autostart': True,
-        'browser.tabs.remote.force-enable': True,
     }
     for k,v in e10s_prefs.iteritems():
         assert runner.prefs.get(k, False) == (v and e10s)

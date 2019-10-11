@@ -26,31 +26,60 @@
  * Google Author(s): Behdad Esfahbod
  */
 
-#include "hb-private.hh"
-
+#include "hb.hh"
+#include "hb-machinery.hh"
 
 #include <locale.h>
-#ifdef HAVE_XLOCALE_H
-#include <xlocale.h>
+
+#ifdef HB_NO_SETLOCALE
+#define setlocale(Category, Locale) "C"
 #endif
+
+/**
+ * SECTION:hb-common
+ * @title: hb-common
+ * @short_description: Common data types
+ * @include: hb.h
+ *
+ * Common data types used across HarfBuzz are defined here.
+ **/
 
 
 /* hb_options_t */
 
-hb_options_union_t _hb_options;
+hb_atomic_int_t _hb_options;
 
 void
-_hb_options_init (void)
+_hb_options_init ()
 {
   hb_options_union_t u;
   u.i = 0;
-  u.opts.initialized = 1;
+  u.opts.initialized = true;
 
-  char *c = getenv ("HB_OPTIONS");
-  u.opts.uniscribe_bug_compatible = c && strstr (c, "uniscribe-bug-compatible");
+  const char *c = getenv ("HB_OPTIONS");
+  if (c)
+  {
+    while (*c)
+    {
+      const char *p = strchr (c, ':');
+      if (!p)
+	p = c + strlen (c);
+
+#define OPTION(name, symbol) \
+	if (0 == strncmp (c, name, p - c) && strlen (name) == static_cast<size_t>(p - c)) do { u.opts.symbol = true; } while (0)
+
+      OPTION ("uniscribe-bug-compatible", uniscribe_bug_compatible);
+      OPTION ("aat", aat);
+
+#undef OPTION
+
+      c = *p ? p + 1 : p;
+    }
+
+  }
 
   /* This is idempotent and threadsafe. */
-  _hb_options = u;
+  _hb_options.set_relaxed (u.i);
 }
 
 
@@ -174,7 +203,7 @@ static const char canon_map[256] = {
    0,   0,   0,   0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,
    0,   0,   0,   0,   0,   0,   0,   0,    0,   0,   0,   0,   0,  '-',  0,   0,
   '0', '1', '2', '3', '4', '5', '6', '7',  '8', '9',  0,   0,   0,   0,   0,   0,
-  '-', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
+   0,  'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
   'p', 'q', 'r', 's', 't', 'u', 'v', 'w',  'x', 'y', 'z',  0,   0,   0,   0,  '-',
    0,  'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
   'p', 'q', 'r', 's', 't', 'u', 'v', 'w',  'x', 'y', 'z',  0,   0,   0,   0,   0
@@ -217,11 +246,10 @@ struct hb_language_item_t {
   struct hb_language_item_t *next;
   hb_language_t lang;
 
-  inline bool operator == (const char *s) const {
-    return lang_equal (lang, s);
-  }
+  bool operator == (const char *s) const
+  { return lang_equal (lang, s); }
 
-  inline hb_language_item_t & operator = (const char *s) {
+  hb_language_item_t & operator = (const char *s) {
     /* If a custom allocated is used calling strdup() pairs
     badly with a call to the custom free() in fini() below.
     Therefore don't call strdup(), implement its behavior.
@@ -238,21 +266,21 @@ struct hb_language_item_t {
     return *this;
   }
 
-  void fini (void) { free ((void *) lang); }
+  void fini () { free ((void *) lang); }
 };
 
 
 /* Thread-safe lock-free language list */
 
-static hb_language_item_t *langs;
+static hb_atomic_ptr_t <hb_language_item_t> langs;
 
-#ifdef HB_USE_ATEXIT
+#if HB_USE_ATEXIT
 static void
-free_langs (void)
+free_langs ()
 {
 retry:
-  hb_language_item_t *first_lang = (hb_language_item_t *) hb_atomic_ptr_get (&langs);
-  if (!hb_atomic_ptr_cmpexch (&langs, first_lang, nullptr))
+  hb_language_item_t *first_lang = langs;
+  if (unlikely (!langs.cmpexch (first_lang, nullptr)))
     goto retry;
 
   while (first_lang) {
@@ -268,7 +296,7 @@ static hb_language_item_t *
 lang_find_or_insert (const char *key)
 {
 retry:
-  hb_language_item_t *first_lang = (hb_language_item_t *) hb_atomic_ptr_get (&langs);
+  hb_language_item_t *first_lang = langs;
 
   for (hb_language_item_t *lang = first_lang; lang; lang = lang->next)
     if (*lang == key)
@@ -286,13 +314,14 @@ retry:
     return nullptr;
   }
 
-  if (!hb_atomic_ptr_cmpexch (&langs, first_lang, lang)) {
+  if (unlikely (!langs.cmpexch (first_lang, lang)))
+  {
     lang->fini ();
     free (lang);
     goto retry;
   }
 
-#ifdef HB_USE_ATEXIT
+#if HB_USE_ATEXIT
   if (!first_lang)
     atexit (free_langs); /* First person registers atexit() callback. */
 #endif
@@ -304,14 +333,14 @@ retry:
 /**
  * hb_language_from_string:
  * @str: (array length=len) (element-type uint8_t): a string representing
- *       ISO 639 language code
+ *       a BCP 47 language tag
  * @len: length of the @str, or -1 if it is %NULL-terminated.
  *
- * Converts @str representing an ISO 639 language code to the corresponding
+ * Converts @str representing a BCP 47 language tag to the corresponding
  * #hb_language_t.
  *
  * Return value: (transfer none):
- * The #hb_language_t corresponding to the ISO 639 language code.
+ * The #hb_language_t corresponding to the BCP 47 language tag.
  *
  * Since: 0.9.2
  **/
@@ -326,7 +355,7 @@ hb_language_from_string (const char *str, int len)
   {
     /* NUL-terminate it. */
     char strbuf[64];
-    len = MIN (len, (int) sizeof (strbuf) - 1);
+    len = hb_min (len, (int) sizeof (strbuf) - 1);
     memcpy (strbuf, str, len);
     strbuf[len] = '\0';
     item = lang_find_or_insert (strbuf);
@@ -352,31 +381,40 @@ hb_language_from_string (const char *str, int len)
 const char *
 hb_language_to_string (hb_language_t language)
 {
-  /* This is actually nullptr-safe! */
+  if (unlikely (!language)) return nullptr;
+
   return language->s;
 }
 
 /**
  * hb_language_get_default:
  *
+ * Get default language from current locale.
  *
+ * Note that the first time this function is called, it calls
+ * "setlocale (LC_CTYPE, nullptr)" to fetch current locale.  The underlying
+ * setlocale function is, in many implementations, NOT threadsafe.  To avoid
+ * problems, call this function once before multiple threads can call it.
+ * This function is only used from hb_buffer_guess_segment_properties() by
+ * HarfBuzz itself.
  *
  * Return value: (transfer none):
  *
  * Since: 0.9.2
  **/
 hb_language_t
-hb_language_get_default (void)
+hb_language_get_default ()
 {
-  static hb_language_t default_language = HB_LANGUAGE_INVALID;
+  static hb_atomic_ptr_t <hb_language_t> default_language;
 
-  hb_language_t language = (hb_language_t) hb_atomic_ptr_get (&default_language);
-  if (unlikely (language == HB_LANGUAGE_INVALID)) {
+  hb_language_t language = default_language;
+  if (unlikely (language == HB_LANGUAGE_INVALID))
+  {
     language = hb_language_from_string (setlocale (LC_CTYPE, nullptr), -1);
-    (void) hb_atomic_ptr_cmpexch (&default_language, HB_LANGUAGE_INVALID, language);
+    (void) default_language.cmpexch (HB_LANGUAGE_INVALID, language);
   }
 
-  return default_language;
+  return language;
 }
 
 
@@ -450,7 +488,7 @@ hb_script_from_string (const char *str, int len)
 
 /**
  * hb_script_to_iso15924_tag:
- * @script: an #hb_script_ to convert.
+ * @script: an #hb_script_t to convert.
  *
  * See hb_script_from_iso15924_tag().
  *
@@ -528,7 +566,6 @@ hb_script_get_horizontal_direction (hb_script_t script)
 
     /* Unicode-8.0 additions */
     case HB_SCRIPT_HATRAN:
-    case HB_SCRIPT_OLD_HUNGARIAN:
 
     /* Unicode-9.0 additions */
     case HB_SCRIPT_ADLAM:
@@ -542,6 +579,7 @@ hb_script_get_horizontal_direction (hb_script_t script)
 
 
     /* https://github.com/harfbuzz/harfbuzz/issues/1000 */
+    case HB_SCRIPT_OLD_HUNGARIAN:
     case HB_SCRIPT_OLD_ITALIC:
     case HB_SCRIPT_RUNIC:
 
@@ -586,6 +624,19 @@ hb_user_data_array_t::get (hb_user_data_key_t *key)
 
 /* hb_version */
 
+
+/**
+ * SECTION:hb-version
+ * @title: hb-version
+ * @short_description: Information about the version of HarfBuzz in use
+ * @include: hb.h
+ *
+ * These functions and macros allow accessing version of the HarfBuzz
+ * library used at compile- as well as run-time, and to direct code
+ * conditionally based on those versions, again, at compile- or run-time.
+ **/
+
+
 /**
  * hb_version:
  * @major: (out): Library major version component.
@@ -616,7 +667,7 @@ hb_version (unsigned int *major,
  * Since: 0.9.2
  **/
 const char *
-hb_version_string (void)
+hb_version_string ()
 {
   return HB_VERSION_STRING;
 }
@@ -668,131 +719,24 @@ parse_char (const char **pp, const char *end, char c)
 static bool
 parse_uint (const char **pp, const char *end, unsigned int *pv)
 {
-  char buf[32];
-  unsigned int len = MIN (ARRAY_LENGTH (buf) - 1, (unsigned int) (end - *pp));
-  strncpy (buf, *pp, len);
-  buf[len] = '\0';
-
-  char *p = buf;
-  char *pend = p;
-  unsigned int v;
-
-  /* Intentionally use strtol instead of strtoul, such that
-   * -1 turns into "big number"... */
-  errno = 0;
-  v = strtol (p, &pend, 0);
-  if (errno || p == pend)
-    return false;
+  /* Intentionally use hb_parse_int inside instead of hb_parse_uint,
+   * such that -1 turns into "big number"... */
+  int v;
+  if (unlikely (!hb_parse_int (pp, end, &v))) return false;
 
   *pv = v;
-  *pp += pend - p;
   return true;
 }
 
 static bool
 parse_uint32 (const char **pp, const char *end, uint32_t *pv)
 {
-  char buf[32];
-  unsigned int len = MIN (ARRAY_LENGTH (buf) - 1, (unsigned int) (end - *pp));
-  strncpy (buf, *pp, len);
-  buf[len] = '\0';
-
-  char *p = buf;
-  char *pend = p;
-  unsigned int v;
-
-  /* Intentionally use strtol instead of strtoul, such that
-   * -1 turns into "big number"... */
-  errno = 0;
-  v = strtol (p, &pend, 0);
-  if (errno || p == pend)
-    return false;
+  /* Intentionally use hb_parse_int inside instead of hb_parse_uint,
+   * such that -1 turns into "big number"... */
+  int v;
+  if (unlikely (!hb_parse_int (pp, end, &v))) return false;
 
   *pv = v;
-  *pp += pend - p;
-  return true;
-}
-
-#if defined (HAVE_NEWLOCALE) && defined (HAVE_STRTOD_L)
-#define USE_XLOCALE 1
-#define HB_LOCALE_T locale_t
-#define HB_CREATE_LOCALE(locName) newlocale (LC_ALL_MASK, locName, nullptr)
-#define HB_FREE_LOCALE(loc) freelocale (loc)
-#elif defined(_MSC_VER)
-#define USE_XLOCALE 1
-#define HB_LOCALE_T _locale_t
-#define HB_CREATE_LOCALE(locName) _create_locale (LC_ALL, locName)
-#define HB_FREE_LOCALE(loc) _free_locale (loc)
-#define strtod_l(a, b, c) _strtod_l ((a), (b), (c))
-#endif
-
-#ifdef USE_XLOCALE
-
-static HB_LOCALE_T C_locale;
-
-#ifdef HB_USE_ATEXIT
-static void
-free_C_locale (void)
-{
-retry:
-  HB_LOCALE_T locale = (HB_LOCALE_T) hb_atomic_ptr_get (&C_locale);
-
-  if (!hb_atomic_ptr_cmpexch (&C_locale, locale, nullptr))
-    goto retry;
-
-  if (locale)
-    HB_FREE_LOCALE (locale);
-}
-#endif
-
-static HB_LOCALE_T
-get_C_locale (void)
-{
-retry:
-  HB_LOCALE_T C = (HB_LOCALE_T) hb_atomic_ptr_get (&C_locale);
-
-  if (unlikely (!C))
-  {
-    C = HB_CREATE_LOCALE ("C");
-
-    if (!hb_atomic_ptr_cmpexch (&C_locale, nullptr, C))
-    {
-      HB_FREE_LOCALE (C_locale);
-      goto retry;
-    }
-
-#ifdef HB_USE_ATEXIT
-    atexit (free_C_locale); /* First person registers atexit() callback. */
-#endif
-  }
-
-  return C;
-}
-#endif
-
-static bool
-parse_float (const char **pp, const char *end, float *pv)
-{
-  char buf[32];
-  unsigned int len = MIN (ARRAY_LENGTH (buf) - 1, (unsigned int) (end - *pp));
-  strncpy (buf, *pp, len);
-  buf[len] = '\0';
-
-  char *p = buf;
-  char *pend = p;
-  float v;
-
-  errno = 0;
-#ifdef USE_XLOCALE
-  v = strtod_l (p, &pend, get_C_locale ());
-#else
-  v = strtod (p, &pend);
-#endif
-  if (errno || p == pend)
-    return false;
-
-  *pv = v;
-  *pp += pend - p;
   return true;
 }
 
@@ -806,9 +750,14 @@ parse_bool (const char **pp, const char *end, uint32_t *pv)
     (*pp)++;
 
   /* CSS allows on/off as aliases 1/0. */
-  if (*pp - p == 2 && 0 == strncmp (p, "on", 2))
+  if (*pp - p == 2
+      && TOLOWER (p[0]) == 'o'
+      && TOLOWER (p[1]) == 'n')
     *pv = 1;
-  else if (*pp - p == 3 && 0 == strncmp (p, "off", 3))
+  else if (*pp - p == 3
+	   && TOLOWER (p[0]) == 'o'
+	   && TOLOWER (p[1]) == 'f'
+	   && TOLOWER (p[2]) == 'f')
     *pv = 0;
   else
     return false;
@@ -845,7 +794,7 @@ parse_tag (const char **pp, const char *end, hb_tag_t *tag)
   }
 
   const char *p = *pp;
-  while (*pp < end && ISALNUM(**pp))
+  while (*pp < end && (ISALNUM(**pp) || **pp == '_'))
     (*pp)++;
 
   if (p == *pp || *pp - p > 4)
@@ -874,15 +823,15 @@ parse_feature_indices (const char **pp, const char *end, hb_feature_t *feature)
 
   bool has_start;
 
-  feature->start = 0;
-  feature->end = (unsigned int) -1;
+  feature->start = HB_FEATURE_GLOBAL_START;
+  feature->end = HB_FEATURE_GLOBAL_END;
 
   if (!parse_char (pp, end, '['))
     return true;
 
   has_start = parse_uint (pp, end, &feature->start);
 
-  if (parse_char (pp, end, ':')) {
+  if (parse_char (pp, end, ':') || parse_char (pp, end, ';')) {
     parse_uint (pp, end, &feature->end);
   } else {
     if (has_start)
@@ -897,7 +846,7 @@ parse_feature_value_postfix (const char **pp, const char *end, hb_feature_t *fea
 {
   bool had_equal = parse_char (pp, end, '=');
   bool had_value = parse_uint32 (pp, end, &feature->value) ||
-                   parse_bool (pp, end, &feature->value);
+		   parse_bool (pp, end, &feature->value);
   /* CSS doesn't use equal-sign between tag and value.
    * If there was an equal-sign, then there *must* be a value.
    * A value without an equal-sign is ok, but not required. */
@@ -923,7 +872,41 @@ parse_one_feature (const char **pp, const char *end, hb_feature_t *feature)
  *
  * Parses a string into a #hb_feature_t.
  *
- * TODO: document the syntax here.
+ * The format for specifying feature strings follows. All valid CSS
+ * font-feature-settings values other than 'normal' and the global values are
+ * also accepted, though not documented below. CSS string escapes are not
+ * supported.
+ *
+ * The range indices refer to the positions between Unicode characters. The
+ * position before the first character is always 0.
+ *
+ * The format is Python-esque.  Here is how it all works:
+ *
+ * <informaltable pgwide='1' align='left' frame='none'>
+ * <tgroup cols='5'>
+ * <thead>
+ * <row><entry>Syntax</entry>    <entry>Value</entry> <entry>Start</entry> <entry>End</entry></row>
+ * </thead>
+ * <tbody>
+ * <row><entry>Setting value:</entry></row>
+ * <row><entry>kern</entry>      <entry>1</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature on</entry></row>
+ * <row><entry>+kern</entry>     <entry>1</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature on</entry></row>
+ * <row><entry>-kern</entry>     <entry>0</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature off</entry></row>
+ * <row><entry>kern=0</entry>    <entry>0</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature off</entry></row>
+ * <row><entry>kern=1</entry>    <entry>1</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature on</entry></row>
+ * <row><entry>aalt=2</entry>    <entry>2</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Choose 2nd alternate</entry></row>
+ * <row><entry>Setting index:</entry></row>
+ * <row><entry>kern[]</entry>    <entry>1</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature on</entry></row>
+ * <row><entry>kern[:]</entry>   <entry>1</entry>     <entry>0</entry>      <entry>∞</entry>   <entry>Turn feature on</entry></row>
+ * <row><entry>kern[5:]</entry>  <entry>1</entry>     <entry>5</entry>      <entry>∞</entry>   <entry>Turn feature on, partial</entry></row>
+ * <row><entry>kern[:5]</entry>  <entry>1</entry>     <entry>0</entry>      <entry>5</entry>   <entry>Turn feature on, partial</entry></row>
+ * <row><entry>kern[3:5]</entry> <entry>1</entry>     <entry>3</entry>      <entry>5</entry>   <entry>Turn feature on, range</entry></row>
+ * <row><entry>kern[3]</entry>   <entry>1</entry>     <entry>3</entry>      <entry>3+1</entry> <entry>Turn feature on, single char</entry></row>
+ * <row><entry>Mixing it all:</entry></row>
+ * <row><entry>aalt[3:5]=2</entry> <entry>2</entry>   <entry>3</entry>      <entry>5</entry>   <entry>Turn 2nd alternate on for range</entry></row>
+ * </tbody>
+ * </tgroup>
+ * </informaltable>
  *
  * Return value:
  * %true if @str is successfully parsed, %false otherwise.
@@ -981,21 +964,21 @@ hb_feature_to_string (hb_feature_t *feature,
   {
     s[len++] = '[';
     if (feature->start)
-      len += MAX (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->start));
+      len += hb_max (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->start));
     if (feature->end != feature->start + 1) {
       s[len++] = ':';
       if (feature->end != (unsigned int) -1)
-	len += MAX (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->end));
+	len += hb_max (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->end));
     }
     s[len++] = ']';
   }
   if (feature->value > 1)
   {
     s[len++] = '=';
-    len += MAX (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->value));
+    len += hb_max (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%u", feature->value));
   }
   assert (len < ARRAY_LENGTH (s));
-  len = MIN (len, size - 1);
+  len = hb_min (len, size - 1);
   memcpy (buf, s, len);
   buf[len] = '\0';
 }
@@ -1006,7 +989,11 @@ static bool
 parse_variation_value (const char **pp, const char *end, hb_variation_t *variation)
 {
   parse_char (pp, end, '='); /* Optional. */
-  return parse_float (pp, end, &variation->value);
+  double v;
+  if (unlikely (!hb_parse_double (pp, end, &v))) return false;
+
+  variation->value = v;
+  return true;
 }
 
 static bool
@@ -1062,10 +1049,76 @@ hb_variation_to_string (hb_variation_t *variation,
   while (len && s[len - 1] == ' ')
     len--;
   s[len++] = '=';
-  len += MAX (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%g", variation->value));
+  len += hb_max (0, snprintf (s + len, ARRAY_LENGTH (s) - len, "%g", (double) variation->value));
 
   assert (len < ARRAY_LENGTH (s));
-  len = MIN (len, size - 1);
+  len = hb_min (len, size - 1);
   memcpy (buf, s, len);
   buf[len] = '\0';
 }
+
+/**
+ * hb_color_get_alpha:
+ * color: a #hb_color_t we are interested in its channels.
+ *
+ * Return value: Alpha channel value of the given color
+ *
+ * Since: 2.1.0
+ */
+uint8_t
+(hb_color_get_alpha) (hb_color_t color)
+{
+  return hb_color_get_alpha (color);
+}
+
+/**
+ * hb_color_get_red:
+ * color: a #hb_color_t we are interested in its channels.
+ *
+ * Return value: Red channel value of the given color
+ *
+ * Since: 2.1.0
+ */
+uint8_t
+(hb_color_get_red) (hb_color_t color)
+{
+  return hb_color_get_red (color);
+}
+
+/**
+ * hb_color_get_green:
+ * color: a #hb_color_t we are interested in its channels.
+ *
+ * Return value: Green channel value of the given color
+ *
+ * Since: 2.1.0
+ */
+uint8_t
+(hb_color_get_green) (hb_color_t color)
+{
+  return hb_color_get_green (color);
+}
+
+/**
+ * hb_color_get_blue:
+ * color: a #hb_color_t we are interested in its channels.
+ *
+ * Return value: Blue channel value of the given color
+ *
+ * Since: 2.1.0
+ */
+uint8_t
+(hb_color_get_blue) (hb_color_t color)
+{
+  return hb_color_get_blue (color);
+}
+
+
+/* If there is no visibility control, then hb-static.cc will NOT
+ * define anything.  Instead, we get it to define one set in here
+ * only, so only libharfbuzz.so defines them, not other libs. */
+#ifdef HB_NO_VISIBILITY
+#undef HB_NO_VISIBILITY
+#include "hb-static.cc"
+#define HB_NO_VISIBILITY 1
+#endif

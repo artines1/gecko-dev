@@ -5,7 +5,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1222633
 -->
 <head>
   <title>Test for Bug 1222633</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
@@ -54,7 +54,7 @@ function testCancelPreloadNotCrash(url) {
 
   // Not actually verifying any value, just to ensure cancelPrefetchPreload
   // won't cause crash.
-  prefetch.cancelPrefetchPreloadURI(ios.newURI(url, null, null), link);
+  prefetch.cancelPrefetchPreloadURI(ios.newURI(url), link);
 }
 
 function testChangePrefetchToPreload(url) {

@@ -1,13 +1,15 @@
 function run_test() {
   if (!("@mozilla.org/toolkit/crash-reporter;1" in Cc)) {
-    dump("INFO | test_crash_after_js_oom_reporting.js | Can't test crashreporter in a non-libxul build.\n");
+    dump(
+      "INFO | test_crash_after_js_oom_reporting.js | Can't test crashreporter in a non-libxul build.\n"
+    );
     return;
   }
 
   do_crash(
     function() {
       crashType = CrashTestUtils.CRASH_MOZ_CRASH;
-      crashReporter.annotateCrashReport("TestingOOMCrash", "Yes");
+      crashReporter.annotateCrashReport("TestKey", "Yes");
 
       function crashWhileReporting() {
         CrashTestUtils.crash(crashType);
@@ -17,8 +19,9 @@ function run_test() {
       Cu.getJSTestingFunctions().reportLargeAllocationFailure();
     },
     function(mdump, extra) {
-      Assert.equal(extra.TestingOOMCrash, "Yes");
+      Assert.equal(extra.TestKey, "Yes");
       Assert.equal(extra.JSLargeAllocationFailure, "Reporting");
     },
-    true);
+    true
+  );
 }

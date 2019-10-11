@@ -6,25 +6,19 @@
 
 #include "mozilla/layers/APZInputBridgeChild.h"
 
-#include "InputData.h" // for InputData, etc
+#include "InputData.h"  // for InputData, etc
 
 namespace mozilla {
 namespace layers {
 
-APZInputBridgeChild::APZInputBridgeChild()
-  : mDestroyed(false)
-{
+APZInputBridgeChild::APZInputBridgeChild() : mDestroyed(false) {
   MOZ_ASSERT(XRE_IsParentProcess());
   MOZ_ASSERT(NS_IsMainThread());
 }
 
-APZInputBridgeChild::~APZInputBridgeChild()
-{
-}
+APZInputBridgeChild::~APZInputBridgeChild() {}
 
-void
-APZInputBridgeChild::Destroy()
-{
+void APZInputBridgeChild::Destroy() {
   MOZ_ASSERT(XRE_IsParentProcess());
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -36,142 +30,95 @@ APZInputBridgeChild::Destroy()
   mDestroyed = true;
 }
 
-void
-APZInputBridgeChild::ActorDestroy(ActorDestroyReason aWhy)
-{
+void APZInputBridgeChild::ActorDestroy(ActorDestroyReason aWhy) {
   mDestroyed = true;
 }
 
-nsEventStatus
-APZInputBridgeChild::ReceiveInputEvent(
-    InputData& aEvent,
-    ScrollableLayerGuid* aOutTargetGuid,
-    uint64_t* aOutInputBlockId)
-{
+APZEventResult APZInputBridgeChild::ReceiveInputEvent(InputData& aEvent) {
+  APZEventResult res;
   switch (aEvent.mInputType) {
-  case MULTITOUCH_INPUT: {
-    MultiTouchInput& event = aEvent.AsMultiTouchInput();
-    MultiTouchInput processedEvent;
+    case MULTITOUCH_INPUT: {
+      MultiTouchInput& event = aEvent.AsMultiTouchInput();
+      MultiTouchInput processedEvent;
 
-    nsEventStatus res;
-    SendReceiveMultiTouchInputEvent(event,
-                                    &res,
-                                    &processedEvent,
-                                    aOutTargetGuid,
-                                    aOutInputBlockId);
+      SendReceiveMultiTouchInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case MOUSE_INPUT: {
-    MouseInput& event = aEvent.AsMouseInput();
-    MouseInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case MOUSE_INPUT: {
+      MouseInput& event = aEvent.AsMouseInput();
+      MouseInput processedEvent;
 
-    nsEventStatus res;
-    SendReceiveMouseInputEvent(event,
-                               &res,
-                               &processedEvent,
-                               aOutTargetGuid,
-                               aOutInputBlockId);
+      SendReceiveMouseInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case PANGESTURE_INPUT: {
-    PanGestureInput& event = aEvent.AsPanGestureInput();
-    PanGestureInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case PANGESTURE_INPUT: {
+      PanGestureInput& event = aEvent.AsPanGestureInput();
+      PanGestureInput processedEvent;
 
-    nsEventStatus res;
-    SendReceivePanGestureInputEvent(event,
-                                    &res,
-                                    &processedEvent,
-                                    aOutTargetGuid,
-                                    aOutInputBlockId);
+      SendReceivePanGestureInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case PINCHGESTURE_INPUT: {
-    PinchGestureInput& event = aEvent.AsPinchGestureInput();
-    PinchGestureInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case PINCHGESTURE_INPUT: {
+      PinchGestureInput& event = aEvent.AsPinchGestureInput();
+      PinchGestureInput processedEvent;
 
-    nsEventStatus res;
-    SendReceivePinchGestureInputEvent(event,
-                                      &res,
-                                      &processedEvent,
-                                      aOutTargetGuid,
-                                      aOutInputBlockId);
+      SendReceivePinchGestureInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case TAPGESTURE_INPUT: {
-    TapGestureInput& event = aEvent.AsTapGestureInput();
-    TapGestureInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case TAPGESTURE_INPUT: {
+      TapGestureInput& event = aEvent.AsTapGestureInput();
+      TapGestureInput processedEvent;
 
-    nsEventStatus res;
-    SendReceiveTapGestureInputEvent(event,
-                                    &res,
-                                    &processedEvent,
-                                    aOutTargetGuid,
-                                    aOutInputBlockId);
+      SendReceiveTapGestureInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case SCROLLWHEEL_INPUT: {
-    ScrollWheelInput& event = aEvent.AsScrollWheelInput();
-    ScrollWheelInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case SCROLLWHEEL_INPUT: {
+      ScrollWheelInput& event = aEvent.AsScrollWheelInput();
+      ScrollWheelInput processedEvent;
 
-    nsEventStatus res;
-    SendReceiveScrollWheelInputEvent(event,
-                                     &res,
-                                     &processedEvent,
-                                     aOutTargetGuid,
-                                     aOutInputBlockId);
+      SendReceiveScrollWheelInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  case KEYBOARD_INPUT: {
-    KeyboardInput& event = aEvent.AsKeyboardInput();
-    KeyboardInput processedEvent;
+      event = processedEvent;
+      return res;
+    }
+    case KEYBOARD_INPUT: {
+      KeyboardInput& event = aEvent.AsKeyboardInput();
+      KeyboardInput processedEvent;
 
-    nsEventStatus res;
-    SendReceiveKeyboardInputEvent(event,
-                                  &res,
-                                  &processedEvent,
-                                  aOutTargetGuid,
-                                  aOutInputBlockId);
+      SendReceiveKeyboardInputEvent(event, &res, &processedEvent);
 
-    event = processedEvent;
-    return res;
-  }
-  default: {
-    MOZ_ASSERT_UNREACHABLE("Invalid InputData type.");
-    return nsEventStatus_eConsumeNoDefault;
-  }
+      event = processedEvent;
+      return res;
+    }
+    default: {
+      MOZ_ASSERT_UNREACHABLE("Invalid InputData type.");
+      res.mStatus = nsEventStatus_eConsumeNoDefault;
+      return res;
+    }
   }
 }
 
 void APZInputBridgeChild::ProcessUnhandledEvent(
-    LayoutDeviceIntPoint* aRefPoint,
-    ScrollableLayerGuid*  aOutTargetGuid,
-    uint64_t*             aOutFocusSequenceNumber)
-{
-  SendProcessUnhandledEvent(*aRefPoint,
-                            aRefPoint,
-                            aOutTargetGuid,
-                            aOutFocusSequenceNumber);
+    LayoutDeviceIntPoint* aRefPoint, ScrollableLayerGuid* aOutTargetGuid,
+    uint64_t* aOutFocusSequenceNumber, LayersId* aOutLayersId) {
+  SendProcessUnhandledEvent(*aRefPoint, aRefPoint, aOutTargetGuid,
+                            aOutFocusSequenceNumber, aOutLayersId);
 }
 
-void
-APZInputBridgeChild::UpdateWheelTransaction(
-    LayoutDeviceIntPoint aRefPoint,
-    EventMessage aEventMessage)
-{
+void APZInputBridgeChild::UpdateWheelTransaction(LayoutDeviceIntPoint aRefPoint,
+                                                 EventMessage aEventMessage) {
   SendUpdateWheelTransaction(aRefPoint, aEventMessage);
 }
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla

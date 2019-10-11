@@ -4,35 +4,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-
 // Main header first:
 #include "SVGImageContext.h"
 
 // Keep others in (case-insensitive) order:
 #include "gfxUtils.h"
 #include "mozilla/Preferences.h"
-#include "nsContentUtils.h"
 #include "nsIFrame.h"
 #include "nsPresContext.h"
 #include "nsStyleStruct.h"
 
 namespace mozilla {
 
-/* static */ void
-SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
-                                        nsIFrame* aFromFrame,
-                                        imgIContainer* aImgContainer)
-{
-  return MaybeStoreContextPaint(aContext,
-                                aFromFrame->Style(),
-                                aImgContainer);
+/* static */
+void SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
+                                             nsIFrame* aFromFrame,
+                                             imgIContainer* aImgContainer) {
+  return MaybeStoreContextPaint(aContext, aFromFrame->Style(), aImgContainer);
 }
 
-/* static */ void
-SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
-                                        ComputedStyle* aFromComputedStyle,
-                                        imgIContainer* aImgContainer)
-{
+/* static */
+void SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
+                                             ComputedStyle* aFromComputedStyle,
+                                             imgIContainer* aImgContainer) {
   const nsStyleSVG* style = aFromComputedStyle->StyleSVG();
 
   if (!style->ExposesContextProperties()) {
@@ -48,23 +42,28 @@ SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
 
   bool haveContextPaint = false;
 
-  RefPtr<SVGEmbeddingContextPaint> contextPaint = new SVGEmbeddingContextPaint();
+  RefPtr<SVGEmbeddingContextPaint> contextPaint =
+      new SVGEmbeddingContextPaint();
 
-  if ((style->mContextPropsBits & NS_STYLE_CONTEXT_PROPERTY_FILL) &&
-      style->mFill.Type() == eStyleSVGPaintType_Color) {
+  if ((style->mMozContextProperties.bits & StyleContextPropertyBits_FILL) &&
+      style->mFill.kind.IsColor()) {
     haveContextPaint = true;
-    contextPaint->SetFill(style->mFill.GetColor(aFromComputedStyle));
+    contextPaint->SetFill(
+        style->mFill.kind.AsColor().CalcColor(*aFromComputedStyle));
   }
-  if ((style->mContextPropsBits & NS_STYLE_CONTEXT_PROPERTY_STROKE) &&
-      style->mStroke.Type() == eStyleSVGPaintType_Color) {
+  if ((style->mMozContextProperties.bits & StyleContextPropertyBits_STROKE) &&
+      style->mStroke.kind.IsColor()) {
     haveContextPaint = true;
-    contextPaint->SetStroke(style->mStroke.GetColor(aFromComputedStyle));
+    contextPaint->SetStroke(
+        style->mStroke.kind.AsColor().CalcColor(*aFromComputedStyle));
   }
-  if (style->mContextPropsBits & NS_STYLE_CONTEXT_PROPERTY_FILL_OPACITY) {
+  if (style->mMozContextProperties.bits &
+      StyleContextPropertyBits_FILL_OPACITY) {
     haveContextPaint = true;
     contextPaint->SetFillOpacity(style->mFillOpacity);
   }
-  if (style->mContextPropsBits & NS_STYLE_CONTEXT_PROPERTY_STROKE_OPACITY) {
+  if (style->mMozContextProperties.bits &
+      StyleContextPropertyBits_STROKE_OPACITY) {
     haveContextPaint = true;
     contextPaint->SetStrokeOpacity(style->mStrokeOpacity);
   }
@@ -77,4 +76,4 @@ SVGImageContext::MaybeStoreContextPaint(Maybe<SVGImageContext>& aContext,
   }
 }
 
-} // namespace mozilla
+}  // namespace mozilla

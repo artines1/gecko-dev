@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 /* globals addMessageListener, sendAsyncMessage */
@@ -26,11 +25,17 @@
  * @return {String} The value, if found, null otherwise
  */
 addMessageListener("Test:GetRulePropertyValue", function(msg) {
-  const {name, styleSheetIndex, ruleIndex} = msg.data;
+  const { name, styleSheetIndex, ruleIndex } = msg.data;
   let value = null;
 
-  dumpn("Getting the value for property name " + name + " in sheet " +
-    styleSheetIndex + " and rule " + ruleIndex);
+  dumpn(
+    "Getting the value for property name " +
+      name +
+      " in sheet " +
+      styleSheetIndex +
+      " and rule " +
+      ruleIndex
+  );
 
   const sheet = content.document.styleSheets[styleSheetIndex];
   if (sheet) {
@@ -52,10 +57,11 @@ addMessageListener("Test:GetRulePropertyValue", function(msg) {
  * @return {String} The value, if found, null otherwise
  */
 addMessageListener("Test:GetComputedStylePropertyValue", function(msg) {
-  const {selector, pseudo, name} = msg.data;
+  const { selector, pseudo, name } = msg.data;
   const element = content.document.querySelector(selector);
-  const value = content.document.defaultView.getComputedStyle(element, pseudo)
-                                          .getPropertyValue(name);
+  const value = content.document.defaultView
+    .getComputedStyle(element, pseudo)
+    .getPropertyValue(name);
   sendAsyncMessage("Test:GetComputedStylePropertyValue", value);
 });
 
@@ -69,11 +75,12 @@ addMessageListener("Test:GetComputedStylePropertyValue", function(msg) {
  * - {String} expected: the expected value for property
  */
 addMessageListener("Test:WaitForComputedStylePropertyValue", function(msg) {
-  const {selector, pseudo, name, expected} = msg.data;
+  const { selector, pseudo, name, expected } = msg.data;
   const element = content.document.querySelector(selector);
   waitForSuccess(() => {
-    const value = content.document.defaultView.getComputedStyle(element, pseudo)
-                                            .getPropertyValue(name);
+    const value = content.document.defaultView
+      .getComputedStyle(element, pseudo)
+      .getPropertyValue(name);
 
     return value === expected;
   }).then(() => {

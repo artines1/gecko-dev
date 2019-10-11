@@ -14,11 +14,11 @@
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/RefPtr.h"
 #ifdef XP_WIN
-#include "IMFYCbCrImage.h"
-#include "mozilla/gfx/DeviceManagerDx.h"
-#include "mozilla/layers/D3D11YCbCrImage.h"
-#include "mozilla/layers/TextureD3D11.h"
-#include "mozilla/layers/TextureDIB.h"
+#  include "IMFYCbCrImage.h"
+#  include "mozilla/gfx/DeviceManagerDx.h"
+#  include "mozilla/layers/D3D11YCbCrImage.h"
+#  include "mozilla/layers/TextureD3D11.h"
+#  include "mozilla/layers/TextureDIB.h"
 #endif
 
 using mozilla::gfx::SurfaceFormat;
@@ -29,20 +29,18 @@ namespace layers {
 /**
  * Create a YCbCrTextureClient according to the given backend.
  */
-static already_AddRefed<TextureClient>
-CreateYCbCrTextureClientWithBackend(LayersBackend aLayersBackend)
-{
-
+static already_AddRefed<TextureClient> CreateYCbCrTextureClientWithBackend(
+    LayersBackend aLayersBackend) {
   TextureData* data = nullptr;
   IntSize size = IntSize(200, 150);
   IntSize ySize = IntSize(400, 300);
 
   RefPtr<gfxImageSurface> ySurface =
-    new gfxImageSurface(ySize, SurfaceFormat::A8);
+      new gfxImageSurface(ySize, SurfaceFormat::A8);
   RefPtr<gfxImageSurface> cbSurface =
-    new gfxImageSurface(size, SurfaceFormat::A8);
+      new gfxImageSurface(size, SurfaceFormat::A8);
   RefPtr<gfxImageSurface> crSurface =
-    new gfxImageSurface(size, SurfaceFormat::A8);
+      new gfxImageSurface(size, SurfaceFormat::A8);
 
   PlanarYCbCrData clientData;
   clientData.mYChannel = ySurface->Data();
@@ -61,24 +59,21 @@ CreateYCbCrTextureClientWithBackend(LayersBackend aLayersBackend)
   clientData.mPicX = 0;
   clientData.mPicX = 0;
 
-  // Create YCbCrTexture for basice backend.
+  // Create YCbCrTexture for basic backend.
   if (aLayersBackend == LayersBackend::LAYERS_BASIC) {
-    return TextureClient::CreateForYCbCr(nullptr,
-                                         clientData.mYSize,
-                                         clientData.mYStride,
-                                         clientData.mCbCrSize,
-                                         clientData.mCbCrStride,
-                                         StereoMode::MONO,
-                                         YUVColorSpace::BT601,
-                                         8,
-                                         TextureFlags::DEALLOCATE_CLIENT);
+    return TextureClient::CreateForYCbCr(
+        nullptr, clientData.mYSize, clientData.mYStride, clientData.mCbCrSize,
+        clientData.mCbCrStride, StereoMode::MONO, gfx::ColorDepth::COLOR_8,
+        gfx::YUVColorSpace::BT601, gfx::ColorRange::LIMITED,
+        TextureFlags::DEALLOCATE_CLIENT);
   }
 
 #ifdef XP_WIN
   RefPtr<ID3D11Device> device = DeviceManagerDx::Get()->GetImageDevice();
 
   if (device && aLayersBackend == LayersBackend::LAYERS_D3D11) {
-    DXGIYCbCrTextureAllocationHelper helper(clientData, TextureFlags::DEFAULT, device);
+    DXGIYCbCrTextureAllocationHelper helper(clientData, TextureFlags::DEFAULT,
+                                            device);
     RefPtr<TextureClient> texture = helper.Allocate(nullptr);
     return texture.forget();
   }
@@ -95,14 +90,13 @@ CreateYCbCrTextureClientWithBackend(LayersBackend aLayersBackend)
 /**
  * Create a TextureClient according to the given backend.
  */
-static already_AddRefed<TextureClient>
-CreateTextureClientWithBackend(LayersBackend aLayersBackend)
-{
+static already_AddRefed<TextureClient> CreateTextureClientWithBackend(
+    LayersBackend aLayersBackend) {
   TextureData* data = nullptr;
   SurfaceFormat format = gfxPlatform::GetPlatform()->Optimal2DFormatForContent(
-    gfxContentType::COLOR_ALPHA);
+      gfxContentType::COLOR_ALPHA);
   BackendType moz2DBackend =
-    gfxPlatform::GetPlatform()->GetContentBackendFor(aLayersBackend);
+      gfxPlatform::GetPlatform()->GetContentBackendFor(aLayersBackend);
   TextureAllocationFlags allocFlags = TextureAllocationFlags::ALLOC_DEFAULT;
   IntSize size = IntSize(400, 300);
   TextureFlags textureFlags = TextureFlags::DEALLOCATE_CLIENT;
@@ -115,10 +109,10 @@ CreateTextureClientWithBackend(LayersBackend aLayersBackend)
   if (aLayersBackend == LayersBackend::LAYERS_D3D11 &&
       (moz2DBackend == BackendType::DIRECT2D ||
        moz2DBackend == BackendType::DIRECT2D1_1)) {
-    // Create DXGITextureData.
-    data = DXGITextureData::Create(size, format, allocFlags);
+    // Create D3D11TextureData.
+    data = D3D11TextureData::Create(size, format, allocFlags);
   } else if (!data && format == SurfaceFormat::B8G8R8X8 &&
-      moz2DBackend == BackendType::CAIRO) {
+             moz2DBackend == BackendType::CAIRO) {
     // Create DIBTextureData.
     data = DIBTextureData::Create(size, format, nullptr);
   }
@@ -140,11 +134,9 @@ CreateTextureClientWithBackend(LayersBackend aLayersBackend)
 /**
  * Create a TextureHost according to the given TextureClient.
  */
-already_AddRefed<TextureHost>
-CreateTextureHostWithBackend(TextureClient* aClient,
-                             ISurfaceAllocator* aDeallocator,
-                             LayersBackend& aLayersBackend)
-{
+already_AddRefed<TextureHost> CreateTextureHostWithBackend(
+    TextureClient* aClient, ISurfaceAllocator* aDeallocator,
+    LayersBackend& aLayersBackend) {
   if (!aClient) {
     return nullptr;
   }
@@ -161,5 +153,5 @@ CreateTextureHostWithBackend(TextureClient* aClient,
                              aClient->GetFlags(), id);
 }
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla

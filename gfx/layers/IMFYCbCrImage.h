@@ -15,22 +15,18 @@
 namespace mozilla {
 namespace layers {
 
-class IMFYCbCrImage : public RecyclingPlanarYCbCrImage
-{
-public:
-  IMFYCbCrImage(IMFMediaBuffer* aBuffer,
-                IMF2DBuffer* a2DBuffer,
-                KnowsCompositor* aKnowsCompositor,
-                ImageContainer* aContainer);
+class IMFYCbCrImage : public RecyclingPlanarYCbCrImage {
+ public:
+  IMFYCbCrImage(IMFMediaBuffer* aBuffer, IMF2DBuffer* a2DBuffer,
+                KnowsCompositor* aKnowsCompositor, ImageContainer* aContainer);
 
   bool IsValid() const override { return true; }
 
-  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
+  TextureClient* GetTextureClient(KnowsCompositor* aKnowsCompositor) override;
 
-protected:
-  TextureClient* GetD3D11TextureClient(KnowsCompositor* aForwarder);
-  static bool CopyDataToTexture(const Data& aData,
-                                ID3D11Device* aDevice,
+ protected:
+  TextureClient* GetD3D11TextureClient(KnowsCompositor* aKnowsCompositor);
+  static bool CopyDataToTexture(const Data& aData, ID3D11Device* aDevice,
                                 DXGIYCbCrTextureData* aTextureData);
 
   virtual ~IMFYCbCrImage();
@@ -41,7 +37,7 @@ protected:
   RefPtr<TextureClient> mTextureClient;
 };
 
-} // namepace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // GFX_D3DSURFACEIMAGE_H
+#endif  // GFX_D3DSURFACEIMAGE_H

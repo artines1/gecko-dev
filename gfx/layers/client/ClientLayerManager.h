@@ -7,28 +7,29 @@
 #ifndef GFX_CLIENTLAYERMANAGER_H
 #define GFX_CLIENTLAYERMANAGER_H
 
-#include <stdint.h>                     // for int32_t
+#include <stdint.h>  // for int32_t
 #include "Layers.h"
-#include "gfxContext.h"                 // for gfxContext
-#include "gfxPrefs.h"
-#include "mozilla/Attributes.h"         // for override
-#include "mozilla/LinkedList.h"         // For LinkedList
-#include "mozilla/WidgetUtils.h"        // for ScreenRotation
-#include "mozilla/gfx/Rect.h"           // for Rect
+#include "gfxContext.h"          // for gfxContext
+#include "mozilla/Attributes.h"  // for override
+#include "mozilla/LinkedList.h"  // for LinkedList
+#include "mozilla/StaticPrefs_apz.h"
+#include "mozilla/WidgetUtils.h"  // for ScreenRotation
+#include "mozilla/gfx/Rect.h"     // for Rect
 #include "mozilla/layers/CompositorTypes.h"
-#include "mozilla/layers/FocusTarget.h"  // for FocusTarget
-#include "mozilla/layers/LayersTypes.h"  // for BufferMode, LayersBackend, etc
-#include "mozilla/layers/PaintThread.h" // For PaintThread
+#include "mozilla/layers/FocusTarget.h"   // for FocusTarget
+#include "mozilla/layers/LayersTypes.h"   // for BufferMode, LayersBackend, etc
+#include "mozilla/layers/PaintThread.h"   // For PaintThread
 #include "mozilla/layers/ShadowLayers.h"  // for ShadowLayerForwarder, etc
-#include "mozilla/layers/APZTestData.h" // for APZTestData
-#include "nsCOMPtr.h"                   // for already_AddRefed
-#include "nsIObserver.h"                // for nsIObserver
-#include "nsISupportsImpl.h"            // for Layer::Release, etc
-#include "nsRect.h"                     // for mozilla::gfx::IntRect
-#include "nsTArray.h"                   // for nsTArray
-#include "nscore.h"                     // for nsAString
+#include "mozilla/layers/APZTestData.h"   // for APZTestData
+#include "mozilla/layers/MemoryPressureObserver.h"
+#include "nsCOMPtr.h"         // for already_AddRefed
+#include "nsIObserver.h"      // for nsIObserver
+#include "nsISupportsImpl.h"  // for Layer::Release, etc
+#include "nsRect.h"           // for mozilla::gfx::IntRect
+#include "nsTArray.h"         // for nsTArray
+#include "nscore.h"           // for nsAString
 #include "mozilla/layers/TransactionIdAllocator.h"
-#include "nsIWidget.h"                  // For plugin window configuration information structs
+#include "nsIWidget.h"  // For plugin window configuration information structs
 
 class nsDisplayListBuilder;
 
@@ -46,95 +47,93 @@ class CompositorBridgeChild;
 class ImageLayer;
 class FrameUniformityData;
 
-class ClientLayerManager final : public LayerManager
-{
+class ClientLayerManager final : public LayerManager,
+                                 public MemoryPressureListener {
   typedef nsTArray<RefPtr<Layer> > LayerRefArray;
 
-public:
+ public:
   explicit ClientLayerManager(nsIWidget* aWidget);
+  bool Initialize(PCompositorBridgeChild* aCBChild, bool aShouldAccelerate,
+                  TextureFactoryIdentifier* aTextureFactoryIdentifier);
+  void Destroy() override;
 
-  virtual void Destroy() override;
-
-protected:
+ protected:
   virtual ~ClientLayerManager();
 
-public:
-  virtual ShadowLayerForwarder* AsShadowForwarder() override
-  {
-    return mForwarder;
-  }
+ public:
+  ShadowLayerForwarder* AsShadowForwarder() override { return mForwarder; }
 
-  virtual KnowsCompositor* AsKnowsCompositor() override
-  {
-    return mForwarder;
-  }
+  KnowsCompositor* AsKnowsCompositor() override { return mForwarder; }
 
-  virtual ClientLayerManager* AsClientLayerManager() override
-  {
-    return this;
-  }
+  ClientLayerManager* AsClientLayerManager() override { return this; }
 
   TabGroup* GetTabGroup();
 
-  virtual int32_t GetMaxTextureSize() const override;
+  int32_t GetMaxTextureSize() const override;
 
-  virtual void SetDefaultTargetConfiguration(BufferMode aDoubleBuffering, ScreenRotation aRotation);
-  virtual bool BeginTransactionWithTarget(gfxContext* aTarget) override;
-  virtual bool BeginTransaction() override;
-  virtual bool EndEmptyTransaction(EndTransactionFlags aFlags = END_DEFAULT) override;
-  virtual void EndTransaction(DrawPaintedLayerCallback aCallback,
-                              void* aCallbackData,
-                              EndTransactionFlags aFlags = END_DEFAULT) override;
+  void SetDefaultTargetConfiguration(BufferMode aDoubleBuffering,
+                                     ScreenRotation aRotation);
+  bool BeginTransactionWithTarget(gfxContext* aTarget,
+                                  const nsCString& aURL) override;
+  bool BeginTransaction(const nsCString& aURL) override;
+  bool EndEmptyTransaction(EndTransactionFlags aFlags = END_DEFAULT) override;
+  void EndTransaction(DrawPaintedLayerCallback aCallback, void* aCallbackData,
+                      EndTransactionFlags aFlags = END_DEFAULT) override;
 
-  virtual LayersBackend GetBackendType() override { return LayersBackend::LAYERS_CLIENT; }
-  virtual LayersBackend GetCompositorBackendType() override
-  {
+  LayersBackend GetBackendType() override {
+    return LayersBackend::LAYERS_CLIENT;
+  }
+  LayersBackend GetCompositorBackendType() override {
     return AsShadowForwarder()->GetCompositorBackendType();
   }
-  virtual void GetBackendName(nsAString& name) override;
-  virtual const char* Name() const override { return "Client"; }
+  void GetBackendName(nsAString& name) override;
+  const char* Name() const override { return "Client"; }
 
-  virtual void SetRoot(Layer* aLayer) override;
+  void SetRoot(Layer* aLayer) override;
 
-  virtual void Mutated(Layer* aLayer) override;
-  virtual void MutatedSimple(Layer* aLayer) override;
+  void Mutated(Layer* aLayer) override;
+  void MutatedSimple(Layer* aLayer) override;
 
-  virtual already_AddRefed<PaintedLayer> CreatePaintedLayer() override;
-  virtual already_AddRefed<PaintedLayer> CreatePaintedLayerWithHint(PaintedLayerCreationHint aHint) override;
-  virtual already_AddRefed<ContainerLayer> CreateContainerLayer() override;
-  virtual already_AddRefed<ImageLayer> CreateImageLayer() override;
-  virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
-  virtual already_AddRefed<ReadbackLayer> CreateReadbackLayer() override;
-  virtual already_AddRefed<ColorLayer> CreateColorLayer() override;
-  virtual already_AddRefed<RefLayer> CreateRefLayer() override;
+  already_AddRefed<PaintedLayer> CreatePaintedLayer() override;
+  already_AddRefed<PaintedLayer> CreatePaintedLayerWithHint(
+      PaintedLayerCreationHint aHint) override;
+  already_AddRefed<ContainerLayer> CreateContainerLayer() override;
+  already_AddRefed<ImageLayer> CreateImageLayer() override;
+  already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
+  already_AddRefed<ReadbackLayer> CreateReadbackLayer() override;
+  already_AddRefed<ColorLayer> CreateColorLayer() override;
+  already_AddRefed<RefLayer> CreateRefLayer() override;
 
-  virtual void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier) override;
-  virtual TextureFactoryIdentifier GetTextureFactoryIdentifier() override
-  {
+  void UpdateTextureFactoryIdentifier(
+      const TextureFactoryIdentifier& aNewIdentifier) override;
+  TextureFactoryIdentifier GetTextureFactoryIdentifier() override {
     return AsShadowForwarder()->GetTextureFactoryIdentifier();
   }
 
-  virtual void FlushRendering() override;
-  virtual void WaitOnTransactionProcessed() override;
-  virtual void SendInvalidRegion(const nsIntRegion& aRegion) override;
+  void FlushRendering() override;
+  void WaitOnTransactionProcessed() override;
+  void SendInvalidRegion(const nsIntRegion& aRegion) override;
 
-  virtual uint32_t StartFrameTimeRecording(int32_t aBufferSize) override;
+  uint32_t StartFrameTimeRecording(int32_t aBufferSize) override;
 
-  virtual void StopFrameTimeRecording(uint32_t         aStartIndex,
-                                      nsTArray<float>& aFrameIntervals) override;
+  void StopFrameTimeRecording(uint32_t aStartIndex,
+                              nsTArray<float>& aFrameIntervals) override;
 
-  virtual bool NeedsWidgetInvalidation() override { return false; }
+  bool NeedsWidgetInvalidation() override { return false; }
 
   ShadowableLayer* Hold(Layer* aLayer);
 
   bool HasShadowManager() const { return mForwarder->HasShadowManager(); }
 
-  virtual bool IsCompositingCheap() override;
-  virtual bool HasShadowManagerInternal() const override { return HasShadowManager(); }
+  bool IsCompositingCheap() override;
+  bool HasShadowManagerInternal() const override { return HasShadowManager(); }
 
-  virtual void SetIsFirstPaint() override;
+  void SetIsFirstPaint() override;
+  bool GetIsFirstPaint() const override {
+    return mForwarder->GetIsFirstPaint();
+  }
 
-  virtual void SetFocusTarget(const FocusTarget& aFocusTarget) override;
+  void SetFocusTarget(const FocusTarget& aFocusTarget) override;
 
   /**
    * Pass through call to the forwarder for nsPresContext's
@@ -142,14 +141,14 @@ public:
    * to the compositor for transmission to the chrome process. This
    * configuration gets set when the window paints.
    */
-  void StorePluginWidgetConfigurations(const nsTArray<nsIWidget::Configuration>&
-                                       aConfigurations) override;
+  void StorePluginWidgetConfigurations(
+      const nsTArray<nsIWidget::Configuration>& aConfigurations) override;
 
   // Drop cached resources and ask our shadow manager to do the same,
   // if we have one.
-  virtual void ClearCachedResources(Layer* aSubtree = nullptr) override;
+  void ClearCachedResources(Layer* aSubtree = nullptr) override;
 
-  void HandleMemoryPressure();
+  void OnMemoryPressure(MemoryPressureReason aWhy) override;
 
   void SetRepeatTransaction() { mRepeatTransaction = true; }
   bool GetRepeatTransaction() { return mRepeatTransaction; }
@@ -163,17 +162,19 @@ public:
 
   void SetShadowTarget(gfxContext* aTarget) { mShadowTarget = aTarget; }
 
-  bool CompositorMightResample() { return mCompositorMightResample; } 
-  
-  DrawPaintedLayerCallback GetPaintedLayerCallback() const
-  { return mPaintedLayerCallback; }
+  bool CompositorMightResample() { return mCompositorMightResample; }
 
-  void* GetPaintedLayerCallbackData() const
-  { return mPaintedLayerCallbackData; }
+  DrawPaintedLayerCallback GetPaintedLayerCallback() const {
+    return mPaintedLayerCallback;
+  }
+
+  void* GetPaintedLayerCallbackData() const {
+    return mPaintedLayerCallbackData;
+  }
 
   CompositorBridgeChild* GetRemoteRenderer();
 
-  virtual CompositorBridgeChild* GetCompositorBridgeChild() override;
+  CompositorBridgeChild* GetCompositorBridgeChild() override;
 
   bool InConstruction() { return mPhase == PHASE_CONSTRUCTION; }
 #ifdef DEBUG
@@ -182,73 +183,76 @@ public:
 #endif
   bool InTransaction() { return mPhase != PHASE_NONE; }
 
-  virtual void SetNeedsComposite(bool aNeedsComposite) override
-  {
+  void SetNeedsComposite(bool aNeedsComposite) override {
     mNeedsComposite = aNeedsComposite;
   }
-  virtual bool NeedsComposite() const override { return mNeedsComposite; }
+  bool NeedsComposite() const override { return mNeedsComposite; }
 
-  virtual void ScheduleComposite() override;
-  virtual void GetFrameUniformity(FrameUniformityData* aFrameUniformityData) override;
+  void ScheduleComposite() override;
+  void GetFrameUniformity(FrameUniformityData* aFrameUniformityData) override;
 
-  virtual void DidComposite(TransactionId aTransactionId,
-                            const mozilla::TimeStamp& aCompositeStart,
-                            const mozilla::TimeStamp& aCompositeEnd) override;
+  void DidComposite(TransactionId aTransactionId,
+                    const mozilla::TimeStamp& aCompositeStart,
+                    const mozilla::TimeStamp& aCompositeEnd) override;
 
-  virtual bool AreComponentAlphaLayersEnabled() override;
+  bool AreComponentAlphaLayersEnabled() override;
 
   // Log APZ test data for the current paint. We supply the paint sequence
   // number ourselves, and take care of calling APZTestData::StartNewPaint()
   // when a new paint is started.
-  void LogTestDataForCurrentPaint(FrameMetrics::ViewID aScrollId,
+  void LogTestDataForCurrentPaint(ScrollableLayerGuid::ViewID aScrollId,
                                   const std::string& aKey,
-                                  const std::string& aValue)
-  {
-    MOZ_ASSERT(gfxPrefs::APZTestLoggingEnabled(), "don't call me");
-    mApzTestData.LogTestDataForPaint(mPaintSequenceNumber, aScrollId, aKey, aValue);
+                                  const std::string& aValue) {
+    MOZ_ASSERT(StaticPrefs::apz_test_logging_enabled(), "don't call me");
+    mApzTestData.LogTestDataForPaint(mPaintSequenceNumber, aScrollId, aKey,
+                                     aValue);
   }
 
   // Log APZ test data for a repaint request. The sequence number must be
   // passed in from outside, and APZTestData::StartNewRepaintRequest() needs
-  // to be called from the outside as well when a new repaint request is started.
+  // to be called from the outside as well when a new repaint request is
+  // started.
   void StartNewRepaintRequest(SequenceNumber aSequenceNumber);
 
   // TODO(botond): When we start using this and write a wrapper similar to
   // nsLayoutUtils::LogTestDataForPaint(), make sure that wrapper checks
-  // gfxPrefs::APZTestLoggingEnabled().
+  // StaticPrefs::apz_test_logging_enabled().
   void LogTestDataForRepaintRequest(SequenceNumber aSequenceNumber,
-                                    FrameMetrics::ViewID aScrollId,
+                                    ScrollableLayerGuid::ViewID aScrollId,
                                     const std::string& aKey,
-                                    const std::string& aValue)
-  {
-    MOZ_ASSERT(gfxPrefs::APZTestLoggingEnabled(), "don't call me");
-    mApzTestData.LogTestDataForRepaintRequest(aSequenceNumber, aScrollId, aKey, aValue);
+                                    const std::string& aValue) {
+    MOZ_ASSERT(StaticPrefs::apz_test_logging_enabled(), "don't call me");
+    mApzTestData.LogTestDataForRepaintRequest(aSequenceNumber, aScrollId, aKey,
+                                              aValue);
+  }
+  void LogAdditionalTestData(const std::string& aKey,
+                             const std::string& aValue) {
+    MOZ_ASSERT(StaticPrefs::apz_test_logging_enabled(), "don't call me");
+    mApzTestData.RecordAdditionalData(aKey, aValue);
   }
 
   // Get the content-side APZ test data for reading. For writing, use the
   // LogTestData...() functions.
-  const APZTestData& GetAPZTestData() const {
-    return mApzTestData;
-  }
+  const APZTestData& GetAPZTestData() const { return mApzTestData; }
 
   // Get a copy of the compositor-side APZ test data for our layers ID.
   void GetCompositorSideAPZTestData(APZTestData* aData) const;
 
-  virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override;
+  void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override;
 
-  virtual TransactionId GetLastTransactionId() override { return mLatestTransactionId; }
+  TransactionId GetLastTransactionId() override { return mLatestTransactionId; }
 
   float RequestProperty(const nsAString& aProperty) override;
 
   bool AsyncPanZoomEnabled() const override;
 
-  virtual void SetLayersObserverEpoch(LayersObserverEpoch aEpoch) override;
+  void SetLayersObserverEpoch(LayersObserverEpoch aEpoch) override;
 
-  virtual void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
-  virtual void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
+  void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
+  void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
 
-  virtual already_AddRefed<PersistentBufferProvider>
-  CreatePersistentBufferProvider(const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat) override;
+  already_AddRefed<PersistentBufferProvider> CreatePersistentBufferProvider(
+      const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat) override;
 
   static PaintTiming* MaybeGetPaintTiming(LayerManager* aManager) {
     if (!aManager) {
@@ -260,36 +264,16 @@ public:
     return nullptr;
   }
 
-protected:
+ protected:
   enum TransactionPhase {
-    PHASE_NONE, PHASE_CONSTRUCTION, PHASE_DRAWING, PHASE_FORWARD
+    PHASE_NONE,
+    PHASE_CONSTRUCTION,
+    PHASE_DRAWING,
+    PHASE_FORWARD
   };
   TransactionPhase mPhase;
 
-private:
-  // Listen memory-pressure event for ClientLayerManager
-  class MemoryPressureObserver final : public nsIObserver
-  {
-  public:
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSIOBSERVER
-
-    explicit MemoryPressureObserver(ClientLayerManager* aClientLayerManager)
-      : mClientLayerManager(aClientLayerManager)
-    {
-      RegisterMemoryPressureEvent();
-    }
-
-    void Destroy();
-
-  private:
-    virtual ~MemoryPressureObserver() {}
-    void RegisterMemoryPressureEvent();
-    void UnregisterMemoryPressureEvent();
-
-    ClientLayerManager* mClientLayerManager;
-  };
-
+ private:
   /**
    * Forward transaction results to the parent context.
    */
@@ -306,8 +290,7 @@ private:
   void HandleMemoryPressureLayer(Layer* aLayer);
 
   bool EndTransactionInternal(DrawPaintedLayerCallback aCallback,
-                              void* aCallbackData,
-                              EndTransactionFlags);
+                              void* aCallbackData, EndTransactionFlags);
 
   void FlushAsyncPaints();
 
@@ -318,7 +301,7 @@ private:
   /* PaintedLayer callbacks; valid at the end of a transaciton,
    * while rendering */
   DrawPaintedLayerCallback mPaintedLayerCallback;
-  void *mPaintedLayerCallbackData;
+  void* mPaintedLayerCallbackData;
 
   // When we're doing a transaction in order to draw to a non-default
   // target, the layers transaction is only performed in order to send
@@ -348,6 +331,7 @@ private:
   bool mCompositorMightResample;
   bool mNeedsComposite;
   bool mQueuedAsyncPaints;
+  bool mNotifyingWidgetListener;
 
   // An incrementing sequence number for paints.
   // Incremented in BeginTransaction(), but not for repeat transactions.
@@ -357,34 +341,31 @@ private:
 
   RefPtr<ShadowLayerForwarder> mForwarder;
   mozilla::TimeStamp mTransactionStart;
+  nsCString mURL;
 
   nsTArray<DidCompositeObserver*> mDidCompositeObservers;
 
   RefPtr<MemoryPressureObserver> mMemoryPressureObserver;
 };
 
-class ClientLayer : public ShadowableLayer
-{
-public:
-  ClientLayer()
-  {
-    MOZ_COUNT_CTOR(ClientLayer);
-  }
+class ClientLayer : public ShadowableLayer {
+ public:
+  ClientLayer() { MOZ_COUNT_CTOR(ClientLayer); }
 
   ~ClientLayer();
 
   // Shrink memory usage.
   // Called when "memory-pressure" is observed.
-  virtual void HandleMemoryPressure() { }
+  virtual void HandleMemoryPressure() {}
 
   virtual void RenderLayer() = 0;
-  virtual void RenderLayerWithReadback(ReadbackProcessor *aReadback) { RenderLayer(); }
+  virtual void RenderLayerWithReadback(ReadbackProcessor* aReadback) {
+    RenderLayer();
+  }
 
   virtual ClientPaintedLayer* AsThebes() { return nullptr; }
 
-  static inline ClientLayer *
-  ToClientLayer(Layer* aLayer)
-  {
+  static inline ClientLayer* ToClientLayer(Layer* aLayer) {
     return static_cast<ClientLayer*>(aLayer->ImplData());
   }
 
@@ -402,11 +383,9 @@ public:
 // Create a LayerHandle for aLayer, if we're forwarding our layer tree
 // to a parent process.  Record the new layer creation in the current
 // open transaction as a side effect.
-template<typename CreatedMethod> void
-CreateShadowFor(ClientLayer* aLayer,
-                ClientLayerManager* aMgr,
-                CreatedMethod aMethod)
-{
+template <typename CreatedMethod>
+void CreateShadowFor(ClientLayer* aLayer, ClientLayerManager* aMgr,
+                     CreatedMethod aMethod) {
   LayerHandle shadow = aMgr->AsShadowForwarder()->ConstructShadowFor(aLayer);
   if (!shadow) {
     return;
@@ -417,12 +396,10 @@ CreateShadowFor(ClientLayer* aLayer,
   aMgr->Hold(aLayer->AsLayer());
 }
 
-#define CREATE_SHADOW(_type)                                       \
-  CreateShadowFor(layer, this,                                     \
-                  &ShadowLayerForwarder::Created ## _type ## Layer)
+#define CREATE_SHADOW(_type) \
+  CreateShadowFor(layer, this, &ShadowLayerForwarder::Created##_type##Layer)
 
-
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* GFX_CLIENTLAYERMANAGER_H */

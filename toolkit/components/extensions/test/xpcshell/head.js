@@ -1,13 +1,27 @@
 "use strict";
 
-/* exported createHttpServer, promiseConsoleOutput, cleanupDir, clearCache, testEnv
-            runWithPrefs */
+/* exported createHttpServer, cleanupDir, clearCache, promiseConsoleOutput,
+            promiseQuotaManagerServiceReset, promiseQuotaManagerServiceClear,
+            runWithPrefs, testEnv, withHandlingUserInput */
 
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
-ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm");
+var { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+);
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+var {
+  clearInterval,
+  clearTimeout,
+  setInterval,
+  setIntervalWithTarget,
+  setTimeout,
+  setTimeoutWithTarget,
+} = ChromeUtils.import("resource://gre/modules/Timer.jsm");
+var { AddonTestUtils, MockAsyncShutdown } = ChromeUtils.import(
+  "resource://testing-common/AddonTestUtils.jsm"
+);
 
 // eslint-disable-next-line no-unused-vars
 XPCOMUtils.defineLazyModuleGetters(this, {
@@ -17,10 +31,13 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionParent: "resource://gre/modules/ExtensionParent.jsm",
   ExtensionTestUtils: "resource://testing-common/ExtensionXPCShellUtils.jsm",
   FileUtils: "resource://gre/modules/FileUtils.jsm",
+  MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   PromiseTestUtils: "resource://testing-common/PromiseTestUtils.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
 });
+
+PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
 
 // These values may be changed in later head files and tested in check_remote
 // below.
@@ -30,8 +47,16 @@ const testEnv = {
 };
 
 add_task(function check_remote() {
-  Assert.equal(WebExtensionPolicy.useRemoteWebExtensions, testEnv.expectRemote, "useRemoteWebExtensions matches");
-  Assert.equal(WebExtensionPolicy.isExtensionProcess, !testEnv.expectRemote, "testing from extension process");
+  Assert.equal(
+    WebExtensionPolicy.useRemoteWebExtensions,
+    testEnv.expectRemote,
+    "useRemoteWebExtensions matches"
+  );
+  Assert.equal(
+    WebExtensionPolicy.isExtensionProcess,
+    !testEnv.expectRemote,
+    "testing from extension process"
+  );
 });
 
 ExtensionTestUtils.init(this);
@@ -52,8 +77,8 @@ function clearCache() {
   Services.cache2.clear();
 
   let imageCache = Cc["@mozilla.org/image/tools;1"]
-      .getService(Ci.imgITools)
-      .getImgCacheForDocument(null);
+    .getService(Ci.imgITools)
+    .getImgCacheForDocument(null);
   imageCache.clearCache(false);
 }
 
@@ -81,7 +106,7 @@ var promiseConsoleOutput = async function(task) {
     Services.console.logStringMessage(DONE);
     await awaitListener;
 
-    return {messages, result};
+    return { messages, result };
   } finally {
     Services.console.unregisterListener(listener);
   }
@@ -112,13 +137,20 @@ function cleanupDir(dir) {
   });
 }
 
-// Run a test with the specified preferences and then clear them
+// Run a test with the specified preferences and then restores their initial values
 // right after the test function run (whether it passes or fails).
 async function runWithPrefs(prefsToSet, testFn) {
-  try {
-    for (let [pref, value] of prefsToSet) {
+  const setPrefs = prefs => {
+    for (let [pref, value] of prefs) {
+      if (value === undefined) {
+        // Clear any pref that didn't have a user value.
+        info(`Clearing pref "${pref}"`);
+        Services.prefs.clearUserPref(pref);
+        continue;
+      }
+
       info(`Setting pref "${pref}": ${value}`);
-      switch (typeof(value)) {
+      switch (typeof value) {
         case "boolean":
           Services.prefs.setBoolPref(pref, value);
           break;
@@ -132,11 +164,105 @@ async function runWithPrefs(prefsToSet, testFn) {
           throw new Error("runWithPrefs doesn't support this pref type yet");
       }
     }
+  };
+
+  const getPrefs = prefs => {
+    return prefs.map(([pref, value]) => {
+      info(`Getting initial pref value for "${pref}"`);
+      if (!Services.prefs.prefHasUserValue(pref)) {
+        // Check if the pref doesn't have a user value.
+        return [pref, undefined];
+      }
+      switch (typeof value) {
+        case "boolean":
+          return [pref, Services.prefs.getBoolPref(pref)];
+        case "number":
+          return [pref, Services.prefs.getIntPref(pref)];
+        case "string":
+          return [pref, Services.prefs.getStringPref(pref)];
+        default:
+          throw new Error("runWithPrefs doesn't support this pref type yet");
+      }
+    });
+  };
+
+  let initialPrefsValues = [];
+
+  try {
+    initialPrefsValues = getPrefs(prefsToSet);
+
+    setPrefs(prefsToSet);
+
     await testFn();
   } finally {
-    for (let [prefName] of prefsToSet) {
-      info(`Clearing pref "${prefName}"`);
-      Services.prefs.clearUserPref(prefName);
-    }
+    info("Restoring initial preferences values on exit");
+    setPrefs(initialPrefsValues);
   }
+}
+
+// "Handling User Input" test helpers.
+
+let extensionHandlers = new WeakSet();
+
+function handlingUserInputFrameScript() {
+  /* globals content */
+  // eslint-disable-next-line no-shadow
+  const { MessageChannel } = ChromeUtils.import(
+    "resource://gre/modules/MessageChannel.jsm"
+  );
+
+  let handle;
+  MessageChannel.addListener(this, "ExtensionTest:HandleUserInput", {
+    receiveMessage({ name, data }) {
+      if (data) {
+        handle = content.windowUtils.setHandlingUserInput(true);
+      } else if (handle) {
+        handle.destruct();
+        handle = null;
+      }
+    },
+  });
+}
+
+async function withHandlingUserInput(extension, fn) {
+  let { messageManager } = extension.extension.groupFrameLoader;
+
+  if (!extensionHandlers.has(extension)) {
+    messageManager.loadFrameScript(
+      `data:,(${encodeURI(handlingUserInputFrameScript)}).call(this)`,
+      false,
+      true
+    );
+    extensionHandlers.add(extension);
+  }
+
+  await MessageChannel.sendMessage(
+    messageManager,
+    "ExtensionTest:HandleUserInput",
+    true
+  );
+  await fn();
+  await MessageChannel.sendMessage(
+    messageManager,
+    "ExtensionTest:HandleUserInput",
+    false
+  );
+}
+
+// QuotaManagerService test helpers.
+
+function promiseQuotaManagerServiceReset() {
+  info("Calling QuotaManagerService.reset to enforce new test storage limits");
+  return new Promise(resolve => {
+    Services.qms.reset().callback = resolve;
+  });
+}
+
+function promiseQuotaManagerServiceClear() {
+  info(
+    "Calling QuotaManagerService.clear to empty the test data and refresh test storage limits"
+  );
+  return new Promise(resolve => {
+    Services.qms.clear().callback = resolve;
+  });
 }

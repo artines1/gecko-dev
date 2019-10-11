@@ -4,17 +4,21 @@
 
 "use strict";
 
-const { FrontClassWithSpec } = require("devtools/shared/protocol");
-const { flexboxSpec, gridSpec, layoutSpec } = require("devtools/shared/specs/layout");
+const {
+  FrontClassWithSpec,
+  registerFront,
+} = require("devtools/shared/protocol");
+const {
+  flexboxSpec,
+  flexItemSpec,
+  gridSpec,
+  layoutSpec,
+} = require("devtools/shared/specs/layout");
 
-const FlexboxFront = FrontClassWithSpec(flexboxSpec, {
-  form: function(form, detail) {
-    if (detail === "actorid") {
-      this.actorID = form;
-      return;
-    }
+class FlexboxFront extends FrontClassWithSpec(flexboxSpec) {
+  form(form) {
     this._form = form;
-  },
+  }
 
   /**
    * In some cases, the FlexboxActor already knows the NodeActor ID of the node where the
@@ -25,18 +29,74 @@ const FlexboxFront = FrontClassWithSpec(flexboxSpec, {
       return null;
     }
 
-    return this.conn.getActor(this._form.containerNodeActorID);
-  },
-});
+    return this.conn.getFrontByID(this._form.containerNodeActorID);
+  }
 
-const GridFront = FrontClassWithSpec(gridSpec, {
-  form: function(form, detail) {
-    if (detail === "actorid") {
-      this.actorID = form;
-      return;
-    }
+  /**
+   * Get the WalkerFront instance that owns this FlexboxFront.
+   */
+  get walkerFront() {
+    return this.parentFront.walkerFront;
+  }
+
+  /**
+   * Get the computed style properties for the flex container.
+   */
+  get properties() {
+    return this._form.properties;
+  }
+}
+
+class FlexItemFront extends FrontClassWithSpec(flexItemSpec) {
+  form(form) {
     this._form = form;
-  },
+  }
+
+  /**
+   * Get the flex item sizing data.
+   */
+  get flexItemSizing() {
+    return this._form.flexItemSizing;
+  }
+
+  /**
+   * In some cases, the FlexItemActor already knows the NodeActor ID of the node where the
+   * flex item is located. In such cases, this getter returns the NodeFront for it.
+   */
+  get nodeFront() {
+    if (!this._form.nodeActorID) {
+      return null;
+    }
+
+    return this.conn.getFrontByID(this._form.nodeActorID);
+  }
+
+  /**
+   * Get the WalkerFront instance that owns this FlexItemFront.
+   */
+  get walkerFront() {
+    return this.parentFront.walkerFront;
+  }
+
+  /**
+   * Get the computed style properties for the flex item.
+   */
+  get computedStyle() {
+    return this._form.computedStyle;
+  }
+
+  /**
+   * Get the style properties for the flex item.
+   */
+  get properties() {
+    return this._form.properties;
+  }
+}
+
+class GridFront extends FrontClassWithSpec(gridSpec) {
+  form(form) {
+    this._form = form;
+  }
 
   /**
    * In some cases, the GridActor already knows the NodeActor ID of the node where the
@@ -47,8 +107,15 @@ const GridFront = FrontClassWithSpec(gridSpec, {
       return null;
     }
 
-    return this.conn.getActor(this._form.containerNodeActorID);
-  },
+    return this.conn.getFrontByID(this._form.containerNodeActorID);
+  }
+
+  /**
+   * Get the WalkerFront instance that owns this GridFront.
+   */
+  get walkerFront() {
+    return this.parentFront.walkerFront;
+  }
 
   /**
    * Get the text direction of the grid container.
@@ -60,14 +127,21 @@ const GridFront = FrontClassWithSpec(gridSpec, {
     }
 
     return this._form.direction;
-  },
+  }
 
   /**
    * Getter for the grid fragments data.
    */
   get gridFragments() {
     return this._form.gridFragments;
-  },
+  }
+
+  /**
+   * Get whether or not the grid is a subgrid.
+   */
+  get isSubgrid() {
+    return !!this._form.isSubgrid;
+  }
 
   /**
    * Get the writing mode of the grid container.
@@ -79,11 +153,27 @@ const GridFront = FrontClassWithSpec(gridSpec, {
     }
 
     return this._form.writingMode;
-  },
-});
+  }
+}
 
-const LayoutFront = FrontClassWithSpec(layoutSpec, {});
+class LayoutFront extends FrontClassWithSpec(layoutSpec) {
+  /**
+   * Get the WalkerFront instance that owns this LayoutFront.
+   */
+  get walkerFront() {
+    return this.parentFront;
+  }
+
+  getAllGrids() {
+    return this.getGrids(this.walkerFront.rootNode);
+  }
+}
 
 exports.FlexboxFront = FlexboxFront;
+registerFront(FlexboxFront);
+exports.FlexItemFront = FlexItemFront;
+registerFront(FlexItemFront);
 exports.GridFront = GridFront;
+registerFront(GridFront);
 exports.LayoutFront = LayoutFront;
+registerFront(LayoutFront);

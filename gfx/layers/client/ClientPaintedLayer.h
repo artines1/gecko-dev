@@ -7,46 +7,45 @@
 #ifndef GFX_CLIENTPAINTEDLAYER_H
 #define GFX_CLIENTPAINTEDLAYER_H
 
-#include "ClientLayerManager.h"         // for ClientLayerManager, etc
-#include "Layers.h"                     // for PaintedLayer, etc
-#include "RotatedBuffer.h"              // for RotatedBuffer, etc
-#include "mozilla/Attributes.h"         // for override
-#include "mozilla/RefPtr.h"             // for RefPtr
-#include "mozilla/layers/ContentClient.h"  // for ContentClient
-#include "mozilla/mozalloc.h"           // for operator delete
-#include "nsDebug.h"                    // for NS_ASSERTION
-#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
-#include "nsRegion.h"                   // for nsIntRegion
-#include "mozilla/layers/PLayerTransaction.h" // for PaintedLayerAttributes
+#include "ClientLayerManager.h"                // for ClientLayerManager, etc
+#include "Layers.h"                            // for PaintedLayer, etc
+#include "RotatedBuffer.h"                     // for RotatedBuffer, etc
+#include "mozilla/Attributes.h"                // for override
+#include "mozilla/RefPtr.h"                    // for RefPtr
+#include "mozilla/layers/ContentClient.h"      // for ContentClient
+#include "mozilla/mozalloc.h"                  // for operator delete
+#include "nsDebug.h"                           // for NS_ASSERTION
+#include "nsISupportsImpl.h"                   // for MOZ_COUNT_CTOR, etc
+#include "nsRegion.h"                          // for nsIntRegion
+#include "mozilla/layers/PLayerTransaction.h"  // for PaintedLayerAttributes
 
 namespace mozilla {
 namespace gfx {
 class DrawEventRecorderMemory;
 class DrawTargetCapture;
-};
+};  // namespace gfx
 
 namespace layers {
 class CompositableClient;
 class ShadowableLayer;
 class SpecificLayerAttributes;
 
-class ClientPaintedLayer : public PaintedLayer,
-                           public ClientLayer {
-public:
+class ClientPaintedLayer : public PaintedLayer, public ClientLayer {
+ public:
   typedef ContentClient::PaintState PaintState;
   typedef ContentClient::ContentType ContentType;
 
-  explicit ClientPaintedLayer(ClientLayerManager* aLayerManager,
-                             LayerManager::PaintedLayerCreationHint aCreationHint = LayerManager::NONE) :
-    PaintedLayer(aLayerManager, static_cast<ClientLayer*>(this), aCreationHint),
-    mContentClient(nullptr)
-  {
+  explicit ClientPaintedLayer(
+      ClientLayerManager* aLayerManager,
+      LayerManager::PaintedLayerCreationHint aCreationHint = LayerManager::NONE)
+      : PaintedLayer(aLayerManager, static_cast<ClientLayer*>(this),
+                     aCreationHint),
+        mContentClient(nullptr) {
     MOZ_COUNT_CTOR(ClientPaintedLayer);
   }
 
-protected:
-  virtual ~ClientPaintedLayer()
-  {
+ protected:
+  virtual ~ClientPaintedLayer() {
     if (mContentClient) {
       mContentClient->OnDetach();
       mContentClient = nullptr;
@@ -54,27 +53,24 @@ protected:
     MOZ_COUNT_DTOR(ClientPaintedLayer);
   }
 
-public:
-  virtual void SetVisibleRegion(const LayerIntRegion& aRegion) override
-  {
+ public:
+  void SetVisibleRegion(const LayerIntRegion& aRegion) override {
     NS_ASSERTION(ClientManager()->InConstruction(),
                  "Can only set properties in construction phase");
     PaintedLayer::SetVisibleRegion(aRegion);
   }
-  virtual void InvalidateRegion(const nsIntRegion& aRegion) override
-  {
+  void InvalidateRegion(const nsIntRegion& aRegion) override {
     NS_ASSERTION(ClientManager()->InConstruction(),
                  "Can only set properties in construction phase");
     mInvalidRegion.Add(aRegion);
     UpdateValidRegionAfterInvalidRegionChanged();
   }
 
-  virtual void RenderLayer() override { RenderLayerWithReadback(nullptr); }
+  void RenderLayer() override { RenderLayerWithReadback(nullptr); }
 
-  virtual void RenderLayerWithReadback(ReadbackProcessor *aReadback) override;
+  void RenderLayerWithReadback(ReadbackProcessor* aReadback) override;
 
-  virtual void ClearCachedResources() override
-  {
+  void ClearCachedResources() override {
     if (mContentClient) {
       mContentClient->Clear();
     }
@@ -82,58 +78,46 @@ public:
     DestroyBackBuffer();
   }
 
-  virtual void HandleMemoryPressure() override
-  {
+  void HandleMemoryPressure() override {
     if (mContentClient) {
       mContentClient->HandleMemoryPressure();
     }
   }
 
-  virtual void FillSpecificAttributes(SpecificLayerAttributes& aAttrs) override
-  {
+  void FillSpecificAttributes(SpecificLayerAttributes& aAttrs) override {
     aAttrs = PaintedLayerAttributes(GetValidRegion());
   }
-  
-  ClientLayerManager* ClientManager()
-  {
+
+  ClientLayerManager* ClientManager() {
     return static_cast<ClientLayerManager*>(mManager);
   }
-  
-  virtual Layer* AsLayer() override { return this; }
-  virtual ShadowableLayer* AsShadowableLayer() override { return this; }
 
-  virtual CompositableClient* GetCompositableClient() override
-  {
+  Layer* AsLayer() override { return this; }
+  ShadowableLayer* AsShadowableLayer() override { return this; }
+
+  CompositableClient* GetCompositableClient() override {
     return mContentClient;
   }
 
-  virtual void Disconnect() override
-  {
-    mContentClient = nullptr;
-  }
+  void Disconnect() override { mContentClient = nullptr; }
 
-protected:
-  void PaintThebes(nsTArray<ReadbackProcessor::Update>* aReadbackUpdates);
+ protected:
   void RecordThebes();
-  bool CanRecordLayer(ReadbackProcessor* aReadback);
   bool HasMaskLayers();
   bool EnsureContentClient();
-  uint32_t GetPaintFlags();
+  uint32_t GetPaintFlags(ReadbackProcessor* aReadback);
   void UpdateContentClient(PaintState& aState);
   bool UpdatePaintRegion(PaintState& aState);
-  void PaintOffMainThread();
+  void FinishPaintState(PaintState& aState);
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
+  void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
-  void DestroyBackBuffer()
-  {
-    mContentClient = nullptr;
-  }
+  void DestroyBackBuffer() { mContentClient = nullptr; }
 
   RefPtr<ContentClient> mContentClient;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif

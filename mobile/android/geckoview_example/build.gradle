@@ -15,7 +15,15 @@ android {
         applicationId "org.mozilla.geckoview_example"
         versionCode 1
         versionName "1.0"
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    dexOptions {
+        javaMaxHeapSize "6g"
     }
 
     buildTypes {
@@ -25,21 +33,22 @@ android {
         }
     }
 
+    // By default the android plugins ignores folders that start with `_`, but
+    // we need those in web extensions.
+    // See also:
+    //  - https://issuetracker.google.com/issues/36911326
+    //  - https://stackoverflow.com/questions/9206117/how-to-workaround-autoomitting-fiiles-folders-starting-with-underscore-in
+    aaptOptions {
+        ignoreAssetsPattern  '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+
     project.configureProductFlavors.delegate = it
     project.configureProductFlavors()
 }
 
 dependencies {
-    testImplementation 'junit:junit:4.12'
-
     implementation "com.android.support:support-annotations:$support_library_version"
     implementation "com.android.support:appcompat-v7:$support_library_version"
-
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:2.2.2'
-    androidTestImplementation 'com.android.support.test:runner:0.5'
-    // Not defining this library again results in test-app assuming 23.1.1, and the following errors:
-    // "Conflict with dependency 'com.android.support:support-annotations'. Resolved versions for app (23.4.0) and test app (23.1.1) differ."
-    androidTestImplementation "com.android.support:support-annotations:$support_library_version"
 
     implementation project(path: ':geckoview')
 }

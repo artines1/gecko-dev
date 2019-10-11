@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "Widget")
+    BUG_COMPONENT = ("Firefox", "Headless")
 
 DIRS += ['tests']
 
@@ -15,8 +15,6 @@ LOCAL_INCLUDES += [
 ]
 
 widget_dir = CONFIG['MOZ_WIDGET_TOOLKIT']
-if widget_dir == 'gtk3':
-    widget_dir = 'gtk'
 
 LOCAL_INCLUDES += [
     '/widget/%s' % widget_dir,

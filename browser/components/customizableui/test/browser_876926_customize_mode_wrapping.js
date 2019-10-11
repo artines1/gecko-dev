@@ -5,13 +5,19 @@
 "use strict";
 
 const kXULWidgetId = "a-test-button"; // we'll create a button with this ID.
-const kAPIWidgetId = "feed-button";
+const kAPIWidgetId = "save-page-button";
 const kPanel = CustomizableUI.AREA_FIXED_OVERFLOW_PANEL;
 const kToolbar = CustomizableUI.AREA_NAVBAR;
 const kVisiblePalette = "customization-palette";
 
 function checkWrapper(id) {
-  is(document.querySelectorAll("#wrapper-" + id).length, 1, "There should be exactly 1 wrapper for " + id + " in the customizing window.");
+  is(
+    document.querySelectorAll("#wrapper-" + id).length,
+    1,
+    "There should be exactly 1 wrapper for " +
+      id +
+      " in the customizing window."
+  );
 }
 
 async function ensureVisible(node) {
@@ -24,7 +30,12 @@ async function ensureVisible(node) {
     let nodeBounds = dwu.getBoundsWithoutFlushing(node);
     if (isInPalette) {
       let paletteBounds = dwu.getBoundsWithoutFlushing(gNavToolbox.palette);
-      if (!(nodeBounds.top >= paletteBounds.top && nodeBounds.bottom <= paletteBounds.bottom)) {
+      if (
+        !(
+          nodeBounds.top >= paletteBounds.top &&
+          nodeBounds.bottom <= paletteBounds.bottom
+        )
+      ) {
         return false;
       }
     }
@@ -33,20 +44,20 @@ async function ensureVisible(node) {
 }
 
 var move = {
-  "drag": async function(id, target) {
+  async drag(id, target) {
     let targetNode = document.getElementById(target);
-    if (targetNode.customizationTarget) {
-      targetNode = targetNode.customizationTarget;
+    if (CustomizableUI.getCustomizationTarget(targetNode)) {
+      targetNode = CustomizableUI.getCustomizationTarget(targetNode);
     }
     let nodeToMove = document.getElementById(id);
     await ensureVisible(nodeToMove);
 
     simulateItemDrag(nodeToMove, targetNode, "end");
   },
-  "dragToItem": async function(id, target) {
+  async dragToItem(id, target) {
     let targetNode = document.getElementById(target);
-    if (targetNode.customizationTarget) {
-      targetNode = targetNode.customizationTarget;
+    if (CustomizableUI.getCustomizationTarget(targetNode)) {
+      targetNode = CustomizableUI.getCustomizationTarget(targetNode);
     }
     let items = targetNode.querySelectorAll("toolbarpaletteitem");
     if (target == kPanel) {
@@ -58,27 +69,46 @@ var move = {
     await ensureVisible(nodeToMove);
     simulateItemDrag(nodeToMove, targetNode, "start");
   },
-  "API": function(id, target) {
+  API(id, target) {
     if (target == kVisiblePalette) {
       return CustomizableUI.removeWidgetFromArea(id);
     }
     return CustomizableUI.addWidgetToArea(id, target, null);
-  }
+  },
 };
 
 function isLast(containerId, defaultPlacements, id) {
   assertAreaPlacements(containerId, defaultPlacements.concat([id]));
-  is(document.getElementById(containerId).customizationTarget.lastChild.firstChild.id, id,
-     "Widget " + id + " should be in " + containerId + " in customizing window.");
-  is(otherWin.document.getElementById(containerId).customizationTarget.lastChild.id, id,
-     "Widget " + id + " should be in " + containerId + " in other window.");
+  let thisTarget = CustomizableUI.getCustomizationTarget(
+    document.getElementById(containerId)
+  );
+  is(
+    thisTarget.lastElementChild.firstElementChild.id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in customizing window."
+  );
+  let otherTarget = CustomizableUI.getCustomizationTarget(
+    otherWin.document.getElementById(containerId)
+  );
+  is(
+    otherTarget.lastElementChild.id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in other window."
+  );
 }
 
 function getLastVisibleNodeInToolbar(containerId, win = window) {
-  let container = win.document.getElementById(containerId).customizationTarget;
-  let rv = container.lastChild;
-  while (rv && (rv.getAttribute("hidden") == "true" || (rv.firstChild && rv.firstChild.getAttribute("hidden") == "true"))) {
-    rv = rv.previousSibling;
+  let container = CustomizableUI.getCustomizationTarget(
+    win.document.getElementById(containerId)
+  );
+  let rv = container.lastElementChild;
+  while (
+    rv &&
+    (rv.getAttribute("hidden") == "true" ||
+      (rv.firstElementChild &&
+        rv.firstElementChild.getAttribute("hidden") == "true"))
+  ) {
+    rv = rv.previousElementSibling;
   }
   return rv;
 }
@@ -98,18 +128,36 @@ function isLastVisibleInToolbar(containerId, defaultPlacements, id) {
   } else {
     assertAreaPlacements(containerId, newPlacements);
   }
-  is(getLastVisibleNodeInToolbar(containerId).firstChild.id, id,
-     "Widget " + id + " should be in " + containerId + " in customizing window.");
-  is(getLastVisibleNodeInToolbar(containerId, otherWin).id, id,
-     "Widget " + id + " should be in " + containerId + " in other window.");
+  is(
+    getLastVisibleNodeInToolbar(containerId).firstElementChild.id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in customizing window."
+  );
+  is(
+    getLastVisibleNodeInToolbar(containerId, otherWin).id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in other window."
+  );
 }
 
 function isFirst(containerId, defaultPlacements, id) {
   assertAreaPlacements(containerId, [id].concat(defaultPlacements));
-  is(document.getElementById(containerId).customizationTarget.firstChild.firstChild.id, id,
-     "Widget " + id + " should be in " + containerId + " in customizing window.");
-  is(otherWin.document.getElementById(containerId).customizationTarget.firstChild.id, id,
-     "Widget " + id + " should be in " + containerId + " in other window.");
+  let thisTarget = CustomizableUI.getCustomizationTarget(
+    document.getElementById(containerId)
+  );
+  is(
+    thisTarget.firstElementChild.firstElementChild.id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in customizing window."
+  );
+  let otherTarget = CustomizableUI.getCustomizationTarget(
+    otherWin.document.getElementById(containerId)
+  );
+  is(
+    otherTarget.firstElementChild.id,
+    id,
+    "Widget " + id + " should be in " + containerId + " in other window."
+  );
 }
 
 async function checkToolbar(id, method) {
@@ -129,7 +177,9 @@ async function checkToolbar(id, method) {
 async function checkPanel(id, method) {
   let panelPlacements = getAreaWidgetIds(kPanel);
   await move[method](id, kPanel);
-  let children = document.getElementById(kPanel).querySelectorAll("toolbarpaletteitem");
+  let children = document
+    .getElementById(kPanel)
+    .querySelectorAll("toolbarpaletteitem");
   let otherChildren = otherWin.document.getElementById(kPanel).children;
   let newPlacements = panelPlacements.concat([id]);
   // Relative position of the new item from the end:
@@ -143,10 +193,16 @@ async function checkPanel(id, method) {
     position = -2;
   }
   assertAreaPlacements(kPanel, newPlacements);
-  is(children[children.length + position].firstChild.id, id,
-     "Widget " + id + " should be in " + kPanel + " in customizing window.");
-  is(otherChildren[otherChildren.length + position].id, id,
-     "Widget " + id + " should be in " + kPanel + " in other window.");
+  is(
+    children[children.length + position].firstElementChild.id,
+    id,
+    "Widget " + id + " should be in " + kPanel + " in customizing window."
+  );
+  is(
+    otherChildren[otherChildren.length + position].id,
+    id,
+    "Widget " + id + " should be in " + kPanel + " in other window."
+  );
   checkWrapper(id);
 }
 
@@ -155,15 +211,29 @@ async function checkPalette(id, method) {
   await move[method](id, kVisiblePalette);
   ok(CustomizableUI.inDefaultState, "Should end in default state");
   let visibleChildren = gCustomizeMode.visiblePalette.children;
-  let expectedChild = method == "dragToItem" ? visibleChildren[0] : visibleChildren[visibleChildren.length - 1];
+  let expectedChild =
+    method == "dragToItem"
+      ? visibleChildren[0]
+      : visibleChildren[visibleChildren.length - 1];
   // Items dragged to the end of the palette should be the final item. That they're the penultimate
   // item when dragged is tracked in bug 1395950. Once that's fixed, this hack can be removed.
   if (method == "drag") {
     expectedChild = expectedChild.previousElementSibling;
   }
-  is(expectedChild.firstChild.id, id, "Widget " + id + " was moved using " + method + " and should now be wrapped in palette in customizing window.");
+  is(
+    expectedChild.firstElementChild.id,
+    id,
+    "Widget " +
+      id +
+      " was moved using " +
+      method +
+      " and should now be wrapped in palette in customizing window."
+  );
   if (id == kXULWidgetId) {
-    ok(otherWin.gNavToolbox.palette.querySelector("#" + id), "Widget " + id + " should be in invisible palette in other window.");
+    ok(
+      otherWin.gNavToolbox.palette.querySelector("#" + id),
+      "Widget " + id + " should be in invisible palette in other window."
+    );
   }
   checkWrapper(id);
 }
@@ -201,11 +271,17 @@ add_task(async function MoveWidgetsInTwoWindows() {
       // We add an item to the panel because otherwise we can't test dragging
       // to items that are already there. We remove it because
       // 'checkPalette' checks that we leave the browser in the default state.
-      CustomizableUI.addWidgetToArea("cui-mode-wrapping-some-panel-item", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+      CustomizableUI.addWidgetToArea(
+        "cui-mode-wrapping-some-panel-item",
+        CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+      );
       await checkPanel(widgetId, method);
       CustomizableUI.removeWidgetFromArea("cui-mode-wrapping-some-panel-item");
       await checkPalette(widgetId, method);
-      CustomizableUI.addWidgetToArea("cui-mode-wrapping-some-panel-item", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+      CustomizableUI.addWidgetToArea(
+        "cui-mode-wrapping-some-panel-item",
+        CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+      );
       await checkPanel(widgetId, method);
       await checkToolbar(widgetId, method);
       CustomizableUI.removeWidgetFromArea("cui-mode-wrapping-some-panel-item");

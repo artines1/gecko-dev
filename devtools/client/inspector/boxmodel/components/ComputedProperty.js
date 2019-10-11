@@ -7,37 +7,58 @@
 const { PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { translateNodeFrontToGrip } = require("devtools/client/inspector/shared/utils");
+const { LocalizationHelper } = require("devtools/shared/l10n");
 
-const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
-const { Rep } = REPS;
+loader.lazyGetter(this, "Rep", function() {
+  return require("devtools/client/shared/components/reps/reps").REPS.Rep;
+});
+loader.lazyGetter(this, "MODE", function() {
+  return require("devtools/client/shared/components/reps/reps").MODE;
+});
+
+loader.lazyRequireGetter(
+  this,
+  "translateNodeFrontToGrip",
+  "devtools/client/inspector/shared/utils",
+  true
+);
+
+const BOXMODEL_STRINGS_URI = "devtools/client/locales/boxmodel.properties";
+const BOXMODEL_L10N = new LocalizationHelper(BOXMODEL_STRINGS_URI);
 
 class ComputedProperty extends PureComponent {
   static get propTypes() {
     return {
       name: PropTypes.string.isRequired,
+      onHideBoxModelHighlighter: PropTypes.func,
+      onShowBoxModelHighlighterForNode: PropTypes.func,
       referenceElement: PropTypes.object,
       referenceElementType: PropTypes.string,
-      setSelectedNode: PropTypes.func.isRequired,
+      setSelectedNode: PropTypes.func,
       value: PropTypes.string,
-      onHideBoxModelHighlighter: PropTypes.func.isRequired,
-      onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
     };
   }
 
   constructor(props) {
     super(props);
-    this.renderReferenceElementPreview = this.renderReferenceElementPreview.bind(this);
+
     this.onFocus = this.onFocus.bind(this);
+    this.renderReferenceElementPreview = this.renderReferenceElementPreview.bind(
+      this
+    );
+  }
+
+  onFocus() {
+    this.container.focus();
   }
 
   renderReferenceElementPreview() {
     const {
+      onShowBoxModelHighlighterForNode,
+      onHideBoxModelHighlighter,
       referenceElement,
       referenceElementType,
       setSelectedNode,
-      onShowBoxModelHighlighterForNode,
-      onHideBoxModelHighlighter
     } = this.props;
 
     if (!referenceElement) {
@@ -45,24 +66,25 @@ class ComputedProperty extends PureComponent {
     }
 
     return dom.div(
-      {
-        className: "reference-element"
-      },
-      dom.span({ className: "reference-element-type" }, referenceElementType),
+      { className: "reference-element" },
+      dom.span(
+        {
+          className: "reference-element-type",
+          title: BOXMODEL_L10N.getStr("boxmodel.offsetParent.title"),
+        },
+        referenceElementType
+      ),
       Rep({
         defaultRep: referenceElement,
         mode: MODE.TINY,
         object: translateNodeFrontToGrip(referenceElement),
-        onInspectIconClick: () => setSelectedNode(referenceElement,
-          { reason: "box-model" }),
-        onDOMNodeMouseOver: () => onShowBoxModelHighlighterForNode(referenceElement),
+        onInspectIconClick: () =>
+          setSelectedNode(referenceElement, { reason: "box-model" }),
+        onDOMNodeMouseOver: () =>
+          onShowBoxModelHighlighterForNode(referenceElement),
         onDOMNodeMouseOut: () => onHideBoxModelHighlighter(),
       })
     );
-  }
-
-  onFocus() {
-    this.container.focus();
   }
 
   render() {
@@ -78,12 +100,10 @@ class ComputedProperty extends PureComponent {
         },
       },
       dom.div(
-        {
-          className: "computed-property-name-container",
-        },
+        { className: "computed-property-name-container" },
         dom.div(
           {
-            className: "computed-property-name theme-fg-color5",
+            className: "computed-property-name theme-fg-color3",
             tabIndex: "",
             title: name,
             onClick: this.onFocus,
@@ -92,9 +112,7 @@ class ComputedProperty extends PureComponent {
         )
       ),
       dom.div(
-        {
-          className: "computed-property-value-container",
-        },
+        { className: "computed-property-value-container" },
         dom.div(
           {
             className: "computed-property-value theme-fg-color1",

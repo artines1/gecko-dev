@@ -14,40 +14,36 @@ namespace gfx {
 
 // Wraps a DataSourceSurface and forwards all methods except for GetType(),
 // from which it always returns SurfaceType::DATA.
-class DataSourceSurfaceWrapper final : public DataSourceSurface
-{
-public:
+class DataSourceSurfaceWrapper final : public DataSourceSurface {
+ public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DataSourceSurfaceWrapper, override)
-  explicit DataSourceSurfaceWrapper(DataSourceSurface *aSurface)
-   : mSurface(aSurface)
-  {}
+  explicit DataSourceSurfaceWrapper(DataSourceSurface* aSurface)
+      : mSurface(aSurface) {}
 
-  bool Equals(SourceSurface* aOther, bool aSymmetric = true) override
-  {
+  bool Equals(SourceSurface* aOther, bool aSymmetric = true) override {
     return DataSourceSurface::Equals(aOther, aSymmetric) ||
            mSurface->Equals(aOther, aSymmetric);
   }
 
-  virtual SurfaceType GetType() const override { return SurfaceType::DATA; }
+  SurfaceType GetType() const override { return SurfaceType::DATA; }
 
-  virtual uint8_t *GetData() override { return mSurface->GetData(); }
-  virtual int32_t Stride() override { return mSurface->Stride(); }
-  virtual IntSize GetSize() const override { return mSurface->GetSize(); }
-  virtual SurfaceFormat GetFormat() const override { return mSurface->GetFormat(); }
-  virtual bool IsValid() const override { return mSurface->IsValid(); }
+  uint8_t* GetData() override { return mSurface->GetData(); }
+  int32_t Stride() override { return mSurface->Stride(); }
+  IntSize GetSize() const override { return mSurface->GetSize(); }
+  SurfaceFormat GetFormat() const override { return mSurface->GetFormat(); }
+  bool IsValid() const override { return mSurface->IsValid(); }
 
-  bool Map(MapType aType, MappedSurface *aMappedSurface) override
-  {
+  bool Map(MapType aType, MappedSurface* aMappedSurface) override {
     return mSurface->Map(aType, aMappedSurface);
   }
 
   void Unmap() override { mSurface->Unmap(); }
 
-private:
+ private:
   RefPtr<DataSourceSurface> mSurface;
 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif /* MOZILLA_GFX_DATASOURCESURFACEWRAPPER_H_ */

@@ -10,9 +10,8 @@ DIRS += [
 
 DevToolsModules(
     'fluent-react.js',
-    'fluent.js',
     'immutable.js',
-    'jsol.js',
+    'json5.js',
     'jszip.js',
     'lodash.js',
     'react-dom-factories.js',
@@ -21,13 +20,16 @@ DevToolsModules(
     'react-dom.js',
     'react-prop-types.js',
     'react-redux.js',
+    'react-router-dom.js',
     'react-test-renderer-shallow.js',
+    'react-test-renderer.js',
     'react.js',
     'redux.js',
     'reselect.js',
     'seamless-immutable.js',
     'WasmDis.js',
     'WasmParser.js',
+    'whatwg-url.js',
 )
 
 # react dev versions are used if enable-debug-js-modules is set in .mozconfig.

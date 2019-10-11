@@ -179,10 +179,6 @@ with modules["XPCOM"]:
     errors["NS_SUCCESS_LOSS_OF_INSIGNIFICANT_DATA"] = SUCCESS(1)
     # Used by nsCycleCollectionParticipant
     errors["NS_SUCCESS_INTERRUPTED_TRAVERSE"] = SUCCESS(2)
-    # DEPRECATED
-    errors["NS_ERROR_SERVICE_NOT_FOUND"] = SUCCESS(22)
-    # DEPRECATED
-    errors["NS_ERROR_SERVICE_IN_USE"] = SUCCESS(23)
 
 # =======================================================================
 # 2: NS_ERROR_MODULE_BASE
@@ -333,10 +329,20 @@ with modules["NETWORK"]:
     errors["NS_ERROR_NET_INTERRUPT"] = FAILURE(71)
     # The connection attempt to a proxy failed.
     errors["NS_ERROR_PROXY_CONNECTION_REFUSED"] = FAILURE(72)
+    # The proxy requires authentication; used when we can't easily propagate 407s.
+    errors["NS_ERROR_PROXY_AUTHENTICATION_FAILED"] = FAILURE(407)
+    # Indicates that we have sent too many requests in a given amount of time.
+    errors["NS_ERROR_TOO_MANY_REQUESTS"] = FAILURE(429)
+    # The proxy failed to connect the remote server.
+    errors["NS_ERROR_PROXY_BAD_GATEWAY"] = FAILURE(502)
+    # The proxy did get any response from the remote server in time.
+    errors["NS_ERROR_PROXY_GATEWAY_TIMEOUT"] = FAILURE(504)
     # A transfer was only partially done when it completed.
     errors["NS_ERROR_NET_PARTIAL_TRANSFER"] = FAILURE(76)
     # HTTP/2 detected invalid TLS configuration
     errors["NS_ERROR_NET_INADEQUATE_SECURITY"] = FAILURE(82)
+    # HTTP/2 sent a GOAWAY
+    errors["NS_ERROR_NET_HTTP2_SENT_GOAWAY"] = FAILURE(83)
 
     # XXX really need to better rationalize these error codes.  are consumers of
     # necko really expected to know how to discern the meaning of these??
@@ -467,8 +473,6 @@ with modules["PLUGINS"]:
 # 8: NS_ERROR_MODULE_LAYOUT
 # =======================================================================
 with modules["LAYOUT"]:
-    # Return code for nsITableLayout
-    errors["NS_TABLELAYOUT_CELL_NOT_FOUND"] = SUCCESS(0)
     # Return code for SheetLoadData::VerifySheetReadyToParse
     errors["NS_OK_PARSE_SHEET"] = SUCCESS(1)
     # Return code for nsFrame::GetNextPrevLineFromeBlockFrame
@@ -502,9 +506,6 @@ with modules["HTMLPARSER"]:
     errors["NS_ERROR_HTMLPARSER_FAKE_ENDTAG"] = FAILURE(1018)
     errors["NS_ERROR_HTMLPARSER_INVALID_COMMENT"] = FAILURE(1019)
 
-    errors["NS_HTMLTOKENS_NOT_AN_ENTITY"] = SUCCESS(2000)
-    errors["NS_HTMLPARSER_VALID_META_CHARSET"] = SUCCESS(3000)
-
 
 # =======================================================================
 # 10: NS_ERROR_MODULE_RDF
@@ -513,9 +514,6 @@ with modules["RDF"]:
     # Returned from nsIRDFDataSource::Assert() and Unassert() if the assertion
     # (or unassertion was accepted by the datasource
     errors["NS_RDF_ASSERTION_ACCEPTED"] = errors["NS_OK"]
-    # Returned from nsIRDFCursor::Advance() if the cursor has no more
-    # elements to enumerate
-    errors["NS_RDF_CURSOR_EMPTY"] = SUCCESS(1)
     # Returned from nsIRDFDataSource::GetSource() and GetTarget() if the
     # source/target has no value
     errors["NS_RDF_NO_VALUE"] = SUCCESS(2)
@@ -535,20 +533,12 @@ with modules["UCONV"]:
     errors["NS_ERROR_UDEC_ILLEGALINPUT"] = FAILURE(14)
 
     errors["NS_OK_HAD_REPLACEMENTS"] = SUCCESS(3)
-    errors["NS_SUCCESS_USING_FALLBACK_LOCALE"] = SUCCESS(2)
-    errors["NS_OK_UDEC_EXACTLENGTH"] = SUCCESS(11)
     errors["NS_OK_UDEC_MOREINPUT"] = SUCCESS(12)
     errors["NS_OK_UDEC_MOREOUTPUT"] = SUCCESS(13)
-    errors["NS_OK_UDEC_NOBOMFOUND"] = SUCCESS(14)
-    errors["NS_OK_UENC_EXACTLENGTH"] = SUCCESS(33)
     errors["NS_OK_UENC_MOREOUTPUT"] = SUCCESS(34)
     errors["NS_ERROR_UENC_NOMAPPING"] = SUCCESS(35)
-    errors["NS_OK_UENC_MOREINPUT"] = SUCCESS(36)
 
     # BEGIN DEPRECATED
-    errors["NS_EXACT_LENGTH"] = errors["NS_OK_UDEC_EXACTLENGTH"]
-    errors["NS_PARTIAL_MORE_INPUT"] = errors["NS_OK_UDEC_MOREINPUT"]
-    errors["NS_PARTIAL_MORE_OUTPUT"] = errors["NS_OK_UDEC_MOREOUTPUT"]
     errors["NS_ERROR_ILLEGAL_INPUT"] = errors["NS_ERROR_UDEC_ILLEGALINPUT"]
     # END DEPRECATED
 
@@ -614,9 +604,6 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_TIMEOUT_ERR"] = FAILURE(23)
     errors["NS_ERROR_DOM_INVALID_NODE_TYPE_ERR"] = FAILURE(24)
     errors["NS_ERROR_DOM_DATA_CLONE_ERR"] = FAILURE(25)
-    # XXX Should be JavaScript native errors
-    errors["NS_ERROR_TYPE_ERR"] = FAILURE(26)
-    errors["NS_ERROR_RANGE_ERR"] = FAILURE(27)
     # StringEncoding API errors from http://wiki.whatwg.org/wiki/StringEncoding
     errors["NS_ERROR_DOM_ENCODING_NOT_SUPPORTED_ERR"] = FAILURE(28)
     errors["NS_ERROR_DOM_INVALID_POINTER_ERR"] = FAILURE(29)
@@ -639,7 +626,6 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_XPCONNECT_ACCESS_DENIED"] = FAILURE(1011)
     errors["NS_ERROR_DOM_BAD_URI"] = FAILURE(1012)
     errors["NS_ERROR_DOM_RETVAL_UNDEFINED"] = FAILURE(1013)
-    errors["NS_ERROR_DOM_QUOTA_REACHED"] = FAILURE(1014)
 
     # A way to represent uncatchable exceptions
     errors["NS_ERROR_UNCATCHABLE_EXCEPTION"] = FAILURE(1015)
@@ -650,7 +636,8 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_INVALID_CONTEXT"] = FAILURE(1018)
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_BE_OPENED"] = FAILURE(1019)
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_SENDING"] = FAILURE(1020)
-    errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_LOADING_OR_DONE"] = FAILURE(1021)
+    errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_LOADING_OR_DONE_RESPONSE_TYPE"] = FAILURE(1021)  # NOQA: E501
+    errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_LOADING_OR_DONE_OVERRIDE_MIME_TYPE"] = FAILURE(1037)  # NOQA: E501
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_WRONG_RESPONSETYPE_FOR_RESPONSEXML"] = FAILURE(1022)
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_WRONG_RESPONSETYPE_FOR_RESPONSETEXT"] = FAILURE(1023)  # NOQA: E501
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_CHUNKED_RESPONSETYPES_UNSUPPORTED_FOR_SYNC"] = FAILURE(1024)  # NOQA: E501
@@ -660,6 +647,24 @@ with modules["DOM"]:
     # errors, such as a different bytecode format can cause failures of the
     # decoding process.
     errors["NS_ERROR_DOM_JS_DECODING_ERROR"] = FAILURE(1026)
+
+    # Image decode errors.
+    errors["NS_ERROR_DOM_IMAGE_INACTIVE_DOCUMENT"] = FAILURE(1027)
+    errors["NS_ERROR_DOM_IMAGE_INVALID_REQUEST"] = FAILURE(1028)
+    errors["NS_ERROR_DOM_IMAGE_BROKEN"] = FAILURE(1029)
+
+    # Editing command errors.
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_EXEC_COMMAND"] = FAILURE(1030)
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_QUERY_COMMAND_ENABLED"] = FAILURE(1031)
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_QUERY_COMMAND_INDETERM"] = FAILURE(1032)
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_QUERY_COMMAND_STATE"] = FAILURE(1033)
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_QUERY_COMMAND_SUPPORTED"] = FAILURE(1034)
+    errors["NS_ERROR_DOM_INVALID_STATE_DOCUMENT_QUERY_COMMAND_VALUE"] = FAILURE(1035)
+
+    # Used to indicate that a resource with the Cross-Origin-Resource-Policy
+    # response header set failed the origin check.
+    # https://fetch.spec.whatwg.org/#cross-origin-resource-policy-header
+    errors["NS_ERROR_DOM_CORP_FAILED"] = FAILURE(1036)
 
     # May be used to indicate when e.g. setting a property value didn't
     # actually change the value, like for obj.foo = "bar"; obj.foo = "bar";
@@ -681,8 +686,6 @@ with modules["DOM"]:
 # 15: NS_ERROR_MODULE_IMGLIB
 # =======================================================================
 with modules["IMGLIB"]:
-    errors["NS_IMAGELIB_SUCCESS_LOAD_FINISHED"] = SUCCESS(0)
-
     errors["NS_IMAGELIB_ERROR_FAILURE"] = FAILURE(5)
     errors["NS_IMAGELIB_ERROR_NO_DECODER"] = FAILURE(6)
     errors["NS_IMAGELIB_ERROR_NOT_FINISHED"] = FAILURE(7)
@@ -694,6 +697,18 @@ with modules["IMGLIB"]:
 # =======================================================================
 with modules["EDITOR"]:
     errors["NS_ERROR_EDITOR_DESTROYED"] = FAILURE(1)
+
+    # An error code that indicates that the DOM tree has been modified by
+    # web app or add-on while the editor modifying the tree.  However,
+    # this shouldn't be exposed to the web because the result should've
+    # been expected by the web app.
+    errors["NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE"] = FAILURE(2)
+
+    # An error code that indicates that the edit action canceled by
+    # clipboard event listener or beforeinput event listener.  Note that
+    # don't make this as a success code since it's not check with NS_FAILED()
+    # and may keep handling the operation unexpectedly.
+    errors["NS_ERROR_EDITOR_ACTION_CANCELED"] = FAILURE(3)
 
     errors["NS_SUCCESS_EDITOR_ELEMENT_NOT_FOUND"] = SUCCESS(1)
     errors["NS_SUCCESS_EDITOR_FOUND_TARGET"] = SUCCESS(2)
@@ -765,6 +780,8 @@ with modules["XPCONNECT"]:
 # =======================================================================
 with modules["PROFILE"]:
     errors["NS_ERROR_LAUNCHED_CHILD_PROCESS"] = FAILURE(200)
+    errors["NS_ERROR_SHOW_PROFILE_MANAGER"] = FAILURE(201)
+    errors["NS_ERROR_DATABASE_CHANGED"] = FAILURE(202)
 
 
 # =======================================================================
@@ -772,6 +789,7 @@ with modules["PROFILE"]:
 # =======================================================================
 with modules["SECURITY"]:
     # Error code for CSP
+    errors["NS_ERROR_CSP_NAVIGATE_TO_VIOLATION"] = FAILURE(97)
     errors["NS_ERROR_CSP_FORM_ACTION_VIOLATION"] = FAILURE(98)
     errors["NS_ERROR_CSP_FRAME_ANCESTOR_VIOLATION"] = FAILURE(99)
 
@@ -827,6 +845,9 @@ with modules["URILOADER"]:
     errors["NS_ERROR_HARMFUL_URI"] = FAILURE(38)
     errors["NS_ERROR_MAYBE_TRACKING_URI"] = FAILURE(39)
     errors["NS_ERROR_TRACKING_ANNOTATION_URI"] = FAILURE(40)
+    errors["NS_ERROR_FINGERPRINTING_URI"] = FAILURE(41)
+    errors["NS_ERROR_CRYPTOMINING_URI"] = FAILURE(42)
+    errors["NS_ERROR_SOCIALTRACKING_URI"] = FAILURE(43)
     # Used when "Save Link As..." doesn't see the headers quickly enough to
     # choose a filename.  See nsContextMenu.js.
     errors["NS_ERROR_SAVE_LINK_AS_TIMEOUT"] = FAILURE(32)
@@ -852,19 +873,16 @@ with modules["CONTENT"]:
     errors["NS_ERROR_XBL_BLOCKED"] = FAILURE(15)
     # Error code for when the content process crashed
     errors["NS_ERROR_CONTENT_CRASHED"] = FAILURE(16)
+    # Error code for when a subframe process crashed
+    errors["NS_ERROR_FRAME_CRASHED"] = FAILURE(14)
     # Error code for when the content process had a different buildID than the
     # parent
     errors["NS_ERROR_BUILDID_MISMATCH"] = FAILURE(17)
 
-    # XXX this is not really used
-    errors["NS_HTML_STYLE_PROPERTY_NOT_THERE"] = SUCCESS(2)
-    errors["NS_CONTENT_BLOCKED"] = SUCCESS(8)
-    errors["NS_CONTENT_BLOCKED_SHOW_ALT"] = SUCCESS(9)
     errors["NS_PROPTABLE_PROP_OVERWRITTEN"] = SUCCESS(11)
-    # Error codes for FindBroadcaster in XULDocument.cpp
+    # Error codes for FindBroadcaster in XULBroadcastManager.cpp
     errors["NS_FINDBROADCASTER_NOT_FOUND"] = SUCCESS(12)
     errors["NS_FINDBROADCASTER_FOUND"] = SUCCESS(13)
-    errors["NS_FINDBROADCASTER_AWAIT_OVERLAYS"] = SUCCESS(14)
 
 
 # =======================================================================
@@ -976,6 +994,9 @@ with modules["DOM_INDEXEDDB"]:
     errors["NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR"] = FAILURE(11)
     errors["NS_ERROR_DOM_INDEXEDDB_VERSION_ERR"] = FAILURE(12)
     errors["NS_ERROR_DOM_INDEXEDDB_RECOVERABLE_ERR"] = FAILURE(1001)
+    errors["NS_ERROR_DOM_INDEXEDDB_KEY_ERR"] = FAILURE(1002)
+    errors["NS_ERROR_DOM_INDEXEDDB_RENAME_OBJECT_STORE_ERR"] = FAILURE(1003)
+    errors["NS_ERROR_DOM_INDEXEDDB_RENAME_INDEX_ERR"] = FAILURE(1004)
 
 
 # =======================================================================
@@ -1092,6 +1113,7 @@ with modules["URL_CLASSIFIER"]:
     errors["NS_ERROR_UC_PARSER_MISSING_PARAM"] = FAILURE(12)
     errors["NS_ERROR_UC_PARSER_DECODE_FAILURE"] = FAILURE(13)
     errors["NS_ERROR_UC_PARSER_UNKNOWN_THREAT"] = FAILURE(14)
+    errors["NS_ERROR_UC_PARSER_MISSING_VALUE"] = FAILURE(15)
 
 
 # =======================================================================
@@ -1135,8 +1157,6 @@ with modules["GENERAL"]:
     # the application should be restarted.  This condition corresponds to the
     # case in which nsIAppStartup::Quit was called with the eRestart flag.
     errors["NS_SUCCESS_RESTART_APP"] = SUCCESS(1)
-    errors["NS_SUCCESS_RESTART_APP_NOT_SAME_PROFILE"] = SUCCESS(3)
-    errors["NS_SUCCESS_UNORM_NOTFOUND"] = SUCCESS(17)
 
     # a11y
     # raised when current pivot's position is needed but it's not in the tree
@@ -1241,10 +1261,12 @@ use super::nsresult;
 
 """)
 
-    output.write("pub const NS_ERROR_MODULE_BASE_OFFSET: u32 = {};\n".format(MODULE_BASE_OFFSET))
+    output.write("pub const NS_ERROR_MODULE_BASE_OFFSET: nsresult = nsresult({});\n"
+                 .format(MODULE_BASE_OFFSET))
 
     for mod, val in modules.iteritems():
-        output.write("pub const NS_ERROR_MODULE_{}: u16 = {};\n".format(mod, val.num))
+        output.write("pub const NS_ERROR_MODULE_{}: nsresult = nsresult({});\n"
+                     .format(mod, val.num))
 
     for error, val in errors.iteritems():
-        output.write("pub const {}: nsresult = 0x{:X};\n".format(error, val))
+        output.write("pub const {}: nsresult = nsresult(0x{:X});\n".format(error, val))

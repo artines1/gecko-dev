@@ -3,9 +3,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const testWorkerURL = "http://mochi.test:8888/browser/" +
+const testWorkerURL =
+  "http://mochi.test:8888/browser/" +
   "dom/indexedDB/test/browser_permissionsWorker.html";
-const testSharedWorkerURL = "http://mochi.test:8888/browser/" +
+const testSharedWorkerURL =
+  "http://mochi.test:8888/browser/" +
   "dom/indexedDB/test/browser_permissionsSharedWorker.html";
 const notificationID = "indexedDB-permissions-prompt";
 
@@ -26,12 +28,14 @@ add_task(async function test1() {
   info("creating tab");
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
   info("loading test page: " + testWorkerURL);
-  gBrowser.selectedBrowser.loadURI(testWorkerURL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testWorkerURL);
 
   await waitForMessage("ok", gBrowser);
-  is(getPermission(testWorkerURL, "indexedDB"),
-     Ci.nsIPermissionManager.ALLOW_ACTION,
-     "Correct permission set");
+  is(
+    getPermission(testWorkerURL, "indexedDB"),
+    Ci.nsIPermissionManager.ALLOW_ACTION,
+    "Correct permission set"
+  );
   gBrowser.removeCurrentTab();
 });
 
@@ -52,12 +56,13 @@ add_task(async function test2() {
   info("creating tab");
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
 
-
   info("loading test page: " + testSharedWorkerURL);
-  gBrowser.selectedBrowser.loadURI(testSharedWorkerURL);
+  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, testSharedWorkerURL);
   await waitForMessage("InvalidStateError", gBrowser);
-  is(getPermission(testSharedWorkerURL, "indexedDB"),
-     Ci.nsIPermissionManager.UNKNOWN_ACTION,
-     "Correct permission set");
+  is(
+    getPermission(testSharedWorkerURL, "indexedDB"),
+    Ci.nsIPermissionManager.UNKNOWN_ACTION,
+    "Correct permission set"
+  );
   gBrowser.removeCurrentTab();
 });

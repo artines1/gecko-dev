@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 // The ext-* files are imported into the same scopes.
@@ -27,6 +31,7 @@ function Alarm(api, name, alarmInfo) {
   this.scheduledTime = scheduledTime;
 
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  delay = delay > 0 ? delay : 0;
   timer.init(this, delay, Ci.nsITimer.TYPE_ONE_SHOT);
   this.timer = timer;
 }

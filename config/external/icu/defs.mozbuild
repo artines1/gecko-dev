@@ -4,12 +4,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# Also see <http://www.icu-project.org/repos/icu/tags/latest/icu4c/readme.html#RecBuild> for the
+# recommended build options when compiling ICU.
 DEFINES.update(
     # Don't use icu namespace automatically in client code.
     U_USING_ICU_NAMESPACE = 0,
 
     # Don't include obsolete header files.
     U_NO_DEFAULT_INCLUDE_UTF_HEADERS = 1,
+    U_HIDE_OBSOLETE_UTF_OLD_H = 1,
 
     # Remove chunks of the library that we don't need (yet).
     UCONFIG_NO_LEGACY_CONVERSION = True,
@@ -18,6 +21,10 @@ DEFINES.update(
 
     # We don't need to pass data to and from legacy char* APIs.
     U_CHARSET_IS_UTF8 = True,
+
+    # Add 'explicit' keyword to UnicodeString constructors.
+    UNISTR_FROM_CHAR_EXPLICIT = "explicit",
+    UNISTR_FROM_STRING_EXPLICIT = "explicit",
 )
 
 if not CONFIG['HAVE_LANGINFO_CODESET']:
@@ -30,7 +37,10 @@ if CONFIG['MOZ_DEBUG']:
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-frtti']
 elif CONFIG['OS_TARGET'] == 'WINNT':
-    CXXFLAGS += ['-GR']
+    # Remove the -GR- flag so we don't get a bunch of warning spam.
+    COMPILE_FLAGS['OS_CXXFLAGS'] = [
+        f for f in COMPILE_FLAGS['OS_CXXFLAGS'] if f != '-GR-'
+    ] + ['-GR']
 
 DisableStlWrapping()
 AllowCompilerWarnings()
@@ -45,15 +55,4 @@ if CONFIG['CC_TYPE'] == 'clang-cl':
     CXXFLAGS += [
         '-Wno-macro-redefined',
         '-Wno-microsoft-include',
-    ]
-
-if CONFIG['CC_TYPE'] == 'msvc':
-    CFLAGS += [
-        '-wd4005', # 'WIN32_LEAN_AND_MEAN' : macro redefinition
-        '-wd4996', # The compiler encountered a deprecated declaration.
-    ]
-    CXXFLAGS += [
-        '-wd4005', # 'WIN32_LEAN_AND_MEAN' : macro redefinition
-        '-wd4333', # '>>' : right shift by too large amount, data loss
-        '-wd4996', # The compiler encountered a deprecated declaration.
     ]

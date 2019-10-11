@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 # mozilla/prettyprinters.py --- infrastructure for SpiderMonkey's auto-loaded pretty-printers.
 
 import gdb
@@ -222,8 +226,6 @@ class TypeCache(object):
 # - If we yield a type with base classes, we later yield those base classes.
 # - If we yield a type with some base classes that are typedefs,
 #   we yield all the type's base classes before following the typedefs.
-#   (Actually, this never happens, because G++ doesn't preserve the typedefs in
-#   the DWARF.)
 #
 # This is a hokey attempt to order the implemented types by meaningfulness when
 # pretty-printed. Perhaps it is entirely misguided, and we should actually

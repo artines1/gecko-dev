@@ -5,14 +5,15 @@
  */
 
 interface LoadContext;
-interface TabParent;
+interface RemoteTab;
 interface URI;
 interface nsIDocShell;
 interface nsIPrintSettings;
 interface nsIWebBrowserPersistDocumentReceiver;
 interface nsIWebProgressListener;
 
-[ChromeOnly]
+[ChromeOnly,
+ Exposed=Window]
 interface FrameLoader {
   /**
    * Get the docshell from the frame loader.
@@ -21,10 +22,10 @@ interface FrameLoader {
   readonly attribute nsIDocShell? docShell;
 
   /**
-   * Get this frame loader's TabParent, if it has a remote frame.  Otherwise,
+   * Get this frame loader's RemoteTab, if it has a remote frame.  Otherwise,
    * returns null.
    */
-  readonly attribute TabParent? tabParent;
+  readonly attribute RemoteTab? remoteTab;
 
   /**
    * Get an nsILoadContext for the top-level docshell. For remote
@@ -34,18 +35,16 @@ interface FrameLoader {
   readonly attribute LoadContext loadContext;
 
   /**
+   * Get the root BrowsingContext within the frame.
+   * This may be null immediately after creating a remote frame.
+   */
+  readonly attribute BrowsingContext? browsingContext;
+
+  /**
    * Get the ParentSHistory for the nsFrameLoader. May return null if this
    * frameloader is not for a toplevel frame.
    */
   readonly attribute ParentSHistory? parentSHistory;
-
-  /**
-   * Adds a blocking promise for the current cross process navigation.
-   * This method can only be called while the "BrowserWillChangeProcess" event
-   * is being fired.
-   */
-  [Throws]
-  void addProcessChangeBlockingPromise(Promise<any> aPromise);
 
   /**
    * Find out whether the loader's frame is at too great a depth in
@@ -98,16 +97,21 @@ interface FrameLoader {
   void requestNotifyAfterRemotePaint();
 
   /**
-   * Close the window through the ownerElement.
-   */
-  [Throws]
-  void requestFrameLoaderClose();
-
-  /**
    * Force a remote browser to recompute its dimension and screen position.
    */
   [Throws]
   void requestUpdatePosition();
+
+  /**
+   * Force a TabStateFlush from native sessionStoreListeners.
+   * Return true if the flush requires async ipc call.
+   */
+  boolean requestTabStateFlush(unsigned long aFlushId);
+
+  /**
+   * Force Epoch update in native sessionStoreListeners.
+   */
+  void requestEpochUpdate(unsigned long aEpoch);
 
   /**
    * Print the current document.
@@ -123,20 +127,6 @@ interface FrameLoader {
              optional nsIWebProgressListener? aProgressListener = null);
 
   /**
-   * If false, then the subdocument is not clipped to its CSS viewport, and the
-   * subdocument's viewport scrollbar(s) are not rendered.
-   * Defaults to true.
-   */
-  attribute boolean clipSubdocument;
-
-  /**
-   * If false, then the subdocument's scroll coordinates will not be clamped
-   * to their scroll boundaries.
-   * Defaults to true.
-   */
-  attribute boolean clampScrollPosition;
-
-  /**
    * The element which owns this frame loader.
    *
    * For example, if this is a frame loader for an <iframe>, this attribute
@@ -147,8 +137,8 @@ interface FrameLoader {
 
 
   /**
-   * Cached childID of the ContentParent owning the TabParent in this frame
-   * loader. This can be used to obtain the childID after the TabParent died.
+   * Cached childID of the ContentParent owning the RemoteTab in this frame
+   * loader. This can be used to obtain the childID after the RemoteTab died.
    */
   [Pure]
   readonly attribute unsigned long long childID;
@@ -208,12 +198,11 @@ interface FrameLoader {
  *        The nsIWebBrowserPersistDocumentReceiver is a callback that
  *        will be fired once the document is ready for persisting.
  */
-[NoInterfaceObject]
-interface WebBrowserPersistable
+interface mixin WebBrowserPersistable
 {
   [Throws]
   void startPersistence(unsigned long long aOuterWindowID,
                         nsIWebBrowserPersistDocumentReceiver aRecv);
 };
 
-FrameLoader implements WebBrowserPersistable;
+FrameLoader includes WebBrowserPersistable;

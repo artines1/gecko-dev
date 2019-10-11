@@ -11,20 +11,26 @@ add_task(async function run_test() {
   let bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: uri,
-    title: "Bookmark 1"
+    title: "Bookmark 1",
   });
   PlacesUtils.tagging.tagURI(uri, tags);
 
   let promise = PromiseUtils.defer();
 
   let bookmarksObserver = {
-    QueryInterface: ChromeUtils.generateQI([
-      Ci.nsINavBookmarkObserver
-    ]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsINavBookmarkObserver]),
 
     _changedCount: 0,
-    onItemChanged(aItemId, aProperty, aIsAnnotationProperty, aValue,
-                            aLastModified, aItemType, aParentId, aGuid) {
+    onItemChanged(
+      aItemId,
+      aProperty,
+      aIsAnnotationProperty,
+      aValue,
+      aLastModified,
+      aItemType,
+      aParentId,
+      aGuid
+    ) {
       if (aProperty == "tags") {
         Assert.equal(aGuid, bookmark.guid);
         this._changedCount++;
@@ -39,7 +45,6 @@ add_task(async function run_test() {
       }
     },
 
-    onItemAdded() {},
     onBeginUpdateBatch() {},
     onEndUpdateBatch() {},
     onItemVisited() {},

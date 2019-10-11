@@ -134,7 +134,7 @@ interface nsISSLSocketControl : nsISupports {
      * If set to true before the server requests a client cert
      * no cert will be sent.
      */
-    [noscript] attribute boolean denyClientCert;
+    [notxpcom, nostdcall] attribute boolean denyClientCert;
 
     /**
      * If set before the server requests a client cert (assuming it does so at
@@ -149,17 +149,27 @@ interface nsISSLSocketControl : nsISupports {
      */
     [infallible] readonly attribute boolean clientCertSent;
 
-    /**
-     * bypassAuthentication is true if the server certificate checks are
-     * not be enforced. This is to enable non-secure transport over TLS.
-     */
-    [infallible] readonly attribute boolean bypassAuthentication;
-
     /*
      * failedVerification is true if any enforced certificate checks have failed.
-     * Connections that have not yet tried to verify, have verifications bypassed,
-     * or are using acceptable exceptions will all return false.
+     * Connections that have not yet tried to verify, or are using acceptable
+     * exceptions will all return false.
      */
     [infallible] readonly attribute boolean failedVerification;
+
+    /*
+     * esniTxt is a string that consists of the concatenated _esni. TXT records.
+     * This is a base64 encoded ESNIKeys structure.
+     */
+    attribute ACString esniTxt;
+
+    /**
+     * True iff the connection was resumed using the resumption token.
+     */
+    readonly attribute boolean resumed;
+
+    /**
+     * The id used to uniquely identify the connection to the peer.
+     */
+    readonly attribute ACString peerId;
 };
 

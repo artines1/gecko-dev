@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Helpers for different FFI pointer kinds that Gecko's FFI layer uses.
 
@@ -64,6 +64,14 @@ pub unsafe trait HasBoxFFI: HasSimpleFFI {
     /// &Arc<ServoType> -> &GeckoType
     fn into_ffi(self: Box<Self>) -> Owned<Self::FFIType> {
         unsafe { transmute(self) }
+    }
+
+    /// Drops an owned FFI pointer. This conceptually takes the
+    /// Owned<Self::FFIType>, except it's a bit of a paint to do that without
+    /// much benefit.
+    #[inline]
+    unsafe fn drop_ffi(ptr: *mut Self::FFIType) {
+        let _ = Box::from_raw(ptr as *mut Self);
     }
 }
 
@@ -135,12 +143,12 @@ pub unsafe trait HasArcFFI: HasFFI {
     }
 }
 
-#[repr(C)]
 /// Gecko-FFI-safe Arc (T is an ArcInner).
 ///
 /// This can be null.
 ///
 /// Leaks on drop. Please don't drop this.
+#[repr(C)]
 pub struct Strong<GeckoType> {
     ptr: *const GeckoType,
     _marker: PhantomData<GeckoType>,
@@ -268,14 +276,6 @@ pub struct Owned<GeckoType> {
 }
 
 impl<GeckoType> Owned<GeckoType> {
-    /// Gets this `Owned` type as a `Box<ServoType>`.
-    pub fn into_box<ServoType>(self) -> Box<ServoType>
-    where
-        ServoType: HasBoxFFI<FFIType = GeckoType>,
-    {
-        unsafe { transmute(self) }
-    }
-
     /// Converts this instance to a (non-null) instance of `OwnedOrNull`.
     pub fn maybe(self) -> OwnedOrNull<GeckoType> {
         unsafe { transmute(self) }
@@ -305,31 +305,19 @@ pub struct OwnedOrNull<GeckoType> {
 }
 
 impl<GeckoType> OwnedOrNull<GeckoType> {
+    /// Returns a null pointer.
+    #[inline]
+    pub fn null() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+            _marker: PhantomData,
+        }
+    }
+
     /// Returns whether this pointer is null.
     #[inline]
     pub fn is_null(&self) -> bool {
         self.ptr.is_null()
-    }
-
-    /// Returns an owned pointer if this is non-null, and `None` otherwise.
-    pub fn into_box_opt<ServoType>(self) -> Option<Box<ServoType>>
-    where
-        ServoType: HasBoxFFI<FFIType = GeckoType>,
-    {
-        if self.is_null() {
-            None
-        } else {
-            Some(unsafe { transmute(self) })
-        }
-    }
-
-    /// Returns an `Owned<GeckoType>` if non-null, `None` otherwise.
-    pub fn into_owned_opt(self) -> Option<Owned<GeckoType>> {
-        if self.is_null() {
-            None
-        } else {
-            Some(unsafe { transmute(self) })
-        }
     }
 
     /// Gets a immutable reference to the underlying Gecko type, or `None` if

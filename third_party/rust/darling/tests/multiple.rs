@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate darling;
+#[macro_use]
 extern crate syn;
+#[macro_use]
+extern crate quote;
 
 use darling::FromDeriveInput;
 
@@ -12,7 +15,7 @@ struct Lorem {
     ipsum: Ipsum,
 }
 
-#[derive(FromMetaItem)]
+#[derive(FromMeta)]
 struct Ipsum {
     #[darling(multiple)]
     dolor: Vec<String>,
@@ -20,11 +23,14 @@ struct Ipsum {
 
 #[test]
 fn expand_many() {
-    let di = syn::parse_str(r#"
+    let di = parse_quote! {
         #[hello(ipsum(dolor = "Hello", dolor = "World"))]
         pub struct Baz;
-    "#).unwrap();
+    };
 
     let lorem: Lorem = Lorem::from_derive_input(&di).unwrap();
-    assert_eq!(lorem.ipsum.dolor, vec!["Hello".to_string(), "World".to_string()]);
+    assert_eq!(
+        lorem.ipsum.dolor,
+        vec!["Hello".to_string(), "World".to_string()]
+    );
 }

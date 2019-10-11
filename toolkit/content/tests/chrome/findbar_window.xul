@@ -16,14 +16,13 @@
         onload="onLoad();"
         title="findbar test">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
 
   <script type="application/javascript"><![CDATA[
-    ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-    ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
-    ChromeUtils.import("resource://testing-common/ContentTask.jsm");
-    ContentTask.setTestScope(window.opener.wrappedJSObject);
+    const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    const {ContentTask} = ChromeUtils.import("resource://testing-common/ContentTask.jsm");
+    ContentTask.setTestScope(window.arguments[0]);
 
     var gPrefsvc = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
 
@@ -58,7 +57,7 @@
 
     var imports = ["SimpleTest", "ok", "is", "info"];
     for (var name of imports) {
-      window[name] = window.opener.wrappedJSObject[name];
+      window[name] = window.arguments[0][name];
     }
     SimpleTest.requestLongerTimeout(2);
 
@@ -89,9 +88,10 @@
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       let promise = BrowserTestUtils.browserLoaded(gBrowser);
-      gBrowser.loadURI("data:text/html,<h2 id='h2'>" + SEARCH_TEXT +
+      BrowserTestUtils.loadURI(gBrowser, "data:text/html,<h2 id='h2'>" + SEARCH_TEXT +
         "</h2><h2><a href='" + SAMPLE_URL + "'>Link Test</a></h2><input id='text' type='text' value='" +
-        SAMPLE_TEXT + "'></input><input id='button' type='button'></input><img id='img' width='50' height='50'/>");
+        SAMPLE_TEXT + "'></input><input id='button' type='button'></input><img id='img' width='50' height='50'/>",
+        { triggeringPrincipal: window.document.nodePrincipal });
       await promise;
       await onDocumentLoaded();
     }
@@ -152,7 +152,7 @@
     async function testFindbarSelection() {
       function checkFindbarState(aTestName, aExpSelection) {
         ok(!gFindBar.hidden, "testFindbarSelection: failed to open findbar: " + aTestName);
-        ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+        ok(document.commandDispatcher.focusedElement == gFindBar._findField,
            "testFindbarSelection: find field is not focused: " + aTestName);
         if (!gHasFindClipboard) {
           ok(gFindBar._findField.value == aExpSelection,
@@ -201,7 +201,7 @@
       // use an dummy image to start the drag so it doesn't get interrupted by a selection
       var img = gBrowser.contentDocument.getElementById("img");
       synthesizeDrop(img, gFindBar._findField, [[ {type: "text/plain", data: "Rabbits" } ]], "copy", window);
-      is(gFindBar._findField.inputField.value, "Rabbits", "drop on findbar");
+      is(gFindBar._findField.value, "Rabbits", "drop on findbar");
       gFindBar.close();
     }
 
@@ -227,10 +227,14 @@
       });
     }
 
-    function promiseFindResult() {
+    function promiseFindResult(expectedString) {
       return new Promise(resolve => {
         let listener = {
           onFindResult: function(result) {
+            if (expectedString && result.searchString != expectedString) {
+              return;
+            }
+
             gFindBar.browser.finder.removeResultListener(listener);
             resolve(result);
           }
@@ -239,10 +243,13 @@
       });
     }
 
-    function promiseMatchesCountResult() {
+    function promiseMatchesCountResult(expectedString) {
       return new Promise(resolve => {
         let listener = {
-          onMatchesCountResult: function() {
+          onMatchesCountResult: function(result) {
+            if (expectedString && result.searchString != expectedString)
+              return;
+
             gFindBar.browser.finder.removeResultListener(listener);
             resolve();
           }
@@ -253,10 +260,13 @@
       });
     }
 
-    function promiseHighlightFinished() {
+    function promiseHighlightFinished(expectedString) {
       return new Promise(resolve => {
         let listener = {
-          onHighlightFinished() {
+          onHighlightFinished(result) {
+            if (expectedString && result.searchString != expectedString)
+              return;
+
             gFindBar.browser.finder.removeResultListener(listener);
             resolve();
           }
@@ -273,7 +283,7 @@
         let event = document.createEvent("KeyboardEvent");
         event.initKeyEvent("keypress", true, true, null, false, false,
                            false, false, 0, str.charCodeAt(i));
-        gFindBar._findField.inputField.dispatchEvent(event);
+        gFindBar._findField.dispatchEvent(event);
         if (waitForResult) {
           await promise;
         }
@@ -296,7 +306,7 @@
       document.getElementById("cmd_find").doCommand();
 
       ok(!gFindBar.hidden, "testNormalFind: failed to open findbar");
-      ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+      ok(document.commandDispatcher.focusedElement == gFindBar._findField,
          "testNormalFind: find field is not focused");
 
       let promise;
@@ -340,7 +350,7 @@
 
     async function testNormalFindWithComposition() {
       ok(!gFindBar.hidden, "testNormalFindWithComposition: findbar should be open");
-      ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+      ok(document.commandDispatcher.focusedElement == gFindBar._findField,
          "testNormalFindWithComposition: find field should be focused");
 
       var matchCaseCheckbox = gFindBar.getElement("find-case-sensitive");
@@ -350,7 +360,7 @@
         clicked = true;
       }
 
-      gFindBar._findField.inputField.focus();
+      gFindBar._findField.focus();
 
       var searchStr = "text";
 
@@ -391,7 +401,7 @@
       ok(!matchCaseCheckbox.hidden, "match case box is hidden in manual mode");
       ok(matchCaseLabel.hidden, "match case label is visible in manual mode");
 
-      gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 2);
+      await changeCase(2);
 
       ok(matchCaseCheckbox.hidden,
          "match case box is visible in automatic mode");
@@ -409,7 +419,7 @@
       gFindBar.onFindAgainCommand();
       ok(matchCaseCheckbox.hidden && !matchCaseLabel.hidden,
          "bug 365551: case sensitivity UI is broken after find-again");
-      gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 0);
+      await changeCase(0);
       gFindBar.close();
     }
 
@@ -433,7 +443,7 @@
       });
 
       ok(!gFindBar.hidden, "testQuickFindLink: failed to open findbar");
-      ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+      ok(document.commandDispatcher.focusedElement == gFindBar._findField,
          "testQuickFindLink: find field is not focused");
 
       var searchStr = "Link Test";
@@ -509,7 +519,7 @@
 
       highlightButton.click();
       ok(highlightButton.checked, "testFindWithHighlight: Highlight All should be checked.");
-      await promiseHighlightFinished();
+      await promiseHighlightFinished(searchStr);
       await promiseExpectRangeCount(3);
 
       synthesizeKey("KEY_Backspace");
@@ -522,7 +532,7 @@
 
       highlightButton.click();
       ok(highlightButton.checked, "testFindWithHighlight - 1316513: Highlight All should be checked.");
-      await promiseHighlightFinished();
+      await promiseHighlightFinished(searchStr);
       await promiseExpectRangeCount(3);
 
       let promise = BrowserTestUtils.browserLoaded(gBrowser);
@@ -532,7 +542,7 @@
       ok(highlightButton.checked, "testFindWithHighlight - 1316513: Highlight All " +
          "should still be checked after a reload.");
       synthesizeKey("KEY_Enter");
-      await promiseHighlightFinished();
+      await promiseHighlightFinished(searchStr);
       await promiseExpectRangeCount(3);
 
       // Uncheck at test end to not interfere with other test functions that are
@@ -552,7 +562,7 @@
       });
 
       ok(!gFindBar.hidden, "testQuickFindText: failed to open findbar");
-      ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+      ok(document.commandDispatcher.focusedElement == gFindBar._findField,
         "testQuickFindText: find field is not focused");
 
       await enterStringIntoFindField(SEARCH_TEXT);
@@ -579,7 +589,7 @@
       }
 
       ok(!gFindBar.hidden, "testFindCountUI: failed to open findbar");
-      ok(document.commandDispatcher.focusedElement == gFindBar._findField.inputField,
+      ok(document.commandDispatcher.focusedElement == gFindBar._findField,
          "testFindCountUI: find field is not focused");
 
       let promise;
@@ -630,7 +640,7 @@
         timeout += 20;
         await new Promise(resolve => setTimeout(resolve, timeout));
         await enterStringIntoFindField(test.text, false);
-        await promiseMatchesCountResult();
+        await promiseMatchesCountResult(test.text);
         let matches = foundMatches.value.match(regex);
         if (!test.total) {
           ok(!matches, "No message should be shown when 0 matches are expected");
@@ -639,7 +649,7 @@
           for (let i = 1; i < test.total; i++) {
             await new Promise(resolve => setTimeout(resolve, timeout));
             gFindBar.onFindAgainCommand();
-            await promiseMatchesCountResult();
+            await promiseMatchesCountResult(test.text);
             // test.current + 1, test.current + 2, ..., test.total, 1, ..., test.current
             let current = (test.current + i - 1) % test.total + 1;
             assertMatches({
@@ -659,6 +669,7 @@
       await enterStringIntoFindField(SEARCH_TEXT);
       gFindBar.clear();
 
+      // Case-insensitive should already be the current value.
       gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 0);
 
       await enterStringIntoFindField("t");
@@ -666,7 +677,7 @@
         Assert.equal(content.getSelection().toString(), "T", "First T should be selected.");
       });
 
-      gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 1);
+      await changeCase(1);
       await ContentTask.spawn(gBrowser, null, async function() {
         Assert.equal(content.getSelection().toString(), "t", "First t should be selected.");
       });
@@ -678,12 +689,14 @@
     async function testFailedStringReset() {
       gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 1);
 
+      promise = promiseFindResult(gBrowser.hasAttribute("remote") ? SEARCH_TEXT.toUpperCase() : "");
       await enterStringIntoFindField(SEARCH_TEXT.toUpperCase(), false);
+      await promise;
       await ContentTask.spawn(gBrowser, null, async function() {
         Assert.equal(content.getSelection().toString(), "", "Not found.");
       });
 
-      gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", 0);
+      await changeCase(0);
       await ContentTask.spawn(gBrowser, { SEARCH_TEXT }, async function(args) {
         Assert.equal(content.getSelection().toString(), args.SEARCH_TEXT,
           "Search text should be selected.");
@@ -738,6 +751,12 @@
 
       check.click();
       gFindBar.close(true);
+    }
+
+    function changeCase(value) {
+      let promise = gBrowser.hasAttribute("remote") ? promiseFindResult() : Promise.resolve();
+      gPrefsvc.setIntPref("accessibility.typeaheadfind.casesensitive", value);
+      return promise;
     }
   ]]></script>
 

@@ -7,14 +7,16 @@
 const {
   isNodeValid,
   addPseudoClassLock,
-  removePseudoClassLock
+  removePseudoClassLock,
 } = require("./utils/markup");
 
 const { loadSheet } = require("devtools/shared/layout/utils");
 
 // SimpleOutlineHighlighter's stylesheet
 const HIGHLIGHTED_PSEUDO_CLASS = ":-moz-devtools-highlighted";
-const SIMPLE_OUTLINE_SHEET = "data:text/css;charset=utf-8," + encodeURIComponent(`
+const SIMPLE_OUTLINE_SHEET =
+  "data:text/css;charset=utf-8," +
+  encodeURIComponent(`
   .__fx-devtools-hide-shortcut__ {
     visibility: hidden !important
   }
@@ -65,6 +67,6 @@ SimpleOutlineHighlighter.prototype = {
       removePseudoClassLock(this.currentNode, HIGHLIGHTED_PSEUDO_CLASS);
       this.currentNode = null;
     }
-  }
+  },
 };
 exports.SimpleOutlineHighlighter = SimpleOutlineHighlighter;

@@ -6,27 +6,43 @@
 // control inside the private browsing mode.
 
 add_task(async function test() {
-  const testPageURL = "https://example.com/browser/" +
+  const testPageURL =
+    "https://example.com/browser/" +
     "browser/components/privatebrowsing/test/browser/browser_privatebrowsing_geoprompt_page.html";
 
   function checkGeolocation(aPrivateMode, aWindow) {
     return (async function() {
-      aWindow.gBrowser.selectedTab = aWindow.gBrowser.addTab(testPageURL);
+      aWindow.gBrowser.selectedTab = BrowserTestUtils.addTab(
+        aWindow.gBrowser,
+        testPageURL
+      );
       await BrowserTestUtils.browserLoaded(aWindow.gBrowser.selectedBrowser);
 
-      let notification = aWindow.PopupNotifications.getNotification("geolocation");
+      let notification = aWindow.PopupNotifications.getNotification(
+        "geolocation"
+      );
 
       // Wait until the notification is available.
       while (!notification) {
-        await new Promise(resolve => { executeSoon(resolve); });
-        notification = aWindow.PopupNotifications.getNotification("geolocation");
+        await new Promise(resolve => {
+          executeSoon(resolve);
+        });
+        notification = aWindow.PopupNotifications.getNotification(
+          "geolocation"
+        );
       }
 
       if (aPrivateMode) {
         // Make sure the notification is correctly displayed without a remember control
-        ok(!notification.options.checkbox.show, "Secondary actions should exist (always/never remember)");
+        ok(
+          !notification.options.checkbox.show,
+          "Secondary actions should exist (always/never remember)"
+        );
       } else {
-        ok(notification.options.checkbox.show, "Secondary actions should exist (always/never remember)");
+        ok(
+          notification.options.checkbox.show,
+          "Secondary actions should exist (always/never remember)"
+        );
       }
       notification.remove();
 
@@ -36,14 +52,16 @@ add_task(async function test() {
 
   let win = await BrowserTestUtils.openNewBrowserWindow();
   let browser = win.gBrowser.selectedBrowser;
-  browser.loadURI(testPageURL);
+  BrowserTestUtils.loadURI(browser, testPageURL);
   await BrowserTestUtils.browserLoaded(browser);
 
   await checkGeolocation(false, win);
 
-  let privateWin = await BrowserTestUtils.openNewBrowserWindow({private: true});
+  let privateWin = await BrowserTestUtils.openNewBrowserWindow({
+    private: true,
+  });
   let privateBrowser = privateWin.gBrowser.selectedBrowser;
-  privateBrowser.loadURI(testPageURL);
+  BrowserTestUtils.loadURI(privateBrowser, testPageURL);
   await BrowserTestUtils.browserLoaded(privateBrowser);
 
   await checkGeolocation(true, privateWin);

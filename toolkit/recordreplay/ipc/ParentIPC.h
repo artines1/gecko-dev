@@ -8,7 +8,6 @@
 #define mozilla_recordreplay_ParentIPC_h
 
 #include "base/shared_memory.h"
-#include "mozilla/dom/ContentChild.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/ipc/ProtocolUtils.h"
@@ -37,6 +36,13 @@ const char* SaveAllRecordingsDirectory();
 
 // Middleman process API
 
+// Get the pid of the UI process.
+base::ProcessId ParentProcessId();
+
+// Return whether this is a middleman process that forwards IPDL messages to
+// a recording child process.
+bool IsMiddlemanWithRecordingChild();
+
 // Save the recording up to the current point in execution.
 void SaveRecording(const ipc::FileDescriptor& aFile);
 
@@ -55,12 +61,16 @@ void OpenChannel(base::ProcessId aMiddlemanPid, uint32_t aChannelId,
 
 // Get the command line arguments to use when spawning a recording or replaying
 // child process.
-void GetArgumentsForChildProcess(base::ProcessId aMiddlemanPid, uint32_t aChannelId,
+void GetArgumentsForChildProcess(base::ProcessId aMiddlemanPid,
+                                 uint32_t aChannelId,
                                  const char* aRecordingFile, bool aRecording,
                                  std::vector<std::string>& aExtraArgs);
 
-} // namespace parent
-} // namespace recordreplay
-} // namespace mozilla
+// Return whether the middleman will be running developer tools server code.
+bool DebuggerRunsInMiddleman();
 
-#endif // mozilla_recordreplay_ParentIPC_h
+}  // namespace parent
+}  // namespace recordreplay
+}  // namespace mozilla
+
+#endif  // mozilla_recordreplay_ParentIPC_h

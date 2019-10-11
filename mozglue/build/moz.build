@@ -15,6 +15,7 @@ else:
     Library('mozglue')
 
 if CONFIG['OS_TARGET'] == 'Android':
+    LDFLAGS += ['-Wl,--version-script,%s/mozglue.ver' % SRCDIR]
     SOURCES += [
         'BionicGlue.cpp',
     ]
@@ -24,21 +25,21 @@ if CONFIG['MOZ_ASAN']:
         'AsanOptions.cpp',
     ]
 
-if CONFIG['OS_TARGET'] == 'WINNT':
-    DEFFILE = 'mozglue.def'
-    # We'll break the DLL blocklist if we immediately load user32.dll
-    DELAYLOAD_DLLS += [
-        'user32.dll',
+if CONFIG['MOZ_UBSAN']:
+    SOURCES += [
+        'UbsanOptions.cpp',
     ]
 
-    if CONFIG['MOZ_PGO'] and CONFIG['CC_TYPE'] == 'clang-cl':
-        SOURCES += ['cygprofile.cpp']
-        SOURCES['cygprofile.cpp'].pgo_generate_only = True
-
-    if CONFIG['CC_TYPE'] == "msvc":
-        CFLAGS += ['-guard:cf']
-        CXXFLAGS += ['-guard:cf']
-        LDFLAGS += ['-guard:cf']
+if CONFIG['OS_TARGET'] == 'WINNT':
+    DEFFILE = '!mozglue.def'
+    # We'll break the DLL blocklist if we immediately load user32.dll.
+    # For the same reason, we delayload winmm.dll which statically links
+    # user32.dll.
+    DELAYLOAD_DLLS += [
+        'user32.dll',
+        'winmm.dll',
+    ]
+    RCINCLUDE = 'mozglue.rc'
 
 if CONFIG['MOZ_WIDGET_TOOLKIT']:
 
@@ -57,38 +58,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT']:
             '/memory/build',
         ]
 
-        if CONFIG['CC_TYPE'] == "msvc":
-            SOURCES += ['WindowsCFGStatus.cpp']
-        SOURCES += [
-            'Authenticode.cpp',
-            'WindowsDllBlocklist.cpp',
-        ]
-
-        DisableStlWrapping()
-        OS_LIBS += [
-            'crypt32',
-            'version',
-            'wintrust',
-        ]
-        DELAYLOAD_DLLS += [
-            'crypt32.dll',
-            'wintrust.dll',
-        ]
-        EXPORTS.mozilla += [
-            'Authenticode.h',
-            'WindowsDllBlocklistCommon.h',
-            'WindowsDllBlocklistDefs.h',
-        ]
-        EXPORTS.mozilla.glue += [
-            'WindowsDllServices.h',
-        ]
-
     EXPORTS.mozilla += [
         'arm.h',
         'mips.h',
+        'ppc.h',
         'SSE.h',
-        'WindowsCFGStatus.h',
-        'WindowsDllBlocklist.h',
     ]
 
     if CONFIG['CPU_ARCH'].startswith('x86'):
@@ -106,6 +80,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT']:
             'mips.cpp',
         ]
 
+    if CONFIG['CPU_ARCH'].startswith('ppc'):
+        SOURCES += [
+            'ppc.cpp',
+        ]
+
     if CONFIG['MOZ_LINKER']:
         USE_LIBS += [
             'zlib',
@@ -115,10 +94,8 @@ USE_LIBS += [
     'mfbt',
 ]
 
-DEFINES['IMPL_MFBT'] = True
+LIBRARY_DEFINES['IMPL_MFBT'] = True
 LIBRARY_DEFINES['MOZ_HAS_MOZGLUE'] = True
-
-LDFLAGS += CONFIG['MOZ_GLUE_WRAP_LDFLAGS']
 
 if CONFIG['OS_TARGET'] == 'Darwin':
     # On OSX 10.10.3, a dead lock happens in some cases involving dynamic
@@ -134,6 +111,3 @@ if CONFIG['MOZ_LINKER'] and CONFIG['CPU_ARCH'] == 'arm':
     LDFLAGS += ['-Wl,-version-script,%s/arm-eabi-filter' % SRCDIR]
 
 DIST_INSTALL = True
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

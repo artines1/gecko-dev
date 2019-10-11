@@ -9,12 +9,11 @@
 #include "gfxContext.h"
 #include "gfxUtils.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/SVGDocument.h"
-#include "mozilla/Preferences.h"
-#include "nsIDocument.h"
+#include "mozilla/StaticPrefs_svg.h"
 #include "nsSVGPaintServerFrame.h"
 #include "SVGObserverUtils.h"
-#include "nsSVGPaintServerFrame.h"
 
 using namespace mozilla::gfx;
 using namespace mozilla::image;
@@ -23,19 +22,9 @@ namespace mozilla {
 
 using image::imgDrawingParams;
 
-/* static */ bool
-SVGContextPaint::IsAllowedForImageFromURI(nsIURI* aURI)
-{
-  static bool sEnabledForContent = false;
-  static bool sEnabledForContentCached = false;
-
-  if (!sEnabledForContentCached) {
-    Preferences::AddBoolVarCache(&sEnabledForContent,
-                                 "svg.context-properties.content.enabled", false);
-    sEnabledForContentCached = true;
-  }
-
-  if (sEnabledForContent) {
+/* static */
+bool SVGContextPaint::IsAllowedForImageFromURI(nsIURI* aURI) {
+  if (StaticPrefs::svg_context_properties_content_enabled()) {
     return true;
   }
 
@@ -66,17 +55,16 @@ SVGContextPaint::IsAllowedForImageFromURI(nsIURI* aURI)
   //
   nsAutoCString scheme;
   if (NS_SUCCEEDED(aURI->GetScheme(scheme)) &&
-      (scheme.EqualsLiteral("chrome")
-       || scheme.EqualsLiteral("resource")
-       || scheme.EqualsLiteral("page-icon"))) {
+      (scheme.EqualsLiteral("chrome") || scheme.EqualsLiteral("resource") ||
+       scheme.EqualsLiteral("page-icon"))) {
     return true;
   }
-  RefPtr<BasePrincipal> principal = BasePrincipal::CreateCodebasePrincipal(aURI, OriginAttributes());
+  RefPtr<BasePrincipal> principal =
+      BasePrincipal::CreateContentPrincipal(aURI, OriginAttributes());
   nsString addonId;
   if (NS_SUCCEEDED(principal->GetAddonId(addonId))) {
-    if (StringEndsWith(addonId, NS_LITERAL_STRING("@mozilla.org"))
-        || StringEndsWith(addonId, NS_LITERAL_STRING("@mozilla.com"))
-        || StringBeginsWith(addonId, NS_LITERAL_STRING("@testpilot-"))) {
+    if (StringEndsWith(addonId, NS_LITERAL_STRING("@mozilla.org")) ||
+        StringEndsWith(addonId, NS_LITERAL_STRING("@mozilla.com"))) {
       return true;
     }
   }
@@ -90,28 +78,22 @@ SVGContextPaint::IsAllowedForImageFromURI(nsIURI* aURI)
  * @param aOuterContextPaint pattern information from the outer text context
  * @param aTargetPaint where to store the current pattern information
  * @param aFillOrStroke member pointer to the paint we are setting up
- * @param aProperty the frame property descriptor of the fill or stroke paint
- *   server frame
  */
-static void
-SetupInheritablePaint(const DrawTarget* aDrawTarget,
-                      const gfxMatrix& aContextMatrix,
-                      nsIFrame* aFrame,
-                      float& aOpacity,
-                      SVGContextPaint* aOuterContextPaint,
-                      SVGContextPaintImpl::Paint& aTargetPaint,
-                      nsStyleSVGPaint nsStyleSVG::*aFillOrStroke,
-                      SVGObserverUtils::PaintingPropertyDescriptor aProperty,
-                      imgDrawingParams& aImgParams)
-{
-  const nsStyleSVG *style = aFrame->StyleSVG();
-  nsSVGPaintServerFrame *ps =
-    SVGObserverUtils::GetPaintServer(aFrame, aFillOrStroke, aProperty);
+static void SetupInheritablePaint(const DrawTarget* aDrawTarget,
+                                  const gfxMatrix& aContextMatrix,
+                                  nsIFrame* aFrame, float& aOpacity,
+                                  SVGContextPaint* aOuterContextPaint,
+                                  SVGContextPaintImpl::Paint& aTargetPaint,
+                                  StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+                                  imgDrawingParams& aImgParams) {
+  const nsStyleSVG* style = aFrame->StyleSVG();
+  nsSVGPaintServerFrame* ps =
+      SVGObserverUtils::GetAndObservePaintServer(aFrame, aFillOrStroke);
 
   if (ps) {
     RefPtr<gfxPattern> pattern =
-      ps->GetPaintServerPattern(aFrame, aDrawTarget, aContextMatrix,
-                                aFillOrStroke, aOpacity, aImgParams);
+        ps->GetPaintServerPattern(aFrame, aDrawTarget, aContextMatrix,
+                                  aFillOrStroke, aOpacity, aImgParams);
 
     if (pattern) {
       aTargetPaint.SetPaintServer(aFrame, aContextMatrix, ps);
@@ -121,53 +103,50 @@ SetupInheritablePaint(const DrawTarget* aDrawTarget,
 
   if (aOuterContextPaint) {
     RefPtr<gfxPattern> pattern;
-    switch ((style->*aFillOrStroke).Type()) {
-    case eStyleSVGPaintType_ContextFill:
-      pattern =
-        aOuterContextPaint->GetFillPattern(aDrawTarget, aOpacity,
-                                           aContextMatrix, aImgParams);
-      break;
-    case eStyleSVGPaintType_ContextStroke:
-       pattern =
-         aOuterContextPaint->GetStrokePattern(aDrawTarget, aOpacity,
-                                              aContextMatrix, aImgParams);
-      break;
-    default:
-      ;
+    auto tag = SVGContextPaintImpl::Paint::Tag::None;
+    switch ((style->*aFillOrStroke).kind.tag) {
+      case StyleSVGPaintKind::Tag::ContextFill:
+        tag = SVGContextPaintImpl::Paint::Tag::ContextFill;
+        pattern = aOuterContextPaint->GetFillPattern(
+            aDrawTarget, aOpacity, aContextMatrix, aImgParams);
+        break;
+      case StyleSVGPaintKind::Tag::ContextStroke:
+        tag = SVGContextPaintImpl::Paint::Tag::ContextStroke;
+        pattern = aOuterContextPaint->GetStrokePattern(
+            aDrawTarget, aOpacity, aContextMatrix, aImgParams);
+        break;
+      default:;
     }
     if (pattern) {
-      aTargetPaint.SetContextPaint(aOuterContextPaint, (style->*aFillOrStroke).Type());
+      aTargetPaint.SetContextPaint(aOuterContextPaint, tag);
       return;
     }
   }
 
   nscolor color =
-    nsSVGUtils::GetFallbackOrPaintColor(aFrame->Style(), aFillOrStroke);
+      nsSVGUtils::GetFallbackOrPaintColor(*aFrame->Style(), aFillOrStroke);
   aTargetPaint.SetColor(color);
 }
 
-DrawMode
-SVGContextPaintImpl::Init(const DrawTarget* aDrawTarget,
-                          const gfxMatrix& aContextMatrix,
-                          nsIFrame* aFrame,
-                          SVGContextPaint* aOuterContextPaint,
-                          imgDrawingParams& aImgParams)
-{
+DrawMode SVGContextPaintImpl::Init(const DrawTarget* aDrawTarget,
+                                   const gfxMatrix& aContextMatrix,
+                                   nsIFrame* aFrame,
+                                   SVGContextPaint* aOuterContextPaint,
+                                   imgDrawingParams& aImgParams) {
   DrawMode toDraw = DrawMode(0);
 
-  const nsStyleSVG *style = aFrame->StyleSVG();
+  const nsStyleSVG* style = aFrame->StyleSVG();
 
   // fill:
-  if (style->mFill.Type() == eStyleSVGPaintType_None) {
+  if (style->mFill.kind.IsNone()) {
     SetFillOpacity(0.0f);
   } else {
-    float opacity = nsSVGUtils::GetOpacity(style->FillOpacitySource(),
-                                           style->mFillOpacity,
-                                           aOuterContextPaint);
+    float opacity = nsSVGUtils::GetOpacity(
+        style->FillOpacitySource(), style->mFillOpacity, aOuterContextPaint);
 
     SetupInheritablePaint(aDrawTarget, aContextMatrix, aFrame, opacity,
                           aOuterContextPaint, mFillPaint, &nsStyleSVG::mFill,
-                          SVGObserverUtils::FillProperty(), aImgParams);
+                          aImgParams);
 
     SetFillOpacity(opacity);
 
@@ -175,18 +154,16 @@ SVGContextPaintImpl::Init(const DrawTarget* aDrawTarget,
   }
 
   // stroke:
-  if (style->mStroke.Type() == eStyleSVGPaintType_None) {
+  if (style->mStroke.kind.IsNone()) {
     SetStrokeOpacity(0.0f);
   } else {
-    float opacity = nsSVGUtils::GetOpacity(style->StrokeOpacitySource(),
-                                           style->mStrokeOpacity,
-                                           aOuterContextPaint);
+    float opacity =
+        nsSVGUtils::GetOpacity(style->StrokeOpacitySource(),
+                               style->mStrokeOpacity, aOuterContextPaint);
 
     SetupInheritablePaint(aDrawTarget, aContextMatrix, aFrame, opacity,
                           aOuterContextPaint, mStrokePaint,
-                          &nsStyleSVG::mStroke,
-                          SVGObserverUtils::StrokeProperty(),
-                          aImgParams);
+                          &nsStyleSVG::mStroke, aImgParams);
 
     SetStrokeOpacity(opacity);
 
@@ -196,10 +173,8 @@ SVGContextPaintImpl::Init(const DrawTarget* aDrawTarget,
   return toDraw;
 }
 
-void
-SVGContextPaint::InitStrokeGeometry(gfxContext* aContext,
-                                    float devUnitsPerSVGUnit)
-{
+void SVGContextPaint::InitStrokeGeometry(gfxContext* aContext,
+                                         float devUnitsPerSVGUnit) {
   mStrokeWidth = aContext->CurrentLineWidth() / devUnitsPerSVGUnit;
   aContext->CurrentDash(mDashes, &mDashOffset);
   for (uint32_t i = 0; i < mDashes.Length(); i++) {
@@ -208,11 +183,8 @@ SVGContextPaint::InitStrokeGeometry(gfxContext* aContext,
   mDashOffset /= devUnitsPerSVGUnit;
 }
 
-/* static */ SVGContextPaint*
-SVGContextPaint::GetContextPaint(nsIContent* aContent)
-{
-  nsIDocument* ownerDoc = aContent->OwnerDoc();
-
+SVGContextPaint* SVGContextPaint::GetContextPaint(nsIContent* aContent) {
+  dom::Document* ownerDoc = aContent->OwnerDoc();
   if (!ownerDoc->IsSVGDocument()) {
     return nullptr;
   }
@@ -234,33 +206,24 @@ SVGContextPaint::GetContextPaint(nsIContent* aContent)
   return const_cast<SVGContextPaint*>(contextPaint);
 }
 
-already_AddRefed<gfxPattern>
-SVGContextPaintImpl::GetFillPattern(const DrawTarget* aDrawTarget,
-                                    float aOpacity,
-                                    const gfxMatrix& aCTM,
-                                    imgDrawingParams& aImgParams)
-{
+already_AddRefed<gfxPattern> SVGContextPaintImpl::GetFillPattern(
+    const DrawTarget* aDrawTarget, float aOpacity, const gfxMatrix& aCTM,
+    imgDrawingParams& aImgParams) {
   return mFillPaint.GetPattern(aDrawTarget, aOpacity, &nsStyleSVG::mFill, aCTM,
                                aImgParams);
 }
 
-already_AddRefed<gfxPattern>
-SVGContextPaintImpl::GetStrokePattern(const DrawTarget* aDrawTarget,
-                                      float aOpacity,
-                                      const gfxMatrix& aCTM,
-                                      imgDrawingParams& aImgParams)
-{
+already_AddRefed<gfxPattern> SVGContextPaintImpl::GetStrokePattern(
+    const DrawTarget* aDrawTarget, float aOpacity, const gfxMatrix& aCTM,
+    imgDrawingParams& aImgParams) {
   return mStrokePaint.GetPattern(aDrawTarget, aOpacity, &nsStyleSVG::mStroke,
                                  aCTM, aImgParams);
 }
 
-already_AddRefed<gfxPattern>
-SVGContextPaintImpl::Paint::GetPattern(const DrawTarget* aDrawTarget,
-                                       float aOpacity,
-                                       nsStyleSVGPaint nsStyleSVG::*aFillOrStroke,
-                                       const gfxMatrix& aCTM,
-                                       imgDrawingParams& aImgParams)
-{
+already_AddRefed<gfxPattern> SVGContextPaintImpl::Paint::GetPattern(
+    const DrawTarget* aDrawTarget, float aOpacity,
+    StyleSVGPaint nsStyleSVG::*aFillOrStroke, const gfxMatrix& aCTM,
+    imgDrawingParams& aImgParams) {
   RefPtr<gfxPattern> pattern;
   if (mPatternCache.Get(aOpacity, getter_AddRefs(pattern))) {
     // Set the pattern matrix just in case it was messed with by a previous
@@ -271,56 +234,49 @@ SVGContextPaintImpl::Paint::GetPattern(const DrawTarget* aDrawTarget,
   }
 
   switch (mPaintType) {
-  case eStyleSVGPaintType_None:
-    pattern = new gfxPattern(Color());
-    mPatternMatrix = gfxMatrix();
-    break;
-  case eStyleSVGPaintType_Color: {
-    Color color = Color::FromABGR(mPaintDefinition.mColor);
-    color.a *= aOpacity;
-    pattern = new gfxPattern(color);
-    mPatternMatrix = gfxMatrix();
-    break;
-  }
-  case eStyleSVGPaintType_Server:
-    pattern =
-      mPaintDefinition.mPaintServerFrame->GetPaintServerPattern(mFrame,
-                                                                aDrawTarget,
-                                                                mContextMatrix,
-                                                                aFillOrStroke,
-                                                                aOpacity,
-                                                                aImgParams);
-    {
-      // m maps original-user-space to pattern space
-      gfxMatrix m = pattern->GetMatrix();
-      gfxMatrix deviceToOriginalUserSpace = mContextMatrix;
-      if (!deviceToOriginalUserSpace.Invert()) {
-        return nullptr;
-      }
-      // mPatternMatrix maps device space to pattern space via original user space
-      mPatternMatrix = deviceToOriginalUserSpace * m;
+    case Tag::None:
+      pattern = new gfxPattern(Color());
+      mPatternMatrix = gfxMatrix();
+      break;
+    case Tag::Color: {
+      Color color = Color::FromABGR(mPaintDefinition.mColor);
+      color.a *= aOpacity;
+      pattern = new gfxPattern(color);
+      mPatternMatrix = gfxMatrix();
+      break;
     }
-    pattern->SetMatrix(aCTM * mPatternMatrix);
-    break;
-  case eStyleSVGPaintType_ContextFill:
-    pattern =
-      mPaintDefinition.mContextPaint->GetFillPattern(aDrawTarget,
-                                                     aOpacity, aCTM,
-                                                     aImgParams);
-    // Don't cache this. mContextPaint will have cached it anyway. If we
-    // cache it, we'll have to compute mPatternMatrix, which is annoying.
-    return pattern.forget();
-  case eStyleSVGPaintType_ContextStroke:
-    pattern =
-      mPaintDefinition.mContextPaint->GetStrokePattern(aDrawTarget,
-                                                       aOpacity, aCTM,
-                                                       aImgParams);
-    // Don't cache this. mContextPaint will have cached it anyway. If we
-    // cache it, we'll have to compute mPatternMatrix, which is annoying.
-    return pattern.forget();
-  default:
-    MOZ_ASSERT(false, "invalid paint type");
-    return nullptr;
+    case Tag::PaintServer:
+      pattern = mPaintDefinition.mPaintServerFrame->GetPaintServerPattern(
+          mFrame, aDrawTarget, mContextMatrix, aFillOrStroke, aOpacity,
+          aImgParams);
+      {
+        // m maps original-user-space to pattern space
+        gfxMatrix m = pattern->GetMatrix();
+        gfxMatrix deviceToOriginalUserSpace = mContextMatrix;
+        if (!deviceToOriginalUserSpace.Invert()) {
+          return nullptr;
+        }
+        // mPatternMatrix maps device space to pattern space via original user
+        // space
+        mPatternMatrix = deviceToOriginalUserSpace * m;
+      }
+      pattern->SetMatrix(aCTM * mPatternMatrix);
+      break;
+    case Tag::ContextFill:
+      pattern = mPaintDefinition.mContextPaint->GetFillPattern(
+          aDrawTarget, aOpacity, aCTM, aImgParams);
+      // Don't cache this. mContextPaint will have cached it anyway. If we
+      // cache it, we'll have to compute mPatternMatrix, which is annoying.
+      return pattern.forget();
+    case Tag::ContextStroke:
+      pattern = mPaintDefinition.mContextPaint->GetStrokePattern(
+          aDrawTarget, aOpacity, aCTM, aImgParams);
+      // Don't cache this. mContextPaint will have cached it anyway. If we
+      // cache it, we'll have to compute mPatternMatrix, which is annoying.
+      return pattern.forget();
+    default:
+      MOZ_ASSERT(false, "invalid paint type");
+      return nullptr;
   }
 
   mPatternCache.Put(aOpacity, pattern);
@@ -328,31 +284,24 @@ SVGContextPaintImpl::Paint::GetPattern(const DrawTarget* aDrawTarget,
 }
 
 AutoSetRestoreSVGContextPaint::AutoSetRestoreSVGContextPaint(
-                                 const SVGContextPaint& aContextPaint,
-                                 dom::SVGDocument& aSVGDocument)
-  : mSVGDocument(aSVGDocument)
-  , mOuterContextPaint(aSVGDocument.GetCurrentContextPaint())
-{
+    const SVGContextPaint& aContextPaint, dom::SVGDocument& aSVGDocument)
+    : mSVGDocument(aSVGDocument),
+      mOuterContextPaint(aSVGDocument.GetCurrentContextPaint()) {
   MOZ_ASSERT(aSVGDocument.IsBeingUsedAsImage(),
              "SVGContextPaint::GetContextPaint assumes this");
 
   mSVGDocument.SetCurrentContextPaint(&aContextPaint);
 }
 
-AutoSetRestoreSVGContextPaint::~AutoSetRestoreSVGContextPaint()
-{
+AutoSetRestoreSVGContextPaint::~AutoSetRestoreSVGContextPaint() {
   mSVGDocument.SetCurrentContextPaint(mOuterContextPaint);
 }
 
-
 // SVGEmbeddingContextPaint
 
-already_AddRefed<gfxPattern>
-SVGEmbeddingContextPaint::GetFillPattern(const DrawTarget* aDrawTarget,
-                                         float aFillOpacity,
-                                         const gfxMatrix& aCTM,
-                                         imgDrawingParams& aImgParams)
-{
+already_AddRefed<gfxPattern> SVGEmbeddingContextPaint::GetFillPattern(
+    const DrawTarget* aDrawTarget, float aFillOpacity, const gfxMatrix& aCTM,
+    imgDrawingParams& aImgParams) {
   if (!mFill) {
     return nullptr;
   }
@@ -364,12 +313,9 @@ SVGEmbeddingContextPaint::GetFillPattern(const DrawTarget* aDrawTarget,
   return do_AddRef(new gfxPattern(fill));
 }
 
-already_AddRefed<gfxPattern>
-SVGEmbeddingContextPaint::GetStrokePattern(const DrawTarget* aDrawTarget,
-                                           float aStrokeOpacity,
-                                           const gfxMatrix& aCTM,
-                                           imgDrawingParams& aImgParams)
-{
+already_AddRefed<gfxPattern> SVGEmbeddingContextPaint::GetStrokePattern(
+    const DrawTarget* aDrawTarget, float aStrokeOpacity, const gfxMatrix& aCTM,
+    imgDrawingParams& aImgParams) {
   if (!mStroke) {
     return nullptr;
   }
@@ -378,9 +324,7 @@ SVGEmbeddingContextPaint::GetStrokePattern(const DrawTarget* aDrawTarget,
   return do_AddRef(new gfxPattern(stroke));
 }
 
-uint32_t
-SVGEmbeddingContextPaint::Hash() const
-{
+uint32_t SVGEmbeddingContextPaint::Hash() const {
   uint32_t hash = 0;
 
   if (mFill) {
@@ -407,4 +351,4 @@ SVGEmbeddingContextPaint::Hash() const
   return hash;
 }
 
-} // namespace mozilla
+}  // namespace mozilla

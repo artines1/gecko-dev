@@ -33,7 +33,6 @@ interface nsIXPCTestParams : nsISupports {
   string                testString(in string a, inout string b);
   wchar                 testWchar(in wchar a, inout wchar b);
   wstring               testWstring(in wstring a, inout wstring b);
-  DOMString             testDOMString(in DOMString a, inout DOMString b);
   AString               testAString(in AString a, inout AString b);
   AUTF8String           testAUTF8String(in AUTF8String a, inout AUTF8String b);
   ACString              testACString(in ACString a, inout ACString b);
@@ -51,6 +50,9 @@ interface nsIXPCTestParams : nsISupports {
   void                  testInterfaceIsSequence(in nsIIDPtr aIID, [iid_is(aIID)] in Array<nsQIResult> a,
                                                 inout nsIIDPtr bIID, [iid_is(bIID)] inout Array<nsQIResult> b,
                                                 out nsIIDPtr rvIID, [retval, iid_is(rvIID)] out Array<nsQIResult> rv);
+
+  // Returns whatever was passed in.
+  Array<uint8_t>        testOptionalSequence([optional] in Array<uint8_t> arr);
 
   //
   // Dependent parameters use the same types as above, but are handled much differently.

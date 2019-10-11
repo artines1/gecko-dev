@@ -31,9 +31,13 @@ UNIFIED_SOURCES += [
     'ServoStyleRuleMap.cpp',
 ]
 
+include('/ipc/chromium/chromium-config.mozbuild')
+
 FINAL_LIBRARY = 'xul'
 LOCAL_INCLUDES += [
     '../style',
     '/dom/base',
-    '/dom/xbl',
 ]
+
+if CONFIG['MOZ_XBL']:
+    LOCAL_INCLUDES += ['/dom/xbl']

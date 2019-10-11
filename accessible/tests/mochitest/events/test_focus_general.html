@@ -6,10 +6,8 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -29,11 +27,11 @@
       };
 
       this.eventSeq = [
-        new focusChecker(this.DOMNode)
+        new focusChecker(this.DOMNode),
       ];
 
       this.unexpectedEventSeq = [
-        new invokerChecker(EVENT_FOCUS, this.DOMNode.ownerDocument)
+        new invokerChecker(EVENT_FOCUS, this.DOMNode.ownerDocument),
       ];
 
       this.getID = function focusElmWhileSubdocIsFocused_getID() {

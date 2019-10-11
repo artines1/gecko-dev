@@ -11,8 +11,11 @@
 // Reads the chrome.manifest from a legacy non-restartless extension and loads
 // its overlays into the appropriate top-level windows.
 
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+);
+const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const windowTracker = {
   init() {
@@ -22,12 +25,13 @@ const windowTracker = {
   async observe(window, topic, data) {
     if (topic === "domwindowopened") {
       await new Promise(resolve =>
-        window.addEventListener("DOMWindowCreated", resolve, {once: true}));
+        window.addEventListener("DOMWindowCreated", resolve, { once: true })
+      );
 
-      let {document} = window;
-      let {documentURI} = document;
+      let { document } = window;
+      let { documentURI } = document;
 
-      if (documentURI !== "chrome://browser/content/browser.xul") {
+      if (documentURI !== AppConstants.BROWSER_CHROME_URL) {
         return;
       }
       initializeBrowser(window);
@@ -36,13 +40,15 @@ const windowTracker = {
 };
 
 function readSync(uri) {
-  let channel = NetUtil.newChannel({uri, loadUsingSystemPrincipal: true});
-  let buffer = NetUtil.readInputStream(channel.open2());
+  let channel = NetUtil.newChannel({ uri, loadUsingSystemPrincipal: true });
+  let buffer = NetUtil.readInputStream(channel.open());
   return new TextDecoder().decode(buffer);
 }
 
 function startup(data, reason) {
-  Services.scriptloader.loadSubScript(data.resourceURI.resolve("content/initialize_browser.js"));
+  Services.scriptloader.loadSubScript(
+    data.resourceURI.resolve("content/initialize_browser.js")
+  );
   windowTracker.init();
 }
 

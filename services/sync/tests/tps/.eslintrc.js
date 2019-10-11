@@ -27,5 +27,5 @@ module.exports = {
     "Tabs": false,
     "Windows": false,
     "WipeServer": false,
-  }
+  },
 };

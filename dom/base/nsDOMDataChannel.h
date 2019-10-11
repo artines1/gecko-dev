@@ -12,8 +12,6 @@
 #include "mozilla/dom/RTCDataChannelBinding.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/net/DataChannelListener.h"
-#include "nsIInputStream.h"
-
 
 namespace mozilla {
 namespace dom {
@@ -21,12 +19,11 @@ class Blob;
 }
 
 class DataChannel;
-};
+};  // namespace mozilla
 
 class nsDOMDataChannel final : public mozilla::DOMEventTargetHelper,
-                               public mozilla::DataChannelListener
-{
-public:
+                               public mozilla::DataChannelListener {
+ public:
   nsDOMDataChannel(already_AddRefed<mozilla::DataChannel>& aDataChannel,
                    nsPIDOMWindowInner* aWindow);
 
@@ -44,12 +41,9 @@ public:
   using EventTarget::EventListenerRemoved;
   virtual void EventListenerRemoved(nsAtom* aType) override;
 
-  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
-    override;
-  nsPIDOMWindowInner* GetParentObject() const
-  {
-    return GetOwner();
-  }
+  virtual JSObject* WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) override;
+  nsPIDOMWindowInner* GetParentObject() const { return GetOwner(); }
 
   // WebIDL
   void GetLabel(nsAString& aLabel);
@@ -67,15 +61,12 @@ public:
   void Close();
   IMPL_EVENT_HANDLER(message)
   IMPL_EVENT_HANDLER(bufferedamountlow)
-  mozilla::dom::RTCDataChannelType BinaryType() const
-  {
+  mozilla::dom::RTCDataChannelType BinaryType() const {
     return static_cast<mozilla::dom::RTCDataChannelType>(
-      static_cast<int>(mBinaryType));
+        static_cast<int>(mBinaryType));
   }
-  void SetBinaryType(mozilla::dom::RTCDataChannelType aType)
-  {
-    mBinaryType = static_cast<DataChannelBinaryType>(
-      static_cast<int>(aType));
+  void SetBinaryType(mozilla::dom::RTCDataChannelType aType) {
+    mBinaryType = static_cast<DataChannelBinaryType>(static_cast<int>(aType));
   }
   void Send(const nsAString& aData, mozilla::ErrorResult& aRv);
   void Send(mozilla::dom::Blob& aData, mozilla::ErrorResult& aRv);
@@ -83,34 +74,27 @@ public:
   void Send(const mozilla::dom::ArrayBufferView& aData,
             mozilla::ErrorResult& aRv);
 
+  bool Negotiated() const;
   bool Ordered() const;
-  uint16_t Id() const;
+  mozilla::dom::Nullable<uint16_t> GetId() const;
 
-  nsresult
-  DoOnMessageAvailable(const nsACString& aMessage, bool aBinary);
+  nsresult DoOnMessageAvailable(const nsACString& aMessage, bool aBinary);
 
-  virtual nsresult
-  OnMessageAvailable(nsISupports* aContext, const nsACString& aMessage) override;
+  virtual nsresult OnMessageAvailable(nsISupports* aContext,
+                                      const nsACString& aMessage) override;
 
-  virtual nsresult
-  OnBinaryMessageAvailable(nsISupports* aContext, const nsACString& aMessage) override;
+  virtual nsresult OnBinaryMessageAvailable(
+      nsISupports* aContext, const nsACString& aMessage) override;
 
   virtual nsresult OnSimpleEvent(nsISupports* aContext, const nsAString& aName);
 
-  virtual nsresult
-  OnChannelConnected(nsISupports* aContext) override;
+  virtual nsresult OnChannelConnected(nsISupports* aContext) override;
 
-  virtual nsresult
-  OnChannelClosed(nsISupports* aContext) override;
+  virtual nsresult OnChannelClosed(nsISupports* aContext) override;
 
-  virtual nsresult
-  OnBufferLow(nsISupports* aContext) override;
+  virtual nsresult OnBufferLow(nsISupports* aContext) override;
 
-  virtual nsresult
-  NotBuffered(nsISupports* aContext) override;
-
-  virtual void
-  AppReady();
+  virtual nsresult NotBuffered(nsISupports* aContext) override;
 
   // if there are "strong event listeners" or outgoing not sent messages
   // then this method keeps the object alive when js doesn't have strong
@@ -120,11 +104,11 @@ public:
   // (and possibly collected).
   void DontKeepAliveAnyMore();
 
-protected:
+ protected:
   ~nsDOMDataChannel();
 
-private:
-  void Send(nsIInputStream* aMsgStream, const nsACString& aMsgString,
+ private:
+  void Send(mozilla::dom::Blob* aMsgBlob, const nsACString* aMsgString,
             bool aIsBinary, mozilla::ErrorResult& aRv);
 
   void ReleaseSelf();
@@ -133,7 +117,7 @@ private:
   RefPtr<nsDOMDataChannel> mSelfRef;
   // Owning reference
   RefPtr<mozilla::DataChannel> mDataChannel;
-  nsString  mOrigin;
+  nsString mOrigin;
   enum DataChannelBinaryType {
     DC_BINARY_TYPE_ARRAYBUFFER,
     DC_BINARY_TYPE_BLOB,
@@ -143,4 +127,4 @@ private:
   bool mSentClose;
 };
 
-#endif // nsDOMDataChannel_h
+#endif  // nsDOMDataChannel_h

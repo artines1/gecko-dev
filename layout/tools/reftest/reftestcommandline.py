@@ -254,6 +254,12 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
                           default=3600,
                           help="Maximum time, in seconds, to run in --verify mode..")
 
+        self.add_argument("--enable-webrender",
+                          action="store_true",
+                          dest="enable_webrender",
+                          default=False,
+                          help="Enable the WebRender compositor in Gecko.")
+
         mozlog.commandline.add_logging_group(self)
 
     def get_ip(self):
@@ -313,8 +319,8 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
 
         if options.reftestExtensionPath is None:
             if self.build_obj is not None:
-                reftestExtensionPath = os.path.join(self.build_obj.topobjdir, "_tests",
-                                                    "reftest", "reftest")
+                reftestExtensionPath = os.path.join(self.build_obj.distdir,
+                                                    "xpi-stage", "reftest")
             else:
                 reftestExtensionPath = os.path.join(here, "reftest")
             options.reftestExtensionPath = os.path.normpath(reftestExtensionPath)
@@ -322,8 +328,8 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
         if (options.specialPowersExtensionPath is None and
             options.suite in ["crashtest", "jstestbrowser"]):
             if self.build_obj is not None:
-                specialPowersExtensionPath = os.path.join(self.build_obj.topobjdir, "_tests",
-                                                          "reftest", "specialpowers")
+                specialPowersExtensionPath = os.path.join(self.build_obj.distdir,
+                                                          "xpi-stage", "specialpowers")
             else:
                 specialPowersExtensionPath = os.path.join(here, "specialpowers")
             options.specialPowersExtensionPath = os.path.normpath(specialPowersExtensionPath)
@@ -411,50 +417,57 @@ class RemoteArgumentsParser(ReftestArgumentsParser):
                           type=str,
                           dest="adb_path",
                           default=None,
-                          help="path to adb")
+                          help="Path to adb binary.")
 
         self.add_argument("--deviceSerial",
                           action="store",
                           type=str,
                           dest="deviceSerial",
-                          help="adb serial number of remote device to test")
+                          help="adb serial number of remote device. This is required "
+                               "when more than one device is connected to the host. "
+                               "Use 'adb devices' to see connected devices.")
 
         self.add_argument("--remote-webserver",
                           action="store",
                           type=str,
                           dest="remoteWebServer",
-                          help="IP Address of the webserver hosting the reftest content")
+                          help="IP address of the remote web server.")
 
         self.add_argument("--http-port",
                           action="store",
                           type=str,
                           dest="httpPort",
-                          help="port of the web server for http traffic")
+                          help="http port of the remote web server.")
 
         self.add_argument("--ssl-port",
                           action="store",
                           type=str,
                           dest="sslPort",
-                          help="Port for https traffic to the web server")
+                          help="ssl port of the remote web server.")
 
         self.add_argument("--remoteTestRoot",
                           action="store",
                           type=str,
                           dest="remoteTestRoot",
-                          help="remote directory to use as test root "
-                               "(eg. /mnt/sdcard/tests or /data/local/tests)")
+                          help="Remote directory to use as test root "
+                               "(eg. /mnt/sdcard/tests or /data/local/tests).")
 
         self.add_argument("--httpd-path",
                           action="store",
                           type=str,
                           dest="httpdPath",
-                          help="path to the httpd.js file")
+                          help="Path to the httpd.js file.")
 
         self.add_argument("--no-device-info",
                           action="store_false",
                           dest="printDeviceInfo",
                           default=True,
-                          help="do not display verbose diagnostics about the remote device")
+                          help="Do not display verbose diagnostics about the remote device.")
+
+        self.add_argument("--no-install",
+                          action="store_true",
+                          default=False,
+                          help="Skip the installation of the APK.")
 
     def validate_remote(self, options, automation):
         if options.remoteWebServer is None:
@@ -485,7 +498,4 @@ class RemoteArgumentsParser(ReftestArgumentsParser):
         if not options.httpdPath:
             options.httpdPath = os.path.join(options.utilityPath, "components")
 
-        # Disable e10s by default on Android because we don't run Android
-        # e10s jobs anywhere yet.
-        options.e10s = False
         return options

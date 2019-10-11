@@ -11,18 +11,14 @@
 
 #include "webrtc/common_types.h"
 
-#include "CSFLog.h"
+#include "mozilla/Logging.h"
 
-static const char* mpfLogTag = "MediaPipelineFilter";
-#ifdef LOGTAG
-#undef LOGTAG
-#endif
-#define LOGTAG mpfLogTag
+// defined in MediaPipeline.cpp
+extern mozilla::LazyLogModule gMediaPipelineLog;
 
 namespace mozilla {
 
-MediaPipelineFilter::MediaPipelineFilter() : correlator_(0) {
-}
+MediaPipelineFilter::MediaPipelineFilter() : correlator_(0) {}
 
 bool MediaPipelineFilter::Filter(const webrtc::RTPHeader& header,
                                  uint32_t correlator) {
@@ -39,16 +35,15 @@ bool MediaPipelineFilter::Filter(const webrtc::RTPHeader& header,
     return false;
   }
 
-  if (!header.extension.rtpStreamId.empty() &&
-      !remote_rid_set_.empty() &&
-      remote_rid_set_.count(header.extension.rtpStreamId.data())) {
+  if (!header.extension.stream_id.empty() && !remote_rid_set_.empty() &&
+      remote_rid_set_.count(header.extension.stream_id.data())) {
     return true;
   }
-  if (!header.extension.rtpStreamId.empty()) {
-    CSFLogDebug(LOGTAG,
-                "MediaPipelineFilter ignoring seq# %u ssrc: %u RID: %s",
-                header.sequenceNumber, header.ssrc,
-                header.extension.rtpStreamId.data());
+  if (!header.extension.stream_id.empty()) {
+    MOZ_LOG(gMediaPipelineLog, LogLevel::Debug,
+            ("MediaPipelineFilter ignoring seq# %u ssrc: %u RID: %s",
+             header.sequenceNumber, header.ssrc,
+             header.extension.stream_id.data()));
   }
 
   if (remote_ssrc_set_.count(header.ssrc)) {
@@ -94,5 +89,4 @@ void MediaPipelineFilter::Update(const MediaPipelineFilter& filter_update) {
   correlator_ = filter_update.correlator_;
 }
 
-} // end namespace mozilla
-
+}  // end namespace mozilla

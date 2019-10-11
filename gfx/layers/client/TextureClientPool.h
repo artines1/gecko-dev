@@ -22,11 +22,11 @@ class ISurfaceAllocator;
 class TextureForwarder;
 class TextureReadLock;
 
-class TextureClientAllocator
-{
-protected:
-  virtual ~TextureClientAllocator() {}
-public:
+class TextureClientAllocator {
+ protected:
+  virtual ~TextureClientAllocator() = default;
+
+ public:
   NS_INLINE_DECL_REFCOUNTING(TextureClientAllocator)
 
   virtual already_AddRefed<TextureClient> GetTextureClient() = 0;
@@ -35,26 +35,20 @@ public:
    * Return a TextureClient that is not yet ready to be reused, but will be
    * imminently.
    */
-  virtual void ReturnTextureClientDeferred(TextureClient *aClient) = 0;
+  virtual void ReturnTextureClientDeferred(TextureClient* aClient) = 0;
 
   virtual void ReportClientLost() = 0;
 };
 
-class TextureClientPool final : public TextureClientAllocator
-{
+class TextureClientPool final : public TextureClientAllocator {
   virtual ~TextureClientPool();
 
-public:
-  TextureClientPool(LayersBackend aBackend,
-                    bool aSupportsTextureDirectMapping,
-                    int32_t aMaxTextureSize,
-                    gfx::SurfaceFormat aFormat,
-                    gfx::IntSize aSize,
-                    TextureFlags aFlags,
-                    uint32_t aShrinkTimeoutMsec,
-                    uint32_t aClearTimeoutMsec,
-                    uint32_t aInitialPoolSize,
-                    uint32_t aPoolUnusedSize,
+ public:
+  TextureClientPool(LayersBackend aBackend, bool aSupportsTextureDirectMapping,
+                    int32_t aMaxTextureSize, gfx::SurfaceFormat aFormat,
+                    gfx::IntSize aSize, TextureFlags aFlags,
+                    uint32_t aShrinkTimeoutMsec, uint32_t aClearTimeoutMsec,
+                    uint32_t aInitialPoolSize, uint32_t aPoolUnusedSize,
                     TextureForwarder* aAllocator);
 
   /**
@@ -72,13 +66,13 @@ public:
    * Return a TextureClient that is no longer being used and is ready for
    * immediate re-use or destruction.
    */
-  void ReturnTextureClient(TextureClient *aClient);
+  void ReturnTextureClient(TextureClient* aClient);
 
   /**
    * Return a TextureClient that is not yet ready to be reused, but will be
    * imminently.
    */
-  void ReturnTextureClientDeferred(TextureClient *aClient) override;
+  void ReturnTextureClientDeferred(TextureClient* aClient) override;
 
   /**
    * Return any clients to the pool that were previously returned in
@@ -110,11 +104,12 @@ public:
   TextureFlags GetFlags() const { return mFlags; }
 
   /**
-   * Clear the pool and put it in a state where it won't recycle any new texture.
+   * Clear the pool and put it in a state where it won't recycle any new
+   * texture.
    */
   void Destroy();
 
-private:
+ private:
   void ReturnUnlockedClients();
 
   /// Allocate a single TextureClient to be returned from the pool.
@@ -159,7 +154,7 @@ private:
   /// existence is always mOutstandingClients + the size of mTextureClients.
   uint32_t mOutstandingClients;
 
-  std::stack<RefPtr<TextureClient> > mTextureClients;
+  std::stack<RefPtr<TextureClient>> mTextureClients;
 
   std::list<RefPtr<TextureClient>> mTextureClientsDeferred;
   RefPtr<nsITimer> mShrinkTimer;
@@ -175,7 +170,7 @@ private:
   bool mSupportsTextureDirectMapping;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* MOZILLA_GFX_TEXTURECLIENTPOOL_H */

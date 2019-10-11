@@ -8,31 +8,37 @@
 #define GFX_VR_SERVICE_VRSERVICE_H
 
 #include "mozilla/Atomics.h"
-
 #include "moz_external_vr.h"
+#include "base/process.h"  // for base::ProcessHandle
 
-#include <thread>
 namespace base {
 class Thread;
-} // namespace base
+}  // namespace base
 namespace mozilla {
 namespace gfx {
 
 class VRSession;
+class VRShMem;
 
-class VRService
-{
-public:
+static const int kVRFrameTimingHistoryDepth = 100;
+
+class VRService {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VRService)
-  static already_AddRefed<VRService> Create();
+  static already_AddRefed<VRService> Create(
+      volatile VRExternalShmem* aShmem = nullptr);
 
+  void Refresh();
   void Start();
   void Stop();
-  VRExternalShmem* GetAPIShmem();
 
-private:
-  VRService();
+ private:
+  explicit VRService(volatile VRExternalShmem* aShmem);
   ~VRService();
+
+  void StopInternal(bool aFromDtor);
+
+  bool InitShmem();
   void PushState(const mozilla::gfx::VRSystemState& aState);
   void PullState(mozilla::gfx::VRBrowserState& aState);
 
@@ -51,14 +57,18 @@ private:
    */
   VRBrowserState mBrowserState;
 
-  std::unique_ptr<VRSession> mSession;
+  UniquePtr<VRSession> mSession;
   base::Thread* mServiceThread;
   bool mShutdownRequested;
 
-  VRExternalShmem mAPIShmem;
+  // Note: mShmem doesn't support RefPtr; thus, do not share this private
+  // pointer so that its lifetime can still be controlled by VRService
+  VRShMem* mShmem;
+  VRHapticState mLastHapticState[kVRHapticsMaxCount];
+  TimeStamp mFrameStartTime[kVRFrameTimingHistoryDepth];
 
   bool IsInServiceThread();
-  void RequestShutdown();
+  void UpdateHaptics();
 
   /**
    * The VR Service thread is a state machine that always has one
@@ -70,10 +80,9 @@ private:
   void ServiceShutdown();
   void ServiceWaitForImmersive();
   void ServiceImmersiveMode();
-
 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
-#endif // GFX_VR_SERVICE_VRSERVICE_H
+#endif  // GFX_VR_SERVICE_VRSERVICE_H

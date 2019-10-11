@@ -17,14 +17,13 @@ namespace dom {
 class ArrayBufferViewOrArrayBuffer;
 class OwningArrayBufferViewOrArrayBuffer;
 
-class CryptoBuffer : public FallibleTArray<uint8_t>
-{
-public:
+class CryptoBuffer : public FallibleTArray<uint8_t> {
+ public:
   uint8_t* Assign(const CryptoBuffer& aData);
   uint8_t* Assign(const uint8_t* aData, uint32_t aLength);
   uint8_t* Assign(const nsACString& aString);
   uint8_t* Assign(const SECItem* aItem);
-  uint8_t* Assign(const InfallibleTArray<uint8_t>& aData);
+  uint8_t* Assign(const nsTArray<uint8_t>& aData);
   uint8_t* Assign(const ArrayBuffer& aData);
   uint8_t* Assign(const ArrayBufferView& aData);
   uint8_t* Assign(const ArrayBufferViewOrArrayBuffer& aData);
@@ -33,12 +32,12 @@ public:
   uint8_t* AppendSECItem(const SECItem* aItem);
   uint8_t* AppendSECItem(const SECItem& aItem);
 
-  template<typename T,
-           JSObject* UnwrapArray(JSObject*),
-           void GetLengthAndDataAndSharedness(JSObject*, uint32_t*, bool*, T**)>
-  uint8_t* Assign(const TypedArray_base<T, UnwrapArray,
-                                        GetLengthAndDataAndSharedness>& aArray)
-  {
+  template <typename T, JSObject* UnwrapArray(JSObject*),
+            void GetLengthAndDataAndSharedness(JSObject*, uint32_t*, bool*,
+                                               T**)>
+  uint8_t* Assign(
+      const TypedArray_base<T, UnwrapArray, GetLengthAndDataAndSharedness>&
+          aArray) {
     aArray.ComputeLengthAndData();
     return Assign(aArray.Data(), aArray.Length());
   }
@@ -53,7 +52,7 @@ public:
   bool GetBigIntValue(unsigned long& aRetVal);
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_CryptoBuffer_h
+#endif  // mozilla_dom_CryptoBuffer_h

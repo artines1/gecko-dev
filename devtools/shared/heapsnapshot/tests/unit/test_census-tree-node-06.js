@@ -37,10 +37,10 @@ function run_test() {
 
   const REPORT = new Map([
     [abc_Stack, { bytes: 10, count: 1 }],
-    [ bc_Stack, { bytes: 10, count: 1 }],
-    [ c_Stack, { bytes: 10, count: 1 }],
+    [bc_Stack, { bytes: 10, count: 1 }],
+    [c_Stack, { bytes: 10, count: 1 }],
     [dbc_Stack, { bytes: 10, count: 1 }],
-    [ ec_Stack, { bytes: 10, count: 1 }],
+    [ec_Stack, { bytes: 10, count: 1 }],
     ["noStack", { bytes: 50, count: 5 }],
   ]);
 
@@ -68,7 +68,7 @@ function run_test() {
             id: 16,
             parent: 15,
             reportLeafIndex: undefined,
-          }
+          },
         ],
         id: 15,
         parent: 14,
@@ -127,7 +127,7 @@ function run_test() {
                     id: 21,
                     parent: 20,
                     reportLeafIndex: undefined,
-                  }
+                  },
                 ],
                 id: 20,
                 parent: 19,
@@ -150,12 +150,12 @@ function run_test() {
                     id: 24,
                     parent: 23,
                     reportLeafIndex: undefined,
-                  }
+                  },
                 ],
                 id: 23,
                 parent: 19,
                 reportLeafIndex: undefined,
-              }
+              },
             ],
             id: 19,
             parent: 17,
@@ -188,7 +188,7 @@ function run_test() {
         id: 17,
         parent: 14,
         reportLeafIndex: new Set([1, 2, 3, 4, 5]),
-      }
+      },
     ],
     id: 14,
     parent: undefined,

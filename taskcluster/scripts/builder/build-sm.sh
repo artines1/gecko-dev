@@ -7,8 +7,8 @@ source $(dirname $0)/sm-tooltool-config.sh
 : ${PYTHON:=python2.7}
 
 # Run the script
-export MOZ_UPLOAD_DIR="$UPLOAD_DIR"
-AUTOMATION=1 $PYTHON $SRCDIR/js/src/devtools/automation/autospider.py $SPIDERMONKEY_VARIANT
+export MOZ_UPLOAD_DIR="$(cd "$UPLOAD_DIR"; pwd)"
+AUTOMATION=1 $PYTHON $SRCDIR/js/src/devtools/automation/autospider.py ${SPIDERMONKEY_PLATFORM:+--platform=$SPIDERMONKEY_PLATFORM} $SPIDERMONKEY_VARIANT
 BUILD_STATUS=$?
 
 # Ensure upload dir exists
@@ -19,6 +19,6 @@ cp -rL $SRCDIR/obj-spider/dist/bin/{js,jsapi-tests,js-gdb.py} $UPLOAD_DIR
 
 # Fuzzing users would really like to have llvm-symbolizer available in the same
 # directory as the built output.
-gzip -c $TOOLTOOL_CHECKOUT/clang/bin/llvm-symbolizer > $UPLOAD_DIR/llvm-symbolizer.gz || true
+gzip -c $MOZ_FETCHES_DIR/clang/bin/llvm-symbolizer > $UPLOAD_DIR/llvm-symbolizer.gz || true
 
 exit $BUILD_STATUS

@@ -8,7 +8,7 @@
 // ------------------------------------------------------------------------------
 
 var rule = require("../lib/rules/no-compare-against-boolean-literals");
-var RuleTester = require("eslint/lib/testers/rule-tester");
+var RuleTester = require("eslint").RuleTester;
 
 const ruleTester = new RuleTester({ parserOptions: { ecmaVersion: 6 } });
 
@@ -17,49 +17,45 @@ const ruleTester = new RuleTester({ parserOptions: { ecmaVersion: 6 } });
 // ------------------------------------------------------------------------------
 
 function callError(message) {
-  return [{message, type: "BinaryExpression"}];
+  return [{ message, type: "BinaryExpression" }];
 }
 
 const MESSAGE = "Don't compare for inexact equality against boolean literals";
 
 ruleTester.run("no-compare-against-boolean-literals", rule, {
-  valid: [
-    `if (!foo) {}`,
-    `if (!!foo) {}`
-  ],
+  valid: [`if (!foo) {}`, `if (!!foo) {}`],
   invalid: [
     {
       code: `if (foo == true) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (foo != true) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (foo == false) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (foo != false) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (true == foo) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (true != foo) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (false == foo) {}`,
-      errors: callError(MESSAGE)
+      errors: callError(MESSAGE),
     },
     {
       code: `if (false != foo) {}`,
-      errors: callError(MESSAGE)
-    }
-  ]
+      errors: callError(MESSAGE),
+    },
+  ],
 });
-

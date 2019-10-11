@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-
+const Services = require("Services");
 const {
   ACTIVITY_TYPE,
   OPEN_NETWORK_DETAILS,
@@ -13,11 +13,15 @@ const {
   OPEN_STATISTICS,
   RESET_COLUMNS,
   SELECT_DETAILS_PANEL_TAB,
+  SELECT_ACTION_BAR_TAB,
   TOGGLE_COLUMN,
   WATERFALL_RESIZE,
+  SET_COLUMNS_WIDTH,
 } = require("../constants");
 
 const { getDisplayedRequests } = require("../selectors/index");
+
+const DEVTOOLS_DISABLE_CACHE_PREF = "devtools.cache.disabled";
 
 /**
  * Change network details panel.
@@ -58,10 +62,11 @@ function resizeNetworkDetails(width, height) {
  *
  * @param {boolean} enabled - expected persistent logs enabled state
  */
-function enablePersistentLogs(enabled) {
+function enablePersistentLogs(enabled, skipTelemetry = false) {
   return {
     type: ENABLE_PERSISTENT_LOGS,
     enabled,
+    skipTelemetry,
   };
 }
 
@@ -86,6 +91,13 @@ function disableBrowserCache(disabled) {
 function openStatistics(connector, open) {
   if (open) {
     connector.triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_ENABLED);
+  } else if (Services.prefs.getBoolPref(DEVTOOLS_DISABLE_CACHE_PREF)) {
+    // Opening the Statistics panel reconfigures the page and enables
+    // the browser cache (using ACTIVITY_TYPE.RELOAD.WITH_CACHE_ENABLED).
+    // So, make sure to disable the cache again when the user returns back
+    // from the Statistics panel (if DEVTOOLS_DISABLE_CACHE_PREF == true).
+    // See also bug 1430359.
+    connector.triggerActivity(ACTIVITY_TYPE.DISABLE_CACHE);
   }
   return {
     type: OPEN_STATISTICS,
@@ -109,7 +121,7 @@ function resetColumns() {
 function resizeWaterfall(width) {
   return {
     type: WATERFALL_RESIZE,
-    width
+    width,
   };
 }
 
@@ -126,6 +138,18 @@ function selectDetailsPanelTab(id) {
 }
 
 /**
+ * Change the selected tab for network action bar.
+ *
+ * @param {string} id - tab id to be selected
+ */
+function selectActionBarTab(id) {
+  return {
+    type: SELECT_ACTION_BAR_TAB,
+    id,
+  };
+}
+
+/**
  * Toggles a column
  *
  * @param {string} column - The column that is going to be toggled
@@ -134,6 +158,18 @@ function toggleColumn(column) {
   return {
     type: TOGGLE_COLUMN,
     column,
+  };
+}
+
+/**
+ * Set width of multiple columns
+ *
+ * @param {array} widths - array of pairs {name, width}
+ */
+function setColumnsWidth(widths) {
+  return {
+    type: SET_COLUMNS_WIDTH,
+    widths,
   };
 }
 
@@ -178,7 +214,9 @@ module.exports = {
   resetColumns,
   resizeWaterfall,
   selectDetailsPanelTab,
+  selectActionBarTab,
   toggleColumn,
+  setColumnsWidth,
   toggleNetworkDetails,
   togglePersistentLogs,
   toggleBrowserCache,

@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-'use strict';
+"use strict";
 
 const BIN_SUFFIX = mozinfo.bin_suffix;
 const tempDir = do_get_tempdir();
@@ -17,8 +17,9 @@ function compareBinaryData(arr1, arr2) {
   Assert.equal(arr1.length, arr2.length);
   for (let i = 0; i < arr1.length; i++) {
     if (arr1[i] != arr2[i]) {
-      throw "Data differs at index " + i + 
-            ", arr1: " + arr1[i] + ", arr2: " + arr2[i];
+      throw new Error(
+        `Data differs at index ${i}, arr1: ${arr1[i]}, arr2: ${arr2[i]}`
+      );
     }
   }
 }
@@ -30,14 +31,16 @@ function compareBinaryData(arr1, arr2) {
  * @return a byte array for the data in the file.
  */
 function getBinaryFileData(file) {
-  let fileStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                   createInstance(Ci.nsIFileInputStream);
+  let fileStream = Cc[
+    "@mozilla.org/network/file-input-stream;1"
+  ].createInstance(Ci.nsIFileInputStream);
   // Open as RD_ONLY with default permissions.
   fileStream.init(file, -1, -1, null);
 
   // Check the returned size versus the expected size.
-  let stream = Cc["@mozilla.org/binaryinputstream;1"].
-               createInstance(Ci.nsIBinaryInputStream);
+  let stream = Cc["@mozilla.org/binaryinputstream;1"].createInstance(
+    Ci.nsIBinaryInputStream
+  );
   stream.setInputStream(fileStream);
   let bytes = stream.readByteArray(stream.available());
   fileStream.close();
@@ -66,9 +69,11 @@ function run_tests(obj) {
   let ranCount = 0;
   // hasOwnProperty ensures we only see direct properties and not all
   for (let f in obj) {
-    if (typeof obj[f] === "function" &&
-        obj.hasOwnProperty(f) &&
-        f.toString().indexOf("test_") === 0) {
+    if (
+      typeof obj[f] === "function" &&
+      obj.hasOwnProperty(f) &&
+      f.toString().indexOf("test_") === 0
+    ) {
       obj[f]();
       cleanup_per_test();
       ranCount++;
@@ -89,8 +94,7 @@ function createMAR(outMAR, dataDir, files) {
   Assert.ok(files.length > 0);
 
   // Get an nsIProcess to the signmar binary.
-  let process = Cc["@mozilla.org/process/util;1"].
-                createInstance(Ci.nsIProcess);
+  let process = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
   let signmarBin = do_get_file("signmar" + BIN_SUFFIX);
 
   // Make sure the signmar binary exists and is an executable.
@@ -109,11 +113,19 @@ function createMAR(outMAR, dataDir, files) {
   }
 
   // Setup the command line arguments to create the MAR.
-  let args = ["-C", dataDir.path, "-H", "\@MAR_CHANNEL_ID\@",
-              "-V", "13.0a1", "-c", outMAR.path];
+  let args = [
+    "-C",
+    dataDir.path,
+    "-H",
+    "@MAR_CHANNEL_ID@",
+    "-V",
+    "13.0a1",
+    "-c",
+    outMAR.path,
+  ];
   args = args.concat(files);
 
-  info('Running: ' + signmarBin.path + " " + args.join(" "));
+  info("Running: " + signmarBin.path + " " + args.join(" "));
   process.init(signmarBin);
   process.run(true, args, args.length);
 
@@ -132,21 +144,19 @@ function createMAR(outMAR, dataDir, files) {
  */
 function extractMAR(mar, dataDir) {
   // Get an nsIProcess to the signmar binary.
-  let process = Cc["@mozilla.org/process/util;1"].
-                createInstance(Ci.nsIProcess);
+  let process = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
   let signmarBin = do_get_file("signmar" + BIN_SUFFIX);
 
   // Make sure the signmar binary exists and is an executable.
   Assert.ok(signmarBin.exists());
   Assert.ok(signmarBin.isExecutable());
 
-  // Setup the command line arguments to create the MAR.
+  // Setup the command line arguments to extract the MAR.
   let args = ["-C", dataDir.path, "-x", mar.path];
 
-  info('Running: ' + signmarBin.path + " " + args.join(" "));
+  info("Running: " + signmarBin.path + " " + args.join(" "));
   process.init(signmarBin);
   process.run(true, args, args.length);
 
-  // Verify signmar returned 0 for success.
-  Assert.equal(process.exitValue, 0);
+  return process.exitValue;
 }

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')) -- Atomics,SharedArrayBuffer is not enabled unconditionally
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein.  All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -34,13 +34,13 @@ const i32a = new Int32Array(
   new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 4)
 );
 
-$262.agent.broadcast(i32a.buffer);
+$262.agent.safeBroadcast(i32a);
 $262.agent.waitUntil(i32a, RUNNING, 1);
 
 // Try to yield control to ensure the agent actually started to wait.
 $262.agent.tryYield();
 
-assert.sameValue(Atomics.wake(i32a, 0), 1, 'Atomics.wake(i32a, 0) returns 1');
+assert.sameValue(Atomics.notify(i32a, 0), 1, 'Atomics.notify(i32a, 0) returns 1');
 assert.sameValue($262.agent.getReport(), "ok", '$262.agent.getReport() returns "ok"');
 
 reportCompare(0, 0);

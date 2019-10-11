@@ -8,74 +8,61 @@
 
 #include "ClientThing.h"
 #include "mozilla/dom/PClientManagerChild.h"
-#include "mozilla/dom/WorkerHolderToken.h"
 
 namespace mozilla {
 namespace dom {
 
+class IPCWorkerRef;
 class WorkerPrivate;
 
-class ClientManagerChild final : public PClientManagerChild
-                               , public WorkerHolderToken::Listener
-{
+class ClientManagerChild final : public PClientManagerChild {
   ClientThing<ClientManagerChild>* mManager;
 
-  RefPtr<WorkerHolderToken> mWorkerHolderToken;
+  RefPtr<IPCWorkerRef> mIPCWorkerRef;
   bool mTeardownStarted;
 
+  ClientManagerChild();
+
   // PClientManagerChild interface
-  void
-  ActorDestroy(ActorDestroyReason aReason) override;
+  void ActorDestroy(ActorDestroyReason aReason) override;
 
-  PClientHandleChild*
-  AllocPClientHandleChild(const IPCClientInfo& aClientInfo) override;
+  PClientHandleChild* AllocPClientHandleChild(
+      const IPCClientInfo& aClientInfo) override;
 
-  bool
-  DeallocPClientHandleChild(PClientHandleChild* aActor) override;
+  bool DeallocPClientHandleChild(PClientHandleChild* aActor) override;
 
-  PClientManagerOpChild*
-  AllocPClientManagerOpChild(const ClientOpConstructorArgs& aArgs) override;
+  PClientManagerOpChild* AllocPClientManagerOpChild(
+      const ClientOpConstructorArgs& aArgs) override;
 
-  bool
-  DeallocPClientManagerOpChild(PClientManagerOpChild* aActor) override;
+  bool DeallocPClientManagerOpChild(PClientManagerOpChild* aActor) override;
 
-  PClientNavigateOpChild*
-  AllocPClientNavigateOpChild(const ClientNavigateOpConstructorArgs& aArgs) override;
+  PClientNavigateOpChild* AllocPClientNavigateOpChild(
+      const ClientNavigateOpConstructorArgs& aArgs) override;
 
-  bool
-  DeallocPClientNavigateOpChild(PClientNavigateOpChild* aActor) override;
+  bool DeallocPClientNavigateOpChild(PClientNavigateOpChild* aActor) override;
 
-  mozilla::ipc::IPCResult
-  RecvPClientNavigateOpConstructor(PClientNavigateOpChild* aActor,
-                                   const ClientNavigateOpConstructorArgs& aArgs) override;
+  mozilla::ipc::IPCResult RecvPClientNavigateOpConstructor(
+      PClientNavigateOpChild* aActor,
+      const ClientNavigateOpConstructorArgs& aArgs) override;
 
-  PClientSourceChild*
-  AllocPClientSourceChild(const ClientSourceConstructorArgs& aArgs) override;
+  PClientSourceChild* AllocPClientSourceChild(
+      const ClientSourceConstructorArgs& aArgs) override;
 
-  bool
-  DeallocPClientSourceChild(PClientSourceChild* aActor) override;
+  bool DeallocPClientSourceChild(PClientSourceChild* aActor) override;
 
-  // WorkerHolderToken::Listener interface
-  void
-  WorkerShuttingDown() override;
+ public:
+  static ClientManagerChild* Create();
 
-public:
-  explicit ClientManagerChild(WorkerHolderToken* aWorkerHolderToken);
+  void SetOwner(ClientThing<ClientManagerChild>* aThing);
 
-  void
-  SetOwner(ClientThing<ClientManagerChild>* aThing);
+  void RevokeOwner(ClientThing<ClientManagerChild>* aThing);
 
-  void
-  RevokeOwner(ClientThing<ClientManagerChild>* aThing);
+  void MaybeStartTeardown();
 
-  void
-  MaybeStartTeardown();
-
-  mozilla::dom::WorkerPrivate*
-  GetWorkerPrivate() const;
+  mozilla::dom::WorkerPrivate* GetWorkerPrivate() const;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // _mozilla_dom_ClientManagerChild_h
+#endif  // _mozilla_dom_ClientManagerChild_h

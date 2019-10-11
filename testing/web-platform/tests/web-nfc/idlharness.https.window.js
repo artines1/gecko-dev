@@ -5,13 +5,28 @@
 
 // https://w3c.github.io/web-nfc/
 
+const record = {
+  recordType: "text",
+  mediaType: "text/plain",
+  data: "Hello World",
+  id: "/custom/path"
+};
+const message = {
+  url: "/custom/path",
+  records: [record]
+};
+
 idl_test(
   ['web-nfc'],
-  ['html'],
+  ['html', 'dom', 'WebIDL'],
   idl_array => {
     idl_array.add_objects({
-      Navigator: ['navigator'],
-      NFC: ['navigator.nfc'],
+      NFCWriter: ['new NFCWriter();'],
+      NFCReader: ['new NFCReader();'],
+      NDEFRecord: [`new NDEFRecord(${JSON.stringify(record)});`],
+      NDEFMessage: [`new NDEFMessage(${JSON.stringify(message)});`],
+      NFCReadingEvent: [`new NFCReadingEvent("reading", { message: ${JSON.stringify(message)} })`],
+      NFCErrorEvent: ['new NFCErrorEvent("error", { error: new DOMException() });'],
     });
-  },
-  'Test IDL implementation of Web NFC API');
+  }
+);

@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -63,10 +62,10 @@ const invalidLanguageOptions = [
 
   7,
 ];
-for (const invalidLanguageOption of invalidLanguageOptions) {
+for (const language of invalidLanguageOptions) {
   assert.throws(RangeError, function() {
-    new Intl.Locale("en", {language: invalidLanguageOption});
-  }, `${invalidLanguageOption} is an invalid language option value`);
+    new Intl.Locale("en", {language});
+  }, `new Intl.Locale("en", {language: "${language}"}) throws RangeError`);
 }
 
 reportCompare(0, 0);

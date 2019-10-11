@@ -22,15 +22,14 @@ async function testSimpleIconsetParsing(manifest) {
 
   function check_icons(addon_copy) {
     deepEqual(addon_copy.icons, {
-        16: uri + "icon16.png",
-        32: uri + "icon32.png",
-        48: uri + "icon48.png",
-        64: uri + "icon64.png"
+      16: uri + "icon16.png",
+      32: uri + "icon32.png",
+      48: uri + "icon48.png",
+      64: uri + "icon64.png",
     });
 
-    // iconURL should map to icons[48] and icons[64]
+    // iconURL should map to icons[48]
     equal(addon.iconURL, uri + "icon48.png");
-    equal(addon.icon64URL, uri + "icon64.png");
 
     // AddonManager gets the correct icon sizes from addon.icons
     equal(AddonManager.getPreferredIconURL(addon, 1), uri + "icon16.png");
@@ -65,17 +64,26 @@ async function testRetinaIconsetParsing(manifest) {
   let uri = do_get_addon_root_uri(profileDir, ID);
 
   // AddonManager displays larger icons for higher pixel density
-  equal(AddonManager.getPreferredIconURL(addon, 32, {
-    devicePixelRatio: 2
-  }), uri + "icon64.png");
+  equal(
+    AddonManager.getPreferredIconURL(addon, 32, {
+      devicePixelRatio: 2,
+    }),
+    uri + "icon64.png"
+  );
 
-  equal(AddonManager.getPreferredIconURL(addon, 48, {
-    devicePixelRatio: 2
-  }), uri + "icon128.png");
+  equal(
+    AddonManager.getPreferredIconURL(addon, 48, {
+      devicePixelRatio: 2,
+    }),
+    uri + "icon128.png"
+  );
 
-  equal(AddonManager.getPreferredIconURL(addon, 64, {
-    devicePixelRatio: 2
-  }), uri + "icon128.png");
+  equal(
+    AddonManager.getPreferredIconURL(addon, 64, {
+      devicePixelRatio: 2,
+    }),
+    uri + "icon128.png"
+  );
 
   await addon.uninstall();
 }
@@ -91,7 +99,6 @@ async function testNoIconsParsing(manifest) {
   deepEqual(addon.icons, {});
 
   equal(addon.iconURL, null);
-  equal(addon.icon64URL, null);
 
   equal(AddonManager.getPreferredIconURL(addon, 128), null);
 
@@ -107,15 +114,15 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
+        id: ID,
+      },
     },
     icons: {
       16: "icon16.png",
       32: "icon32.png",
       48: "icon48.png",
-      64: "icon64.png"
-    }
+      64: "icon64.png",
+    },
   });
 
   // Now for theme-type extensions too.
@@ -125,16 +132,16 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
+        id: ID,
+      },
     },
     icons: {
       16: "icon16.png",
       32: "icon32.png",
       48: "icon48.png",
-      64: "icon64.png"
+      64: "icon64.png",
     },
-    theme: { images: { headerURL: "example.png" } }
+    theme: { images: { theme_frame: "example.png" } },
   });
 });
 
@@ -146,16 +153,16 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
+        id: ID,
+      },
     },
     icons: {
       32: "icon32.png",
       48: "icon48.png",
       64: "icon64.png",
       128: "icon128.png",
-      256: "icon256.png"
-    }
+      256: "icon256.png",
+    },
   });
 
   await testRetinaIconsetParsing({
@@ -164,17 +171,17 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
+        id: ID,
+      },
     },
     icons: {
       32: "icon32.png",
       48: "icon48.png",
       64: "icon64.png",
       128: "icon128.png",
-      256: "icon256.png"
+      256: "icon256.png",
     },
-    theme: { images: { headerURL: "example.png" } }
+    theme: { images: { theme_frame: "example.png" } },
   });
 });
 
@@ -186,9 +193,9 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
-    }
+        id: ID,
+      },
+    },
   });
 
   await testNoIconsParsing({
@@ -197,9 +204,9 @@ add_task(async function() {
     manifest_version: 2,
     applications: {
       gecko: {
-        id: ID
-      }
+        id: ID,
+      },
     },
-    theme: { images: { headerURL: "example.png" } }
+    theme: { images: { theme_frame: "example.png" } },
   });
 });

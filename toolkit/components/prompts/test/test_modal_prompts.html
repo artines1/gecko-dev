@@ -2,8 +2,7 @@
 <html>
 <head>
   <title>Modal Prompts Test</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript" src="prompt_common.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -963,7 +962,7 @@ async function runTests() {
     // promptAuth already tested via password manager but do a few specific things here.
     var channel = NetUtil.newChannel({
         uri: "http://example.com",
-        loadUsingSystemPrincipal: true
+        loadUsingSystemPrincipal: true,
     });
 
     var level = Ci.nsIAuthPrompt2.LEVEL_NONE;
@@ -973,7 +972,7 @@ async function runTests() {
         domain: "",
         flags: Ci.nsIAuthInformation.AUTH_HOST,
         authenticationScheme: "basic",
-        realm: ""
+        realm: "",
     };
 
 
@@ -1069,7 +1068,7 @@ async function runTests() {
         flags: Ci.nsIAuthInformation.AUTH_HOST |
                Ci.nsIAuthInformation.CROSS_ORIGIN_SUB_RESOURCE,
         authenticationScheme: "basic",
-        realm: ""
+        realm: "",
     };
     state = {
         msg: "http://example.com is requesting your username and password. " +
@@ -1112,7 +1111,7 @@ async function runTests() {
         domain: "",
         flags: Ci.nsIAuthInformation.AUTH_HOST | Ci.nsIAuthInformation.CROSS_ORIGIN_SUB_RESOURCE,
         authenticationScheme: "basic",
-        realm: "Something!!!"
+        realm: "Something!!!",
     };
     state = {
         msg: "http://example.com is requesting your username and password. " +

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Helper module to build up a selector safely and efficiently.
 //!
@@ -17,13 +17,12 @@
 //! is non-trivial. This module encapsulates those details and presents an
 //! easy-to-use API for the parser.
 
-use parser::{Combinator, Component, SelectorImpl};
+use crate::parser::{Combinator, Component, SelectorImpl};
+use crate::sink::Push;
 use servo_arc::{Arc, HeaderWithLength, ThinArc};
-use sink::Push;
 use smallvec::{self, SmallVec};
 use std::cmp;
 use std::iter;
-use std::ops::{AddAssign, Add};
 use std::ptr;
 use std::slice;
 
@@ -72,7 +71,7 @@ impl<Impl: SelectorImpl> SelectorBuilder<Impl> {
     /// Pushes a simple selector onto the current compound selector.
     #[inline(always)]
     pub fn push_simple_selector(&mut self, ss: Component<Impl>) {
-        debug_assert!(!ss.is_combinator());
+        assert!(!ss.is_combinator());
         self.simple_selectors.push(ss);
         self.current_len += 1;
     }
@@ -83,12 +82,6 @@ impl<Impl: SelectorImpl> SelectorBuilder<Impl> {
     pub fn push_combinator(&mut self, c: Combinator) {
         self.combinators.push((c, self.current_len));
         self.current_len = 0;
-    }
-
-    /// Returns true if no simple selectors have ever been pushed to this builder.
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.simple_selectors.is_empty()
     }
 
     /// Returns true if combinators have ever been pushed to this builder.
@@ -103,18 +96,21 @@ impl<Impl: SelectorImpl> SelectorBuilder<Impl> {
         &mut self,
         parsed_pseudo: bool,
         parsed_slotted: bool,
+        parsed_part: bool,
     ) -> ThinArc<SpecificityAndFlags, Component<Impl>> {
         // Compute the specificity and flags.
-        let mut spec = SpecificityAndFlags(specificity(&*self, self.simple_selectors.iter()));
+        let specificity = specificity(self.simple_selectors.iter());
+        let mut flags = SelectorFlags::empty();
         if parsed_pseudo {
-            spec.0 |= HAS_PSEUDO_BIT;
+            flags |= SelectorFlags::HAS_PSEUDO;
         }
-
         if parsed_slotted {
-            spec.0 |= HAS_SLOTTED_BIT;
+            flags |= SelectorFlags::HAS_SLOTTED;
         }
-
-        self.build_with_specificity_and_flags(spec)
+        if parsed_part {
+            flags |= SelectorFlags::HAS_PART;
+        }
+        self.build_with_specificity_and_flags(SpecificityAndFlags { specificity, flags })
     }
 
     /// Builds with an explicit SpecificityAndFlags. This is separated from build() so
@@ -161,7 +157,8 @@ struct SelectorBuilderIter<'a, Impl: SelectorImpl> {
 
 impl<'a, Impl: SelectorImpl> ExactSizeIterator for SelectorBuilderIter<'a, Impl> {
     fn len(&self) -> usize {
-        self.current_simple_selectors.len() + self.rest_of_simple_selectors.len() +
+        self.current_simple_selectors.len() +
+            self.rest_of_simple_selectors.len() +
             self.combinators.len()
     }
 }
@@ -194,70 +191,54 @@ fn split_from_end<T>(s: &[T], at: usize) -> (&[T], &[T]) {
     s.split_at(s.len() - at)
 }
 
-pub const HAS_PSEUDO_BIT: u32 = 1 << 30;
-pub const HAS_SLOTTED_BIT: u32 = 1 << 31;
+bitflags! {
+    /// Flags that indicate at which point of parsing a selector are we.
+    #[derive(Default, ToShmem)]
+    pub (crate) struct SelectorFlags : u8 {
+        const HAS_PSEUDO = 1 << 0;
+        const HAS_SLOTTED = 1 << 1;
+        const HAS_PART = 1 << 2;
+    }
+}
 
-/// We use ten bits for each specificity kind (id, class, element), and the two
-/// high bits for the pseudo and slotted flags.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SpecificityAndFlags(pub u32);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ToShmem)]
+pub struct SpecificityAndFlags {
+    /// There are two free bits here, since we use ten bits for each specificity
+    /// kind (id, class, element).
+    pub(crate) specificity: u32,
+    /// There's padding after this field due to the size of the flags.
+    pub(crate) flags: SelectorFlags,
+}
 
 impl SpecificityAndFlags {
     #[inline]
     pub fn specificity(&self) -> u32 {
-        self.0 & !(HAS_PSEUDO_BIT | HAS_SLOTTED_BIT)
+        self.specificity
     }
 
     #[inline]
     pub fn has_pseudo_element(&self) -> bool {
-        (self.0 & HAS_PSEUDO_BIT) != 0
+        self.flags.intersects(SelectorFlags::HAS_PSEUDO)
     }
 
     #[inline]
     pub fn is_slotted(&self) -> bool {
-        (self.0 & HAS_SLOTTED_BIT) != 0
+        self.flags.intersects(SelectorFlags::HAS_SLOTTED)
+    }
+
+    #[inline]
+    pub fn is_part(&self) -> bool {
+        self.flags.intersects(SelectorFlags::HAS_PART)
     }
 }
 
 const MAX_10BIT: u32 = (1u32 << 10) - 1;
 
-#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Add, AddAssign, Clone, Copy, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Specificity {
     id_selectors: u32,
     class_like_selectors: u32,
     element_selectors: u32,
-}
-
-
-impl AddAssign for Specificity {
-    #[inline]
-    fn add_assign(&mut self, rhs: Self) {
-        self.id_selectors += rhs.id_selectors;
-        self.class_like_selectors += rhs.class_like_selectors;
-        self.element_selectors += rhs.element_selectors;
-    }
-}
-
-impl Add for Specificity {
-    type Output = Specificity;
-
-    fn add(self, rhs: Specificity) -> Specificity {
-        Specificity {
-            id_selectors: self.id_selectors + rhs.id_selectors,
-            class_like_selectors: self.class_like_selectors + rhs.class_like_selectors,
-            element_selectors: self.element_selectors + rhs.element_selectors,
-        }
-    }
-}
-
-impl Default for Specificity {
-    fn default() -> Specificity {
-        Specificity {
-            id_selectors: 0,
-            class_like_selectors: 0,
-            element_selectors: 0,
-        }
-    }
 }
 
 impl From<u32> for Specificity {
@@ -281,36 +262,28 @@ impl From<Specificity> for u32 {
     }
 }
 
-fn specificity<Impl>(builder: &SelectorBuilder<Impl>, iter: slice::Iter<Component<Impl>>) -> u32
+fn specificity<Impl>(iter: slice::Iter<Component<Impl>>) -> u32
 where
     Impl: SelectorImpl,
 {
-    complex_selector_specificity(builder, iter).into()
+    complex_selector_specificity(iter).into()
 }
 
-fn complex_selector_specificity<Impl>(
-    builder: &SelectorBuilder<Impl>,
-    mut iter: slice::Iter<Component<Impl>>,
-) -> Specificity
+fn complex_selector_specificity<Impl>(iter: slice::Iter<Component<Impl>>) -> Specificity
 where
     Impl: SelectorImpl,
 {
     fn simple_selector_specificity<Impl>(
-        builder: &SelectorBuilder<Impl>,
         simple_selector: &Component<Impl>,
         specificity: &mut Specificity,
     ) where
         Impl: SelectorImpl,
     {
         match *simple_selector {
-            Component::Combinator(ref combinator) => {
-                unreachable!(
-                    "Found combinator {:?} in simple selectors vector? {:?}",
-                    combinator,
-                    builder,
-                );
-            }
-            Component::PseudoElement(..) | Component::LocalName(..) => {
+            Component::Combinator(..) => {
+                unreachable!("Found combinator in simple selectors vector?");
+            },
+            Component::Part(..) | Component::PseudoElement(..) | Component::LocalName(..) => {
                 specificity.element_selectors += 1
             },
             Component::Slotted(ref selector) => {
@@ -329,7 +302,7 @@ where
                     // See: https://github.com/w3c/csswg-drafts/issues/1915
                     *specificity += Specificity::from(selector.specificity());
                 }
-            }
+            },
             Component::ID(..) => {
                 specificity.id_selectors += 1;
             },
@@ -362,15 +335,15 @@ where
             },
             Component::Negation(ref negated) => {
                 for ss in negated.iter() {
-                    simple_selector_specificity(builder, &ss, specificity);
+                    simple_selector_specificity(&ss, specificity);
                 }
             },
         }
     }
 
     let mut specificity = Default::default();
-    for simple_selector in &mut iter {
-        simple_selector_specificity(builder, &simple_selector, &mut specificity);
+    for simple_selector in iter {
+        simple_selector_specificity(&simple_selector, &mut specificity);
     }
     specificity
 }

@@ -9,17 +9,23 @@ const {
   UPDATE_DETAIL_VISIBILITY,
   UPDATE_ELEMENT_PICKER_ENABLED,
   UPDATE_HIGHLIGHTED_NODE,
+  UPDATE_PLAYBACK_RATES,
   UPDATE_SELECTED_ANIMATION,
   UPDATE_SIDEBAR_SIZE,
 } = require("../actions/index");
 
-const TimeScale = require("../utils/timescale");
+loader.lazyRequireGetter(
+  this,
+  "TimeScale",
+  "devtools/client/inspector/animation/utils/timescale"
+);
 
 const INITIAL_STATE = {
   animations: [],
   detailVisibility: false,
   elementPickerEnabled: false,
   highlightedNode: null,
+  playbackRates: [],
   selectedAnimation: null,
   sidebarSize: {
     height: 0,
@@ -33,23 +39,29 @@ const reducers = {
     let detailVisibility = state.detailVisibility;
     let selectedAnimation = state.selectedAnimation;
 
-    if (!state.selectedAnimation ||
-        !animations.find(animation => animation.actorID === selectedAnimation.actorID)) {
+    if (
+      !state.selectedAnimation ||
+      !animations.find(
+        animation => animation.actorID === selectedAnimation.actorID
+      )
+    ) {
       selectedAnimation = animations.length === 1 ? animations[0] : null;
       detailVisibility = !!selectedAnimation;
     }
 
+    const playbackRates = getPlaybackRates(state.playbackRates, animations);
+
     return Object.assign({}, state, {
       animations,
       detailVisibility,
+      playbackRates,
       selectedAnimation,
       timeScale: new TimeScale(animations),
     });
   },
 
   [UPDATE_DETAIL_VISIBILITY](state, { detailVisibility }) {
-    const selectedAnimation =
-      detailVisibility ? state.selectedAnimation : null;
+    const selectedAnimation = detailVisibility ? state.selectedAnimation : null;
 
     return Object.assign({}, state, {
       detailVisibility,
@@ -59,13 +71,19 @@ const reducers = {
 
   [UPDATE_ELEMENT_PICKER_ENABLED](state, { elementPickerEnabled }) {
     return Object.assign({}, state, {
-      elementPickerEnabled
+      elementPickerEnabled,
     });
   },
 
   [UPDATE_HIGHLIGHTED_NODE](state, { highlightedNode }) {
     return Object.assign({}, state, {
-      highlightedNode
+      highlightedNode,
+    });
+  },
+
+  [UPDATE_PLAYBACK_RATES](state) {
+    return Object.assign({}, state, {
+      playbackRates: getPlaybackRates([], state.animations),
     });
   },
 
@@ -74,16 +92,24 @@ const reducers = {
 
     return Object.assign({}, state, {
       detailVisibility,
-      selectedAnimation
+      selectedAnimation,
     });
   },
 
   [UPDATE_SIDEBAR_SIZE](state, { sidebarSize }) {
     return Object.assign({}, state, {
-      sidebarSize
+      sidebarSize,
     });
   },
 };
+
+function getPlaybackRates(basePlaybackRate, animations) {
+  return [
+    ...new Set(
+      animations.map(a => a.state.playbackRate).concat(basePlaybackRate)
+    ),
+  ];
+}
 
 module.exports = function(state = INITIAL_STATE, action) {
   const reducer = reducers[action.type];

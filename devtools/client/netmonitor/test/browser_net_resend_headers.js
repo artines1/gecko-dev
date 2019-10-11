@@ -14,9 +14,9 @@ add_task(async function() {
   const { store, windowRequire, connector } = monitor.panelWin;
   const Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   const { requestData, sendHTTPRequest } = connector;
-  const {
-    getSortedRequests,
-  } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  const { getSortedRequests } = windowRequire(
+    "devtools/client/netmonitor/src/selectors/index"
+  );
 
   store.dispatch(Actions.batchEnable(false));
 
@@ -25,9 +25,9 @@ add_task(async function() {
     { name: "Host", value: "fakehost.example.com" },
     { name: "User-Agent", value: "Testzilla" },
     { name: "Referer", value: "http://example.com/referrer" },
-    { name: "Accept", value: "application/jarda"},
+    { name: "Accept", value: "application/jarda" },
     { name: "Accept-Encoding", value: "compress, identity, funcoding" },
-    { name: "Accept-Language", value: "cs-CZ" }
+    { name: "Accept-Language", value: "cs-CZ" },
   ];
 
   const wait = waitForNetworkEvents(monitor, 1);
@@ -35,7 +35,12 @@ add_task(async function() {
     url: requestUrl,
     method: "POST",
     headers: requestHeaders,
-    body: "Hello"
+    body: "Hello",
+    cause: {
+      loadingDocumentUri: "http://example.com",
+      stacktraceAvailable: true,
+      type: "xhr",
+    },
   });
   await wait;
 

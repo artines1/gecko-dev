@@ -11,8 +11,6 @@
 #include "MediaSegment.h"
 #include "nsSize.h"
 
-class nsIDocument;
-
 namespace mozilla {
 
 class AbstractThread;
@@ -22,12 +20,12 @@ class MediaInfo;
 class MediaResult;
 
 namespace dom {
+class Document;
 class HTMLMediaElement;
-} // namespace dom
+}  // namespace dom
 
-class MediaDecoderOwner
-{
-public:
+class MediaDecoderOwner {
+ public:
   // Called by the media decoder to indicate that the download is progressing.
   virtual void DownloadProgressed() = 0;
 
@@ -95,6 +93,10 @@ public:
   // when the resource has completed seeking.
   virtual void SeekCompleted() = 0;
 
+  // Called by the video decoder object, on the main thread,
+  // when the resource has aborted seeking.
+  virtual void SeekAborted() = 0;
+
   // Called by the media stream, on the main thread, when the download
   // has been suspended by the cache or because the element itself
   // asked the decoder to suspend the download.
@@ -104,7 +106,8 @@ public:
   // suspended the channel.
   virtual void NotifySuspendedByCache(bool aSuspendedByCache) = 0;
 
-  // called to notify that the principal of the decoder's media resource has changed.
+  // called to notify that the principal of the decoder's media resource has
+  // changed.
   virtual void NotifyDecoderPrincipalChanged() = 0;
 
   // The status of the next frame which might be available from the decoder
@@ -144,12 +147,6 @@ public:
   // owner's track list.
   virtual void RemoveMediaTracks() = 0;
 
-  // Called by the media decoder to notify the owner to resolve a seek promise.
-  virtual void AsyncResolveSeekDOMPromiseIfExists() = 0;
-
-  // Called by the media decoder to notify the owner to reject a seek promise.
-  virtual void AsyncRejectSeekDOMPromiseIfExists() = 0;
-
   // Notified by the decoder that a decryption key is required before emitting
   // further output.
   virtual void NotifyWaitingForKey() {}
@@ -170,11 +167,10 @@ public:
   virtual VideoFrameContainer* GetVideoFrameContainer() { return nullptr; }
 
   // Return the decoder owner's owner document.
-  virtual nsIDocument* GetDocument() const { return nullptr; }
+  virtual mozilla::dom::Document* GetDocument() const { return nullptr; }
 
   // Called by the media decoder to create a GMPCrashHelper.
-  virtual already_AddRefed<GMPCrashHelper> CreateGMPCrashHelper()
-  {
+  virtual already_AddRefed<GMPCrashHelper> CreateGMPCrashHelper() {
     return nullptr;
   }
 
@@ -188,8 +184,8 @@ public:
   // Called after the MediaStream we're playing rendered a frame to aContainer
   // with a different principalHandle than the previous frame.
   virtual void PrincipalHandleChangedForVideoFrameContainer(
-    VideoFrameContainer* aContainer,
-    const PrincipalHandle& aNewPrincipalHandle) {}
+      VideoFrameContainer* aContainer,
+      const PrincipalHandle& aNewPrincipalHandle) {}
 
   /*
    * Servo only methods go here. Please provide default implementations so they
@@ -197,7 +193,6 @@ public:
    */
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif
-

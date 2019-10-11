@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
 import mozversion
 
 from firefox_puppeteer import PuppeteerMixin
@@ -18,9 +19,7 @@ class TestAppInfo(PuppeteerMixin, MarionetteTestCase):
         self.assertEqual(self.puppeteer.appinfo.name, version_info['application_name'])
         self.assertEqual(self.puppeteer.appinfo.vendor, version_info['application_vendor'])
         self.assertEqual(self.puppeteer.appinfo.version, version_info['application_version'])
-        # Bug 1298328 - Platform buildid mismatch due to incremental builds
-        # self.assertEqual(self.puppeteer.appinfo.platformBuildID,
-        #                  version_info['platform_buildid'])
+        self.assertEqual(self.puppeteer.appinfo.platformBuildID, version_info['platform_buildid'])
         self.assertEqual(self.puppeteer.appinfo.platformVersion, version_info['platform_version'])
         self.assertIsNotNone(self.puppeteer.appinfo.locale)
         self.assertIsNotNone(self.puppeteer.appinfo.user_agent)

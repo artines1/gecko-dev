@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 /* import-globals-from helper_inplace_editor.js */
@@ -26,17 +25,24 @@ function testNonTrimmed(doc) {
 
   const initial = "\nMultiple\nLines\n";
   const changed = " \nMultiple\nLines\n with more whitespace ";
-  createInplaceEditorAndClick({
-    trimOutput: false,
-    multiline: true,
-    initial: initial,
-    start: function(editor) {
-      is(editor.input.value, initial, "Explicit initial value should be used.");
-      editor.input.value = changed;
-      EventUtils.sendKey("return");
+  createInplaceEditorAndClick(
+    {
+      trimOutput: false,
+      multiline: true,
+      initial: initial,
+      start: function(editor) {
+        is(
+          editor.input.value,
+          initial,
+          "Explicit initial value should be used."
+        );
+        editor.input.value = changed;
+        EventUtils.sendKey("return");
+      },
+      done: onDone(changed, true, def),
     },
-    done: onDone(changed, true, def)
-  }, doc);
+    doc
+  );
 
   return def.promise;
 }
@@ -47,16 +53,23 @@ function testTrimmed(doc) {
 
   const initial = "\nMultiple\nLines\n";
   const changed = " \nMultiple\nLines\n with more whitespace ";
-  createInplaceEditorAndClick({
-    initial: initial,
-    multiline: true,
-    start: function(editor) {
-      is(editor.input.value, initial, "Explicit initial value should be used.");
-      editor.input.value = changed;
-      EventUtils.sendKey("return");
+  createInplaceEditorAndClick(
+    {
+      initial: initial,
+      multiline: true,
+      start: function(editor) {
+        is(
+          editor.input.value,
+          initial,
+          "Explicit initial value should be used."
+        );
+        editor.input.value = changed;
+        EventUtils.sendKey("return");
+      },
+      done: onDone(changed.trim(), true, def),
     },
-    done: onDone(changed.trim(), true, def)
-  }, doc);
+    doc
+  );
 
   return def.promise;
 }

@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // This file is a Mako template: http://www.makotemplates.org/
 
@@ -13,52 +13,48 @@
 #[cfg(feature = "servo")]
 use app_units::Au;
 use arrayvec::{ArrayVec, Drain as ArrayVecDrain};
-use dom::TElement;
-use custom_properties::CustomPropertiesBuilder;
 use servo_arc::{Arc, UniqueArc};
-use smallbitvec::SmallBitVec;
 use std::borrow::Cow;
 use std::{ops, ptr};
-use std::cell::RefCell;
 use std::fmt::{self, Write};
-use std::mem::{self, ManuallyDrop};
+use std::mem;
 
 use cssparser::{Parser, RGBA, TokenSerializationType};
 use cssparser::ParserInput;
 #[cfg(feature = "servo")] use euclid::SideOffsets2D;
-use context::QuirksMode;
-use font_metrics::FontMetricsProvider;
-#[cfg(feature = "gecko")] use gecko_bindings::bindings;
-#[cfg(feature = "gecko")] use gecko_bindings::structs::{self, nsCSSPropertyID};
-#[cfg(feature = "servo")] use logical_geometry::LogicalMargin;
-#[cfg(feature = "servo")] use computed_values;
-use logical_geometry::WritingMode;
-#[cfg(feature = "gecko")] use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
-use media_queries::Device;
-use parser::ParserContext;
-use properties::longhands::system_font::SystemFont;
-use rule_cache::{RuleCache, RuleCacheConditions};
-use selector_parser::PseudoElement;
+use crate::context::QuirksMode;
+#[cfg(feature = "gecko")] use crate::gecko_bindings::structs::{self, nsCSSPropertyID};
+#[cfg(feature = "servo")] use crate::logical_geometry::LogicalMargin;
+#[cfg(feature = "servo")] use crate::computed_values;
+use crate::logical_geometry::WritingMode;
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+use crate::media_queries::Device;
+use crate::parser::ParserContext;
+use crate::properties::longhands::system_font::SystemFont;
+use crate::selector_parser::PseudoElement;
 use selectors::parser::SelectorParseErrorKind;
-#[cfg(feature = "servo")] use servo_config::prefs::PREFS;
-use shared_lock::StylesheetGuards;
+#[cfg(feature = "servo")] use servo_config::prefs;
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError, ParsingMode};
 use style_traits::{SpecifiedValueInfo, StyleParseErrorKind, ToCss};
-use stylesheets::{CssRuleType, Origin, UrlExtraData};
-use values::generics::text::LineHeight;
-use values::computed;
-use values::computed::NonNegativeLength;
-use values::serialize_atom_name;
-use rule_tree::{CascadeLevel, StrongRuleNode};
+use to_shmem::impl_trivial_to_shmem;
+use crate::stylesheets::{CssRuleType, Origin, UrlExtraData};
+use crate::use_counters::UseCounters;
+use crate::values::generics::text::LineHeight;
+use crate::values::{computed, resolved};
+use crate::values::computed::NonNegativeLength;
+use crate::values::serialize_atom_name;
+use crate::rule_tree::StrongRuleNode;
+use crate::Zero;
 use self::computed_value_flags::*;
-use str::{CssString, CssStringBorrow, CssStringWriter};
-use style_adjuster::StyleAdjuster;
+use crate::str::{CssString, CssStringBorrow, CssStringWriter};
+use std::cell::Cell;
 
 pub use self::declaration_block::*;
+pub use self::cascade::*;
 
 <%!
     from collections import defaultdict
-    from data import Method, Keyword, to_rust_ident, to_camel_case, SYSTEM_FONT_LONGHANDS
+    from data import Method, PropertyRestrictions, Keyword, to_rust_ident, to_camel_case, SYSTEM_FONT_LONGHANDS
     import os.path
 %>
 
@@ -66,6 +62,8 @@ pub use self::declaration_block::*;
 pub mod computed_value_flags;
 #[path="${repr(os.path.join(os.path.dirname(__file__), 'declaration_block.rs'))[1:-1]}"]
 pub mod declaration_block;
+#[path="${repr(os.path.join(os.path.dirname(__file__), 'cascade.rs'))[1:-1]}"]
+pub mod cascade;
 
 /// Conversion with fewer impls than From/Into
 pub trait MaybeBoxed<Out> {
@@ -116,12 +114,12 @@ macro_rules! unwrap_or_initial {
 #[allow(missing_docs)]
 pub mod shorthands {
     use cssparser::Parser;
-    use parser::{Parse, ParserContext};
+    use crate::parser::{Parse, ParserContext};
     use style_traits::{ParseError, StyleParseErrorKind};
-    use values::specified;
+    use crate::values::specified;
 
     use style_traits::{CssWriter, ToCss};
-    use values::specified::{BorderStyle, Color};
+    use crate::values::specified::{BorderStyle, Color};
     use std::fmt::{self, Write};
 
     fn serialize_directional_border<W, I,>(
@@ -170,7 +168,7 @@ pub mod shorthands {
         for p in data.longhands:
             if p.name in ['direction', 'unicode-bidi']:
                 continue;
-            if not p.enabled_in_content() and not p.experimental(product):
+            if not p.enabled_in_content() and not p.experimental(engine):
                 continue;
             if p.logical:
                 logical_longhands.append(p.name)
@@ -180,6 +178,7 @@ pub mod shorthands {
         data.declare_shorthand(
             "all",
             logical_longhands + other_longhands,
+            engines="gecko servo-2013 servo-2020",
             spec="https://drafts.csswg.org/css-cascade-3/#all-shorthand"
         )
     %>
@@ -260,6 +259,7 @@ pub mod shorthands {
 %>
 
 /// Servo's representation for a property declaration.
+#[derive(ToShmem)]
 #[repr(u16)]
 pub enum PropertyDeclaration {
     % for variant in variants:
@@ -296,12 +296,12 @@ impl Clone for PropertyDeclaration {
             }
 
             unsafe {
-                let mut out = mem::uninitialized();
+                let mut out = mem::MaybeUninit::uninit();
                 ptr::write(
-                    &mut out as *mut _ as *mut CopyVariants,
+                    out.as_mut_ptr() as *mut CopyVariants,
                     *(self as *const _ as *const CopyVariants),
                 );
-                return out;
+                return out.assume_init();
             }
         }
 
@@ -335,15 +335,15 @@ impl Clone for PropertyDeclaration {
             % else:
             ${" |\n".join("{}(ref value)".format(v["name"]) for v in vs)} => {
                 unsafe {
-                    let mut out = ManuallyDrop::new(mem::uninitialized());
+                    let mut out = mem::MaybeUninit::uninit();
                     ptr::write(
-                        &mut out as *mut _ as *mut PropertyDeclarationVariantRepr<${ty}>,
+                        out.as_mut_ptr() as *mut PropertyDeclarationVariantRepr<${ty}>,
                         PropertyDeclarationVariantRepr {
                             tag: *(self as *const _ as *const u16),
                             value: value.clone(),
                         },
                     );
-                    ManuallyDrop::into_inner(out)
+                    out.assume_init()
                 }
             }
             % endif
@@ -378,7 +378,6 @@ impl PartialEq for PropertyDeclaration {
     }
 }
 
-#[cfg(feature = "gecko")]
 impl MallocSizeOf for PropertyDeclaration {
     #[inline]
     fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
@@ -425,21 +424,33 @@ pub mod animated_properties {
 #[derive(Clone, Copy, Debug)]
 pub struct NonCustomPropertyId(usize);
 
-% if product == "gecko":
+/// The length of all the non-custom properties.
+pub const NON_CUSTOM_PROPERTY_ID_COUNT: usize =
+    ${len(data.longhands) + len(data.shorthands) + len(data.all_aliases())};
+
+/// The length of all counted unknown properties.
+pub const COUNTED_UNKNOWN_PROPERTY_COUNT: usize = ${len(data.counted_unknown_properties)};
+
+% if engine == "gecko":
 #[allow(dead_code)]
 unsafe fn static_assert_nscsspropertyid() {
     % for i, property in enumerate(data.longhands + data.shorthands + data.all_aliases()):
-    ::std::mem::transmute::<[u8; ${i}], [u8; ${property.nscsspropertyid()} as usize]>([0; ${i}]); // ${property.name}
+    std::mem::transmute::<[u8; ${i}], [u8; ${property.nscsspropertyid()} as usize]>([0; ${i}]); // ${property.name}
     % endfor
 }
 % endif
 
 impl NonCustomPropertyId {
+    /// Returns the underlying index, used for use counter.
+    pub fn bit(self) -> usize {
+        self.0
+    }
+
     #[cfg(feature = "gecko")]
     #[inline]
     fn to_nscsspropertyid(self) -> nsCSSPropertyID {
         // unsafe: guaranteed by static_assert_nscsspropertyid above.
-        unsafe { ::std::mem::transmute(self.0 as i32) }
+        unsafe { std::mem::transmute(self.0 as i32) }
     }
 
     /// Convert an `nsCSSPropertyID` into a `NonCustomPropertyId`.
@@ -450,17 +461,17 @@ impl NonCustomPropertyId {
         if prop < 0 {
             return Err(());
         }
-        if prop >= ${len(data.longhands) + len(data.shorthands) + len(data.all_aliases())} {
+        if prop >= NON_CUSTOM_PROPERTY_ID_COUNT as i32 {
             return Err(());
         }
         // unsafe: guaranteed by static_assert_nscsspropertyid above.
-        Ok(unsafe { ::std::mem::transmute(prop as usize) })
+        Ok(unsafe { std::mem::transmute(prop as usize) })
     }
 
     /// Get the property name.
     #[inline]
     pub fn name(self) -> &'static str {
-        static MAP: [&'static str; ${len(data.longhands) + len(data.shorthands) + len(data.all_aliases())}] = [
+        static MAP: [&'static str; NON_CUSTOM_PROPERTY_ID_COUNT] = [
             % for property in data.longhands + data.shorthands + data.all_aliases():
             "${property.name}",
             % endfor
@@ -468,24 +479,46 @@ impl NonCustomPropertyId {
         MAP[self.0]
     }
 
+    /// Returns whether this property is transitionable.
+    #[inline]
+    pub fn is_transitionable(self) -> bool {
+        ${static_non_custom_property_id_set("TRANSITIONABLE", lambda p: p.transitionable)}
+        TRANSITIONABLE.contains(self)
+    }
+
+    /// Returns whether this property is animatable.
+    #[inline]
+    pub fn is_animatable(self) -> bool {
+        ${static_non_custom_property_id_set("ANIMATABLE", lambda p: p.animatable)}
+        ANIMATABLE.contains(self)
+    }
+
     #[inline]
     fn enabled_for_all_content(self) -> bool {
         ${static_non_custom_property_id_set(
             "EXPERIMENTAL",
-            lambda p: p.experimental(product)
+            lambda p: p.experimental(engine)
         )}
 
         ${static_non_custom_property_id_set(
             "ALWAYS_ENABLED",
-            lambda p: (not p.experimental(product)) and p.enabled_in_content()
+            lambda p: (not p.experimental(engine)) and p.enabled_in_content()
         )}
 
         let passes_pref_check = || {
-            % if product == "servo":
-                static PREF_NAME: [Option< &str>; ${len(data.longhands) + len(data.shorthands)}] = [
-                    % for property in data.longhands + data.shorthands:
-                        % if property.servo_pref:
-                            Some("${property.servo_pref}"),
+            % if engine == "gecko":
+                unsafe { structs::nsCSSProps_gPropertyEnabled[self.0] }
+            % else:
+                static PREF_NAME: [Option< &str>; ${
+                    len(data.longhands) + len(data.shorthands) + len(data.all_aliases())
+                }] = [
+                    % for property in data.longhands + data.shorthands + data.all_aliases():
+                        <%
+                            attrs = {"servo-2013": "servo_2013_pref", "servo-2020": "servo_2020_pref"}
+                            pref = getattr(property, attrs[engine])
+                        %>
+                        % if pref:
+                            Some("${pref}"),
                         % else:
                             None,
                         % endif
@@ -496,9 +529,7 @@ impl NonCustomPropertyId {
                     Some(pref) => pref,
                 };
 
-                PREFS.get(pref).as_boolean().unwrap_or(false)
-            % else:
-                unsafe { structs::nsCSSProps_gPropertyEnabled[self.0] }
+                prefs::pref_map().get(pref).as_bool().unwrap_or(false)
             % endif
         };
 
@@ -603,16 +634,17 @@ impl NonCustomPropertyId {
 
     /// See PropertyId::collect_property_completion_keywords.
     fn collect_property_completion_keywords(&self, f: KeywordsCollectFn) {
-        const COLLECT_FUNCTIONS: [&Fn(KeywordsCollectFn);
+        fn do_nothing(_: KeywordsCollectFn) {}
+        const COLLECT_FUNCTIONS: [fn(KeywordsCollectFn);
                                   ${len(data.longhands) + len(data.shorthands)}] = [
             % for prop in data.longhands:
-                &<${prop.specified_type()} as SpecifiedValueInfo>::collect_completion_keywords,
+                <${prop.specified_type()} as SpecifiedValueInfo>::collect_completion_keywords,
             % endfor
             % for prop in data.shorthands:
             % if prop.name == "all":
-                &|_f| {}, // 'all' accepts no value other than CSS-wide keywords
+                do_nothing, // 'all' accepts no value other than CSS-wide keywords
             % else:
-                &<shorthands::${prop.ident}::Longhands as SpecifiedValueInfo>::
+                <shorthands::${prop.ident}::Longhands as SpecifiedValueInfo>::
                     collect_completion_keywords,
             % endif
             % endfor
@@ -634,7 +666,7 @@ impl NonCustomPropertyId {
                 PropertyId::Shorthand(transmute((self.0 - ${len(data.longhands)}) as u16))
             }
         }
-        assert!(self.0 < ${len(data.longhands) + len(data.shorthands) + len(data.all_aliases())});
+        assert!(self.0 < NON_CUSTOM_PROPERTY_ID_COUNT);
         let alias_id: AliasId = unsafe {
             transmute((self.0 - ${len(data.longhands) + len(data.shorthands)}) as u16)
         };
@@ -670,7 +702,7 @@ impl From<AliasId> for NonCustomPropertyId {
 /// A set of all properties
 #[derive(Clone, PartialEq)]
 pub struct NonCustomPropertyIdSet {
-    storage: [u32; (${len(data.longhands) + len(data.shorthands) + len(data.all_aliases())} - 1 + 32) / 32]
+    storage: [u32; (NON_CUSTOM_PROPERTY_ID_COUNT - 1 + 32) / 32]
 }
 
 impl NonCustomPropertyIdSet {
@@ -721,10 +753,12 @@ static ${name}: LonghandIdSet = LonghandIdSet {
 </%def>
 
 /// A set of longhand properties
-#[derive(Clone, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, MallocSizeOf, PartialEq)]
 pub struct LonghandIdSet {
     storage: [u32; (${len(data.longhands)} - 1 + 32) / 32]
 }
+
+impl_trivial_to_shmem!(LonghandIdSet);
 
 /// An iterator over a set of longhand ids.
 pub struct LonghandIdSetIterator<'a> {
@@ -754,6 +788,57 @@ impl<'a> Iterator for LonghandIdSetIterator<'a> {
 }
 
 impl LonghandIdSet {
+    #[inline]
+    fn reset() -> &'static Self {
+        ${static_longhand_id_set("RESET", lambda p: not p.style_struct.inherited)}
+        &RESET
+    }
+
+    #[inline]
+    fn animatable() -> &'static Self {
+        ${static_longhand_id_set("ANIMATABLE", lambda p: p.animatable)}
+        &ANIMATABLE
+    }
+
+    #[inline]
+    fn discrete_animatable() -> &'static Self {
+        ${static_longhand_id_set("DISCRETE_ANIMATABLE", lambda p: p.animation_value_type == "discrete")}
+        &DISCRETE_ANIMATABLE
+    }
+
+    #[inline]
+    fn logical() -> &'static Self {
+        ${static_longhand_id_set("LOGICAL", lambda p: p.logical)}
+        &LOGICAL
+    }
+
+    /// Returns the set of longhands that are ignored when document colors are
+    /// disabled.
+    #[inline]
+    pub fn ignored_when_colors_disabled() -> &'static Self {
+        ${static_longhand_id_set(
+            "IGNORED_WHEN_COLORS_DISABLED",
+            lambda p: p.ignored_when_colors_disabled
+        )}
+        &IGNORED_WHEN_COLORS_DISABLED
+    }
+
+    /// Returns the set of properties that are declared as having no effect on
+    /// Gecko <scrollbar> elements or their descendant scrollbar parts.
+    #[cfg(debug_assertions)]
+    #[cfg(feature = "gecko")]
+    #[inline]
+    pub fn has_no_effect_on_gecko_scrollbars() -> &'static Self {
+        // data.py asserts that has_no_effect_on_gecko_scrollbars is True or
+        // False for properties that are inherited and Gecko pref controlled,
+        // and is None for all other properties.
+        ${static_longhand_id_set(
+            "HAS_NO_EFFECT_ON_SCROLLBARS",
+            lambda p: p.has_effect_on_gecko_scrollbars is False
+        )}
+        &HAS_NO_EFFECT_ON_SCROLLBARS
+    }
+
     /// Iterate over the current longhand id set.
     pub fn iter(&self) -> LonghandIdSetIterator {
         LonghandIdSetIterator { longhands: self, cur: 0, }
@@ -780,6 +865,14 @@ impl LonghandIdSet {
         false
     }
 
+    /// Remove all the given properties from the set.
+    #[inline]
+    pub fn remove_all(&mut self, other: &Self) {
+        for (self_cell, other_cell) in self.storage.iter_mut().zip(other.storage.iter()) {
+            *self_cell &= !*other_cell;
+        }
+    }
+
     /// Create an empty set
     #[inline]
     pub fn new() -> LonghandIdSet {
@@ -796,8 +889,7 @@ impl LonghandIdSet {
     /// Return whether this set contains any reset longhand.
     #[inline]
     pub fn contains_any_reset(&self) -> bool {
-        ${static_longhand_id_set("RESET", lambda p: not p.style_struct.inherited)}
-        self.contains_any(&RESET)
+        self.contains_any(Self::reset())
     }
 
     /// Add the given property to the set
@@ -831,7 +923,7 @@ impl LonghandIdSet {
 
 /// An enum to represent a CSS Wide keyword.
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToCss)]
+         ToCss, ToShmem)]
 pub enum CSSWideKeyword {
     /// The `initial` keyword.
     Initial,
@@ -839,6 +931,8 @@ pub enum CSSWideKeyword {
     Inherit,
     /// The `unset` keyword.
     Unset,
+    /// The `revert` keyword.
+    Revert,
 }
 
 impl CSSWideKeyword {
@@ -847,33 +941,32 @@ impl CSSWideKeyword {
             CSSWideKeyword::Initial => "initial",
             CSSWideKeyword::Inherit => "inherit",
             CSSWideKeyword::Unset => "unset",
-        }
-    }
-
-    /// Takes the result of cssparser::Parser::expect_ident() and converts it
-    /// to a CSSWideKeyword.
-    pub fn from_ident<'i>(ident: &str) -> Option<Self> {
-        match_ignore_ascii_case! { ident,
-            // If modifying this set of keyword, also update values::CustomIdent::from_ident
-            "initial" => Some(CSSWideKeyword::Initial),
-            "inherit" => Some(CSSWideKeyword::Inherit),
-            "unset" => Some(CSSWideKeyword::Unset),
-            _ => None
+            CSSWideKeyword::Revert => "revert",
         }
     }
 }
 
 impl CSSWideKeyword {
     fn parse(input: &mut Parser) -> Result<Self, ()> {
-        let ident = input.expect_ident().map_err(|_| ())?.clone();
+        let keyword = {
+            let ident = input.expect_ident().map_err(|_| ())?;
+            match_ignore_ascii_case! { ident,
+                // If modifying this set of keyword, also update values::CustomIdent::from_ident
+                "initial" => CSSWideKeyword::Initial,
+                "inherit" => CSSWideKeyword::Inherit,
+                "unset" => CSSWideKeyword::Unset,
+                "revert" => CSSWideKeyword::Revert,
+                _ => return Err(()),
+            }
+        };
         input.expect_exhausted().map_err(|_| ())?;
-        CSSWideKeyword::from_ident(&ident).ok_or(())
+        Ok(keyword)
     }
 }
 
 bitflags! {
     /// A set of flags for properties.
-    pub struct PropertyFlags: u8 {
+    pub struct PropertyFlags: u16 {
         /// This property requires a stacking context.
         const CREATES_STACKING_CONTEXT = 1 << 0;
         /// This property has values that can establish a containing block for
@@ -888,9 +981,14 @@ bitflags! {
         const APPLIES_TO_FIRST_LINE = 1 << 4;
         /// This longhand property applies to ::placeholder.
         const APPLIES_TO_PLACEHOLDER = 1 << 5;
-        /// This property's getComputedStyle implementation requires layout
-        /// to be flushed.
-        const GETCS_NEEDS_LAYOUT_FLUSH = 1 << 6;
+        ///  This longhand property applies to ::cue.
+        const APPLIES_TO_CUE = 1 << 6;
+        /// This longhand property applies to ::marker.
+        const APPLIES_TO_MARKER = 1 << 7;
+        /// This property is a legacy shorthand.
+        ///
+        /// https://drafts.csswg.org/css-cascade/#legacy-shorthand
+        const IS_LEGACY_SHORTHAND = 1 << 8;
 
         /* The following flags are currently not used in Rust code, they
          * only need to be listed in corresponding properties so that
@@ -913,6 +1011,28 @@ bitflags! {
         if logical_count * 2 != len(props):
             raise RuntimeError("Logical group {} has ".format(group) +
                                "unbalanced logical / physical properties")
+
+    FIRST_LINE_RESTRICTIONS = PropertyRestrictions.first_line(data)
+    FIRST_LETTER_RESTRICTIONS = PropertyRestrictions.first_letter(data)
+    MARKER_RESTRICTIONS = PropertyRestrictions.marker(data)
+    PLACEHOLDER_RESTRICTIONS = PropertyRestrictions.placeholder(data)
+    CUE_RESTRICTIONS = PropertyRestrictions.cue(data)
+
+    def restriction_flags(property):
+        name = property.name
+        flags = []
+        if name in FIRST_LINE_RESTRICTIONS:
+            flags.append("APPLIES_TO_FIRST_LINE")
+        if name in FIRST_LETTER_RESTRICTIONS:
+            flags.append("APPLIES_TO_FIRST_LETTER")
+        if name in PLACEHOLDER_RESTRICTIONS:
+            flags.append("APPLIES_TO_PLACEHOLDER")
+        if name in MARKER_RESTRICTIONS:
+            flags.append("APPLIES_TO_MARKER")
+        if name in CUE_RESTRICTIONS:
+            flags.append("APPLIES_TO_CUE")
+        return flags
+
 %>
 
 /// A group for properties which may override each other
@@ -926,7 +1046,7 @@ pub enum LogicalGroup {
 }
 
 /// An identifier for a given longhand property.
-#[derive(Clone, Copy, Eq, Hash, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, MallocSizeOf, PartialEq, ToShmem)]
 #[repr(u16)]
 pub enum LonghandId {
     % for i, property in enumerate(data.longhands):
@@ -959,9 +1079,9 @@ impl LonghandId {
     }
 
     /// Returns whether the longhand property is inherited by default.
-    pub fn inherited(&self) -> bool {
-        ${static_longhand_id_set("INHERITED", lambda p: p.style_struct.inherited)}
-        INHERITED.contains(*self)
+    #[inline]
+    pub fn inherited(self) -> bool {
+        !LonghandIdSet::reset().contains(self)
     }
 
     fn shorthands(&self) -> NonCustomPropertyIterator<ShorthandId> {
@@ -1015,6 +1135,8 @@ impl LonghandId {
         }
     }
 
+    // TODO(emilio): Should we use a function table like CASCADE_PROPERTY does
+    // to avoid blowing up code-size here?
     fn parse_value<'i, 't>(
         &self,
         context: &ParserContext,
@@ -1032,15 +1154,13 @@ impl LonghandId {
     /// Returns whether this property is animatable.
     #[inline]
     pub fn is_animatable(self) -> bool {
-        ${static_longhand_id_set("ANIMATABLE", lambda p: p.animatable)}
-        ANIMATABLE.contains(self)
+        LonghandIdSet::animatable().contains(self)
     }
 
     /// Returns whether this property is animatable in a discrete way.
     #[inline]
     pub fn is_discrete_animatable(self) -> bool {
-        ${static_longhand_id_set("DISCRETE_ANIMATABLE", lambda p: p.animation_value_type == "discrete")}
-        DISCRETE_ANIMATABLE.contains(self)
+        LonghandIdSet::discrete_animatable().contains(self)
     }
 
     /// Converts from a LonghandId to an adequate nsCSSPropertyID.
@@ -1063,9 +1183,8 @@ impl LonghandId {
 
     /// Return whether this property is logical.
     #[inline]
-    pub fn is_logical(&self) -> bool {
-        ${static_longhand_id_set("LOGICAL", lambda p: p.logical)}
-        LOGICAL.contains(*self)
+    pub fn is_logical(self) -> bool {
+        LonghandIdSet::logical().contains(self)
     }
 
     /// If this is a logical property, return the corresponding physical one in
@@ -1111,16 +1230,19 @@ impl LonghandId {
     }
 
     /// Returns PropertyFlags for given longhand property.
-    pub fn flags(&self) -> PropertyFlags {
-        match *self {
+    #[inline(always)]
+    pub fn flags(self) -> PropertyFlags {
+        // TODO(emilio): This can be simplified further as Rust gains more
+        // constant expression support.
+        const FLAGS: [u16; ${len(data.longhands)}] = [
             % for property in data.longhands:
-                LonghandId::${property.camel_case} =>
-                    % for flag in property.flags:
-                        PropertyFlags::${flag} |
-                    % endfor
-                    PropertyFlags::empty(),
+                % for flag in property.flags + restriction_flags(property):
+                    PropertyFlags::${flag}.bits |
+                % endfor
+                0,
             % endfor
-        }
+        ];
+        PropertyFlags::from_bits_truncate(FLAGS[self as usize])
     }
 
     /// Only a few properties are allowed to depend on the visited state of
@@ -1128,7 +1250,7 @@ impl LonghandId {
     /// processing these properties.
     fn is_visited_dependent(&self) -> bool {
         matches!(*self,
-            % if product == "gecko":
+            % if engine == "gecko":
             LonghandId::ColumnRuleColor |
             LonghandId::TextEmphasisColor |
             LonghandId::WebkitTextFillColor |
@@ -1138,52 +1260,23 @@ impl LonghandId {
             LonghandId::Stroke |
             LonghandId::CaretColor |
             % endif
-            LonghandId::Color |
+            % if engine in ["gecko", "servo-2013"]:
             LonghandId::BackgroundColor |
             LonghandId::BorderTopColor |
             LonghandId::BorderRightColor |
             LonghandId::BorderBottomColor |
             LonghandId::BorderLeftColor |
-            LonghandId::OutlineColor
+            LonghandId::OutlineColor |
+            % endif
+            LonghandId::Color
         )
     }
 
     /// Returns true if the property is one that is ignored when document
     /// colors are disabled.
-    fn is_ignored_when_document_colors_disabled(
-        &self,
-        cascade_level: CascadeLevel,
-        pseudo: Option<<&PseudoElement>,
-    ) -> bool {
-        let is_ua_or_user_rule = matches!(
-            cascade_level,
-            CascadeLevel::UANormal |
-            CascadeLevel::UserNormal |
-            CascadeLevel::UserImportant |
-            CascadeLevel::UAImportant
-        );
-
-        if is_ua_or_user_rule {
-            return false;
-        }
-
-        let is_style_attribute = matches!(
-            cascade_level,
-            CascadeLevel::StyleAttributeNormal |
-            CascadeLevel::StyleAttributeImportant
-        );
-        // Don't override colors on pseudo-element's style attributes. The
-        // background-color on ::-moz-color-swatch is an example. Those are set
-        // as an author style (via the style attribute), but it's pretty
-        // important for it to show up for obvious reasons :)
-        if pseudo.is_some() && is_style_attribute {
-            return false;
-        }
-
-        matches!(*self,
-            ${" | ".join([("LonghandId::" + p.camel_case)
-                          for p in data.longhands if p.ignored_when_colors_disabled])}
-        )
+    #[inline]
+    fn ignored_when_document_colors_disabled(self) -> bool {
+        LonghandIdSet::ignored_when_colors_disabled().contains(self)
     }
 
     /// The computed value of some properties depends on the (sometimes
@@ -1196,7 +1289,7 @@ impl LonghandId {
     /// correct.
     fn is_early_property(&self) -> bool {
         matches!(*self,
-            % if product == 'gecko':
+            % if engine == "gecko":
 
             // Needed to properly compute the writing mode, to resolve logical
             // properties, and similar stuff. In this block instead of along
@@ -1222,20 +1315,15 @@ impl LonghandId {
             LonghandId::MozScriptLevel |
             % endif
 
-            // Needed to compute font-relative lengths correctly.
+            % if engine in ["gecko", "servo-2013"]:
+            // Needed to compute the first available font, in order to
+            // compute font-relative units correctly.
             LonghandId::FontSize |
+            LonghandId::FontWeight |
+            LonghandId::FontStretch |
+            LonghandId::FontStyle |
+            % endif
             LonghandId::FontFamily |
-
-            // Needed to resolve currentcolor at computed value time properly.
-            //
-            // FIXME(emilio): All the properties should be moved to currentcolor
-            // as a computed-value (and thus resolving it at used-value time).
-            //
-            // This would allow this property to go away from this list.
-            LonghandId::Color |
-
-            // FIXME(emilio): There's no reason for this afaict, nuke it.
-            LonghandId::TextDecorationLine |
 
             // Needed to properly compute the writing mode, to resolve logical
             // properties, and similar stuff.
@@ -1243,39 +1331,13 @@ impl LonghandId {
             LonghandId::Direction
         )
     }
-
-    /// Whether computed values of this property lossily convert any complex
-    /// colors into RGBA colors.
-    ///
-    /// In Gecko, there are some properties still that compute currentcolor
-    /// down to an RGBA color at computed value time, instead of as
-    /// `StyleComplexColor`s. For these properties, we must return `false`,
-    /// so that we correctly avoid caching style data in the rule tree.
-    pub fn stores_complex_colors_lossily(&self) -> bool {
-        % if product == "gecko":
-        matches!(*self,
-            % for property in data.longhands:
-            % if property.predefined_type == "RGBAColor":
-            LonghandId::${property.camel_case} |
-            % endif
-            % endfor
-            LonghandId::BackgroundImage |
-            LonghandId::BorderImageSource |
-            LonghandId::BoxShadow |
-            LonghandId::MaskImage |
-            LonghandId::TextShadow
-        )
-        % else:
-        false
-        % endif
-    }
 }
 
 /// An iterator over all the property ids that are enabled for a given
 /// shorthand, if that shorthand is enabled for all content too.
 pub struct NonCustomPropertyIterator<Item: 'static> {
     filter: bool,
-    iter: ::std::slice::Iter<'static, Item>,
+    iter: std::slice::Iter<'static, Item>,
 }
 
 impl<Item> Iterator for NonCustomPropertyIterator<Item>
@@ -1295,7 +1357,7 @@ where
 }
 
 /// An identifier for a given shorthand property.
-#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToShmem)]
 #[repr(u16)]
 pub enum ShorthandId {
     % for i, property in enumerate(data.shorthands):
@@ -1326,6 +1388,13 @@ impl ShorthandId {
     #[inline]
     pub fn to_nscsspropertyid(self) -> nsCSSPropertyID {
         NonCustomPropertyId::from(self).to_nscsspropertyid()
+    }
+
+    /// Converts from a nsCSSPropertyID to a ShorthandId.
+    #[cfg(feature = "gecko")]
+    #[inline]
+    pub fn from_nscsspropertyid(prop: nsCSSPropertyID) -> Result<Self, ()> {
+        PropertyId::from_nscsspropertyid(prop)?.as_shorthand().map_err(|_| ())
     }
 
     /// Get the longhand ids that form this shorthand.
@@ -1428,17 +1497,43 @@ impl ShorthandId {
         None
     }
 
-    /// Returns PropertyFlags for given shorthand property.
-    pub fn flags(&self) -> PropertyFlags {
-        match *self {
+    /// Returns PropertyFlags for the given shorthand property.
+    #[inline]
+    pub fn flags(self) -> PropertyFlags {
+        const FLAGS: [u16; ${len(data.shorthands)}] = [
             % for property in data.shorthands:
-                ShorthandId::${property.camel_case} =>
-                    % for flag in property.flags:
-                        PropertyFlags::${flag} |
-                    % endfor
-                    PropertyFlags::empty(),
+                % for flag in property.flags:
+                    PropertyFlags::${flag}.bits |
+                % endfor
+                0,
             % endfor
-        }
+        ];
+        PropertyFlags::from_bits_truncate(FLAGS[self as usize])
+    }
+
+    /// Returns whether this property is a legacy shorthand.
+    #[inline]
+    pub fn is_legacy_shorthand(self) -> bool {
+        self.flags().contains(PropertyFlags::IS_LEGACY_SHORTHAND)
+    }
+
+    /// Returns the order in which this property appears relative to other
+    /// shorthands in idl-name-sorting order.
+    #[inline]
+    pub fn idl_name_sort_order(self) -> u32 {
+        <%
+            from data import to_idl_name
+            ordered = {}
+            sorted_shorthands = sorted(data.shorthands, key=lambda p: to_idl_name(p.ident))
+            for order, shorthand in enumerate(sorted_shorthands):
+                ordered[shorthand.ident] = order
+        %>
+        static IDL_NAME_SORT_ORDER: [u32; ${len(data.shorthands)}] = [
+            % for property in data.shorthands:
+            ${ordered[property.ident]},
+            % endfor
+        ];
+        IDL_NAME_SORT_ORDER[self as usize]
     }
 
     fn parse_into<'i, 't>(
@@ -1459,49 +1554,8 @@ impl ShorthandId {
     }
 }
 
-/// Servo's representation of a declared value for a given `T`, which is the
-/// declared value for that property.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DeclaredValue<'a, T: 'a> {
-    /// A known specified value from the stylesheet.
-    Value(&'a T),
-    /// An unparsed value that contains `var()` functions.
-    WithVariables(&'a Arc<UnparsedValue>),
-    /// An CSS-wide keyword.
-    CSSWideKeyword(CSSWideKeyword),
-}
-
-/// A variant of DeclaredValue that owns its data. This separation exists so
-/// that PropertyDeclaration can avoid embedding a DeclaredValue (and its
-/// extra discriminant word) and synthesize dependent DeclaredValues for
-/// PropertyDeclaration instances as needed.
-#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[derive(Clone, Debug, Eq, PartialEq, ToCss)]
-pub enum DeclaredValueOwned<T> {
-    /// A known specified value from the stylesheet.
-    Value(T),
-    /// An unparsed value that contains `var()` functions.
-    WithVariables(
-        #[cfg_attr(feature = "gecko", ignore_malloc_size_of = "XXX: how to handle this?")]
-        Arc<UnparsedValue>
-    ),
-    /// An CSS-wide keyword.
-    CSSWideKeyword(CSSWideKeyword),
-}
-
-impl<T> DeclaredValueOwned<T> {
-    /// Creates a dependent DeclaredValue from this DeclaredValueOwned.
-    fn borrow(&self) -> DeclaredValue<T> {
-        match *self {
-            DeclaredValueOwned::Value(ref v) => DeclaredValue::Value(v),
-            DeclaredValueOwned::WithVariables(ref v) => DeclaredValue::WithVariables(v),
-            DeclaredValueOwned::CSSWideKeyword(v) => DeclaredValue::CSSWideKeyword(v),
-        }
-    }
-}
-
 /// An unparsed property value that contains `var()` functions.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, ToShmem)]
 pub struct UnparsedValue {
     /// The css serialization for this value.
     css: String,
@@ -1530,63 +1584,11 @@ impl UnparsedValue {
     fn substitute_variables(
         &self,
         longhand_id: LonghandId,
-        custom_properties: Option<<&Arc<::custom_properties::CustomPropertiesMap>>,
+        custom_properties: Option<<&Arc<crate::custom_properties::CustomPropertiesMap>>,
         quirks_mode: QuirksMode,
+        environment: &::custom_properties::CssEnvironment,
     ) -> PropertyDeclaration {
-        ::custom_properties::substitute(&self.css, self.first_token_type, custom_properties)
-        .ok()
-        .and_then(|css| {
-            // As of this writing, only the base URL is used for property
-            // values.
-            //
-            // NOTE(emilio): we intentionally pase `None` as the rule type here.
-            // If something starts depending on it, it's probably a bug, since
-            // it'd change how values are parsed depending on whether we're in a
-            // @keyframes rule or not, for example... So think twice about
-            // whether you want to do this!
-            //
-            // FIXME(emilio): ParsingMode is slightly fishy...
-            let context = ParserContext::new(
-                Origin::Author,
-                &self.url_data,
-                None,
-                ParsingMode::DEFAULT,
-                quirks_mode,
-                None,
-            );
-
-            let mut input = ParserInput::new(&css);
-            Parser::new(&mut input).parse_entirely(|input| {
-                match self.from_shorthand {
-                    None => longhand_id.parse_value(&context, input),
-                    Some(ShorthandId::All) => {
-                        // No need to parse the 'all' shorthand as anything other than a CSS-wide
-                        // keyword, after variable substitution.
-                        Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent("all".into())))
-                    }
-                    % for shorthand in data.shorthands_except_all():
-                        Some(ShorthandId::${shorthand.camel_case}) => {
-                            shorthands::${shorthand.ident}::parse_value(&context, input)
-                            .map(|longhands| {
-                                match longhand_id {
-                                    % for property in shorthand.sub_properties:
-                                        LonghandId::${property.camel_case} => {
-                                            PropertyDeclaration::${property.camel_case}(
-                                                longhands.${property.ident}
-                                            )
-                                        }
-                                    % endfor
-                                    _ => unreachable!()
-                                }
-                            })
-                        }
-                    % endfor
-                }
-            })
-            .ok()
-        })
-        .unwrap_or_else(|| {
-            // Invalid at computed-value time.
+        let invalid_at_computed_value_time = || {
             let keyword = if longhand_id.inherited() {
                 CSSWideKeyword::Inherit
             } else {
@@ -1596,7 +1598,80 @@ impl UnparsedValue {
                 id: longhand_id,
                 keyword,
             })
-        })
+        };
+
+        let css = match crate::custom_properties::substitute(
+            &self.css,
+            self.first_token_type,
+            custom_properties,
+            environment,
+        ) {
+            Ok(css) => css,
+            Err(..) => return invalid_at_computed_value_time(),
+        };
+
+        // As of this writing, only the base URL is used for property
+        // values.
+        //
+        // NOTE(emilio): we intentionally pase `None` as the rule type here.
+        // If something starts depending on it, it's probably a bug, since
+        // it'd change how values are parsed depending on whether we're in a
+        // @keyframes rule or not, for example... So think twice about
+        // whether you want to do this!
+        //
+        // FIXME(emilio): ParsingMode is slightly fishy...
+        let context = ParserContext::new(
+            Origin::Author,
+            &self.url_data,
+            None,
+            ParsingMode::DEFAULT,
+            quirks_mode,
+            None,
+            None,
+        );
+
+        let mut input = ParserInput::new(&css);
+        let mut input = Parser::new(&mut input);
+        input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
+        if let Ok(keyword) = input.try(CSSWideKeyword::parse) {
+            return PropertyDeclaration::CSSWideKeyword(WideKeywordDeclaration {
+                id: longhand_id,
+                keyword,
+            });
+        }
+
+        let declaration = input.parse_entirely(|input| {
+            match self.from_shorthand {
+                None => longhand_id.parse_value(&context, input),
+                Some(ShorthandId::All) => {
+                    // No need to parse the 'all' shorthand as anything other
+                    // than a CSS-wide keyword, after variable substitution.
+                    Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent("all".into())))
+                }
+                % for shorthand in data.shorthands_except_all():
+                Some(ShorthandId::${shorthand.camel_case}) => {
+                    shorthands::${shorthand.ident}::parse_value(&context, input)
+                    .map(|longhands| {
+                        match longhand_id {
+                            % for property in shorthand.sub_properties:
+                                LonghandId::${property.camel_case} => {
+                                    PropertyDeclaration::${property.camel_case}(
+                                        longhands.${property.ident}
+                                    )
+                                }
+                            % endfor
+                            _ => unreachable!()
+                        }
+                    })
+                }
+                % endfor
+            }
+        });
+
+        match declaration {
+            Ok(decl) => decl,
+            Err(..) => invalid_at_computed_value_time(),
+        }
     }
 }
 
@@ -1608,7 +1683,7 @@ pub enum PropertyDeclarationId<'a> {
     /// A longhand.
     Longhand(LonghandId),
     /// A custom property declaration.
-    Custom(&'a ::custom_properties::Name),
+    Custom(&'a crate::custom_properties::Name),
 }
 
 impl<'a> ToCss for PropertyDeclarationId<'a> {
@@ -1690,7 +1765,7 @@ pub enum PropertyId {
     /// An alias for a shorthand property.
     ShorthandAlias(ShorthandId, AliasId),
     /// A custom property.
-    Custom(::custom_properties::Name),
+    Custom(crate::custom_properties::Name),
 }
 
 impl fmt::Debug for PropertyId {
@@ -1717,6 +1792,35 @@ impl ToCss for PropertyId {
     }
 }
 
+/// The counted unknown property list which is used for css use counters.
+#[derive(Clone, Copy, Debug, Eq, FromPrimitive, Hash, PartialEq)]
+#[repr(u8)]
+pub enum CountedUnknownProperty {
+    % for prop in data.counted_unknown_properties:
+    /// ${prop.name}
+    ${prop.camel_case},
+    % endfor
+}
+
+impl CountedUnknownProperty {
+    /// Parse the counted unknown property.
+    pub fn parse_for_test(property_name: &str) -> Option<Self> {
+        ascii_case_insensitive_phf_map! {
+            unknown_id -> CountedUnknownProperty = {
+                % for property in data.counted_unknown_properties:
+                "${property.name}" => CountedUnknownProperty::${property.camel_case},
+                % endfor
+            }
+        }
+        unknown_id(property_name).cloned()
+    }
+
+    /// Returns the underlying index, used for use counter.
+    pub fn bit(self) -> usize {
+        self as usize
+    }
+}
+
 impl PropertyId {
     /// Return the longhand id that this property id represents.
     #[inline]
@@ -1730,12 +1834,12 @@ impl PropertyId {
 
     /// Returns a given property from the string `s`.
     ///
-    /// Returns Err(()) for unknown non-custom properties.
-    fn parse_unchecked(property_name: &str) -> Result<Self, ()> {
-        // FIXME(https://github.com/rust-lang/rust/issues/33156): remove this
-        // enum and use PropertyId when stable Rust allows destructors in
-        // statics.
-        //
+    /// Returns Err(()) for unknown properties.
+    fn parse_unchecked(
+        property_name: &str,
+        use_counters: Option< &UseCounters>,
+    ) -> Result<Self, ()> {
+        // A special id for css use counters.
         // ShorthandAlias is not used in the Servo build.
         // That's why we need to allow dead_code.
         #[allow(dead_code)]
@@ -1744,48 +1848,57 @@ impl PropertyId {
             Shorthand(ShorthandId),
             LonghandAlias(LonghandId, AliasId),
             ShorthandAlias(ShorthandId, AliasId),
+            CountedUnknown(CountedUnknownProperty),
         }
         ascii_case_insensitive_phf_map! {
             static_id -> StaticId = {
                 % for (kind, properties) in [("Longhand", data.longhands), ("Shorthand", data.shorthands)]:
-                    % for property in properties:
-                        "${property.name}" => StaticId::${kind}(${kind}Id::${property.camel_case}),
-                        % for alias in property.alias:
-                            "${alias.name}" => {
-                                StaticId::${kind}Alias(${kind}Id::${property.camel_case},
-                                                       AliasId::${alias.camel_case})
-                            },
-                        % endfor
-                    % endfor
+                % for property in properties:
+                "${property.name}" => StaticId::${kind}(${kind}Id::${property.camel_case}),
+                % for alias in property.alias:
+                "${alias.name}" => {
+                    StaticId::${kind}Alias(
+                        ${kind}Id::${property.camel_case},
+                        AliasId::${alias.camel_case},
+                    )
+                },
+                % endfor
+                % endfor
+                % endfor
+                % for property in data.counted_unknown_properties:
+                "${property.name}" => {
+                    StaticId::CountedUnknown(CountedUnknownProperty::${property.camel_case})
+                },
                 % endfor
             }
         }
 
-        Ok(match static_id(property_name) {
-            Some(&StaticId::Longhand(id)) => {
-                PropertyId::Longhand(id)
-            },
-            Some(&StaticId::Shorthand(id)) => {
-                PropertyId::Shorthand(id)
-            },
-            Some(&StaticId::LonghandAlias(id, alias)) => {
-                PropertyId::LonghandAlias(id, alias)
-            },
-            Some(&StaticId::ShorthandAlias(id, alias)) => {
-                PropertyId::ShorthandAlias(id, alias)
-            },
-            None => {
-                let name = ::custom_properties::parse_name(property_name)?;
-                PropertyId::Custom(::custom_properties::Name::from(name))
-            },
-        })
+        if let Some(id) = static_id(property_name) {
+            return Ok(match *id {
+                StaticId::Longhand(id) => PropertyId::Longhand(id),
+                StaticId::Shorthand(id) => PropertyId::Shorthand(id),
+                StaticId::LonghandAlias(id, alias) => PropertyId::LonghandAlias(id, alias),
+                StaticId::ShorthandAlias(id, alias) => PropertyId::ShorthandAlias(id, alias),
+                StaticId::CountedUnknown(unknown_prop) => {
+                    if let Some(counters) = use_counters {
+                        counters.counted_unknown_properties.record(unknown_prop);
+                    }
+
+                    // Always return Err(()) because these aren't valid custom property names.
+                    return Err(());
+                }
+            });
+        }
+
+        let name = crate::custom_properties::parse_name(property_name)?;
+        Ok(PropertyId::Custom(crate::custom_properties::Name::from(name)))
     }
 
     /// Parses a property name, and returns an error if it's unknown or isn't
     /// enabled for all content.
     #[inline]
     pub fn parse_enabled_for_all_content(name: &str) -> Result<Self, ()> {
-        let id = Self::parse_unchecked(name)?;
+        let id = Self::parse_unchecked(name, None)?;
 
         if !id.enabled_for_all_content() {
             return Err(());
@@ -1799,7 +1912,7 @@ impl PropertyId {
     /// allowed in this context.
     #[inline]
     pub fn parse(name: &str, context: &ParserContext) -> Result<Self, ()> {
-        let id = Self::parse_unchecked(name)?;
+        let id = Self::parse_unchecked(name, context.use_counters)?;
 
         if !id.allowed_in(context) {
             return Err(());
@@ -1817,7 +1930,7 @@ impl PropertyId {
         name: &str,
         context: &ParserContext,
     ) -> Result<Self, ()> {
-        let id = Self::parse_unchecked(name)?;
+        let id = Self::parse_unchecked(name, None)?;
 
         if !id.allowed_in_ignoring_rule_type(context) {
             return Err(());
@@ -1852,7 +1965,8 @@ impl PropertyId {
         }
     }
 
-    fn non_custom_id(&self) -> Option<NonCustomPropertyId> {
+    /// Returns the `NonCustomPropertyId` corresponding to this property id.
+    pub fn non_custom_id(&self) -> Option<NonCustomPropertyId> {
         Some(match *self {
             PropertyId::Custom(_) => return None,
             PropertyId::Shorthand(shorthand_id) => shorthand_id.into(),
@@ -1939,7 +2053,7 @@ impl PropertyId {
 
 /// A declaration using a CSS-wide keyword.
 #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[derive(Clone, PartialEq, ToCss)]
+#[derive(Clone, PartialEq, ToCss, ToShmem)]
 pub struct WideKeywordDeclaration {
     #[css(skip)]
     id: LonghandId,
@@ -1948,7 +2062,7 @@ pub struct WideKeywordDeclaration {
 
 /// An unparsed declaration that contains `var()` functions.
 #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[derive(Clone, PartialEq, ToCss)]
+#[derive(Clone, PartialEq, ToCss, ToShmem)]
 pub struct VariableDeclaration {
     #[css(skip)]
     id: LonghandId,
@@ -1956,16 +2070,26 @@ pub struct VariableDeclaration {
     value: Arc<UnparsedValue>,
 }
 
+/// A custom property declaration value is either an unparsed value or a CSS
+/// wide-keyword.
+#[derive(Clone, PartialEq, ToCss, ToShmem)]
+pub enum CustomDeclarationValue {
+    /// A value.
+    Value(Arc<crate::custom_properties::SpecifiedValue>),
+    /// A wide keyword.
+    CSSWideKeyword(CSSWideKeyword),
+}
+
 /// A custom property declaration with the property name and the declared value.
 #[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
-#[derive(Clone, PartialEq, ToCss)]
+#[derive(Clone, PartialEq, ToCss, ToShmem)]
 pub struct CustomDeclaration {
     /// The name of the custom property.
     #[css(skip)]
-    pub name: ::custom_properties::Name,
+    pub name: crate::custom_properties::Name,
     /// The value of the custom property.
     #[cfg_attr(feature = "gecko", ignore_malloc_size_of = "XXX: how to handle this?")]
-    pub value: DeclaredValueOwned<Arc<::custom_properties::SpecifiedValue>>,
+    pub value: CustomDeclarationValue,
 }
 
 impl fmt::Debug for PropertyDeclaration {
@@ -2087,6 +2211,7 @@ impl PropertyDeclaration {
     }
 
     /// Returns a CSS-wide keyword if the declaration's value is one.
+    #[inline]
     pub fn get_css_wide_keyword(&self) -> Option<CSSWideKeyword> {
         match *self {
             PropertyDeclaration::CSSWideKeyword(ref declaration) => {
@@ -2099,7 +2224,7 @@ impl PropertyDeclaration {
     /// Returns whether or not the property is set by a system font
     pub fn get_system(&self) -> Option<SystemFont> {
         match *self {
-            % if product == "gecko":
+            % if engine == "gecko":
             % for prop in SYSTEM_FONT_LONGHANDS:
                 PropertyDeclaration::${to_camel_case(prop)}(ref prop) => {
                     prop.get_system()
@@ -2147,13 +2272,13 @@ impl PropertyDeclaration {
     /// This is the case of custom properties and values that contain
     /// unsubstituted variables.
     pub fn value_is_unparsed(&self) -> bool {
-      match *self {
-          PropertyDeclaration::WithVariables(..) => true,
-          PropertyDeclaration::Custom(ref declaration) => {
-            !matches!(declaration.value.borrow(), DeclaredValue::CSSWideKeyword(..))
-          }
-          _ => false,
-      }
+        match *self {
+            PropertyDeclaration::WithVariables(..) => true,
+            PropertyDeclaration::Custom(ref declaration) => {
+                matches!(declaration.value, CustomDeclarationValue::Value(..))
+            }
+            _ => false,
+        }
     }
 
     /// Returns true if this property declaration is for one of the animatable
@@ -2197,67 +2322,54 @@ impl PropertyDeclaration {
                 // FIXME: fully implement https://github.com/w3c/csswg-drafts/issues/774
                 // before adding skip_whitespace here.
                 // This probably affects some test results.
-                let value = match input.try(|i| CSSWideKeyword::parse(i)) {
-                    Ok(keyword) => DeclaredValueOwned::CSSWideKeyword(keyword),
-                    Err(()) => match ::custom_properties::SpecifiedValue::parse(input) {
-                        Ok(value) => DeclaredValueOwned::Value(value),
-                        Err(e) => return Err(StyleParseErrorKind::new_invalid(
-                            format!("--{}", property_name),
-                            e,
-                        )),
-                    }
+                let value = match input.try(CSSWideKeyword::parse) {
+                    Ok(keyword) => CustomDeclarationValue::CSSWideKeyword(keyword),
+                    Err(()) => CustomDeclarationValue::Value(
+                        crate::custom_properties::SpecifiedValue::parse(input)?
+                    ),
                 };
                 declarations.push(PropertyDeclaration::Custom(CustomDeclaration {
                     name: property_name,
                     value,
                 }));
-                Ok(())
+                return Ok(());
             }
             PropertyId::LonghandAlias(id, _) |
             PropertyId::Longhand(id) => {
                 input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
-                input.try(|i| CSSWideKeyword::parse(i)).map(|keyword| {
+                input.try(CSSWideKeyword::parse).map(|keyword| {
                     PropertyDeclaration::CSSWideKeyword(
                         WideKeywordDeclaration { id, keyword },
                     )
                 }).or_else(|()| {
-                    input.look_for_var_functions();
+                    input.look_for_var_or_env_functions();
                     input.parse_entirely(|input| id.parse_value(context, input))
                     .or_else(|err| {
                         while let Ok(_) = input.next() {}  // Look for var() after the error.
-                        if input.seen_var_functions() {
-                            input.reset(&start);
-                            let (first_token_type, css) =
-                                ::custom_properties::parse_non_custom_with_var(input).map_err(|e| {
-                                    StyleParseErrorKind::new_invalid(
-                                        non_custom_id.unwrap().name(),
-                                        e,
-                                    )
-                                })?;
-                            Ok(PropertyDeclaration::WithVariables(VariableDeclaration {
-                                id,
-                                value: Arc::new(UnparsedValue {
+                        if !input.seen_var_or_env_functions() {
+                            return Err(err);
+                        }
+                        input.reset(&start);
+                        let (first_token_type, css) =
+                            crate::custom_properties::parse_non_custom_with_var(input)?;
+                        Ok(PropertyDeclaration::WithVariables(VariableDeclaration {
+                            id,
+                            value: Arc::new(UnparsedValue {
                                 css: css.into_owned(),
                                 first_token_type: first_token_type,
                                 url_data: context.url_data.clone(),
                                 from_shorthand: None,
-                                }),
-                            }))
-                        } else {
-                            Err(StyleParseErrorKind::new_invalid(
-                                non_custom_id.unwrap().name(),
-                                err,
-                            ))
-                        }
+                            }),
+                        }))
                     })
                 }).map(|declaration| {
                     declarations.push(declaration)
-                })
+                })?;
             }
             PropertyId::ShorthandAlias(id, _) |
             PropertyId::Shorthand(id) => {
                 input.skip_whitespace();  // Unnecessary for correctness, but may help try() rewind less.
-                if let Ok(keyword) = input.try(|i| CSSWideKeyword::parse(i)) {
+                if let Ok(keyword) = input.try(CSSWideKeyword::parse) {
                     if id == ShorthandId::All {
                         declarations.all_shorthand = AllShorthand::CSSWideKeyword(keyword)
                     } else {
@@ -2270,56 +2382,54 @@ impl PropertyDeclaration {
                             ))
                         }
                     }
-                    Ok(())
                 } else {
-                    input.look_for_var_functions();
-                    // Not using parse_entirely here: each ${shorthand.ident}::parse_into function
-                    // needs to do so *before* pushing to `declarations`.
+                    input.look_for_var_or_env_functions();
+                    // Not using parse_entirely here: each
+                    // ${shorthand.ident}::parse_into function needs to do so
+                    // *before* pushing to `declarations`.
                     id.parse_into(declarations, context, input).or_else(|err| {
                         while let Ok(_) = input.next() {}  // Look for var() after the error.
-                        if input.seen_var_functions() {
-                            input.reset(&start);
-                            let (first_token_type, css) =
-                                ::custom_properties::parse_non_custom_with_var(input).map_err(|e| {
-                                    StyleParseErrorKind::new_invalid(
-                                        non_custom_id.unwrap().name(),
-                                        e,
-                                    )
-                                })?;
-                            let unparsed = Arc::new(UnparsedValue {
-                                css: css.into_owned(),
-                                first_token_type: first_token_type,
-                                url_data: context.url_data.clone(),
-                                from_shorthand: Some(id),
-                            });
-                            if id == ShorthandId::All {
-                                declarations.all_shorthand = AllShorthand::WithVariables(unparsed)
-                            } else {
-                                for id in id.longhands() {
-                                    declarations.push(
-                                        PropertyDeclaration::WithVariables(VariableDeclaration {
-                                            id,
-                                            value: unparsed.clone(),
-                                        })
-                                    )
-                                }
-                            }
-                            Ok(())
-                        } else {
-                            Err(StyleParseErrorKind::new_invalid(
-                                non_custom_id.unwrap().name(),
-                                err,
-                            ))
+                        if !input.seen_var_or_env_functions() {
+                            return Err(err);
                         }
-                    })
+
+                        input.reset(&start);
+                        let (first_token_type, css) =
+                            crate::custom_properties::parse_non_custom_with_var(input)?;
+                        let unparsed = Arc::new(UnparsedValue {
+                            css: css.into_owned(),
+                            first_token_type: first_token_type,
+                            url_data: context.url_data.clone(),
+                            from_shorthand: Some(id),
+                        });
+                        if id == ShorthandId::All {
+                            declarations.all_shorthand = AllShorthand::WithVariables(unparsed)
+                        } else {
+                            for id in id.longhands() {
+                                declarations.push(
+                                    PropertyDeclaration::WithVariables(VariableDeclaration {
+                                        id,
+                                        value: unparsed.clone(),
+                                    })
+                                )
+                            }
+                        }
+                        Ok(())
+                    })?;
                 }
             }
         }
+        debug_assert!(non_custom_id.is_some(), "Custom properties should've returned earlier");
+        if let Some(use_counters) = context.use_counters {
+            use_counters.non_custom_properties.record(non_custom_id.unwrap());
+        }
+        Ok(())
     }
 }
 
 type SubpropertiesArray<T> =
-    [T; ${max(len(s.sub_properties) for s in data.shorthands_except_all())}];
+    [T; ${max(len(s.sub_properties) for s in data.shorthands_except_all()) \
+          if data.shorthands_except_all() else 0}];
 
 type SubpropertiesVec<T> = ArrayVec<SubpropertiesArray<T>>;
 
@@ -2341,6 +2451,14 @@ impl SourcePropertyDeclaration {
             declarations: ::arrayvec::ArrayVec::new(),
             all_shorthand: AllShorthand::NotSet,
         }
+    }
+
+    /// Create one with a single PropertyDeclaration.
+    #[inline]
+    pub fn with_one(decl: PropertyDeclaration) -> Self {
+        let mut result = Self::new();
+        result.declarations.push(decl);
+        result
     }
 
     /// Similar to Vec::drain: leaves this empty when the return value is dropped.
@@ -2423,7 +2541,7 @@ impl<'a> Iterator for AllShorthandDeclarationIterator<'a> {
 }
 
 #[cfg(feature = "gecko")]
-pub use gecko_properties::style_structs;
+pub use crate::gecko_properties::style_structs;
 
 /// The module where all the style structs are defined.
 #[cfg(feature = "servo")]
@@ -2431,9 +2549,9 @@ pub mod style_structs {
     use fxhash::FxHasher;
     use super::longhands;
     use std::hash::{Hash, Hasher};
-    use logical_geometry::WritingMode;
-    use media_queries::Device;
-    use values::computed::NonNegativeLength;
+    use crate::logical_geometry::WritingMode;
+    use crate::media_queries::Device;
+    use crate::values::computed::NonNegativeLength;
 
     % for style_struct in data.active_style_structs():
         % if style_struct.name == "Font":
@@ -2452,7 +2570,7 @@ pub mod style_structs {
                 ///
                 /// FIXME(emilio): This is technically a box-tree concept, and
                 /// would be nice to move away from style.
-                pub text_decorations_in_effect: ::values::computed::text::TextDecorationsInEffect,
+                pub text_decorations_in_effect: crate::values::computed::text::TextDecorationsInEffect,
             % endif
             % if style_struct.name == "Font":
                 /// The font hash, used for font caching.
@@ -2480,20 +2598,7 @@ pub mod style_structs {
                 % if longhand.logical:
                     ${helpers.logical_setter(name=longhand.name)}
                 % else:
-                    % if longhand.is_vector:
-                        /// Set ${longhand.name}.
-                        #[allow(non_snake_case)]
-                        #[inline]
-                        pub fn set_${longhand.ident}<I>(&mut self, v: I)
-                        where
-                            I: IntoIterator<Item = longhands::${longhand.ident}
-                                                              ::computed_value::single_value::T>,
-                            I::IntoIter: ExactSizeIterator
-                        {
-                            self.${longhand.ident} = longhands::${longhand.ident}::computed_value
-                                                              ::List(v.into_iter().collect());
-                        }
-                    % elif longhand.ident == "display":
+                    % if longhand.ident == "display":
                         /// Set `display`.
                         ///
                         /// We need to keep track of the original display for hypothetical boxes,
@@ -2566,7 +2671,8 @@ pub mod style_structs {
                     /// Whether the border-${side} property has nonzero width.
                     #[allow(non_snake_case)]
                     pub fn border_${side}_has_nonzero_width(&self) -> bool {
-                        self.border_${side}_width != NonNegativeLength::zero()
+                        use crate::Zero;
+                        !self.border_${side}_width.is_zero()
                     }
                 % endfor
             % elif style_struct.name == "Font":
@@ -2605,25 +2711,8 @@ pub mod style_structs {
                 /// Whether the outline-width property is non-zero.
                 #[inline]
                 pub fn outline_has_nonzero_width(&self) -> bool {
-                    self.outline_width != NonNegativeLength::zero()
-                }
-            % elif style_struct.name == "Text":
-                /// Whether the text decoration has an underline.
-                #[inline]
-                pub fn has_underline(&self) -> bool {
-                    self.text_decoration_line.contains(longhands::text_decoration_line::SpecifiedValue::UNDERLINE)
-                }
-
-                /// Whether the text decoration has an overline.
-                #[inline]
-                pub fn has_overline(&self) -> bool {
-                    self.text_decoration_line.contains(longhands::text_decoration_line::SpecifiedValue::OVERLINE)
-                }
-
-                /// Whether the text decoration has a line through.
-                #[inline]
-                pub fn has_line_through(&self) -> bool {
-                    self.text_decoration_line.contains(longhands::text_decoration_line::SpecifiedValue::LINE_THROUGH)
+                    use crate::Zero;
+                    !self.outline_width.is_zero()
                 }
             % elif style_struct.name == "Box":
                 /// Sets the display property, but without touching original_display,
@@ -2699,11 +2788,7 @@ pub mod style_structs {
             /// Whether this is a multicol style.
             #[cfg(feature = "servo")]
             pub fn is_multicol(&self) -> bool {
-                use values::Either;
-                match self.column_width {
-                    Either::First(_width) => true,
-                    Either::Second(_auto) => !self.column_count.is_auto(),
-                }
+                !self.column_width.is_auto() || !self.column_count.is_auto()
             }
         % endif
     }
@@ -2735,7 +2820,7 @@ pub mod style_structs {
 
 
 #[cfg(feature = "gecko")]
-pub use gecko_properties::{ComputedValues, ComputedValuesInner};
+pub use crate::gecko_properties::{ComputedValues, ComputedValuesInner};
 
 #[cfg(feature = "servo")]
 #[cfg_attr(feature = "servo", derive(Clone, Debug))]
@@ -2744,7 +2829,7 @@ pub struct ComputedValuesInner {
     % for style_struct in data.active_style_structs():
         ${style_struct.ident}: Arc<style_structs::${style_struct.name}>,
     % endfor
-    custom_properties: Option<Arc<::custom_properties::CustomPropertiesMap>>,
+    custom_properties: Option<Arc<crate::custom_properties::CustomPropertiesMap>>,
     /// The writing mode of this computed values struct.
     pub writing_mode: WritingMode,
 
@@ -2803,7 +2888,7 @@ impl ComputedValues {
     }
 
     /// Gets a reference to the custom properties map (if one exists).
-    pub fn custom_properties(&self) -> Option<<&Arc<::custom_properties::CustomPropertiesMap>> {
+    pub fn custom_properties(&self) -> Option<<&Arc<crate::custom_properties::CustomPropertiesMap>> {
         self.custom_properties.as_ref()
     }
 
@@ -2835,19 +2920,19 @@ impl ComputedValues {
     where
         W: Write,
     {
+        use crate::values::resolved::ToResolvedValue;
+
+        let context = resolved::Context {
+            style: self,
+        };
+
         // TODO(emilio): Is it worth to merge branches here just like
         // PropertyDeclaration::to_css does?
-        //
-        // We'd need to get a concept of ~resolved value, which may not be worth
-        // it.
         match property_id {
             % for prop in data.longhands:
             LonghandId::${prop.camel_case} => {
                 let value = self.clone_${prop.ident}();
-                % if prop.predefined_type == "Color":
-                let value = self.resolve_color(value);
-                % endif
-                value.to_css(dest)
+                value.to_resolved_value(&context).to_css(dest)
             }
             % endfor
         }
@@ -2863,7 +2948,20 @@ impl ComputedValues {
     ///   style.resolve_color(style.get_border().clone_border_top_color());
     #[inline]
     pub fn resolve_color(&self, color: computed::Color) -> RGBA {
-        color.to_rgba(self.get_color().clone_color())
+        color.to_rgba(self.get_inherited_text().clone_color())
+    }
+
+    /// Returns which longhand properties have different values in the two
+    /// ComputedValues.
+    #[cfg(feature = "gecko_debug")]
+    pub fn differing_properties(&self, other: &ComputedValues) -> LonghandIdSet {
+        let mut set = LonghandIdSet::new();
+        % for prop in data.longhands:
+        if self.clone_${prop.ident}() != other.clone_${prop.ident}() {
+            set.insert(LonghandId::${prop.camel_case});
+        }
+        % endfor
+        set
     }
 }
 
@@ -2871,9 +2969,8 @@ impl ComputedValues {
 impl ComputedValues {
     /// Create a new refcounted `ComputedValues`
     pub fn new(
-        _: &Device,
         _: Option<<&PseudoElement>,
-        custom_properties: Option<Arc<::custom_properties::CustomPropertiesMap>>,
+        custom_properties: Option<Arc<crate::custom_properties::CustomPropertiesMap>>,
         writing_mode: WritingMode,
         flags: ComputedValueFlags,
         rules: Option<StrongRuleNode>,
@@ -2977,7 +3074,7 @@ impl ComputedValuesInner {
     /// ineffective, and would yield an empty `::before` or `::after`
     /// pseudo-element.
     pub fn ineffective_content_property(&self) -> bool {
-        use values::generics::counters::Content;
+        use crate::values::generics::counters::Content;
         match self.get_counters().content {
             Content::Normal | Content::None => true,
             Content::Items(ref items) => items.is_empty(),
@@ -2998,7 +3095,7 @@ impl ComputedValuesInner {
 
     /// Get the logical computed inline size.
     #[inline]
-    pub fn content_inline_size(&self) -> computed::LengthOrPercentageOrAuto {
+    pub fn content_inline_size(&self) -> computed::Size {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() {
             position_style.height
@@ -3009,42 +3106,42 @@ impl ComputedValuesInner {
 
     /// Get the logical computed block size.
     #[inline]
-    pub fn content_block_size(&self) -> computed::LengthOrPercentageOrAuto {
+    pub fn content_block_size(&self) -> computed::Size {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() { position_style.width } else { position_style.height }
     }
 
     /// Get the logical computed min inline size.
     #[inline]
-    pub fn min_inline_size(&self) -> computed::LengthOrPercentage {
+    pub fn min_inline_size(&self) -> computed::Size {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() { position_style.min_height } else { position_style.min_width }
     }
 
     /// Get the logical computed min block size.
     #[inline]
-    pub fn min_block_size(&self) -> computed::LengthOrPercentage {
+    pub fn min_block_size(&self) -> computed::Size {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() { position_style.min_width } else { position_style.min_height }
     }
 
     /// Get the logical computed max inline size.
     #[inline]
-    pub fn max_inline_size(&self) -> computed::LengthOrPercentageOrNone {
+    pub fn max_inline_size(&self) -> computed::MaxSize {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() { position_style.max_height } else { position_style.max_width }
     }
 
     /// Get the logical computed max block size.
     #[inline]
-    pub fn max_block_size(&self) -> computed::LengthOrPercentageOrNone {
+    pub fn max_block_size(&self) -> computed::MaxSize {
         let position_style = self.get_position();
         if self.writing_mode.is_vertical() { position_style.max_width } else { position_style.max_height }
     }
 
     /// Get the logical computed padding for this writing mode.
     #[inline]
-    pub fn logical_padding(&self) -> LogicalMargin<computed::LengthOrPercentage> {
+    pub fn logical_padding(&self) -> LogicalMargin<computed::LengthPercentage> {
         let padding_style = self.get_padding();
         LogicalMargin::from_physical(self.writing_mode, SideOffsets2D::new(
             padding_style.padding_top.0,
@@ -3074,7 +3171,7 @@ impl ComputedValuesInner {
 
     /// Gets the logical computed margin from this style.
     #[inline]
-    pub fn logical_margin(&self) -> LogicalMargin<computed::LengthOrPercentageOrAuto> {
+    pub fn logical_margin(&self) -> LogicalMargin<computed::LengthPercentageOrAuto> {
         let margin_style = self.get_margin();
         LogicalMargin::from_physical(self.writing_mode, SideOffsets2D::new(
             margin_style.margin_top,
@@ -3086,7 +3183,7 @@ impl ComputedValuesInner {
 
     /// Gets the logical position from this style.
     #[inline]
-    pub fn logical_position(&self) -> LogicalMargin<computed::LengthOrPercentageOrAuto> {
+    pub fn logical_position(&self) -> LogicalMargin<computed::LengthPercentageOrAuto> {
         // FIXME(SimonSapin): should be the writing mode of the containing block, maybe?
         let position_style = self.get_position();
         LogicalMargin::from_physical(self.writing_mode, SideOffsets2D::new(
@@ -3099,7 +3196,7 @@ impl ComputedValuesInner {
 
     /// Return true if the effects force the transform style to be Flat
     pub fn overrides_transform_style(&self) -> bool {
-        use computed_values::mix_blend_mode::T as MixBlendMode;
+        use crate::computed_values::mix_blend_mode::T as MixBlendMode;
 
         let effects = self.get_effects();
         // TODO(gw): Add clip-path, isolation, mask-image, mask-border-source when supported.
@@ -3111,7 +3208,7 @@ impl ComputedValuesInner {
 
     /// <https://drafts.csswg.org/css-transforms/#grouping-property-values>
     pub fn get_used_transform_style(&self) -> computed_values::transform_style::T {
-        use computed_values::transform_style::T as TransformStyle;
+        use crate::computed_values::transform_style::T as TransformStyle;
 
         let box_ = self.get_box();
 
@@ -3126,9 +3223,9 @@ impl ComputedValuesInner {
     /// Whether given this transform value, the compositor would require a
     /// layer.
     pub fn transform_requires_layer(&self) -> bool {
-        use values::generics::transform::TransformOperation;
+        use crate::values::generics::transform::TransformOperation;
         // Check if the transform matrix is 2D or 3D
-        for transform in &self.get_box().transform.0 {
+        for transform in &*self.get_box().transform.0 {
             match *transform {
                 TransformOperation::Perspective(..) => {
                     return true;
@@ -3158,14 +3255,14 @@ impl ComputedValuesInner {
     }
 }
 
-% if product == "gecko":
-    pub use ::servo_arc::RawOffsetArc as BuilderArc;
+% if engine == "gecko":
+    pub use crate::servo_arc::RawOffsetArc as BuilderArc;
     /// Clone an arc, returning a regular arc
     fn clone_arc<T: 'static>(x: &BuilderArc<T>) -> Arc<T> {
         Arc::from_raw_offset(x.clone())
     }
 % else:
-    pub use ::servo_arc::Arc as BuilderArc;
+    pub use crate::servo_arc::Arc as BuilderArc;
     /// Clone an arc, returning a regular arc
     fn clone_arc<T: 'static>(x: &BuilderArc<T>) -> Arc<T> {
         x.clone()
@@ -3183,7 +3280,8 @@ pub enum StyleStructRef<'a, T: 'static> {
 }
 
 impl<'a, T: 'a> StyleStructRef<'a, T>
-    where T: Clone,
+where
+    T: Clone,
 {
     /// Ensure a mutable reference of this value exists, either cloning the
     /// borrowed value, or returning the owned one.
@@ -3195,6 +3293,22 @@ impl<'a, T: 'a> StyleStructRef<'a, T>
         match *self {
             StyleStructRef::Owned(ref mut v) => v,
             StyleStructRef::Borrowed(..) => unreachable!(),
+            StyleStructRef::Vacated => panic!("Accessed vacated style struct")
+        }
+    }
+
+    /// Whether this is pointer-equal to the struct we're going to copy the
+    /// value from.
+    ///
+    /// This is used to avoid allocations when people write stuff like `font:
+    /// inherit` or such `all: initial`.
+    #[inline]
+    pub fn ptr_eq(&self, struct_to_copy_from: &T) -> bool {
+        match *self {
+            StyleStructRef::Owned(..) => false,
+            StyleStructRef::Borrowed(arc) => {
+                &**arc as *const T == struct_to_copy_from as *const T
+            }
             StyleStructRef::Vacated => panic!("Accessed vacated style struct")
         }
     }
@@ -3283,7 +3397,7 @@ pub struct StyleBuilder<'a> {
     /// node.
     pub rules: Option<StrongRuleNode>,
 
-    custom_properties: Option<Arc<::custom_properties::CustomPropertiesMap>>,
+    custom_properties: Option<Arc<crate::custom_properties::CustomPropertiesMap>>,
 
     /// The pseudo-element this style will represent.
     pub pseudo: Option<<&'a PseudoElement>,
@@ -3297,8 +3411,10 @@ pub struct StyleBuilder<'a> {
     ///
     /// TODO(emilio): Make private.
     pub writing_mode: WritingMode,
+
     /// Flags for the computed value.
-    pub flags: ComputedValueFlags,
+    pub flags: Cell<ComputedValueFlags>,
+
     /// The element's style if visited, only computed if there's a relevant link
     /// for this element.  A element's "relevant link" is the element being
     /// matched if it is a link or the nearest ancestor link.
@@ -3316,26 +3432,17 @@ impl<'a> StyleBuilder<'a> {
         parent_style_ignoring_first_line: Option<<&'a ComputedValues>,
         pseudo: Option<<&'a PseudoElement>,
         rules: Option<StrongRuleNode>,
-        custom_properties: Option<Arc<::custom_properties::CustomPropertiesMap>>,
+        custom_properties: Option<Arc<crate::custom_properties::CustomPropertiesMap>>,
     ) -> Self {
         debug_assert_eq!(parent_style.is_some(), parent_style_ignoring_first_line.is_some());
         #[cfg(feature = "gecko")]
         debug_assert!(parent_style.is_none() ||
-                      ::std::ptr::eq(parent_style.unwrap(),
+                      std::ptr::eq(parent_style.unwrap(),
                                      parent_style_ignoring_first_line.unwrap()) ||
-                      parent_style.unwrap().pseudo() == Some(PseudoElement::FirstLine));
+                      parent_style.unwrap().is_first_line_style());
         let reset_style = device.default_computed_values();
         let inherited_style = parent_style.unwrap_or(reset_style);
         let inherited_style_ignoring_first_line = parent_style_ignoring_first_line.unwrap_or(reset_style);
-        // FIXME(bz): inherits_all seems like a fundamentally broken idea.  I'm
-        // 99% sure it should give incorrect behavior for table anonymous box
-        // backgrounds, for example.  This code doesn't attempt to make it play
-        // nice with inherited_style_ignoring_first_line.
-        let reset_style = if pseudo.map_or(false, |p| p.inherits_all()) {
-            inherited_style
-        } else {
-            reset_style
-        };
 
         let flags = inherited_style.flags.inherited();
 
@@ -3349,7 +3456,7 @@ impl<'a> StyleBuilder<'a> {
             modified_reset: false,
             custom_properties,
             writing_mode: inherited_style.writing_mode,
-            flags,
+            flags: Cell::new(flags),
             visited_style: None,
             % for style_struct in data.active_style_structs():
             % if style_struct.inherited:
@@ -3376,7 +3483,7 @@ impl<'a> StyleBuilder<'a> {
         let inherited_style = parent_style.unwrap_or(reset_style);
         #[cfg(feature = "gecko")]
         debug_assert!(parent_style.is_none() ||
-                      parent_style.unwrap().pseudo() != Some(PseudoElement::FirstLine));
+                      !parent_style.unwrap().is_first_line_style());
         StyleBuilder {
             device,
             inherited_style,
@@ -3388,7 +3495,7 @@ impl<'a> StyleBuilder<'a> {
             rules: None,
             custom_properties: style_to_derive_from.custom_properties().cloned(),
             writing_mode: style_to_derive_from.writing_mode,
-            flags: style_to_derive_from.flags,
+            flags: Cell::new(style_to_derive_from.flags),
             visited_style: None,
             % for style_struct in data.active_style_structs():
             ${style_struct.ident}: StyleStructRef::Borrowed(
@@ -3409,30 +3516,28 @@ impl<'a> StyleBuilder<'a> {
     }
 
     % for property in data.longhands:
-    % if property.ident != "font_size":
+    % if not property.style_struct.inherited:
     /// Inherit `${property.ident}` from our parent style.
     #[allow(non_snake_case)]
     pub fn inherit_${property.ident}(&mut self) {
         let inherited_struct =
-        % if property.style_struct.inherited:
-            self.inherited_style.get_${property.style_struct.name_lower}();
-        % else:
             self.inherited_style_ignoring_first_line
                 .get_${property.style_struct.name_lower}();
-        % endif
 
-        % if not property.style_struct.inherited:
-        self.flags.insert(ComputedValueFlags::INHERITS_RESET_STYLE);
         self.modified_reset = true;
-        % endif
+        self.add_flags(ComputedValueFlags::INHERITS_RESET_STYLE);
 
         % if property.ident == "content":
-        self.flags.insert(ComputedValueFlags::INHERITS_CONTENT);
+        self.add_flags(ComputedValueFlags::INHERITS_CONTENT);
         % endif
 
         % if property.ident == "display":
-        self.flags.insert(ComputedValueFlags::INHERITS_DISPLAY);
+        self.add_flags(ComputedValueFlags::INHERITS_DISPLAY);
         % endif
+
+        if self.${property.style_struct.ident}.ptr_eq(inherited_struct) {
+            return;
+        }
 
         self.${property.style_struct.ident}.mutate()
             .copy_${property.ident}_from(
@@ -3442,16 +3547,16 @@ impl<'a> StyleBuilder<'a> {
                 % endif
             );
     }
-
+    % else:
     /// Reset `${property.ident}` to the initial value.
     #[allow(non_snake_case)]
     pub fn reset_${property.ident}(&mut self) {
         let reset_struct =
             self.reset_style.get_${property.style_struct.name_lower}();
 
-        % if not property.style_struct.inherited:
-        self.modified_reset = true;
-        % endif
+        if self.${property.style_struct.ident}.ptr_eq(reset_struct) {
+            return;
+        }
 
         self.${property.style_struct.ident}.mutate()
             .reset_${property.ident}(
@@ -3461,8 +3566,9 @@ impl<'a> StyleBuilder<'a> {
                 % endif
             );
     }
+    % endif
 
-    % if not property.is_vector:
+    % if not property.is_vector or property.simple_vector_bindings or engine in ["servo-2013", "servo-2020"]:
     /// Set the `${property.ident}` to the computed value `value`.
     #[allow(non_snake_case)]
     pub fn set_${property.ident}(
@@ -3473,18 +3579,14 @@ impl<'a> StyleBuilder<'a> {
         self.modified_reset = true;
         % endif
 
-        <% props_need_device = ["content", "list_style_type", "font_variant_alternates"] %>
         self.${property.style_struct.ident}.mutate()
             .set_${property.ident}(
                 value,
                 % if property.logical:
                 self.writing_mode,
-                % elif product == "gecko" and property.ident in props_need_device:
-                self.device,
                 % endif
             );
     }
-    % endif
     % endif
     % endfor
     <% del property %>
@@ -3580,23 +3682,22 @@ impl<'a> StyleBuilder<'a> {
     <% del style_struct %>
 
     /// Returns whether this computed style represents a floated object.
-    pub fn floated(&self) -> bool {
-        self.get_box().clone_float() != longhands::float::computed_value::T::None
+    pub fn is_floating(&self) -> bool {
+        self.get_box().clone_float().is_floating()
     }
 
-    /// Returns whether this computed style represents an out of flow-positioned
+    /// Returns whether this computed style represents an absolutely-positioned
     /// object.
-    pub fn out_of_flow_positioned(&self) -> bool {
-        use properties::longhands::position::computed_value::T as Position;
-        matches!(self.get_box().clone_position(),
-                 Position::Absolute | Position::Fixed)
+    pub fn is_absolutely_positioned(&self) -> bool {
+        self.get_box().clone_position().is_absolutely_positioned()
     }
 
-    /// Whether this style has a top-layer style. That's implemented in Gecko
-    /// via the -moz-top-layer property, but servo doesn't have any concept of a
-    /// top layer (yet, it's needed for fullscreen).
+    /// Whether this style has a top-layer style.
     #[cfg(feature = "servo")]
-    pub fn in_top_layer(&self) -> bool { false }
+    pub fn in_top_layer(&self) -> bool {
+        matches!(self.get_box().clone__servo_top_layer(),
+                 longhands::_servo_top_layer::computed_value::T::Top)
+    }
 
     /// Whether this style has a top-layer style.
     #[cfg(feature = "gecko")]
@@ -3616,14 +3717,33 @@ impl<'a> StyleBuilder<'a> {
         self.modified_reset
     }
 
+    /// Return the current flags.
+    #[inline]
+    pub fn flags(&self) -> ComputedValueFlags {
+        self.flags.get()
+    }
+
+    /// Add a flag to the current builder.
+    #[inline]
+    pub fn add_flags(&self, flag: ComputedValueFlags) {
+        let flags = self.flags() | flag;
+        self.flags.set(flags);
+    }
+
+    /// Removes a flag to the current builder.
+    #[inline]
+    pub fn remove_flags(&self, flag: ComputedValueFlags) {
+        let flags = self.flags() & !flag;
+        self.flags.set(flags);
+    }
+
     /// Turns this `StyleBuilder` into a proper `ComputedValues` instance.
     pub fn build(self) -> Arc<ComputedValues> {
         ComputedValues::new(
-            self.device,
             self.pseudo,
             self.custom_properties,
             self.writing_mode,
-            self.flags,
+            self.flags.get(),
             self.rules,
             self.visited_style,
             % for style_struct in data.active_style_structs():
@@ -3636,7 +3756,7 @@ impl<'a> StyleBuilder<'a> {
     ///
     /// Cloning the Arc here is fine because it only happens in the case where
     /// we have custom properties, and those are both rare and expensive.
-    fn custom_properties(&self) -> Option<<&Arc<::custom_properties::CustomPropertiesMap>> {
+    fn custom_properties(&self) -> Option<<&Arc<crate::custom_properties::CustomPropertiesMap>> {
         self.custom_properties.as_ref()
     }
 
@@ -3680,13 +3800,13 @@ pub use self::lazy_static_module::INITIAL_SERVO_VALUES;
 #[cfg(feature = "servo")]
 #[allow(missing_docs)]
 mod lazy_static_module {
-    use logical_geometry::WritingMode;
+    use crate::logical_geometry::WritingMode;
     use servo_arc::Arc;
     use super::{ComputedValues, ComputedValuesInner, longhands, style_structs};
     use super::computed_value_flags::ComputedValueFlags;
 
-    /// The initial values for all style structs as defined by the specification.
     lazy_static! {
+        /// The initial values for all style structs as defined by the specification.
         pub static ref INITIAL_SERVO_VALUES: ComputedValues = ComputedValues {
             inner: ComputedValuesInner {
                 % for style_struct in data.active_style_structs():
@@ -3695,7 +3815,8 @@ mod lazy_static_module {
                             ${longhand.ident}: longhands::${longhand.ident}::get_initial_value(),
                         % endfor
                         % if style_struct.name == "InheritedText":
-                            text_decorations_in_effect: ::values::computed::text::TextDecorationsInEffect::default(),
+                            text_decorations_in_effect:
+                                crate::values::computed::text::TextDecorationsInEffect::default(),
                         % endif
                         % if style_struct.name == "Font":
                             hash: 0,
@@ -3724,538 +3845,12 @@ pub type CascadePropertyFn =
 
 /// A per-longhand array of functions to perform the CSS cascade on each of
 /// them, effectively doing virtual dispatch.
-static CASCADE_PROPERTY: [CascadePropertyFn; ${len(data.longhands)}] = [
+pub static CASCADE_PROPERTY: [CascadePropertyFn; ${len(data.longhands)}] = [
     % for property in data.longhands:
         longhands::${property.ident}::cascade_property,
     % endfor
 ];
 
-/// Performs the CSS cascade, computing new styles for an element from its parent style.
-///
-/// The arguments are:
-///
-///   * `device`: Used to get the initial viewport and other external state.
-///
-///   * `rule_node`: The rule node in the tree that represent the CSS rules that
-///   matched.
-///
-///   * `parent_style`: The parent style, if applicable; if `None`, this is the root node.
-///
-/// Returns the computed values.
-///   * `flags`: Various flags.
-///
-pub fn cascade<E>(
-    device: &Device,
-    pseudo: Option<<&PseudoElement>,
-    rule_node: &StrongRuleNode,
-    guards: &StylesheetGuards,
-    parent_style: Option<<&ComputedValues>,
-    parent_style_ignoring_first_line: Option<<&ComputedValues>,
-    layout_parent_style: Option<<&ComputedValues>,
-    visited_rules: Option<<&StrongRuleNode>,
-    font_metrics_provider: &FontMetricsProvider,
-    quirks_mode: QuirksMode,
-    rule_cache: Option<<&RuleCache>,
-    rule_cache_conditions: &mut RuleCacheConditions,
-    element: Option<E>,
-) -> Arc<ComputedValues>
-where
-    E: TElement,
-{
-    cascade_rules(
-        device,
-        pseudo,
-        rule_node,
-        guards,
-        parent_style,
-        parent_style_ignoring_first_line,
-        layout_parent_style,
-        font_metrics_provider,
-        CascadeMode::Unvisited { visited_rules },
-        quirks_mode,
-        rule_cache,
-        rule_cache_conditions,
-        element,
-    )
-}
-
-fn cascade_rules<E>(
-    device: &Device,
-    pseudo: Option<<&PseudoElement>,
-    rule_node: &StrongRuleNode,
-    guards: &StylesheetGuards,
-    parent_style: Option<<&ComputedValues>,
-    parent_style_ignoring_first_line: Option<<&ComputedValues>,
-    layout_parent_style: Option<<&ComputedValues>,
-    font_metrics_provider: &FontMetricsProvider,
-    cascade_mode: CascadeMode,
-    quirks_mode: QuirksMode,
-    rule_cache: Option<<&RuleCache>,
-    rule_cache_conditions: &mut RuleCacheConditions,
-    element: Option<E>,
-) -> Arc<ComputedValues>
-where
-    E: TElement,
-{
-    debug_assert_eq!(parent_style.is_some(), parent_style_ignoring_first_line.is_some());
-    let empty = SmallBitVec::new();
-    let restriction = pseudo.and_then(|p| p.property_restriction());
-    let iter_declarations = || {
-        rule_node.self_and_ancestors().flat_map(|node| {
-            let cascade_level = node.cascade_level();
-            let node_importance = node.importance();
-            let declarations = match node.style_source() {
-                Some(source) => {
-                    source.read(cascade_level.guard(guards)).declaration_importance_iter()
-                }
-                None => DeclarationImportanceIterator::new(&[], &empty),
-            };
-
-            declarations
-                // Yield declarations later in source order (with more precedence) first.
-                .rev()
-                .filter_map(move |(declaration, declaration_importance)| {
-                    if let Some(restriction) = restriction {
-                        // declaration.id() is either a longhand or a custom
-                        // property.  Custom properties are always allowed, but
-                        // longhands are only allowed if they have our
-                        // restriction flag set.
-                        if let PropertyDeclarationId::Longhand(id) = declaration.id() {
-                            if !id.flags().contains(restriction) {
-                                return None
-                            }
-                        }
-                    }
-
-                    if declaration_importance == node_importance {
-                        Some((declaration, cascade_level))
-                    } else {
-                        None
-                    }
-                })
-        })
-    };
-
-    apply_declarations(
-        device,
-        pseudo,
-        rule_node,
-        guards,
-        iter_declarations,
-        parent_style,
-        parent_style_ignoring_first_line,
-        layout_parent_style,
-        font_metrics_provider,
-        cascade_mode,
-        quirks_mode,
-        rule_cache,
-        rule_cache_conditions,
-        element,
-    )
-}
-
-/// Whether we're cascading for visited or unvisited styles.
-#[derive(Clone, Copy)]
-pub enum CascadeMode<'a> {
-    /// We're cascading for unvisited styles.
-    Unvisited {
-        /// The visited rules that should match the visited style.
-        visited_rules: Option<<&'a StrongRuleNode>,
-    },
-    /// We're cascading for visited styles.
-    Visited {
-        /// The writing mode of our unvisited style, needed to correctly resolve
-        /// logical properties..
-        writing_mode: WritingMode,
-    },
-}
-
-/// NOTE: This function expects the declaration with more priority to appear
-/// first.
-pub fn apply_declarations<'a, E, F, I>(
-    device: &Device,
-    pseudo: Option<<&PseudoElement>,
-    rules: &StrongRuleNode,
-    guards: &StylesheetGuards,
-    iter_declarations: F,
-    parent_style: Option<<&ComputedValues>,
-    parent_style_ignoring_first_line: Option<<&ComputedValues>,
-    layout_parent_style: Option<<&ComputedValues>,
-    font_metrics_provider: &FontMetricsProvider,
-    cascade_mode: CascadeMode,
-    quirks_mode: QuirksMode,
-    rule_cache: Option<<&RuleCache>,
-    rule_cache_conditions: &mut RuleCacheConditions,
-    element: Option<E>,
-) -> Arc<ComputedValues>
-where
-    E: TElement,
-    F: Fn() -> I,
-    I: Iterator<Item = (&'a PropertyDeclaration, CascadeLevel)>,
-{
-    debug_assert!(layout_parent_style.is_none() || parent_style.is_some());
-    debug_assert_eq!(parent_style.is_some(), parent_style_ignoring_first_line.is_some());
-    #[cfg(feature = "gecko")]
-    debug_assert!(parent_style.is_none() ||
-                  ::std::ptr::eq(parent_style.unwrap(),
-                                 parent_style_ignoring_first_line.unwrap()) ||
-                  parent_style.unwrap().pseudo() == Some(PseudoElement::FirstLine));
-    let inherited_style =
-        parent_style.unwrap_or(device.default_computed_values());
-
-    let custom_properties = {
-        let mut builder =
-            CustomPropertiesBuilder::new(inherited_style.custom_properties());
-
-        for (declaration, _cascade_level) in iter_declarations() {
-            if let PropertyDeclaration::Custom(ref declaration) = *declaration {
-                builder.cascade(&declaration.name, declaration.value.borrow());
-            }
-        }
-
-        builder.build()
-    };
-
-    let mut context = computed::Context {
-        is_root_element: pseudo.is_none() && element.map_or(false, |e| e.is_root()),
-        // We'd really like to own the rules here to avoid refcount traffic, but
-        // animation's usage of `apply_declarations` make this tricky. See bug
-        // 1375525.
-        builder: StyleBuilder::new(
-            device,
-            parent_style,
-            parent_style_ignoring_first_line,
-            pseudo,
-            Some(rules.clone()),
-            custom_properties,
-        ),
-        cached_system_font: None,
-        in_media_query: false,
-        for_smil_animation: false,
-        for_non_inherited_property: None,
-        font_metrics_provider,
-        quirks_mode,
-        rule_cache_conditions: RefCell::new(rule_cache_conditions),
-    };
-
-    let ignore_colors = !device.use_document_colors();
-
-    // Set computed values, overwriting earlier declarations for the same
-    // property.
-    let mut seen = LonghandIdSet::new();
-
-    // Declaration blocks are stored in increasing precedence order, we want
-    // them in decreasing order here.
-    //
-    // We could (and used to) use a pattern match here, but that bloats this
-    // function to over 100K of compiled code!
-    //
-    // To improve i-cache behavior, we outline the individual functions and use
-    // virtual dispatch instead.
-    let mut apply_reset = true;
-    % for category_to_cascade_now in ["early", "other"]:
-        % if category_to_cascade_now == "early":
-            // Pull these out so that we can compute them in a specific order
-            // without introducing more iterations.
-            let mut font_size = None;
-            let mut font_family = None;
-        % endif
-        for (declaration, cascade_level) in iter_declarations() {
-            let declaration_id = declaration.id();
-            let longhand_id = match declaration_id {
-                PropertyDeclarationId::Longhand(id) => id,
-                PropertyDeclarationId::Custom(..) => continue,
-            };
-
-            if !apply_reset && !longhand_id.inherited() {
-                continue;
-            }
-
-            if
-                % if category_to_cascade_now == "early":
-                    !
-                % endif
-                longhand_id.is_early_property()
-            {
-                continue
-            }
-
-            <% maybe_to_physical = ".to_physical(writing_mode)" if category_to_cascade_now != "early" else "" %>
-            let physical_longhand_id = longhand_id ${maybe_to_physical};
-            if seen.contains(physical_longhand_id) {
-                continue
-            }
-
-            // Only a few properties are allowed to depend on the visited state
-            // of links.  When cascading visited styles, we can save time by
-            // only processing these properties.
-            if matches!(cascade_mode, CascadeMode::Visited { .. }) &&
-               !physical_longhand_id.is_visited_dependent() {
-                continue
-            }
-
-            let mut declaration = match *declaration {
-                PropertyDeclaration::WithVariables(ref declaration) => {
-                    if !declaration.id.inherited() {
-                        context.rule_cache_conditions.borrow_mut()
-                            .set_uncacheable();
-                    }
-                    Cow::Owned(declaration.value.substitute_variables(
-                        declaration.id,
-                        context.builder.custom_properties.as_ref(),
-                        context.quirks_mode
-                    ))
-                }
-                ref d => Cow::Borrowed(d)
-            };
-
-            // When document colors are disabled, skip properties that are
-            // marked as ignored in that mode, unless they come from a UA or
-            // user style sheet.
-            if ignore_colors &&
-               longhand_id.is_ignored_when_document_colors_disabled(
-                   cascade_level,
-                   context.builder.pseudo
-                )
-            {
-                let non_transparent_background = match *declaration {
-                    PropertyDeclaration::BackgroundColor(ref color) => {
-                        // Treat background-color a bit differently.  If the specified
-                        // color is anything other than a fully transparent color, convert
-                        // it into the Device's default background color.
-                        color.is_non_transparent()
-                    }
-                    _ => continue
-                };
-
-                // FIXME: moving this out of `match` is a work around for
-                // borrows being lexical.
-                if non_transparent_background {
-                    let color = device.default_background_color();
-                    declaration =
-                        Cow::Owned(PropertyDeclaration::BackgroundColor(color.into()));
-                }
-            }
-
-            seen.insert(physical_longhand_id);
-
-            % if category_to_cascade_now == "early":
-                if LonghandId::FontSize == longhand_id {
-                    font_size = Some(declaration.clone());
-                    continue;
-                }
-                if LonghandId::FontFamily == longhand_id {
-                    font_family = Some(declaration.clone());
-                    continue;
-                }
-            % endif
-
-            let discriminant = longhand_id as usize;
-            (CASCADE_PROPERTY[discriminant])(&*declaration, &mut context);
-        }
-        % if category_to_cascade_now == "early":
-            let writing_mode = match cascade_mode {
-                CascadeMode::Unvisited { .. } => {
-                    WritingMode::new(context.builder.get_inherited_box())
-                }
-                CascadeMode::Visited { writing_mode } => writing_mode,
-            };
-
-            context.builder.writing_mode = writing_mode;
-            if let CascadeMode::Unvisited { visited_rules: Some(visited_rules) } = cascade_mode {
-                let is_link = pseudo.is_none() && element.unwrap().is_link();
-                macro_rules! visited_parent {
-                    ($parent:expr) => {
-                        if is_link {
-                            $parent
-                        } else {
-                            $parent.map(|p| p.visited_style().unwrap_or(p))
-                        }
-                    }
-                }
-                // We could call apply_declarations directly, but that'd cause
-                // another instantiation of this function which is not great.
-                context.builder.visited_style = Some(cascade_rules(
-                    device,
-                    pseudo,
-                    visited_rules,
-                    guards,
-                    visited_parent!(parent_style),
-                    visited_parent!(parent_style_ignoring_first_line),
-                    visited_parent!(layout_parent_style),
-                    font_metrics_provider,
-                    CascadeMode::Visited { writing_mode },
-                    quirks_mode,
-                    // The rule cache doesn't care about caching :visited
-                    // styles, we cache the unvisited style instead. We still do
-                    // need to set the caching dependencies properly if present
-                    // though, so the cache conditions need to match.
-                    /* rule_cache = */ None,
-                    &mut *context.rule_cache_conditions.borrow_mut(),
-                    element,
-                ));
-            }
-
-            let mut _skip_font_family = false;
-
-            % if product == "gecko":
-
-                // <svg:text> is not affected by text zoom, and it uses a preshint to
-                // disable it. We fix up the struct when this happens by unzooming
-                // its contained font values, which will have been zoomed in the parent
-                if seen.contains(LonghandId::XTextZoom) {
-                    let zoom = context.builder.get_font().gecko().mAllowZoom;
-                    let parent_zoom = context.style().get_parent_font().gecko().mAllowZoom;
-                    if  zoom != parent_zoom {
-                        debug_assert!(!zoom,
-                                      "We only ever disable text zoom (in svg:text), never enable it");
-                        // can't borrow both device and font, use the take/put machinery
-                        let mut font = context.builder.take_font();
-                        font.unzoom_fonts(context.device());
-                        context.builder.put_font(font);
-                    }
-                }
-
-                // Whenever a single generic value is specified, gecko will do a bunch of
-                // recalculation walking up the rule tree, including handling the font-size stuff.
-                // It basically repopulates the font struct with the default font for a given
-                // generic and language. We handle the font-size stuff separately, so this boils
-                // down to just copying over the font-family lists (no other aspect of the default
-                // font can be configured).
-
-                if seen.contains(LonghandId::XLang) || font_family.is_some() {
-                    // if just the language changed, the inherited generic is all we need
-                    let mut generic = inherited_style.get_font().gecko().mGenericID;
-                    if let Some(ref declaration) = font_family {
-                        if let PropertyDeclaration::FontFamily(ref fam) = **declaration {
-                            if let Some(id) = fam.single_generic() {
-                                generic = id;
-                                // In case of a specified font family with a single generic, we will
-                                // end up setting font family below, but its value would get
-                                // overwritten later in the pipeline when cascading.
-                                //
-                                // We instead skip cascading font-family in that case.
-                                //
-                                // In case of the language changing, we wish for a specified font-
-                                // family to override this, so we do not skip cascading then.
-                                _skip_font_family = true;
-                            }
-                        }
-                    }
-
-                    let pres_context = context.builder.device.pres_context();
-                    let gecko_font = context.builder.mutate_font().gecko_mut();
-                    gecko_font.mGenericID = generic;
-                    unsafe {
-                        bindings::Gecko_nsStyleFont_PrefillDefaultForGeneric(
-                            gecko_font,
-                            pres_context,
-                            generic,
-                        );
-                    }
-                }
-            % endif
-
-            // It is important that font_size is computed before
-            // the late properties (for em units), but after font-family
-            // (for the base-font-size dependence for default and keyword font-sizes)
-            // Additionally, when we support system fonts they will have to be
-            // computed early, and *before* font_family, so I'm including
-            // font_family here preemptively instead of keeping it within
-            // the early properties.
-            //
-            // To avoid an extra iteration, we just pull out the property
-            // during the early iteration and cascade them in order
-            // after it.
-            if !_skip_font_family {
-                if let Some(ref declaration) = font_family {
-
-                    let discriminant = LonghandId::FontFamily as usize;
-                    (CASCADE_PROPERTY[discriminant])(declaration, &mut context);
-                    % if product == "gecko":
-                        let device = context.builder.device;
-                        if let PropertyDeclaration::FontFamily(ref val) = **declaration {
-                            if val.get_system().is_some() {
-                                let default = context.cached_system_font
-                                                     .as_ref().unwrap().default_font_type;
-                                context.builder.mutate_font().fixup_system(default);
-                            } else {
-                                context.builder.mutate_font().fixup_none_generic(device);
-                            }
-                        }
-                    % endif
-                }
-            }
-
-            if let Some(ref declaration) = font_size {
-                let discriminant = LonghandId::FontSize as usize;
-                (CASCADE_PROPERTY[discriminant])(declaration, &mut context);
-            % if product == "gecko":
-            // Font size must be explicitly inherited to handle lang changes and
-            // scriptlevel changes.
-            } else if seen.contains(LonghandId::XLang) ||
-                      seen.contains(LonghandId::MozScriptLevel) ||
-                      seen.contains(LonghandId::MozMinFontSizeRatio) ||
-                      font_family.is_some() {
-                let discriminant = LonghandId::FontSize as usize;
-                let size = PropertyDeclaration::CSSWideKeyword(WideKeywordDeclaration {
-                    id: LonghandId::FontSize,
-                    keyword: CSSWideKeyword::Inherit,
-                });
-
-                (CASCADE_PROPERTY[discriminant])(&size, &mut context);
-            % endif
-            }
-
-            if let Some(style) = rule_cache.and_then(|c| c.find(guards, &context.builder)) {
-                context.builder.copy_reset_from(style);
-                apply_reset = false;
-            }
-        % endif // category == "early"
-    % endfor
-
-    let mut builder = context.builder;
-
-    % if product == "gecko":
-        if let Some(ref mut bg) = builder.get_background_if_mutated() {
-            bg.fill_arrays();
-        }
-
-        if let Some(ref mut svg) = builder.get_svg_if_mutated() {
-            svg.fill_arrays();
-        }
-    % endif
-
-    % if product == "servo":
-        if seen.contains(LonghandId::FontStyle) ||
-           seen.contains(LonghandId::FontWeight) ||
-           seen.contains(LonghandId::FontStretch) ||
-           seen.contains(LonghandId::FontFamily) {
-            builder.mutate_font().compute_font_hash();
-        }
-    % endif
-
-    builder.clear_modified_reset();
-
-    if matches!(cascade_mode, CascadeMode::Unvisited { .. }) {
-        StyleAdjuster::new(&mut builder).adjust(
-            layout_parent_style.unwrap_or(inherited_style),
-            element,
-        );
-    }
-
-    if builder.modified_reset() || !apply_reset {
-        // If we adjusted any reset structs, we can't cache this ComputedValues.
-        //
-        // Also, if we re-used existing reset structs, don't bother caching it
-        // back again. (Aside from being wasted effort, it will be wrong, since
-        // context.rule_cache_conditions won't be set appropriately if we
-        // didn't compute those reset properties.)
-        context.rule_cache_conditions.borrow_mut().set_uncacheable();
-    }
-
-    builder.build()
-}
 
 /// See StyleAdjuster::adjust_for_border_width.
 pub fn adjust_border_width(style: &mut StyleBuilder) {
@@ -4269,8 +3864,7 @@ pub fn adjust_border_width(style: &mut StyleBuilder) {
 }
 
 /// An identifier for a given alias property.
-#[derive(Clone, Copy, Eq, PartialEq)]
-#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(Clone, Copy, Eq, PartialEq, MallocSizeOf)]
 #[repr(u16)]
 pub enum AliasId {
     % for i, property in enumerate(data.all_aliases()):
@@ -4311,7 +3905,14 @@ impl AliasId {
     }
 }
 
-// NOTE(emilio): Callers are responsible to deal with prefs.
+/// Call the given macro with tokens like this for each longhand and shorthand properties
+/// that is enabled in content:
+///
+/// ```
+/// [CamelCaseName, SetCamelCaseName, PropertyId::Longhand(LonghandId::CamelCaseName)],
+/// ```
+///
+/// NOTE(emilio): Callers are responsible to deal with prefs.
 #[macro_export]
 macro_rules! css_properties_accessors {
     ($macro_name: ident) => {
@@ -4334,6 +3935,14 @@ macro_rules! css_properties_accessors {
     }
 }
 
+/// Call the given macro with tokens like this for each longhand properties:
+///
+/// ```
+/// { snake_case_ident, true }
+/// ```
+///
+/// … where the boolean indicates whether the property value type
+/// is wrapped in a `Box<_>` in the corresponding `PropertyDeclaration` variant.
 #[macro_export]
 macro_rules! longhand_properties_idents {
     ($macro_name: ident) => {
@@ -4345,7 +3954,7 @@ macro_rules! longhand_properties_idents {
     }
 }
 
-% if product == "servo":
+% if engine in ["servo-2013", "servo-2020"]:
 % for effect_name in ["repaint", "reflow_out_of_flow", "reflow", "rebuild_and_reflow_inline", "rebuild_and_reflow"]:
     macro_rules! restyle_damage_${effect_name} {
         ($old: ident, $new: ident, $damage: ident, [ $($effect:expr),* ]) => ({

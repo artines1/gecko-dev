@@ -4,8 +4,6 @@ config = {
     'default_actions': [
         'clobber',
         'build',
-        'check-test',
-        'update',  # decided by query_is_nightly()
     ],
     'stage_platform': 'win32-debug',
     'debug_build': True,

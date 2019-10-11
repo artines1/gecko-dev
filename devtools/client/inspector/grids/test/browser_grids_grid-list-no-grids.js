@@ -22,13 +22,16 @@ add_task(async function() {
   const { highlighters } = inspector;
 
   await selectNode("#grid", inspector);
-  const noGridList = doc.querySelector(".grid-pane .devtools-sidepanel-no-result");
+  const noGridList = doc.querySelector(
+    ".grid-pane .devtools-sidepanel-no-result"
+  );
   const gridList = doc.getElementById("grid-list");
 
   info("Checking the initial state of the Grid Inspector.");
   ok(noGridList, "The message no grid containers is displayed.");
   ok(!gridList, "No grid containers are listed.");
-  ok(!highlighters.highlighters[HIGHLIGHTER_TYPE],
-    "No CSS grid highlighter exists in the highlighters overlay.");
-  ok(!highlighters.gridHighlighterShown, "No CSS grid highlighter is shown.");
+  ok(
+    !highlighters.gridHighlighters.size,
+    "No CSS grid highlighter exists in the highlighters overlay."
+  );
 });

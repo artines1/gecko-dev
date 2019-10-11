@@ -16,48 +16,40 @@ namespace dom {
 /**
  * Base class for implementing the WebIDL MessageManagerGlobal class.
  */
-class MessageManagerGlobal
-{
-public:
+class MessageManagerGlobal {
+ public:
   // MessageListenerManager
   void AddMessageListener(const nsAString& aMessageName,
-                          MessageListener& aListener,
-                          bool aListenWhenClosed,
-                          ErrorResult& aError)
-  {
+                          MessageListener& aListener, bool aListenWhenClosed,
+                          ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->AddMessageListener(aMessageName, aListener,
                                         aListenWhenClosed, aError);
   }
   void RemoveMessageListener(const nsAString& aMessageName,
-                             MessageListener& aListener,
-                             ErrorResult& aError)
-  {
+                             MessageListener& aListener, ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->RemoveMessageListener(aMessageName, aListener, aError);
   }
   void AddWeakMessageListener(const nsAString& aMessageName,
-                              MessageListener& aListener,
-                              ErrorResult& aError)
-  {
+                              MessageListener& aListener, ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->AddWeakMessageListener(aMessageName, aListener, aError);
   }
   void RemoveWeakMessageListener(const nsAString& aMessageName,
                                  MessageListener& aListener,
-                                 ErrorResult& aError)
-  {
+                                 ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->RemoveWeakMessageListener(aMessageName, aListener, aError);
@@ -68,29 +60,26 @@ public:
                         JS::Handle<JS::Value> aObj,
                         JS::Handle<JSObject*> aObjects,
                         nsIPrincipal* aPrincipal,
-                        JS::Handle<JS::Value> aTransfers,
-                        ErrorResult& aError)
-  {
+                        JS::Handle<JS::Value> aTransfers, ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->SendAsyncMessage(aCx, aMessageName, aObj, aObjects,
                                       aPrincipal, aTransfers, aError);
   }
-  already_AddRefed<ProcessMessageManager> GetProcessMessageManager(mozilla::ErrorResult& aError)
-  {
+  already_AddRefed<ProcessMessageManager> GetProcessMessageManager(
+      mozilla::ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return nullptr;
     }
     return mMessageManager->GetProcessMessageManager(aError);
   }
 
-  void GetRemoteType(nsAString& aRemoteType, mozilla::ErrorResult& aError)
-  {
+  void GetRemoteType(nsAString& aRemoteType, mozilla::ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->GetRemoteType(aRemoteType, aError);
@@ -99,13 +88,10 @@ public:
   // SyncMessageSender
   void SendSyncMessage(JSContext* aCx, const nsAString& aMessageName,
                        JS::Handle<JS::Value> aObj,
-                       JS::Handle<JSObject*> aObjects,
-                       nsIPrincipal* aPrincipal,
-                       nsTArray<JS::Value>& aResult,
-                       ErrorResult& aError)
-  {
+                       JS::Handle<JSObject*> aObjects, nsIPrincipal* aPrincipal,
+                       nsTArray<JS::Value>& aResult, ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->SendSyncMessage(aCx, aMessageName, aObj, aObjects,
@@ -113,13 +99,10 @@ public:
   }
   void SendRpcMessage(JSContext* aCx, const nsAString& aMessageName,
                       JS::Handle<JS::Value> aObj,
-                      JS::Handle<JSObject*> aObjects,
-                      nsIPrincipal* aPrincipal,
-                      nsTArray<JS::Value>& aResult,
-                      ErrorResult& aError)
-  {
+                      JS::Handle<JSObject*> aObjects, nsIPrincipal* aPrincipal,
+                      nsTArray<JS::Value>& aResult, ErrorResult& aError) {
     if (!mMessageManager) {
-      aError.Throw(NS_ERROR_NULL_POINTER);
+      aError.Throw(NS_ERROR_NOT_INITIALIZED);
       return;
     }
     mMessageManager->SendRpcMessage(aCx, aMessageName, aObj, aObjects,
@@ -129,25 +112,25 @@ public:
   // MessageManagerGlobal
   void Dump(const nsAString& aStr);
   void PrivateNoteIntentionalCrash(ErrorResult& aError);
-  void Atob(const nsAString& aAsciiString, nsAString& aBase64Data, ErrorResult& aError);
-  void Btoa(const nsAString& aBase64Data, nsAString& aAsciiString, ErrorResult& aError);
+  void Atob(const nsAString& aAsciiString, nsAString& aBase64Data,
+            ErrorResult& aError);
+  void Btoa(const nsAString& aBase64Data, nsAString& aAsciiString,
+            ErrorResult& aError);
 
-  void MarkForCC()
-  {
+  void MarkForCC() {
     if (mMessageManager) {
       mMessageManager->MarkForCC();
     }
   }
 
-protected:
+ protected:
   explicit MessageManagerGlobal(nsFrameMessageManager* aMessageManager)
-    : mMessageManager(aMessageManager)
-  {}
+      : mMessageManager(aMessageManager) {}
 
   RefPtr<nsFrameMessageManager> mMessageManager;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_MessageManagerGlobal_h
+#endif  // mozilla_dom_MessageManagerGlobal_h

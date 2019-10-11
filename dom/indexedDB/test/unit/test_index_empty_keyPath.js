@@ -5,14 +5,13 @@
 
 var testGenerator = testSteps();
 
-function* testSteps()
-{
+function* testSteps() {
   const name = this.window ? window.location.pathname : "Splendid Test";
 
   const objectStoreData = [
     { key: "1", value: "foo" },
     { key: "2", value: "bar" },
-    { key: "3", value: "baz" }
+    { key: "3", value: "baz" },
   ];
 
   let request = indexedDB.open(name, 1);
@@ -28,8 +27,7 @@ function* testSteps()
   // First, add all our data to the object store.
   let addedData = 0;
   for (let i in objectStoreData) {
-    request = objectStore.add(objectStoreData[i].value,
-                              objectStoreData[i].key);
+    request = objectStore.add(objectStoreData[i].value, objectStoreData[i].key);
     request.onerror = errorHandler;
     request.onsuccess = function(event) {
       if (++addedData == objectStoreData.length) {

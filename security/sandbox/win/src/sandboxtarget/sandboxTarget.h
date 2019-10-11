@@ -7,9 +7,13 @@
 #ifndef __SECURITY_SANDBOX_SANDBOXTARGET_H__
 #define __SECURITY_SANDBOX_SANDBOXTARGET_H__
 
+#include <functional>
+#include <list>
+
 #include <windows.h>
 
 #include "mozilla/Assertions.h"
+#include "mozilla/Move.h"
 
 namespace sandbox {
 class TargetServices;
@@ -17,9 +21,8 @@ class TargetServices;
 
 namespace mozilla {
 
-class SandboxTarget
-{
-public:
+class SandboxTarget {
+ public:
   /**
    * Obtains a pointer to the singleton instance
    */
@@ -32,13 +35,17 @@ public:
    *
    * @param aTargetServices The target services that will be used
    */
-  void SetTargetServices(sandbox::TargetServices* aTargetServices)
-  {
+  void SetTargetServices(sandbox::TargetServices* aTargetServices) {
     MOZ_ASSERT(aTargetServices);
     MOZ_ASSERT(!mTargetServices,
                "Sandbox TargetServices must only be set once.");
 
     mTargetServices = aTargetServices;
+  }
+
+  template <typename CallbackT>
+  void RegisterSandboxStartCallback(CallbackT aCallback) {
+    mStartObservers.push_back(std::forward<CallbackT>(aCallback));
   }
 
   /**
@@ -55,16 +62,16 @@ public:
                              HANDLE* aTargetHandle, DWORD aDesiredAccess,
                              DWORD aOptions);
 
-protected:
-  SandboxTarget() :
-    mTargetServices(nullptr)
-  {
-  }
+ protected:
+  SandboxTarget() : mTargetServices(nullptr) {}
 
   sandbox::TargetServices* mTargetServices;
+
+ private:
+  void NotifyStartObservers();
+  std::list<std::function<void()>> mStartObservers;
 };
 
-
-} // mozilla
+}  // namespace mozilla
 
 #endif

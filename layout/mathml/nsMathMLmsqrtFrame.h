@@ -10,6 +10,10 @@
 #include "mozilla/Attributes.h"
 #include "nsMathMLmencloseFrame.h"
 
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
+
 //
 // <msqrt> -- form a radical
 //
@@ -33,37 +37,33 @@ These attributes are inherited by every element from its rendering environment,
 but can be set explicitly only on <mstyle>. (See Section 3.3.4.)
 */
 
-class nsMathMLmsqrtFrame : public nsMathMLmencloseFrame {
-public:
+// XXXfredw: This class should share its layout logic with nsMathMLmrootFrame
+// when the menclose "radical" notation is removed.
+// See https://bugzilla.mozilla.org/show_bug.cgi?id=1548522
+class nsMathMLmsqrtFrame final : public nsMathMLmencloseFrame {
+ public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmsqrtFrame)
 
-  friend nsIFrame* NS_NewMathMLmsqrtFrame(nsIPresShell*   aPresShell,
+  friend nsIFrame* NS_NewMathMLmsqrtFrame(mozilla::PresShell* aPresShell,
                                           ComputedStyle* aStyle);
 
-  virtual void
-  Init(nsIContent*       aContent,
-       nsContainerFrame* aParent,
-       nsIFrame*         aPrevInFlow) override;
+  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
+                    nsIFrame* aPrevInFlow) override;
 
   NS_IMETHOD
   InheritAutomaticData(nsIFrame* aParent) override;
 
-  virtual nsresult
-  AttributeChanged(int32_t         aNameSpaceID,
-                   nsAtom*        aAttribute,
-                   int32_t         aModType) override;
+  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                                    int32_t aModType) override;
 
-  virtual bool
-  IsMrowLike() override
-  {
-    return mFrames.FirstChild() != mFrames.LastChild() ||
-           !mFrames.FirstChild();
+  virtual bool IsMrowLike() override {
+    return mFrames.FirstChild() != mFrames.LastChild() || !mFrames.FirstChild();
   }
 
-protected:
-  explicit nsMathMLmsqrtFrame(ComputedStyle* aStyle);
+ protected:
+  explicit nsMathMLmsqrtFrame(ComputedStyle* aStyle,
+                              nsPresContext* aPresContext);
   virtual ~nsMathMLmsqrtFrame();
 };
 
 #endif /* nsMathMLmsqrtFrame_h___ */
-

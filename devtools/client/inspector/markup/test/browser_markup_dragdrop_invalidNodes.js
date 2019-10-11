@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -10,10 +9,8 @@ const TEST_URL = URL_ROOT + "doc_markup_dragdrop.html";
 
 add_task(async function() {
   await pushPref("devtools.inspector.showAllAnonymousContent", true);
-  await pushPref("dom.webcomponents.shadowdom.enabled", true);
-  await pushPref("dom.webcomponents.customelements.enabled", true);
 
-  const {inspector} = await openInspectorForURL(TEST_URL);
+  const { inspector } = await openInspectorForURL(TEST_URL);
 
   info("Expanding nodes below #test");
   const parentFront = await getNodeFront("#test", inspector);
@@ -21,7 +18,10 @@ add_task(async function() {
   await waitForMultipleChildrenUpdates(inspector);
 
   info("Getting the ::before pseudo element and selecting it");
-  const parentContainer = await getContainerForNodeFront(parentFront, inspector);
+  const parentContainer = await getContainerForNodeFront(
+    parentFront,
+    inspector
+  );
   const beforePseudo = parentContainer.elt.children[1].firstChild.container;
   parentContainer.elt.scrollIntoView(true);
   await selectNode(beforePseudo.node, inspector);

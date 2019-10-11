@@ -8,12 +8,19 @@
  * http://w3c.github.io/webcomponents/spec/shadow/#extensions-to-the-documentorshadowroot-mixin
  */
 
-[NoInterfaceObject]
-interface DocumentOrShadowRoot {
+interface mixin DocumentOrShadowRoot {
   // Not implemented yet: bug 1430308.
   // Selection? getSelection();
-  Element? elementFromPoint (float x, float y);
-  sequence<Element> elementsFromPoint (float x, float y);
+  Element? elementFromPoint(float x, float y);
+  sequence<Element> elementsFromPoint(float x, float y);
+
+  // TODO: Avoid making these ChromeOnly, see:
+  // https://github.com/w3c/csswg-drafts/issues/556
+  [ChromeOnly]
+  Node? nodeFromPoint(float x, float y);
+  [ChromeOnly]
+  sequence<Node> nodesFromPoint(float x, float y);
+
   // Not implemented yet: bug 1430307.
   // CaretPosition? caretPositionFromPoint (float x, float y);
 
@@ -21,7 +28,7 @@ interface DocumentOrShadowRoot {
   readonly attribute StyleSheetList styleSheets;
 
   readonly attribute Element? pointerLockElement;
-  [LenientSetter, Func="nsIDocument::IsUnprefixedFullscreenEnabled"]
+  [LenientSetter, Func="Document::IsUnprefixedFullscreenEnabled"]
   readonly attribute Element? fullscreenElement;
   [BinaryName="fullscreenElement"]
   readonly attribute Element? mozFullScreenElement;

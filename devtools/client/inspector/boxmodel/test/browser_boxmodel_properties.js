@@ -28,54 +28,54 @@ const TEST_URI = `
 const res1 = [
   {
     property: "box-sizing",
-    value: "border-box"
+    value: "border-box",
   },
   {
     property: "display",
-    value: "block"
+    value: "block",
   },
   {
     property: "float",
-    value: "left"
+    value: "left",
   },
   {
     property: "line-height",
-    value: "20px"
+    value: "20px",
   },
   {
     property: "position",
-    value: "relative"
+    value: "relative",
   },
   {
     property: "z-index",
-    value: 2
+    value: 2,
   },
 ];
 
 const res2 = [
   {
     property: "box-sizing",
-    value: "content-box"
+    value: "content-box",
   },
   {
     property: "display",
-    value: "block"
+    value: "block",
   },
   {
     property: "float",
-    value: "right"
+    value: "right",
   },
   {
     property: "line-height",
-    value: "10px"
+    value: "10px",
   },
   {
     property: "position",
-    value: "static"
+    value: "static",
   },
   {
     property: "z-index",
-    value: 5
+    value: 5,
   },
 ];
 
@@ -103,18 +103,27 @@ async function testChangingValues(inspector, boxmodel, testActor) {
   const doc = boxmodel.document;
 
   const onUpdated = waitForUpdate(inspector);
-  await testActor.setAttribute("div", "style",
-                               "box-sizing:content-box;float:right;" +
-                               "line-height:10px;position:static;z-index:5;");
+  await testActor.setAttribute(
+    "div",
+    "style",
+    "box-sizing:content-box;float:right;" +
+      "line-height:10px;position:static;z-index:5;"
+  );
   await onUpdated;
 
   for (const { property, value } of res2) {
     const elt = doc.querySelector(getPropertySelector(property));
-    is(elt.textContent, value, property + " has the right value after style update.");
+    is(
+      elt.textContent,
+      value,
+      property + " has the right value after style update."
+    );
   }
 }
 
 function getPropertySelector(propertyName) {
-  return `.boxmodel-properties-wrapper .computed-property-view` +
-  `[data-property-name=${propertyName}] .computed-property-value`;
+  return (
+    `.boxmodel-container .computed-property-view` +
+    `[data-property-name=${propertyName}] .computed-property-value`
+  );
 }

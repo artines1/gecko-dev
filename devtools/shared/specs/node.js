@@ -7,14 +7,14 @@ const {
   Arg,
   RetVal,
   generateActorSpec,
-  types
+  types,
 } = require("devtools/shared/protocol.js");
 
 types.addDictType("imageData", {
   // The image data
   data: "nullable:longstring",
   // The original image dimensions
-  size: "json"
+  size: "json",
 });
 
 types.addDictType("windowDimensions", {
@@ -34,7 +34,7 @@ types.addDictType("disconnectedNode", {
 
   // Nodes that are needed to connect the node to a node the client has already
   // seen
-  newParents: "array:domnode"
+  newParents: "array:domnode",
 });
 
 types.addDictType("disconnectedNodeArray", {
@@ -42,7 +42,7 @@ types.addDictType("disconnectedNodeArray", {
   nodes: "array:domnode",
 
   // Nodes that are needed to connect those nodes to the root.
-  newParents: "array:domnode"
+  newParents: "array:domnode",
 });
 
 const nodeListSpec = generateActorSpec({
@@ -51,19 +51,19 @@ const nodeListSpec = generateActorSpec({
   methods: {
     item: {
       request: { item: Arg(0) },
-      response: RetVal("disconnectedNode")
+      response: RetVal("disconnectedNode"),
     },
     items: {
       request: {
         start: Arg(0, "nullable:number"),
-        end: Arg(1, "nullable:number")
+        end: Arg(1, "nullable:number"),
       },
-      response: RetVal("disconnectedNodeArray")
+      response: RetVal("disconnectedNodeArray"),
     },
     release: {
-      release: true
-    }
-  }
+      release: true,
+    },
+  },
 });
 
 exports.nodeListSpec = nodeListSpec;
@@ -75,66 +75,80 @@ const nodeSpec = generateActorSpec({
     getNodeValue: {
       request: {},
       response: {
-        value: RetVal("longstring")
-      }
+        value: RetVal("longstring"),
+      },
     },
     setNodeValue: {
       request: { value: Arg(0) },
-      response: {}
+      response: {},
     },
     getUniqueSelector: {
       request: {},
       response: {
-        value: RetVal("string")
-      }
+        value: RetVal("string"),
+      },
     },
     getCssPath: {
       request: {},
       response: {
-        value: RetVal("string")
-      }
+        value: RetVal("string"),
+      },
     },
     getXPath: {
       request: {},
       response: {
-        value: RetVal("string")
-      }
+        value: RetVal("string"),
+      },
     },
     scrollIntoView: {
       request: {},
-      response: {}
+      response: {},
     },
     getImageData: {
-      request: {maxDim: Arg(0, "nullable:number")},
-      response: RetVal("imageData")
+      request: { maxDim: Arg(0, "nullable:number") },
+      response: RetVal("imageData"),
     },
     getEventListenerInfo: {
       request: {},
       response: {
-        events: RetVal("json")
-      }
+        events: RetVal("json"),
+      },
     },
     modifyAttributes: {
       request: {
-        modifications: Arg(0, "array:json")
+        modifications: Arg(0, "array:json"),
       },
-      response: {}
+      response: {},
     },
     getFontFamilyDataURL: {
-      request: {font: Arg(0, "string"), fillStyle: Arg(1, "nullable:string")},
-      response: RetVal("imageData")
+      request: { font: Arg(0, "string"), fillStyle: Arg(1, "nullable:string") },
+      response: RetVal("imageData"),
     },
     getClosestBackgroundColor: {
       request: {},
       response: {
-        value: RetVal("string")
-      }
+        value: RetVal("string"),
+      },
+    },
+    getBackgroundColor: {
+      request: {},
+      response: RetVal("json"),
     },
     getOwnerGlobalDimensions: {
       request: {},
-      response: RetVal("windowDimensions")
-    }
-  }
+      response: RetVal("windowDimensions"),
+    },
+    connectToRemoteFrame: {
+      request: {},
+      // We are passing a target actor form here.
+      // As we are manually fetching the form JSON via frame-connector.js connectToFrame,
+      // we are not instanciating a protocol.js front class and can't use proper type
+      // here and have automatic marshalling.
+      //
+      // Alex: Can we do something to address that??
+      response: RetVal("json"),
+    },
+  },
 });
 
 exports.nodeSpec = nodeSpec;

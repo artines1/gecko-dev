@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 André Bargull; Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -35,10 +34,10 @@ const invalidNumberingSystemOptions = [
   "latn-ca-",
   "latn-ca-gregory",
 ];
-for (const invalidNumberingSystemOption of invalidNumberingSystemOptions) {
+for (const numberingSystem of invalidNumberingSystemOptions) {
   assert.throws(RangeError, function() {
-    new Intl.Locale("en", {numberingSystem: invalidNumberingSystemOption});
-  }, `${invalidNumberingSystemOption} is an invalid numberingSystem option value`);
+    new Intl.Locale('en', {numberingSystem});
+  }, `new Intl.Locale("en", {numberingSystem: "${numberingSystem}"}) throws RangeError`);
 }
 
 reportCompare(0, 0);

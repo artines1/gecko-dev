@@ -7,48 +7,56 @@
 
 #include "nsINetworkLinkService.h"
 #include "nsIObserver.h"
+#include "mozilla/Mutex.h"
+#include "mozilla/TimeStamp.h"
+#include "mozilla/SHA1.h"
 
 #include <SystemConfiguration/SCNetworkReachability.h>
 #include <SystemConfiguration/SystemConfiguration.h>
 
-class nsNetworkLinkService : public nsINetworkLinkService,
-                             public nsIObserver
-{
-public:
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSINETWORKLINKSERVICE
-    NS_DECL_NSIOBSERVER
+using prefix_and_netmask = std::pair<in6_addr, in6_addr>;
 
-    nsNetworkLinkService();
+class nsNetworkLinkService : public nsINetworkLinkService, public nsIObserver {
+ public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSINETWORKLINKSERVICE
+  NS_DECL_NSIOBSERVER
 
-    nsresult Init();
-    nsresult Shutdown();
+  nsNetworkLinkService();
 
-protected:
-    virtual ~nsNetworkLinkService();
+  nsresult Init();
+  nsresult Shutdown();
 
-private:
-    bool mLinkUp;
-    bool mStatusKnown;
+  static void HashSortedPrefixesAndNetmasks(
+      std::vector<prefix_and_netmask> prefixAndNetmaskStore,
+      mozilla::SHA1Sum* sha1);
 
-    // Toggles allowing the sending of network-changed event.
-    bool mAllowChangedEvent;
+ protected:
+  virtual ~nsNetworkLinkService();
 
-    SCNetworkReachabilityRef mReachability;
-    CFRunLoopRef mCFRunLoop;
-    CFRunLoopSourceRef mRunLoopSource;
-    SCDynamicStoreRef mStoreRef;
+ private:
+  bool mLinkUp;
+  bool mStatusKnown;
 
-    void UpdateReachability();
-    void SendEvent(bool aNetworkChanged);
-    static void ReachabilityChanged(SCNetworkReachabilityRef target,
-                                    SCNetworkConnectionFlags flags,
-                                    void *info);
-    static void IPConfigChanged(SCDynamicStoreRef store,
-                                CFArrayRef changedKeys,
-                                void *info);
-    void calculateNetworkId(void);
-    nsCString mNetworkId;
+  SCNetworkReachabilityRef mReachability;
+  CFRunLoopRef mCFRunLoop;
+  CFRunLoopSourceRef mRunLoopSource;
+  SCDynamicStoreRef mStoreRef;
+
+  void UpdateReachability();
+  void SendEvent(bool aNetworkChanged);
+  static void ReachabilityChanged(SCNetworkReachabilityRef target,
+                                  SCNetworkConnectionFlags flags, void* info);
+  static void IPConfigChanged(SCDynamicStoreRef store, CFArrayRef changedKeys,
+                              void* info);
+  void calculateNetworkId(void);
+  void calculateNetworkIdInternal(void);
+
+  mozilla::Mutex mMutex;
+  nsCString mNetworkId;
+
+  // Time stamp of last NS_NETWORK_LINK_DATA_CHANGED event
+  mozilla::TimeStamp mNetworkChangeTime;
 };
 
 #endif /* NSNETWORKLINKSERVICEMAC_H_ */

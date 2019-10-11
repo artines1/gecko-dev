@@ -20,52 +20,55 @@ typedef struct vpx_image vpx_image_t;
  * We implement a realtime and variable frame rate encoder. In order to achieve
  * that, there is a frame-drop encoding policy implemented in GetEncodedTrack.
  */
-class VP8TrackEncoder : public VideoTrackEncoder
-{
+class VP8TrackEncoder : public VideoTrackEncoder {
   enum EncodeOperation {
-    ENCODE_NORMAL_FRAME, // VP8 track encoder works normally.
-    ENCODE_I_FRAME, // The next frame will be encoded as I-Frame.
-    SKIP_FRAME, // Skip the next frame.
+    ENCODE_NORMAL_FRAME,  // VP8 track encoder works normally.
+    ENCODE_I_FRAME,       // The next frame will be encoded as I-Frame.
+    SKIP_FRAME,           // Skip the next frame.
   };
 
-public:
-  VP8TrackEncoder(TrackRate aTrackRate, FrameDroppingMode aFrameDroppingMode);
+ public:
+  VP8TrackEncoder(RefPtr<DriftCompensator> aDriftCompensator,
+                  TrackRate aTrackRate, FrameDroppingMode aFrameDroppingMode);
   virtual ~VP8TrackEncoder();
 
   already_AddRefed<TrackMetadataBase> GetMetadata() final;
 
-  nsresult GetEncodedTrack(EncodedFrameContainer& aData) final;
+  nsresult GetEncodedTrack(nsTArray<RefPtr<EncodedFrame>>& aData) final;
 
-protected:
-  nsresult Init(int32_t aWidth, int32_t aHeight,
-                int32_t aDisplayWidth, int32_t aDisplayHeight) final;
+ protected:
+  nsresult Init(int32_t aWidth, int32_t aHeight, int32_t aDisplayWidth,
+                int32_t aDisplayHeight) final;
 
-private:
+ private:
   // Get the EncodeOperation for next target frame.
   EncodeOperation GetNextEncodeOperation(TimeDuration aTimeElapsed,
-                                         StreamTime aProcessedDuration);
+                                         TrackTime aProcessedDuration);
 
   // Get the encoded data from encoder to aData.
-  // Return value: false if the vpx_codec_get_cx_data returns null
-  //               for EOS detection.
-  nsresult GetEncodedPartitions(EncodedFrameContainer& aData);
+  // Return value: NS_ERROR_NOT_AVAILABABLE if the vpx_codec_get_cx_data returns
+  //                                        null for EOS detection.
+  //               NS_OK if some data was appended to aData.
+  //               An error nsresult otherwise.
+  nsresult GetEncodedPartitions(nsTArray<RefPtr<EncodedFrame>>& aData);
 
   // Prepare the input data to the mVPXImageWrapper for encoding.
-  nsresult PrepareRawFrame(VideoChunk &aChunk);
+  nsresult PrepareRawFrame(VideoChunk& aChunk);
 
   // Re-configures an existing encoder with a new frame size.
-  nsresult Reconfigure(int32_t aWidth, int32_t aHeight,
-                       int32_t aDisplayWidth, int32_t aDisplayHeight);
+  nsresult Reconfigure(int32_t aWidth, int32_t aHeight, int32_t aDisplayWidth,
+                       int32_t aDisplayHeight);
 
   // Destroys the context and image wrapper. Does not de-allocate the structs.
   void Destroy();
 
   // Helper method to set the values on a VPX configuration.
-  nsresult SetConfigurationValues(int32_t aWidth, int32_t aHeight, int32_t aDisplayWidth,
-                                  int32_t aDisplayHeight, vpx_codec_enc_cfg_t& config);
+  nsresult SetConfigurationValues(int32_t aWidth, int32_t aHeight,
+                                  int32_t aDisplayWidth, int32_t aDisplayHeight,
+                                  vpx_codec_enc_cfg_t& config);
 
   // Encoded timestamp.
-  StreamTime mEncodedTimestamp;
+  TrackTime mEncodedTimestamp = 0;
 
   // Total duration in mTrackRate extracted by GetEncodedPartitions().
   CheckedInt64 mExtractedDuration;
@@ -77,12 +80,13 @@ private:
   RefPtr<layers::Image> mMuteFrame;
 
   // I420 frame, for converting to I420.
-  nsTArray<uint8_t> mI420Frame;
+  UniquePtr<uint8_t[]> mI420Frame;
+  size_t mI420FrameSize = 0;
 
   /**
    * A duration of non-key frames in milliseconds.
-  */
-  StreamTime mDurationSinceLastKeyframe;
+   */
+  TrackTime mDurationSinceLastKeyframe = 0;
 
   /**
    * A local segment queue which takes the raw data out from mRawSegment in the
@@ -97,6 +101,6 @@ private:
   nsAutoPtr<vpx_image_t> mVPXImageWrapper;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif

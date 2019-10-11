@@ -5,7 +5,7 @@ add_task(async function() {
   await PlacesTestUtils.addVisits({
     uri: PAGEURI,
     transition: TRANSITION_LINK,
-    visitDate: Date.now() * 1000
+    visitDate: Date.now() * 1000,
   });
 
   await new Promise(resolve => {
@@ -17,11 +17,14 @@ add_task(async function() {
       resolve();
     }
 
-    PlacesUtils.favicons.setAndFetchFaviconForPage(PAGEURI, SMALLSVG_DATA_URI,
-                                                   false,
-                                                   PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-                                                   onSetComplete,
-                                                   Services.scriptSecurityManager.getSystemPrincipal());
+    PlacesUtils.favicons.setAndFetchFaviconForPage(
+      PAGEURI,
+      SMALLSVG_DATA_URI,
+      false,
+      PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
+      onSetComplete,
+      Services.scriptSecurityManager.getSystemPrincipal()
+    );
   });
 
   let data = await PlacesUtils.promiseFaviconData(PAGEURI.spec);
@@ -29,4 +32,3 @@ add_task(async function() {
   equal(data.dataLen, 263, "getFavicon aDataLen check");
   equal(data.mimeType, "image/svg+xml", "getFavicon aMimeType check");
 });
-

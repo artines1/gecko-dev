@@ -6,6 +6,7 @@
 
 #include "nsIObserverService.h"
 #include "mozilla/Services.h"
+#include "mozilla/SimpleEnumerator.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIStringEnumerator.h"
 
@@ -13,48 +14,42 @@
 
 #include "nsCategoryCache.h"
 
+using mozilla::SimpleEnumerator;
+
 nsCategoryObserver::nsCategoryObserver(const nsACString& aCategory)
-  : mCategory(aCategory)
-  , mCallback(nullptr)
-  , mClosure(nullptr)
-  , mObserversRemoved(false)
-{
+    : mCategory(aCategory),
+      mCallback(nullptr),
+      mClosure(nullptr),
+      mObserversRemoved(false) {
   MOZ_ASSERT(NS_IsMainThread());
   // First, enumerate the currently existing entries
   nsCOMPtr<nsICategoryManager> catMan =
-    do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
+      do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
   if (!catMan) {
     return;
   }
 
   nsCOMPtr<nsISimpleEnumerator> enumerator;
-  nsresult rv = catMan->EnumerateCategory(aCategory,
-                                          getter_AddRefs(enumerator));
+  nsresult rv =
+      catMan->EnumerateCategory(aCategory, getter_AddRefs(enumerator));
   if (NS_FAILED(rv)) {
     return;
   }
 
-  nsCOMPtr<nsIUTF8StringEnumerator> strings = do_QueryInterface(enumerator);
-  MOZ_ASSERT(strings);
+  for (auto& categoryEntry : SimpleEnumerator<nsICategoryEntry>(enumerator)) {
+    nsAutoCString entryValue;
+    categoryEntry->GetValue(entryValue);
 
-  bool more;
-  while (NS_SUCCEEDED(strings->HasMore(&more)) && more) {
-    nsAutoCString entryName;
-    strings->GetNext(entryName);
+    if (nsCOMPtr<nsISupports> service = do_GetService(entryValue.get())) {
+      nsAutoCString entryName;
+      categoryEntry->GetEntry(entryName);
 
-    nsCString entryValue;
-    rv = catMan->GetCategoryEntry(aCategory, entryName, entryValue);
-    if (NS_SUCCEEDED(rv)) {
-      nsCOMPtr<nsISupports> service = do_GetService(entryValue.get());
-      if (service) {
-        mHash.Put(entryName, service);
-      }
+      mHash.Put(entryName, service);
     }
   }
 
   // Now, listen for changes
-  nsCOMPtr<nsIObserverService> serv =
-    mozilla::services::GetObserverService();
+  nsCOMPtr<nsIObserverService> serv = mozilla::services::GetObserverService();
   if (serv) {
     serv->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
     serv->AddObserver(this, NS_XPCOM_CATEGORY_ENTRY_ADDED_OBSERVER_ID, false);
@@ -67,26 +62,20 @@ nsCategoryObserver::~nsCategoryObserver() = default;
 
 NS_IMPL_ISUPPORTS(nsCategoryObserver, nsIObserver)
 
-void
-nsCategoryObserver::ListenerDied()
-{
+void nsCategoryObserver::ListenerDied() {
   MOZ_ASSERT(NS_IsMainThread());
   RemoveObservers();
   mCallback = nullptr;
   mClosure = nullptr;
 }
 
-void
-nsCategoryObserver::SetListener(void(aCallback)(void*), void* aClosure)
-{
+void nsCategoryObserver::SetListener(void(aCallback)(void*), void* aClosure) {
   MOZ_ASSERT(NS_IsMainThread());
   mCallback = aCallback;
   mClosure = aClosure;
 }
 
-void
-nsCategoryObserver::RemoveObservers()
-{
+void nsCategoryObserver::RemoveObservers() {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (mObserversRemoved) {
@@ -98,8 +87,7 @@ nsCategoryObserver::RemoveObservers()
   }
 
   mObserversRemoved = true;
-  nsCOMPtr<nsIObserverService> obsSvc =
-    mozilla::services::GetObserverService();
+  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
   if (obsSvc) {
     obsSvc->RemoveObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
     obsSvc->RemoveObserver(this, NS_XPCOM_CATEGORY_ENTRY_ADDED_OBSERVER_ID);
@@ -110,8 +98,7 @@ nsCategoryObserver::RemoveObservers()
 
 NS_IMETHODIMP
 nsCategoryObserver::Observe(nsISupports* aSubject, const char* aTopic,
-                            const char16_t* aData)
-{
+                            const char16_t* aData) {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0) {
@@ -143,7 +130,7 @@ nsCategoryObserver::Observe(nsISupports* aSubject, const char* aTopic,
     }
 
     nsCOMPtr<nsICategoryManager> catMan =
-      do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
+        do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
     if (!catMan) {
       return NS_OK;
     }

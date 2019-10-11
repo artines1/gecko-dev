@@ -3,19 +3,23 @@
 
 "use strict";
 
-function run_test() {
+add_task(async function test_paramSubstitution() {
   useHttpServer();
 
-  run_next_test();
-}
-
-add_task(async function test_paramSubstitution() {
-  await asyncInit();
+  await AddonTestUtils.promiseStartupManager();
+  await Services.search.init();
 
   let prefix = "http://test.moz/search?q=";
   let [engine] = await addTestEngines([
-    { name: "test", details: ["", "test", "Search Test", "GET",
-                              prefix + "{searchTerms}"] },
+    {
+      name: "test",
+      details: {
+        alias: "test",
+        description: "Search Test",
+        method: "GET",
+        template: prefix + "{searchTerms}",
+      },
+    },
   ]);
   let url = engine.wrappedJSObject._getURLOfType("text/html");
   equal(url.template, prefix + "{searchTerms}");
@@ -34,8 +38,8 @@ add_task(async function test_paramSubstitution() {
   check("{unknownOptional?}", "");
   check("{unknownRequired}", "{unknownRequired}");
 
-  check("{language}", Services.locale.getRequestedLocale());
-  check("{language?}", Services.locale.getRequestedLocale());
+  check("{language}", Services.locale.requestedLocale);
+  check("{language?}", Services.locale.requestedLocale);
 
   engine.wrappedJSObject._queryCharset = "UTF-8";
   check("{inputEncoding}", "UTF-8");
@@ -63,5 +67,5 @@ add_task(async function test_paramSubstitution() {
   check("{moz:official}", "official");
   Services.prefs.setBoolPref("browser.search.official", false);
   check("{moz:official}", "unofficial");
-  check("{moz:locale}", Services.locale.getRequestedLocale());
+  check("{moz:locale}", Services.locale.requestedLocale);
 });

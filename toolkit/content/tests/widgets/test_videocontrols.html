@@ -2,9 +2,8 @@
 <html>
 <head>
   <title>Video controls test</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -14,6 +13,8 @@
 <div id="content">
   <video width="320" height="240" id="video" controls mozNoDynamicControls preload="auto"></video>
 </div>
+
+<div id="host"></div>
 
 <pre id="test">
 <script class="testbody" type="text/javascript">
@@ -62,13 +63,13 @@ let expectingEvents;
 let expectingEventPromise;
 
 async function isMuteButtonMuted() {
-  const muteButton = getAnonElementWithinVideoByAttribute(video, "anonid", "muteButton");
+  const muteButton = getElementWithinVideo(video, "muteButton");
   await new Promise(SimpleTest.executeSoon);
   return muteButton.getAttribute("muted") === "true";
 }
 
 async function isVolumeSliderShowingCorrectVolume(expectedVolume) {
-  const volumeControl = getAnonElementWithinVideoByAttribute(video, "anonid", "volumeControl");
+  const volumeControl = getElementWithinVideo(video, "volumeControl");
   await new Promise(SimpleTest.executeSoon);
   is(+volumeControl.value, expectedVolume * 100, "volume slider should match expected volume");
 }
@@ -86,12 +87,12 @@ function verifyExpectedEvent(event) {
   const checkingEvent = expectingEvents.shift();
 
   if (event.type == checkingEvent) {
-    ok(true, "checking event type: ", checkingEvent);
+    ok(true, "checking event type: " + checkingEvent);
   } else {
     expectingEventPromise.reject(new Error(`Got event: ${event.type}, expected: ${checkingEvent}`));
   }
 
-  if (expectingEvents.length == 0) {
+  if (!expectingEvents.length) {
     SimpleTest.executeSoon(expectingEventPromise.resolve);
   }
 }
@@ -112,7 +113,7 @@ add_task(async function setup() {
         ["full-screen-api.enabled", true],
         ["full-screen-api.allow-trusted-requests-only", false],
         ["full-screen-api.transition-duration.enter", "0 0"],
-        ["full-screen-api.transition-duration.leave", "0 0"]
+        ["full-screen-api.transition-duration.leave", "0 0"],
       ]});
   await new Promise(resolve => {
     video.addEventListener("canplaythrough", resolve, {once: true});
@@ -394,7 +395,7 @@ add_task(async function ensure_fullscreen_cursor() {
   video.mozRequestFullScreen();
   await waitForEvent("mozfullscreenchange");
 
-  const controlsSpacer = getAnonElementWithinVideoByAttribute(video, "anonid", "controlsSpacer");
+  const controlsSpacer = getElementWithinVideo(video, "controlsSpacer");
   is(controlsSpacer.hasAttribute("hideCursor"), true, "Cursor is hidden");
 
   // Wiggle the mouse a bit
@@ -405,6 +406,39 @@ add_task(async function ensure_fullscreen_cursor() {
   // Restore
   video.setAttribute("mozNoDynamicControls", "");
   document.mozCancelFullScreen();
+  await waitForEvent("mozfullscreenchange");
+  if (!video.paused) {
+    video.pause();
+    await waitForEvent("pause");
+  }
+});
+
+// Bug 1505547: Make sure the fullscreen button works if the video element is in shadow tree.
+add_task(async function ensure_fullscreen_button() {
+  video.removeAttribute("mozNoDynamicControls");
+  let host = document.getElementById("host");
+  let root = host.attachShadow({ mode: "open" });
+  root.appendChild(video);
+
+  video.mozRequestFullScreen();
+  await waitForEvent("mozfullscreenchange");
+
+  // Compute the location to click on to hit the fullscreen button.
+  // Use the video size instead of the screen size here, because mozfullscreenchange does not
+  // guarantee that our document covers the screen, see bug 1575630.
+  const r = video.getBoundingClientRect();
+  const buttonCenterX = r.right - fullscreenButtonWidth / 2 - controlBarMargin;
+  const buttonCenterY = r.bottom - fullscreenButtonHeight / 2;
+
+  // Wiggle the mouse a bit
+  synthesizeMouse(video, buttonCenterX, buttonCenterY, { type: "mousemove" });
+
+  synthesizeMouse(video, buttonCenterX, buttonCenterY, {});
+  await waitForEvent("mozfullscreenchange");
+
+  // Restore
+  video.setAttribute("mozNoDynamicControls", "");
+  document.getElementById("content").appendChild(video);
 });
 
 </script>

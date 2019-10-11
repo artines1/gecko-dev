@@ -33,8 +33,7 @@ namespace recordreplay {
 // Stream is not threadsafe.
 
 // A location of a chunk of a stream within a file.
-struct StreamChunkLocation
-{
+struct StreamChunkLocation {
   // Offset into the file of the start of the chunk.
   uint64_t mOffset;
 
@@ -44,27 +43,21 @@ struct StreamChunkLocation
   // Decompressed size of the chunk.
   uint32_t mDecompressedSize;
 
-  inline bool operator == (const StreamChunkLocation& aOther) const {
-    return mOffset == aOther.mOffset
-        && mCompressedSize == aOther.mCompressedSize
-        && mDecompressedSize == aOther.mDecompressedSize;
-  }
+  // Hash of the compressed chunk data.
+  uint32_t mHash;
+
+  // Position in the stream of the start of this chunk.
+  uint64_t mStreamPos;
 };
 
-enum class StreamName
-{
-  Main,
-  Lock,
-  Event,
-  Assert,
-  Count
-};
+enum class StreamName { Main, Lock, Event, Count };
 
 class File;
+class RecordingEventSection;
 
-class Stream
-{
+class Stream {
   friend class File;
+  friend class RecordingEventSection;
 
   // File this stream belongs to.
   File* mFile;
@@ -103,6 +96,13 @@ class Stream
   UniquePtr<char[]> mBallast;
   size_t mBallastSize;
 
+  // Any buffer available to check for input mismatches.
+  UniquePtr<char[]> mInputBallast;
+  size_t mInputBallastSize;
+
+  // The last event in this stream, in case of an input mismatch.
+  ThreadEvent mLastEvent;
+
   // The number of chunks that have been completely read or written. When
   // writing, this equals mChunks.length().
   size_t mChunkIndex;
@@ -111,22 +111,28 @@ class Stream
   // flushed.
   size_t mFlushedChunks;
 
-  Stream(File* aFile, StreamName aName, size_t aNameIndex)
-    : mFile(aFile)
-    , mName(aName)
-    , mNameIndex(aNameIndex)
-    , mBuffer(nullptr)
-    , mBufferSize(0)
-    , mBufferLength(0)
-    , mBufferPos(0)
-    , mStreamPos(0)
-    , mBallast(nullptr)
-    , mBallastSize(0)
-    , mChunkIndex(0)
-    , mFlushedChunks(0)
-  {}
+  // Whether there is a RecordingEventSection instance active for this stream.
+  bool mInRecordingEventSection;
 
-public:
+  Stream(File* aFile, StreamName aName, size_t aNameIndex)
+      : mFile(aFile),
+        mName(aName),
+        mNameIndex(aNameIndex),
+        mBuffer(nullptr),
+        mBufferSize(0),
+        mBufferLength(0),
+        mBufferPos(0),
+        mStreamPos(0),
+        mBallast(nullptr),
+        mBallastSize(0),
+        mInputBallast(nullptr),
+        mInputBallastSize(0),
+        mLastEvent((ThreadEvent)0),
+        mChunkIndex(0),
+        mFlushedChunks(0),
+        mInRecordingEventSection(false) {}
+
+ public:
   StreamName Name() const { return mName; }
   size_t NameIndex() const { return mNameIndex; }
 
@@ -158,46 +164,41 @@ public:
     RecordOrReplayBytes(aPtr, sizeof(T));
   }
 
-  // Make sure that a value is the same while replaying as it was while
-  // recording.
+  // Note a new thread event for this stream, and make sure it is the same
+  // while replaying as it was while recording.
+  void RecordOrReplayThreadEvent(ThreadEvent aEvent);
+
+  // Replay a thread event without requiring it to be a specific event.
+  ThreadEvent ReplayThreadEvent();
+
+  // Make sure that a value or buffer is the same while replaying as it was
+  // while recording.
   void CheckInput(size_t aValue);
+  void CheckInput(const char* aValue);
+  void CheckInput(const void* aData, size_t aSize);
 
-  // Add a thread event to this file. Each thread event in a file is followed
-  // by additional data specific to that event. Generally, CheckInput should be
-  // used while recording or replaying the data for a thread event so that any
-  // discrepancies with the recording are found immediately.
-  inline void RecordOrReplayThreadEvent(ThreadEvent aEvent) {
-    CheckInput((size_t)aEvent);
-  }
+  inline size_t StreamPosition() { return mStreamPos; }
 
-  inline size_t StreamPosition() {
-    return mStreamPos;
-  }
+ private:
+  enum ShouldCopy { DontCopyExistingData, CopyExistingData };
 
-private:
-  enum ShouldCopy {
-    DontCopyExistingData,
-    CopyExistingData
-  };
-
-  void EnsureMemory(UniquePtr<char[]>* aBuf, size_t* aSize, size_t aNeededSize, size_t aMaxSize,
-                    ShouldCopy aCopy);
+  void EnsureMemory(UniquePtr<char[]>* aBuf, size_t* aSize, size_t aNeededSize,
+                    size_t aMaxSize, ShouldCopy aCopy);
+  void EnsureInputBallast(size_t aSize);
   void Flush(bool aTakeLock);
+  const char* ReadInputString();
 
   static size_t BallastMaxSize();
 };
 
-class File
-{
-public:
-  enum Mode {
-    WRITE,
-    READ
-  };
+class File {
+ public:
+  enum Mode { WRITE, READ };
 
   friend class Stream;
+  friend class RecordingEventSection;
 
-private:
+ private:
   // Open file handle, or 0 if closed.
   FileHandle mFd;
 
@@ -212,7 +213,7 @@ private:
 
   // All streams in this file, indexed by stream name and name index.
   typedef InfallibleVector<UniquePtr<Stream>> StreamVector;
-  StreamVector mStreams[(size_t) StreamName::Count];
+  StreamVector mStreams[(size_t)StreamName::Count];
 
   // Lock protecting access to this file.
   SpinLock mLock;
@@ -233,7 +234,7 @@ private:
     PodZero(&mStreamLock);
   }
 
-public:
+ public:
   File() { Clear(); }
   ~File() { Close(); }
 
@@ -253,25 +254,21 @@ public:
   // there were such changes.
   bool Flush();
 
-  enum class ReadIndexResult {
-    InvalidFile,
-    EndOfFile,
-    FoundIndex
-  };
+  enum class ReadIndexResult { InvalidFile, EndOfFile, FoundIndex };
 
   // Read any data added to the file by a Flush() call. aUpdatedStreams is
   // optional and filled in with streams whose contents have changed, and may
   // have duplicates.
   ReadIndexResult ReadNextIndex(InfallibleVector<Stream*>* aUpdatedStreams);
 
-private:
-  StreamChunkLocation WriteChunk(const char* aStart,
-                                 size_t aCompressedSize, size_t aDecompressedSize,
+ private:
+  StreamChunkLocation WriteChunk(const char* aStart, size_t aCompressedSize,
+                                 size_t aDecompressedSize, uint64_t aStreamPos,
                                  bool aTakeLock);
   void ReadChunk(char* aDest, const StreamChunkLocation& aChunk);
 };
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla
 
-#endif // mozilla_recordreplay_File_h
+#endif  // mozilla_recordreplay_File_h

@@ -15,8 +15,9 @@
 #include "nsIDOMEventListener.h"
 #include "nsCOMPtr.h"
 #include "nsDataHashtable.h"
+#include "nsInterfaceHashtable.h"
 #include "nsIDocShell.h"
-#include "nsILoginManager.h"
+#include "nsILoginAutoCompleteSearch.h"
 #include "nsIMutationObserver.h"
 #include "nsTArray.h"
 #include "nsCycleCollectionParticipant.h"
@@ -24,7 +25,7 @@
 
 // X.h defines KeyPress
 #ifdef KeyPress
-#undef KeyPress
+#  undef KeyPress
 #endif
 
 class nsFormHistory;
@@ -34,83 +35,88 @@ class nsPIDOMWindowOuter;
 namespace mozilla {
 namespace dom {
 class HTMLInputElement;
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
 class nsFormFillController final : public nsIFormFillController,
                                    public nsIAutoCompleteInput,
                                    public nsIAutoCompleteSearch,
-                                   public nsIDOMEventListener,
                                    public nsIFormAutoCompleteObserver,
-                                   public nsIMutationObserver
-{
-public:
+                                   public nsIMutationObserver {
+ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIFORMFILLCONTROLLER
   NS_DECL_NSIAUTOCOMPLETESEARCH
   NS_DECL_NSIAUTOCOMPLETEINPUT
   NS_DECL_NSIFORMAUTOCOMPLETEOBSERVER
-  NS_DECL_NSIDOMEVENTLISTENER
   NS_DECL_NSIMUTATIONOBSERVER
 
-  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsFormFillController, nsIFormFillController)
+  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsFormFillController,
+                                           nsIFormFillController)
 
-  nsresult Focus(mozilla::dom::Event* aEvent);
-  nsresult KeyDown(mozilla::dom::Event* aKeyEvent);
-  nsresult KeyPress(mozilla::dom::Event* aKeyEvent);
-  nsresult MouseDown(mozilla::dom::Event* aMouseEvent);
+  MOZ_CAN_RUN_SCRIPT nsresult Focus(mozilla::dom::Event* aEvent);
+  MOZ_CAN_RUN_SCRIPT nsresult KeyDown(mozilla::dom::Event* aKeyEvent);
+  MOZ_CAN_RUN_SCRIPT nsresult KeyPress(mozilla::dom::Event* aKeyEvent);
+  MOZ_CAN_RUN_SCRIPT nsresult MouseDown(mozilla::dom::Event* aMouseEvent);
 
   nsFormFillController();
 
-protected:
-  virtual ~nsFormFillController();
+ protected:
+  MOZ_CAN_RUN_SCRIPT virtual ~nsFormFillController();
 
   void AddWindowListeners(nsPIDOMWindowOuter* aWindow);
-  void RemoveWindowListeners(nsPIDOMWindowOuter* aWindow);
+  MOZ_CAN_RUN_SCRIPT void RemoveWindowListeners(nsPIDOMWindowOuter* aWindow);
 
   void AddKeyListener(nsINode* aInput);
   void RemoveKeyListener();
 
-  void StartControllingInput(mozilla::dom::HTMLInputElement *aInput);
-  void StopControllingInput();
+  MOZ_CAN_RUN_SCRIPT
+  void StartControllingInput(mozilla::dom::HTMLInputElement* aInput);
+  MOZ_CAN_RUN_SCRIPT void StopControllingInput();
+
+  bool IsFocusedInputControlled() const;
+
+  MOZ_CAN_RUN_SCRIPT
+  nsresult HandleFocus(mozilla::dom::HTMLInputElement* aInput);
+
   /**
    * Checks that aElement is a type of element we want to fill, then calls
    * StartControllingInput on it.
    */
+  MOZ_CAN_RUN_SCRIPT
   void MaybeStartControllingInput(mozilla::dom::HTMLInputElement* aElement);
 
   nsresult PerformInputListAutoComplete(const nsAString& aSearch,
                                         nsIAutoCompleteResult** aResult);
 
-  void RevalidateDataList();
-  bool RowMatch(nsFormHistory *aHistory, uint32_t aIndex, const nsAString &aInputName, const nsAString &aInputValue);
+  MOZ_CAN_RUN_SCRIPT void RevalidateDataList();
+  bool RowMatch(nsFormHistory* aHistory, uint32_t aIndex,
+                const nsAString& aInputName, const nsAString& aInputValue);
 
-  inline nsIDocShell *GetDocShellForInput(mozilla::dom::HTMLInputElement *aInput);
-  inline nsPIDOMWindowOuter *GetWindowForDocShell(nsIDocShell *aDocShell);
-  inline int32_t GetIndexOfDocShell(nsIDocShell *aDocShell);
+  inline nsIDocShell* GetDocShellForInput(
+      mozilla::dom::HTMLInputElement* aInput);
 
   void MaybeRemoveMutationObserver(nsINode* aNode);
 
-  void RemoveForDocument(nsIDocument* aDoc);
+  void RemoveForDocument(mozilla::dom::Document* aDoc);
 
   bool IsTextControl(nsINode* aNode);
 
-  nsresult StartQueryLoginReputation(mozilla::dom::HTMLInputElement *aInput);
+  nsresult StartQueryLoginReputation(mozilla::dom::HTMLInputElement* aInput);
 
   // members //////////////////////////////////////////
 
   nsCOMPtr<nsIAutoCompleteController> mController;
-  nsCOMPtr<nsILoginManager> mLoginManager;
+  nsCOMPtr<nsILoginAutoCompleteSearch> mLoginManagerAC;
   nsCOMPtr<nsILoginReputationService> mLoginReputationService;
   mozilla::dom::HTMLInputElement* mFocusedInput;
 
-  // mListNode is a <datalist> element which, is set, has the form fill controller
-  // as a mutation observer for it.
+  // mListNode is a <datalist> element which, is set, has the form fill
+  // controller as a mutation observer for it.
   nsINode* mListNode;
   nsCOMPtr<nsIAutoCompletePopup> mFocusedPopup;
 
-  nsTArray<nsCOMPtr<nsIDocShell> > mDocShells;
-  nsTArray<nsCOMPtr<nsIAutoCompletePopup> > mPopups;
+  nsInterfaceHashtable<nsRefPtrHashKey<mozilla::dom::Document>, nsIAutoCompletePopup> mPopups;
 
   // The observer passed to StartSearch. It will be notified when the search is
   // complete or the data from a datalist changes.
@@ -133,6 +139,7 @@ protected:
   bool mCompleteSelectedIndex;
   bool mForceComplete;
   bool mSuppressOnInput;
+  bool mPasswordPopupAutomaticallyOpened;
 };
 
-#endif // __nsFormFillController__
+#endif  // __nsFormFillController__

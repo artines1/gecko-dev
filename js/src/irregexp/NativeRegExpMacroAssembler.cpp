@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sts=4 et sw=4 tw=99: */
+ * vim: set ts=8 sts=2 et sw=2 tw=80: */
 
 // Copyright 2012 the V8 project authors. All rights reserved.
 // Redistribution and use in source and binary forms, with or without
@@ -132,7 +132,7 @@ NativeRegExpMacroAssembler::GenerateCode(JSContext* cx, bool match_only)
     masm.Str(PseudoStackPointer64, vixl::MemOperand(sp, -16, vixl::PreIndex));
 
     // Initialize the PSP from the SP.
-    masm.initStackPtr();
+    masm.initPseudoStackPtr();
 #endif
 
     // Push non-volatile registers which might be modified by jitcode.
@@ -248,7 +248,7 @@ NativeRegExpMacroAssembler::GenerateCode(JSContext* cx, bool match_only)
     Label load_char_start_regexp, start_regexp;
 
     // Load newline if index is at start, previous character otherwise.
-    masm.branchPtr(Assembler::NotEqual, 
+    masm.branchPtr(Assembler::NotEqual,
                    Address(masm.getStackPointer(), offsetof(FrameData, startIndex)), ImmWord(0),
                    &load_char_start_regexp);
     masm.movePtr(ImmWord('\n'), current_character);
@@ -506,7 +506,6 @@ NativeRegExpMacroAssembler::GenerateCode(JSContext* cx, bool match_only)
     }
 
     Linker linker(masm);
-    AutoFlushICache afc("RegExp");
     JitCode* code = linker.newCode(cx, CodeKind::RegExp);
     if (!code)
         return RegExpCode();
@@ -1421,6 +1420,7 @@ NativeRegExpMacroAssembler::CanReadUnaligned()
 const uint8_t
 NativeRegExpMacroAssembler::word_character_map[] =
 {
+    // clang-format off
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
@@ -1461,4 +1461,5 @@ NativeRegExpMacroAssembler::word_character_map[] =
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
     0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+    // clang-format on
 };

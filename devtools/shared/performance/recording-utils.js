@@ -12,15 +12,16 @@ function mapRecordingOptions(type, options) {
   if (type === "profiler") {
     return {
       entries: options.bufferSize,
-      interval: options.sampleFrequency ? (1000 / (options.sampleFrequency * 1000))
-                                        : void 0
+      interval: options.sampleFrequency
+        ? 1000 / options.sampleFrequency
+        : void 0,
     };
   }
 
   if (type === "memory") {
     return {
       probability: options.allocationsSampleProbability,
-      maxLogLength: options.allocationsMaxLogLength
+      maxLogLength: options.allocationsMaxLogLength,
     };
   }
 
@@ -31,7 +32,7 @@ function mapRecordingOptions(type, options) {
       withMemory: options.withMemory,
       withFrames: true,
       withGCEvents: true,
-      withDocLoadingEvents: false
+      withDocLoadingEvents: false,
     };
   }
 
@@ -257,7 +258,7 @@ function getProfileThreadFromAllocations(allocations) {
     samples: allocationsWithSchema(samples),
     stackTable: stackTableWithSchema(stackTable),
     frameTable: frameTableWithSchema(frameTable),
-    stringTable: uniqueStrings.stringTable
+    stringTable: uniqueStrings.stringTable,
   };
 
   gProfileThreadFromAllocationCache.set(allocations, thread);
@@ -272,7 +273,7 @@ function allocationsWithSchema(data) {
       time: slot++,
       size: slot++,
     },
-    data: data
+    data: data,
   };
 }
 
@@ -289,7 +290,7 @@ function allocationsWithSchema(data) {
  *               A profile with version 2.
  */
 function deflateProfile(profile) {
-  profile.threads = profile.threads.map((thread) => {
+  profile.threads = profile.threads.map(thread => {
     const uniqueStacks = new UniqueStacks();
     return deflateThread(thread, uniqueStacks);
   });
@@ -339,7 +340,7 @@ function deflateSamples(samples, uniqueStacks) {
       sample.time,
       sample.responsiveness,
       sample.rss,
-      sample.uss
+      sample.uss,
     ];
   }
 
@@ -372,7 +373,7 @@ function deflateMarkers(markers, uniqueStacks) {
     deflatedMarkers[i] = [
       uniqueStacks.getOrAddStringIndex(marker.name),
       marker.time,
-      marker.data
+      marker.data,
     ];
   }
 
@@ -381,9 +382,9 @@ function deflateMarkers(markers, uniqueStacks) {
     schema: {
       name: slot++,
       time: slot++,
-      data: slot++
+      data: slot++,
     },
-    data: deflatedMarkers
+    data: deflatedMarkers,
   };
 }
 
@@ -417,7 +418,7 @@ function deflateThread(thread, uniqueStacks) {
     markers: deflateMarkers(thread.markers, uniqueStacks),
     stackTable: uniqueStacks.getStackTableWithSchema(),
     frameTable: uniqueStacks.getFrameTableWithSchema(),
-    stringTable: uniqueStacks.getStringTable()
+    stringTable: uniqueStacks.getStringTable(),
   };
 }
 
@@ -426,9 +427,9 @@ function stackTableWithSchema(data) {
   return {
     schema: {
       prefix: slot++,
-      frame: slot++
+      frame: slot++,
     },
-    data: data
+    data: data,
   };
 }
 
@@ -440,9 +441,9 @@ function frameTableWithSchema(data) {
       implementation: slot++,
       optimizations: slot++,
       line: slot++,
-      category: slot++
+      category: slot++,
     },
-    data: data
+    data: data,
   };
 }
 
@@ -454,9 +455,9 @@ function samplesWithSchema(data) {
       time: slot++,
       responsiveness: slot++,
       rss: slot++,
-      uss: slot++
+      uss: slot++,
     },
-    data: data
+    data: data,
   };
 }
 
@@ -561,8 +562,9 @@ UniqueStacks.prototype.getOrAddFrameIndex = function(frame) {
   const implementationIndex = this.getOrAddStringIndex(frame.implementation);
 
   // Super dumb.
-  const hash = `${locationIndex} ${implementationIndex || ""} ` +
-             `${frame.line || ""} ${frame.category || ""}`;
+  const hash =
+    `${locationIndex} ${implementationIndex || ""} ` +
+    `${frame.line || ""} ${frame.category || ""}`;
 
   let index = frameHash[hash];
   if (index !== undefined) {
@@ -578,7 +580,7 @@ UniqueStacks.prototype.getOrAddFrameIndex = function(frame) {
     // format to the new format.
     null,
     frame.line,
-    frame.category
+    frame.category,
   ]);
   return index;
 };

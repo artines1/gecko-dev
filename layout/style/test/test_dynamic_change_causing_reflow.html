@@ -6,7 +6,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1131371
 <head>
   <meta charset="utf-8">
   <title>Test for Bug 1131371</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -92,6 +92,19 @@ const gTestcases = [
   {
     beforeStyle: "height: 10px",
     afterStyle:  "height: 15px",
+    expectReflow: true,
+  },
+
+  // * Changing 'shape-outside' on a non-floating box should not cause anything to happen.
+  {
+    beforeStyle: "shape-outside: none",
+    afterStyle:  "shape-outside: circle()",
+  },
+
+  // * Changing 'shape-outside' should cause reflow, but not frame construction.
+  {
+    beforeStyle: "float: left; shape-outside: none",
+    afterStyle:  "float: left; shape-outside: circle()",
     expectReflow: true,
   },
 

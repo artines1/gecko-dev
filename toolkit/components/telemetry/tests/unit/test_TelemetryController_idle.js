@@ -39,24 +39,31 @@ add_task(async function testSendPendingOnIdleDaily() {
 
   // Telemetry will not send this ping at startup, because it's not overdue.
   await TelemetryController.testSetup();
-  TelemetrySend.setServer("http://localhost:" + gHttpServer.identity.primaryPort);
+  TelemetrySend.setServer(
+    "http://localhost:" + gHttpServer.identity.primaryPort
+  );
 
   let pendingPromise = new Promise(resolve =>
-    gHttpServer.registerPrefixHandler("/submit/telemetry/", request => resolve(request)));
+    gHttpServer.registerPrefixHandler("/submit/telemetry/", request =>
+      resolve(request)
+    )
+  );
 
   let gatherPromise = PromiseUtils.defer();
   Services.obs.addObserver(gatherPromise.resolve, "gather-telemetry");
 
   // Check that we are correctly receiving the gather-telemetry notification.
   TelemetrySession.observe(null, "idle-daily", null);
-  await gatherPromise;
+  await gatherPromise.promise;
   Assert.ok(true, "Received gather-telemetry notification.");
 
   Services.obs.removeObserver(gatherPromise.resolve, "gather-telemetry");
 
   // Check that the pending ping is correctly received.
-  let ns = {};
-  let module = ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", ns);
+  let module = ChromeUtils.import(
+    "resource://gre/modules/TelemetrySend.jsm",
+    null
+  );
   module.TelemetrySendImpl.observe(null, "idle-daily", null);
   let request = await pendingPromise;
   let ping = decodeRequestPayload(request);

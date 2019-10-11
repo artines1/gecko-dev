@@ -8,17 +8,30 @@ Program('logalloc-replay')
 
 SOURCES += [
     '/mfbt/Assertions.cpp',
+    '/mfbt/Poison.cpp',
+    '/mfbt/RandomNum.cpp',
+    '/mfbt/TaggedAnonymousMemory.cpp',
     '/mfbt/Unused.cpp',
     'Replay.cpp',
 ]
 
-if CONFIG['MOZ_REPLACE_MALLOC_STATIC'] and CONFIG['MOZ_DMD']:
+if CONFIG['MOZ_REPLACE_MALLOC_STATIC'] and \
+   (CONFIG['MOZ_DMD'] or CONFIG['MOZ_PHC']):
     UNIFIED_SOURCES += [
         '/mfbt/HashFunctions.cpp',
         '/mfbt/JSONWriter.cpp',
-        '/mfbt/Poison.cpp',
         '/mozglue/misc/StackWalk.cpp',
     ]
+    if CONFIG['OS_ARCH'] == 'WINNT':
+        OS_LIBS += [
+            'dbghelp',
+        ]
+
+if CONFIG['MOZ_DMD'] or CONFIG['MOZ_PHC']:
+    if CONFIG['MOZ_BUILD_APP'] == 'memory':
+        EXPORTS.mozilla += [
+            '/mozglue/misc/StackWalk.h',
+        ]
 
 if not CONFIG['MOZ_REPLACE_MALLOC_STATIC']:
     SOURCES += [
@@ -36,5 +49,8 @@ USE_LIBS += [
 
 # The memory library defines this, so it's needed here too.
 DEFINES['IMPL_MFBT'] = True
+
+if CONFIG['MOZ_NEEDS_LIBATOMIC']:
+    OS_LIBS += ['atomic']
 
 DisableStlWrapping()

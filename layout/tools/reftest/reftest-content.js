@@ -17,8 +17,11 @@ const IO_SERVICE_CONTRACTID = "@mozilla.org/network/io-service;1"
 const BLANK_URL_FOR_CLEARING = "data:text/html;charset=UTF-8,%3C%21%2D%2DCLEAR%2D%2D%3E";
 
 Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("chrome://reftest/content/AsyncSpellCheckTestHelper.jsm");
+Cu.import("resource://reftest/AsyncSpellCheckTestHelper.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+
+// This will load chrome Custom Elements inside chrome documents:
+ChromeUtils.import("resource://gre/modules/CustomElementsListener.jsm", null);
 
 var gBrowserIsRemote;
 var gIsWebRenderEnabled;
@@ -173,6 +176,13 @@ function StartTestURI(type, uri, uriTargetType, timeout)
     LoadURI(gCurrentURL);
 }
 
+function setupTextZoom(contentRootElement) {
+    if (!contentRootElement || !contentRootElement.hasAttribute('reftest-text-zoom'))
+        return;
+    markupDocumentViewer().textZoom =
+        contentRootElement.getAttribute('reftest-text-zoom');
+}
+
 function setupFullZoom(contentRootElement) {
     if (!contentRootElement || !contentRootElement.hasAttribute('reftest-zoom'))
         return;
@@ -180,8 +190,9 @@ function setupFullZoom(contentRootElement) {
         contentRootElement.getAttribute('reftest-zoom');
 }
 
-function resetZoom() {
+function resetZoomAndTextZoom() {
     markupDocumentViewer().fullZoom = 1.0;
+    markupDocumentViewer().textZoom = 1.0;
 }
 
 function doPrintMode(contentRootElement) {
@@ -216,7 +227,7 @@ function setupPrintMode() {
    ps.footerStrLeft = "";
    ps.footerStrCenter = "";
    ps.footerStrRight = "";
-   docShell.contentViewer.setPageMode(true, ps);
+   docShell.contentViewer.setPageModeForTesting(/* aPageMode */ true, ps);
 }
 
 // Prints current page to a PDF file and calls callback when sucessfully
@@ -253,7 +264,6 @@ function printToPdf(callback) {
     ps.printBGColors = true;
     ps.printToFile = true;
     ps.toFileName = file.path;
-    ps.printFrameType = Ci.nsIPrintSettings.kFramesAsIs;
     ps.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
 
     if (isPrintSelection) {
@@ -277,6 +287,7 @@ function printToPdf(callback) {
         onLocationChange: function () {},
         onStatusChange: function () {},
         onSecurityChange: function () {},
+        onContentBlockingEvent: function () {},
     });
 }
 
@@ -296,7 +307,11 @@ function setupViewport(contentRootElement) {
         windowUtils().setVisualViewportSize(sw, sh);
     }
 
-    // XXX support resolution when needed
+    var res = attrOrDefault(contentRootElement, "reftest-resolution", 1);
+    if (res !== 1) {
+        LogInfo("Setting resolution to " + res);
+        windowUtils().setResolutionAndScaleTo(res);
+    }
 
     // XXX support viewconfig when needed
 }
@@ -517,7 +532,11 @@ function FlushRendering(aFlushMode) {
         }
 
         for (var i = 0; i < win.frames.length; ++i) {
-            flushWindow(win.frames[i]);
+            try {
+                flushWindow(win.frames[i]);
+            } catch (e) {
+                Cu.reportError(e);
+            }
         }
     }
 
@@ -693,9 +712,7 @@ function WaitForTestEnd(contentRootElement, inPrintMode, spellCheckedElements) {
             };
             os.addObserver(flushWaiter, "apz-repaints-flushed");
 
-            var willSnapshot = (gCurrentTestType != TYPE_SCRIPT) &&
-                               (gCurrentTestType != TYPE_LOAD) &&
-                               (gCurrentTestType != TYPE_PRINT);
+            var willSnapshot = IsSnapshottableTestType();
             var noFlush =
                 !(contentRootElement &&
                   contentRootElement.classList.contains("reftest-no-flush"));
@@ -754,6 +771,17 @@ function WaitForTestEnd(contentRootElement, inPrintMode, spellCheckedElements) {
               }
               CheckLayerAssertions(contentRootElement);
             }
+
+            if (!IsSnapshottableTestType()) {
+              // If we're not snapshotting the test, at least do a sync round-trip
+              // to the compositor to ensure that all the rendering messages
+              // related to this test get processed. Otherwise problems triggered
+              // by this test may only manifest as failures in a later test.
+              LogInfo("MakeProgress: Doing sync flush to compositor");
+              gFailureReason = "timed out while waiting for sync compositor flush"
+              windowUtils().syncFlushCompositor();
+            }
+
             LogInfo("MakeProgress: Completed");
             state = STATE_COMPLETED;
             gFailureReason = "timed out while taking snapshot (bug in harness?)";
@@ -839,6 +867,7 @@ function OnDocumentLoad(event)
     var contentRootElement = currentDoc ? currentDoc.documentElement : null;
     currentDoc = null;
     setupFullZoom(contentRootElement);
+    setupTextZoom(contentRootElement);
     setupViewport(contentRootElement);
     setupDisplayport(contentRootElement);
     var inPrintMode = false;
@@ -927,7 +956,7 @@ function CheckLayerAssertions(contentRootElement)
         try {
             var elements = layerNameToElementsMap[layerName];
             oneOfEach.push(elements[0]);
-            var numberOfLayers = windowUtils().numberOfAssignedPaintedLayers(elements, elements.length);
+            var numberOfLayers = windowUtils().numberOfAssignedPaintedLayers(elements);
             if (numberOfLayers !== 1) {
                 SendFailedAssignedLayer('these elements are assigned to ' + numberOfLayers +
                                         ' different layers, instead of sharing just one layer: ' +
@@ -941,7 +970,7 @@ function CheckLayerAssertions(contentRootElement)
     // Check that elements with different reftest-assigned-layer are assigned to different PaintedLayers.
     if (oneOfEach.length > 0) {
         try {
-            var numberOfLayers = windowUtils().numberOfAssignedPaintedLayers(oneOfEach, oneOfEach.length);
+            var numberOfLayers = windowUtils().numberOfAssignedPaintedLayers(oneOfEach);
             if (numberOfLayers !== oneOfEach.length) {
                 SendFailedAssignedLayer('these elements are assigned to ' + numberOfLayers +
                                         ' different layers, instead of having none in common (expected ' +
@@ -1071,8 +1100,10 @@ function DoAssertionCheck()
 
 function LoadURI(uri)
 {
-    var flags = webNavigation().LOAD_FLAGS_NONE;
-    webNavigation().loadURI(uri, flags, null, null, null);
+    let loadURIOptions = {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    };
+    webNavigation().loadURI(uri, loadURIOptions);
 }
 
 function LogWarning(str)
@@ -1093,14 +1124,19 @@ function LogInfo(str)
     }
 }
 
+function IsSnapshottableTestType()
+{
+    // Script, load-only, and PDF-print tests do not need any snapshotting.
+    return !(gCurrentTestType == TYPE_SCRIPT ||
+             gCurrentTestType == TYPE_LOAD ||
+             gCurrentTestType == TYPE_PRINT);
+}
+
 const SYNC_DEFAULT = 0x0;
 const SYNC_ALLOW_DISABLE = 0x1;
 function SynchronizeForSnapshot(flags)
 {
-    if (gCurrentTestType == TYPE_SCRIPT ||
-        gCurrentTestType == TYPE_LOAD ||
-        gCurrentTestType == TYPE_PRINT) {
-        // Script, load-only, and PDF-print tests do not need any snapshotting.
+    if (!IsSnapshottableTestType()) {
         return;
     }
 
@@ -1171,7 +1207,7 @@ function RecvLoadPrintTest(uri, timeout)
 
 function RecvResetRenderingState()
 {
-    resetZoom();
+    resetZoomAndTextZoom();
     resetDisplayportAndViewport();
 }
 

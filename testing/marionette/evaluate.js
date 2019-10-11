@@ -4,20 +4,21 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { clearTimeout, setTimeout } = ChromeUtils.import(
+  "resource://gre/modules/Timer.jsm"
+);
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.import("chrome://marionette/content/assert.js");
-const {
-  element,
-  WebElement,
-} = ChromeUtils.import("chrome://marionette/content/element.js", {});
-const {
-  JavaScriptError,
-  ScriptTimeoutError,
-} = ChromeUtils.import("chrome://marionette/content/error.js", {});
-const {Log} = ChromeUtils.import("chrome://marionette/content/log.js", {});
+const { assert } = ChromeUtils.import("chrome://marionette/content/assert.js");
+const { element, WebElement } = ChromeUtils.import(
+  "chrome://marionette/content/element.js"
+);
+const { JavaScriptError, ScriptTimeoutError } = ChromeUtils.import(
+  "chrome://marionette/content/error.js"
+);
+const { Log } = ChromeUtils.import("chrome://marionette/content/log.js");
 
 XPCOMUtils.defineLazyGetter(this, "log", Log.get);
 
@@ -85,26 +86,34 @@ this.evaluate = {};
  * @throws {ScriptTimeoutError}
  *   If the script was interrupted due to script timeout.
  */
-evaluate.sandbox = function(sb, script, args = [],
-    {
-      async = false,
-      file = "dummy file",
-      line = 0,
-      timeout = DEFAULT_TIMEOUT,
-    } = {}) {
-  let scriptTimeoutID, timeoutHandler, unloadHandler;
+evaluate.sandbox = function(
+  sb,
+  script,
+  args = [],
+  {
+    async = false,
+    file = "dummy file",
+    line = 0,
+    timeout = DEFAULT_TIMEOUT,
+  } = {}
+) {
+  let unloadHandler;
+
+  let marionetteSandbox = sandbox.create(sb.window);
+
+  // timeout handler
+  let scriptTimeoutID, timeoutPromise;
+  if (timeout !== null) {
+    timeoutPromise = new Promise((resolve, reject) => {
+      scriptTimeoutID = setTimeout(() => {
+        reject(new ScriptTimeoutError(`Timed out after ${timeout} ms`));
+      }, timeout);
+    });
+  }
 
   let promise = new Promise((resolve, reject) => {
     let src = "";
     sb[COMPLETE] = resolve;
-    timeoutHandler = () => reject(new ScriptTimeoutError(`Timed out after ${timeout} ms`));
-    unloadHandler = sandbox.cloneInto(
-        () => reject(new JavaScriptError("Document was unloaded")),
-        sb);
-
-    if (async) {
-      sb[CALLBACK] = sb[COMPLETE];
-    }
     sb[ARGUMENTS] = sandbox.cloneInto(args, sb);
 
     // callback function made private
@@ -119,27 +128,47 @@ evaluate.sandbox = function(sb, script, args = [],
       ${script}
     }).apply(null, ${ARGUMENTS})`;
 
-    // timeout and unload handlers
-    scriptTimeoutID = setTimeout(timeoutHandler, timeout);
-    sb.window.onunload = unloadHandler;
+    unloadHandler = sandbox.cloneInto(
+      () => reject(new JavaScriptError("Document was unloaded")),
+      marionetteSandbox
+    );
+    marionetteSandbox.window.addEventListener("unload", unloadHandler);
 
-    let res;
-    try {
-      res = Cu.evalInSandbox(src, sb, "1.8", file, line);
-    } catch (e) {
-      reject(new JavaScriptError(e));
-    }
+    let promises = [
+      Cu.evalInSandbox(src, sb, "1.8", file, line),
+      timeoutPromise,
+    ];
 
-    if (!async) {
-      resolve(res);
-    }
+    // Wait for the immediate result of calling evalInSandbox, or a timeout.
+    // Only resolve the promise if the scriptPromise was resolved and is not
+    // async, because the latter has to call resolve() itself.
+    Promise.race(promises).then(
+      value => {
+        if (!async) {
+          resolve(value);
+        }
+      },
+      err => {
+        reject(err);
+      }
+    );
   });
 
-  return promise.then(res => {
-    clearTimeout(scriptTimeoutID);
-    sb.window.removeEventListener("unload", unloadHandler);
-    return res;
-  });
+  // This block is mainly for async scripts, which escape the inner promise
+  // when calling resolve() on their own. The timeout promise will be re-used
+  // to break out after the initially setup timeout.
+  return Promise.race([promise, timeoutPromise])
+    .catch(err => {
+      // Only raise valid errors for both the sync and async scripts.
+      if (err instanceof ScriptTimeoutError) {
+        throw err;
+      }
+      throw new JavaScriptError(err);
+    })
+    .finally(() => {
+      clearTimeout(scriptTimeoutID);
+      marionetteSandbox.window.removeEventListener("unload", unloadHandler);
+    });
 };
 
 /**
@@ -151,7 +180,7 @@ evaluate.sandbox = function(sb, script, args = [],
  * @param {element.Store=} seenEls
  *     Known element store to look up web elements from.  If undefined,
  *     the web element references are returned instead.
- * @param {WindowProxy=} window
+ * @param {WindowProxy=} win
  *     Current browsing context, if `seenEls` is provided.
  *
  * @return {Object}
@@ -166,7 +195,7 @@ evaluate.sandbox = function(sb, script, args = [],
  *     it is no longer attached to the DOM, or its node document
  *     is no longer the active document.
  */
-evaluate.fromJSON = function(obj, seenEls = undefined, window = undefined) {
+evaluate.fromJSON = function(obj, seenEls = undefined, win = undefined) {
   switch (typeof obj) {
     case "boolean":
     case "number":
@@ -178,15 +207,15 @@ evaluate.fromJSON = function(obj, seenEls = undefined, window = undefined) {
       if (obj === null) {
         return obj;
 
-      // arrays
+        // arrays
       } else if (Array.isArray(obj)) {
-        return obj.map(e => evaluate.fromJSON(e, seenEls, window));
+        return obj.map(e => evaluate.fromJSON(e, seenEls, win));
 
-      // web elements
+        // web elements
       } else if (WebElement.isReference(obj)) {
         let webEl = WebElement.fromJSON(obj);
         if (seenEls) {
-          return seenEls.get(webEl, window);
+          return seenEls.get(webEl, win);
         }
         return webEl;
       }
@@ -194,7 +223,7 @@ evaluate.fromJSON = function(obj, seenEls = undefined, window = undefined) {
       // arbitrary objects
       let rv = {};
       for (let prop in obj) {
-        rv[prop] = evaluate.fromJSON(obj[prop], seenEls, window);
+        rv[prop] = evaluate.fromJSON(obj[prop], seenEls, win);
       }
       return rv;
   }
@@ -241,27 +270,28 @@ evaluate.toJSON = function(obj, seenEls) {
   if (t == "[object Undefined]" || t == "[object Null]") {
     return null;
 
-  // primitives
-  } else if (t == "[object Boolean]" ||
-      t == "[object Number]" ||
-      t == "[object String]") {
+    // primitives
+  } else if (
+    t == "[object Boolean]" ||
+    t == "[object Number]" ||
+    t == "[object String]"
+  ) {
     return obj;
 
-  // Array, NodeList, HTMLCollection, et al.
+    // Array, NodeList, HTMLCollection, et al.
   } else if (element.isCollection(obj)) {
     assert.acyclic(obj);
     return [...obj].map(el => evaluate.toJSON(el, seenEls));
 
-  // WebElement
+    // WebElement
   } else if (WebElement.isReference(obj)) {
     return obj;
 
-  // Element (HTMLElement, SVGElement, XULElement, et al.)
+    // Element (HTMLElement, SVGElement, XULElement, et al.)
   } else if (element.isElement(obj)) {
-    let webEl = seenEls.add(obj);
-    return webEl.toJSON();
+    return seenEls.add(obj);
 
-  // custom JSON representation
+    // custom JSON representation
   } else if (typeof obj.toJSON == "function") {
     let unsafeJSON = obj.toJSON();
     return evaluate.toJSON(unsafeJSON, seenEls);
@@ -305,17 +335,19 @@ evaluate.isCyclic = function(value, stack = []) {
   if (t == "[object Undefined]" || t == "[object Null]") {
     return false;
 
-  // primitives
-  } else if (t == "[object Boolean]" ||
-      t == "[object Number]" ||
-      t == "[object String]") {
+    // primitives
+  } else if (
+    t == "[object Boolean]" ||
+    t == "[object Number]" ||
+    t == "[object String]"
+  ) {
     return false;
 
-  // HTMLElement, SVGElement, XULElement, et al.
+    // HTMLElement, SVGElement, XULElement, et al.
   } else if (element.isElement(value)) {
     return false;
 
-  // Array, NodeList, HTMLCollection, et al.
+    // Array, NodeList, HTMLCollection, et al.
   } else if (element.isCollection(value)) {
     if (stack.includes(value)) {
       return true;
@@ -384,7 +416,7 @@ this.sandbox = {};
  * functions and DOM elements.
  */
 sandbox.cloneInto = function(obj, sb) {
-  return Cu.cloneInto(obj, sb, {cloneFunctions: true, wrapReflectors: true});
+  return Cu.cloneInto(obj, sb, { cloneFunctions: true, wrapReflectors: true });
 };
 
 /**
@@ -418,7 +450,7 @@ sandbox.augment = function(sb, adapter) {
 /**
  * Creates a sandbox.
  *
- * @param {Window} window
+ * @param {Window} win
  *     The DOM Window object.
  * @param {nsIPrincipal=} principal
  *     An optional, custom principal to prefer over the Window.  Useful if
@@ -427,14 +459,18 @@ sandbox.augment = function(sb, adapter) {
  * @return {Sandbox}
  *     The created sandbox.
  */
-sandbox.create = function(window, principal = null, opts = {}) {
-  let p = principal || window;
-  opts = Object.assign({
-    sameZoneAs: window,
-    sandboxPrototype: window,
-    wantComponents: true,
-    wantXrays: true,
-  }, opts);
+sandbox.create = function(win, principal = null, opts = {}) {
+  let p = principal || win;
+  opts = Object.assign(
+    {
+      sameZoneAs: win,
+      sandboxPrototype: win,
+      wantComponents: true,
+      wantXrays: true,
+      wantGlobalProperties: ["ChromeUtils"],
+    },
+    opts
+  );
   return new Cu.Sandbox(p, opts);
 };
 
@@ -442,28 +478,30 @@ sandbox.create = function(window, principal = null, opts = {}) {
  * Creates a mutable sandbox, where changes to the global scope
  * will have lasting side-effects.
  *
- * @param {Window} window
+ * @param {Window} win
  *     The DOM Window object.
  *
  * @return {Sandbox}
  *     The created sandbox.
  */
-sandbox.createMutable = function(window) {
+sandbox.createMutable = function(win) {
   let opts = {
     wantComponents: false,
     wantXrays: false,
   };
-  return sandbox.create(window, null, opts);
+  // Note: We waive Xrays here to match potentially-accidental old behavior.
+  return Cu.waiveXrays(sandbox.create(win, null, opts));
 };
 
-sandbox.createSystemPrincipal = function(window) {
-  let principal = Cc["@mozilla.org/systemprincipal;1"]
-      .createInstance(Ci.nsIPrincipal);
-  return sandbox.create(window, principal);
+sandbox.createSystemPrincipal = function(win) {
+  let principal = Cc["@mozilla.org/systemprincipal;1"].createInstance(
+    Ci.nsIPrincipal
+  );
+  return sandbox.create(win, principal);
 };
 
-sandbox.createSimpleTest = function(window, harness) {
-  let sb = sandbox.create(window);
+sandbox.createSimpleTest = function(win, harness) {
+  let sb = sandbox.create(win);
   sb = sandbox.augment(sb, harness);
   sb[FINISH] = () => sb[COMPLETE](harness.generate_results());
   return sb;

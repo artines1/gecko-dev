@@ -1,8 +1,10 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { Doctor, REPAIR_ADVANCE_PERIOD } = ChromeUtils.import("resource://services-sync/doctor.js", {});
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Doctor, REPAIR_ADVANCE_PERIOD } = ChromeUtils.import(
+  "resource://services-sync/doctor.js",
+  null
+);
 
 function mockDoctor(mocks) {
   // Clone the object and put mocks in that.
@@ -24,23 +26,35 @@ add_task(async function test_validation_interval() {
       return {
         validate(e) {
           return {};
-        }
+        },
       };
     },
   };
 
   // setup prefs which enable test-engine validation.
-  Services.prefs.setBoolPref("services.sync.engine.test-engine.validation.enabled", true);
-  Services.prefs.setIntPref("services.sync.engine.test-engine.validation.percentageChance", 100);
-  Services.prefs.setIntPref("services.sync.engine.test-engine.validation.maxRecords", 1);
+  Services.prefs.setBoolPref(
+    "services.sync.engine.test-engine.validation.enabled",
+    true
+  );
+  Services.prefs.setIntPref(
+    "services.sync.engine.test-engine.validation.percentageChance",
+    100
+  );
+  Services.prefs.setIntPref(
+    "services.sync.engine.test-engine.validation.maxRecords",
+    1
+  );
   // And say we should validate every 10 seconds.
-  Services.prefs.setIntPref("services.sync.engine.test-engine.validation.interval", 10);
+  Services.prefs.setIntPref(
+    "services.sync.engine.test-engine.validation.interval",
+    10
+  );
 
   deepEqual(doctor._getEnginesToValidate([engine]), {
     "test-engine": {
       engine,
       maxRecords: 1,
-    }
+    },
   });
   // We haven't advanced the timestamp, so we should not validate again.
   deepEqual(doctor._getEnginesToValidate([engine]), {});
@@ -51,7 +65,7 @@ add_task(async function test_validation_interval() {
     "test-engine": {
       engine,
       maxRecords: 1,
-    }
+    },
   });
 });
 
@@ -66,13 +80,13 @@ add_task(async function test_repairs_start() {
     },
     canValidate() {
       return Promise.resolve(true);
-    }
+    },
   };
   let engine = {
     name: "test-engine",
     getValidator() {
       return validator;
-    }
+    },
   };
   let requestor = {
     async startRepairs(validationInfo, flowID) {
@@ -83,13 +97,13 @@ add_task(async function test_repairs_start() {
     },
     tryServerOnlyRepairs() {
       return false;
-    }
+    },
   };
   let doctor = mockDoctor({
     _getEnginesToValidate(recentlySyncedEngines) {
       deepEqual(recentlySyncedEngines, [engine]);
       return {
-        "test-engine": { engine, maxRecords: -1 }
+        "test-engine": { engine, maxRecords: -1 },
       };
     },
     _getRepairRequestor(engineName) {
@@ -100,7 +114,9 @@ add_task(async function test_repairs_start() {
       return true;
     },
   });
-  let promiseValidationDone = promiseOneObserver("weave:engine:validate:finish");
+  let promiseValidationDone = promiseOneObserver(
+    "weave:engine:validate:finish"
+  );
   await doctor.consult([engine]);
   await promiseValidationDone;
   ok(repairStarted);
@@ -114,7 +130,7 @@ add_task(async function test_repairs_advanced_daily() {
     },
     tryServerOnlyRepairs() {
       return false;
-    }
+    },
   };
   // start now at just after REPAIR_ADVANCE_PERIOD so we do a a first one.
   let now = REPAIR_ADVANCE_PERIOD + 1;
@@ -154,13 +170,13 @@ add_task(async function test_repairs_skip_if_cant_vaidate() {
     },
     validate() {
       ok(false, "Shouldn't validate");
-    }
+    },
   };
   let engine = {
     name: "test-engine",
     getValidator() {
       return validator;
-    }
+    },
   };
   let requestor = {
     async startRepairs(validationInfo, flowID) {
@@ -168,13 +184,13 @@ add_task(async function test_repairs_skip_if_cant_vaidate() {
     },
     tryServerOnlyRepairs() {
       return false;
-    }
+    },
   };
   let doctor = mockDoctor({
     _getEnginesToValidate(recentlySyncedEngines) {
       deepEqual(recentlySyncedEngines, [engine]);
       return {
-        "test-engine": { engine, maxRecords: -1 }
+        "test-engine": { engine, maxRecords: -1 },
       };
     },
     _getRepairRequestor(engineName) {

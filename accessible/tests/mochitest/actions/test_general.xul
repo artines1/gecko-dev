@@ -7,10 +7,10 @@
 
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
         title="nsIAccessible actions testing">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js" />
 
   <script type="application/javascript"
           src="../common.js" />
@@ -18,6 +18,10 @@
           src="../events.js" />
   <script type="application/javascript"
           src="../actions.js" />
+  <script type="application/javascript"
+          src="../role.js" />
+  <script type="application/javascript"
+          src="../states.js" />
 
   <script type="application/javascript">
   <![CDATA[
@@ -72,6 +76,22 @@
           ID: "labelWithPopup",
           actionName: "click",
           events: CLICK_EVENTS
+        },
+        {
+          ID: "toolbarbutton_label",
+          actionName: "click",
+          targetID: "toolbarbutton",
+          events: XUL_EVENTS,
+          allowBubbling: true
+        },
+        {
+          ID: "menulist_label",
+          actionName: "click",
+          // focusChecker expects a unique focus event. However, there might
+          // still be pending focus events not caught by previous tests.
+          eventSeq: [
+            new invokerChecker(EVENT_FOCUS, getNode("menulist"))
+          ]
         }/*, // XXX: bug 490288
         {
           ID: "buttonmenu_item",
@@ -92,12 +112,12 @@
 
   <hbox flex="1" style="overflow: auto;">
     <body xmlns="http://www.w3.org/1999/xhtml">
-      <a target="_blank"
+      <a target="_blank" rel="opener"
          href="https://bugzilla.mozilla.org/show_bug.cgi?id=410765"
          title="nsIAccessible actions testing">
         Mozilla Bug 410765
       </a>
-      <a target="_blank"
+      <a target="_blank" rel="opener"
          href="https://bugzilla.mozilla.org/show_bug.cgi?id=504252"
          title="Expose STATE_HASPOPUP on XUL elements that have an @popup attribute">
         Mozilla Bug 504252
@@ -137,7 +157,14 @@
              tabindex="0"/>
       <hbox>
         <label id="name_entry_label" value="Name" control="name_entry"/>
-        <textbox id="name_entry"/>
+        <html:input id="name_entry"/>
+      </hbox>
+      <toolbarbutton id="toolbarbutton">
+        <label id="toolbarbutton_label">toolbarbutton</label>
+      </toolbarbutton>
+      <hbox>
+        <label id="menulist_label" control="menulist">menulist</label>
+        <menulist id="menulist"/>
       </hbox>
     </vbox>
   </hbox>

@@ -5,8 +5,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=388794
 -->
 <head>
   <title>Test for Bug 388794</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <style>
     input { padding: 0; margin: 0; border: none; }
@@ -41,7 +41,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=388794
   <iframe name="test6" id="test6"></iframe>
 </p>
 <div id="content" style="display: none">
-  
+
 </div>
 <pre id="test">
 <script type="application/javascript">
@@ -91,8 +91,11 @@ addLoadEvent(function() {
 });
 
 function frameLoaded(frame) {
-  ok(hrefs[frame.name].test(frame.contentWindow.location.href),
-     "Unexpected href for frame " + frame.name, "expected to match: " + hrefs[frame.name].toString() + " got: " + frame.contentWindow.location.href);
+  ok(
+    hrefs[frame.name].test(frame.contentWindow.location.href),
+    "Unexpected href for frame " + frame.name + " - " +
+    "expected to match: " + hrefs[frame.name].toString() + " got: " + frame.contentWindow.location.href
+  );
   if (--pendingLoads == 0) {
     SimpleTest.finish();
   }

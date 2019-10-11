@@ -1,34 +1,28 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! An invalidation processor for style changes due to state and attribute
 //! changes.
 
-use {Atom, WeakAtom};
-use context::SharedStyleContext;
-use data::ElementData;
-use dom::TElement;
-use element_state::ElementState;
-use invalidation::element::element_wrapper::{ElementSnapshot, ElementWrapper};
-use invalidation::element::invalidation_map::*;
-use invalidation::element::invalidator::{DescendantInvalidationLists, InvalidationVector};
-use invalidation::element::invalidator::{Invalidation, InvalidationProcessor};
-use invalidation::element::restyle_hints::RestyleHint;
-use selector_map::SelectorMap;
-use selector_parser::Snapshot;
-use selectors::NthIndexCache;
+use crate::context::SharedStyleContext;
+use crate::data::ElementData;
+use crate::dom::TElement;
+use crate::element_state::ElementState;
+use crate::invalidation::element::element_wrapper::{ElementSnapshot, ElementWrapper};
+use crate::invalidation::element::invalidation_map::*;
+use crate::invalidation::element::invalidator::{DescendantInvalidationLists, InvalidationVector};
+use crate::invalidation::element::invalidator::{Invalidation, InvalidationProcessor};
+use crate::invalidation::element::restyle_hints::RestyleHint;
+use crate::selector_map::SelectorMap;
+use crate::selector_parser::Snapshot;
+use crate::stylesheets::origin::OriginSet;
+use crate::{Atom, WeakAtom};
 use selectors::attr::CaseSensitivity;
-use selectors::matching::{MatchingContext, MatchingMode, VisitedHandlingMode};
 use selectors::matching::matches_selector;
+use selectors::matching::{MatchingContext, MatchingMode, VisitedHandlingMode};
+use selectors::NthIndexCache;
 use smallvec::SmallVec;
-use stylesheets::origin::{Origin, OriginSet};
-
-#[derive(Debug, PartialEq)]
-enum VisitedDependent {
-    Yes,
-    No,
-}
 
 /// The collector implementation.
 struct Collector<'a, 'b: 'a, 'selectors: 'a, E>
@@ -161,14 +155,13 @@ where
             return false;
         }
 
-        // If we are sensitive to visitedness and the visited state changed, we
-        // force a restyle here. Matching doesn't depend on the actual visited
-        // state at all, so we can't look at matching results to decide what to
-        // do for this case.
+        // If we the visited state changed, we force a restyle here. Matching
+        // doesn't depend on the actual visited state at all, so we can't look
+        // at matching results to decide what to do for this case.
         if state_changes.intersects(ElementState::IN_VISITED_OR_UNVISITED_STATE) {
             trace!(" > visitedness change, force subtree restyle");
             // We can't just return here because there may also be attribute
-            // changes as well that imply additional hints.
+            // changes as well that imply additional hints for siblings.
             self.data.hint.insert(RestyleHint::restyle_subtree());
         }
 
@@ -207,17 +200,12 @@ where
                 debug!(" > state: {:?}", state_changes);
             }
             if snapshot.id_changed() {
-                debug!(
-                    " > id changed: +{:?} -{:?}",
-                    id_added,
-                    id_removed
-                );
+                debug!(" > id changed: +{:?} -{:?}", id_added, id_removed);
             }
             if snapshot.class_changed() {
                 debug!(
                     " > class changed: +{:?} -{:?}",
-                    classes_added,
-                    classes_removed
+                    classes_added, classes_removed
                 );
             }
             if snapshot.other_attr_changed() {
@@ -236,10 +224,9 @@ where
 
         let mut shadow_rule_datas = SmallVec::<[_; 3]>::new();
         let matches_document_author_rules =
-            element.each_applicable_non_document_style_rule_data(|data, quirks_mode, host| {
-                shadow_rule_datas.push((data, quirks_mode, host.map(|h| h.opaque())))
+            element.each_applicable_non_document_style_rule_data(|data, host| {
+                shadow_rule_datas.push((data, host.opaque()))
             });
-
 
         let invalidated_self = {
             let mut collector = Collector {
@@ -259,7 +246,7 @@ where
             };
 
             let document_origins = if !matches_document_author_rules {
-                Origin::UserAgent.into()
+                OriginSet::ORIGIN_USER_AGENT | OriginSet::ORIGIN_USER
             } else {
                 OriginSet::all()
             };
@@ -271,12 +258,8 @@ where
                 }
             }
 
-            for &(ref data, quirks_mode, ref host) in &shadow_rule_datas {
-                // FIXME(emilio): Replace with assert / remove when we figure
-                // out what to do with the quirks mode mismatches
-                // (that is, when bug 1406875 is properly fixed).
-                collector.matching_context.set_quirks_mode(quirks_mode);
-                collector.matching_context.current_host = host.clone();
+            for &(ref data, ref host) in &shadow_rule_datas {
+                collector.matching_context.current_host = Some(host.clone());
                 collector.collect_dependencies_in_invalidation_map(data.invalidation_map());
             }
 
@@ -347,7 +330,7 @@ where
         if let Some(ref id) = removed_id {
             if let Some(deps) = map.id_to_selector.get(id, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -356,7 +339,7 @@ where
         if let Some(ref id) = added_id {
             if let Some(deps) = map.id_to_selector.get(id, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -364,7 +347,7 @@ where
         for class in self.classes_added.iter().chain(self.classes_removed.iter()) {
             if let Some(deps) = map.class_to_selector.get(class, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -390,7 +373,7 @@ where
             self.removed_id,
             self.classes_removed,
             |dependency| {
-                self.scan_dependency(dependency, VisitedDependent::No);
+                self.scan_dependency(dependency);
                 true
             },
         );
@@ -410,97 +393,49 @@ where
                 if !dependency.state.intersects(state_changes) {
                     return true;
                 }
-                let visited_dependent = if dependency
-                    .state
-                    .intersects(ElementState::IN_VISITED_OR_UNVISITED_STATE)
-                {
-                    VisitedDependent::Yes
-                } else {
-                    VisitedDependent::No
-                };
-                self.scan_dependency(&dependency.dep, visited_dependent);
+                self.scan_dependency(&dependency.dep);
                 true
             },
         );
     }
 
-    /// Check whether a dependency should be taken into account, using a given
-    /// visited handling mode.
-    fn check_dependency(
-        &mut self,
-        visited_handling_mode: VisitedHandlingMode,
-        dependency: &Dependency,
-    ) -> bool {
+    /// Check whether a dependency should be taken into account.
+    fn check_dependency(&mut self, dependency: &Dependency) -> bool {
         let element = &self.element;
         let wrapper = &self.wrapper;
-        self.matching_context
-            .with_visited_handling_mode(visited_handling_mode, |mut context| {
-                let matches_now = matches_selector(
-                    &dependency.selector,
-                    dependency.selector_offset,
-                    None,
-                    element,
-                    &mut context,
-                    &mut |_, _| {},
-                );
+        let matches_now = matches_selector(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            element,
+            &mut self.matching_context,
+            &mut |_, _| {},
+        );
 
-                let matched_then = matches_selector(
-                    &dependency.selector,
-                    dependency.selector_offset,
-                    None,
-                    wrapper,
-                    &mut context,
-                    &mut |_, _| {},
-                );
+        let matched_then = matches_selector(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            wrapper,
+            &mut self.matching_context,
+            &mut |_, _| {},
+        );
 
-                matched_then != matches_now
-            })
+        matched_then != matches_now
     }
 
-    fn scan_dependency(
-        &mut self,
-        dependency: &'selectors Dependency,
-        is_visited_dependent: VisitedDependent,
-    ) {
+    fn scan_dependency(&mut self, dependency: &'selectors Dependency) {
         debug!(
-            "TreeStyleInvalidator::scan_dependency({:?}, {:?}, {:?})",
-            self.element, dependency, is_visited_dependent,
+            "TreeStyleInvalidator::scan_dependency({:?}, {:?})",
+            self.element, dependency
         );
 
         if !self.dependency_may_be_relevant(dependency) {
             return;
         }
 
-        let should_account_for_dependency =
-            self.check_dependency(VisitedHandlingMode::AllLinksVisitedAndUnvisited, dependency);
-
-        if should_account_for_dependency {
+        if self.check_dependency(dependency) {
             return self.note_dependency(dependency);
-        }
-
-        // If there is a relevant link, then we also matched in visited
-        // mode.
-        //
-        // Match again in this mode to ensure this also matches.
-        //
-        // Note that we never actually match directly against the element's true
-        // visited state at all, since that would expose us to timing attacks.
-        //
-        // The matching process only considers the relevant link state and
-        // visited handling mode when deciding if visited matches.  Instead, we
-        // are rematching here in case there is some :visited selector whose
-        // matching result changed for some other state or attribute change of
-        // this element (for example, for things like [foo]:visited).
-        //
-        // NOTE: This thing is actually untested because testing it is flaky,
-        // see the tests that were added and then backed out in bug 1328509.
-        if is_visited_dependent == VisitedDependent::Yes && self.element.is_link() {
-            let should_account_for_dependency =
-                self.check_dependency(VisitedHandlingMode::RelevantLinkVisited, dependency);
-
-            if should_account_for_dependency {
-                return self.note_dependency(dependency);
-            }
         }
     }
 
@@ -537,6 +472,9 @@ where
             DependencyInvalidationKind::Siblings => {
                 self.sibling_invalidations.push(invalidation);
             },
+            DependencyInvalidationKind::Parts => {
+                self.descendant_invalidations.parts.push(invalidation);
+            },
             DependencyInvalidationKind::SlottedElements => {
                 self.descendant_invalidations
                     .slotted_descendants
@@ -551,6 +489,7 @@ where
         match dependency.invalidation_kind() {
             DependencyInvalidationKind::Element => !self.invalidates_self,
             DependencyInvalidationKind::SlottedElements => self.element.is_html_slot_element(),
+            DependencyInvalidationKind::Parts => self.element.shadow_root().is_some(),
             DependencyInvalidationKind::ElementAndDescendants |
             DependencyInvalidationKind::Siblings |
             DependencyInvalidationKind::Descendants => true,

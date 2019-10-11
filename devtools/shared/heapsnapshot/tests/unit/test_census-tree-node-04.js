@@ -21,14 +21,14 @@ function run_test() {
     (function b() {
       (function c() {
         stack1 = saveStack(3);
-      }());
+      })();
       (function d() {
         stack2 = saveStack(3);
         stack3 = saveStack(3);
-      }());
+      })();
       stack4 = saveStack(2);
-    }());
-  }());
+    })();
+  })();
 
   const stack5 = saveStack(1);
 
@@ -83,7 +83,7 @@ function run_test() {
                 id: 6,
                 parent: 5,
                 reportLeafIndex: 2,
-              }
+              },
             ],
             id: 5,
             parent: 2,
@@ -148,7 +148,7 @@ function run_test() {
         children: undefined,
         id: 9,
         parent: 1,
-        reportLeafIndex: 5
+        reportLeafIndex: 5,
       },
     ],
     id: 1,

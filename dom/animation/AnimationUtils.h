@@ -14,39 +14,41 @@
 #include "nsStringFwd.h"
 
 class nsIContent;
-class nsIDocument;
 class nsIFrame;
 struct JSContext;
 
 namespace mozilla {
 
+enum class PseudoStyleType : uint8_t;
 class ComputedTimingFunction;
 class EffectSet;
 
-class AnimationUtils
-{
-public:
-  static dom::Nullable<double>
-  TimeDurationToDouble(const dom::Nullable<TimeDuration>& aTime)
-  {
+namespace dom {
+class Document;
+}
+
+class AnimationUtils {
+ public:
+  typedef dom::Document Document;
+
+  static dom::Nullable<double> TimeDurationToDouble(
+      const dom::Nullable<TimeDuration>& aTime) {
     dom::Nullable<double> result;
 
     if (!aTime.IsNull()) {
-      // 0 is an inappropriate mixin for this this area; however CSS Animations needs to
-      // have it's Time Reduction Logic refactored, so it's currently only clamping for
-      // RFP mode. RFP mode gives a much lower time precision, so we accept the security
-      // leak here for now
-      result.SetValue(
-        nsRFPService::ReduceTimePrecisionAsMSecs(aTime.Value().ToMilliseconds(), 0, TimerPrecisionType::RFPOnly)
-      );
+      // 0 is an inappropriate mixin for this this area; however CSS Animations
+      // needs to have it's Time Reduction Logic refactored, so it's currently
+      // only clamping for RFP mode. RFP mode gives a much lower time precision,
+      // so we accept the security leak here for now
+      result.SetValue(nsRFPService::ReduceTimePrecisionAsMSecs(
+          aTime.Value().ToMilliseconds(), 0, TimerPrecisionType::RFPOnly));
     }
 
     return result;
   }
 
-  static dom::Nullable<TimeDuration>
-  DoubleToTimeDuration(const dom::Nullable<double>& aTime)
-  {
+  static dom::Nullable<TimeDuration> DoubleToTimeDuration(
+      const dom::Nullable<double>& aTime) {
     dom::Nullable<TimeDuration> result;
 
     if (!aTime.IsNull()) {
@@ -62,31 +64,33 @@ public:
   /**
    * Get the document from the JS context to use when parsing CSS properties.
    */
-  static nsIDocument*
-  GetCurrentRealmDocument(JSContext* aCx);
+  static Document* GetCurrentRealmDocument(JSContext* aCx);
 
   /**
    * Get the document from the global object, or nullptr if the document has
    * no window, to use when constructing DOM object without entering the
    * target window's compartment (see KeyframeEffect constructor).
    */
-  static nsIDocument*
-  GetDocumentFromGlobal(JSObject* aGlobalObject);
+  static Document* GetDocumentFromGlobal(JSObject* aGlobalObject);
 
   /**
    * Checks if offscreen animation throttling is enabled.
    */
-  static bool
-  IsOffscreenThrottlingEnabled();
+  static bool IsOffscreenThrottlingEnabled();
 
   /**
-   * Returns true if the given EffectSet contains a current effect that animates
-   * scale. |aFrame| is used for calculation of scale values.
+   * Returns true if the given frame has an animated scale.
    */
-  static bool EffectSetContainsAnimatedScale(EffectSet& aEffects,
-                                             const nsIFrame* aFrame);
+  static bool FrameHasAnimatedScale(const nsIFrame* aFrame);
+
+  /**
+   * Returns true if the given (pseudo-)element has any transitions that are
+   * current (playing or waiting to play) or in effect (e.g. filling forwards).
+   */
+  static bool HasCurrentTransitions(const dom::Element* aElement,
+                                    PseudoStyleType aPseudoType);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif

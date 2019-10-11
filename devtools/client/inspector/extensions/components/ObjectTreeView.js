@@ -4,7 +4,10 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const { REPS, MODE } = require("devtools/client/shared/components/reps/reps");
@@ -26,9 +29,11 @@ class ObjectTreeView extends PureComponent {
   render() {
     const { object } = this.props;
 
-    const columns = [{
-      "id": "value",
-    }];
+    const columns = [
+      {
+        id: "value",
+      },
+    ];
 
     // Render the node value (omitted on the root element if it has children).
     const renderValue = props => {
@@ -36,9 +41,11 @@ class ObjectTreeView extends PureComponent {
         return undefined;
       }
 
-      return Rep(Object.assign({}, props, {
-        cropLimit: 50,
-      }));
+      return Rep(
+        Object.assign({}, props, {
+          cropLimit: 50,
+        })
+      );
     };
 
     return TreeView({
@@ -47,7 +54,8 @@ class ObjectTreeView extends PureComponent {
       columns,
       renderValue,
       expandedNodes: TreeViewClass.getExpandedNodes(object, {
-        maxLevel: 1, maxNodes: 1,
+        maxLevel: 1,
+        maxNodes: 1,
       }),
     });
   }

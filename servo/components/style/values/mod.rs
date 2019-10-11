@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Common [values][values] used in CSS.
 //!
@@ -8,24 +8,27 @@
 
 #![deny(missing_docs)]
 
-use Atom;
-pub use cssparser::{serialize_identifier, serialize_name, CowRcStr, Parser, SourceLocation, Token, RGBA};
-use parser::{Parse, ParserContext};
+use crate::parser::{Parse, ParserContext};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
+use crate::Atom;
+pub use cssparser::{serialize_identifier, serialize_name, CowRcStr, Parser};
+pub use cssparser::{SourceLocation, Token, RGBA};
 use selectors::parser::SelectorParseErrorKind;
 use std::fmt::{self, Debug, Write};
 use std::hash;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
+use to_shmem::impl_trivial_to_shmem;
 
-#[cfg(feature = "servo")]
-pub use servo::url::CssUrl;
 #[cfg(feature = "gecko")]
-pub use gecko::url::CssUrl;
+pub use crate::gecko::url::CssUrl;
+#[cfg(feature = "servo")]
+pub use crate::servo::url::CssUrl;
 
 pub mod animated;
 pub mod computed;
 pub mod distance;
 pub mod generics;
+pub mod resolved;
 pub mod specified;
 
 /// A CSS float value.
@@ -36,7 +39,6 @@ pub type CSSInteger = i32;
 
 define_keyword_type!(None_, "none");
 define_keyword_type!(Auto, "auto");
-define_keyword_type!(Normal, "normal");
 
 /// Serialize an identifier which is represented as an atom.
 #[cfg(feature = "gecko")]
@@ -93,7 +95,17 @@ where
 
 /// Convenience void type to disable some properties and values through types.
 #[cfg_attr(feature = "servo", derive(Deserialize, MallocSizeOf, Serialize))]
-#[derive(Clone, Copy, Debug, PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+)]
 pub enum Impossible {}
 
 // FIXME(nox): This should be derived but the derive code cannot cope
@@ -105,6 +117,8 @@ impl ComputeSquaredDistance for Impossible {
     }
 }
 
+impl_trivial_to_shmem!(Impossible);
+
 impl Parse for Impossible {
     fn parse<'i, 't>(
         _context: &ParserContext,
@@ -115,9 +129,22 @@ impl Parse for Impossible {
 }
 
 /// A struct representing one of two kinds of values.
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, MallocSizeOf, PartialEq,
-         SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero, ToComputedValue,
-         ToCss)]
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    MallocSizeOf,
+    PartialEq,
+    Parse,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
 pub enum Either<A, B> {
     /// The first value.
     First(A),
@@ -134,22 +161,20 @@ impl<A: Debug, B: Debug> Debug for Either<A, B> {
     }
 }
 
-impl<A: Parse, B: Parse> Parse for Either<A, B> {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Either<A, B>, ParseError<'i>> {
-        if let Ok(v) = input.try(|i| A::parse(context, i)) {
-            Ok(Either::First(v))
-        } else {
-            B::parse(context, input).map(Either::Second)
-        }
-    }
-}
-
 /// <https://drafts.csswg.org/css-values-4/#custom-idents>
-#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue)]
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
 pub struct CustomIdent(pub Atom);
 
 impl CustomIdent {
@@ -160,11 +185,13 @@ impl CustomIdent {
         excluding: &[&str],
     ) -> Result<Self, ParseError<'i>> {
         let valid = match_ignore_ascii_case! { ident,
-            "initial" | "inherit" | "unset" | "default" => false,
+            "initial" | "inherit" | "unset" | "default" | "revert" => false,
             _ => true
         };
         if !valid {
-            return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())));
+            return Err(
+                location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone()))
+            );
         }
         if excluding.iter().any(|s| ident.eq_ignore_ascii_case(s)) {
             Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
@@ -184,7 +211,9 @@ impl ToCss for CustomIdent {
 }
 
 /// <https://drafts.csswg.org/css-animations/#typedef-keyframes-name>
-#[derive(Clone, Debug, MallocSizeOf, SpecifiedValueInfo, ToComputedValue)]
+#[derive(
+    Clone, Debug, MallocSizeOf, SpecifiedValueInfo, ToComputedValue, ToResolvedValue, ToShmem,
+)]
 pub enum KeyframesName {
     /// <custom-ident>
     Ident(CustomIdent),
@@ -224,6 +253,13 @@ impl KeyframesName {
 }
 
 impl Eq for KeyframesName {}
+
+/// A trait that returns whether a given type is the `auto` value or not. So far
+/// only needed for background-size serialization, which special-cases `auto`.
+pub trait IsAuto {
+    /// Returns whether the value is the `auto` value.
+    fn is_auto(&self) -> bool;
+}
 
 impl PartialEq for KeyframesName {
     fn eq(&self, other: &Self) -> bool {

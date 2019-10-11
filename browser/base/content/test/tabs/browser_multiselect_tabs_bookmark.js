@@ -5,8 +5,9 @@
 const PREF_MULTISELECT_TABS = "browser.tabs.multiselect";
 
 async function addTab_example_com() {
-  const tab = BrowserTestUtils.addTab(gBrowser,
-    "http://example.com/", { skipAnimation: true });
+  const tab = BrowserTestUtils.addTab(gBrowser, "http://example.com/", {
+    skipAnimation: true,
+  });
   const browser = gBrowser.getBrowserForTab(tab);
   await BrowserTestUtils.browserLoaded(browser);
   return tab;
@@ -14,7 +15,7 @@ async function addTab_example_com() {
 
 add_task(async function setPref() {
   await SpecialPowers.pushPrefEnv({
-    set: [[PREF_MULTISELECT_TABS, true]]
+    set: [[PREF_MULTISELECT_TABS, true]],
   });
 });
 
@@ -23,8 +24,10 @@ add_task(async function test() {
   let tab2 = await addTab();
   let tab3 = await addTab();
 
-  let menuItemBookmarkAllTabs = document.getElementById("context_bookmarkAllTabs");
-  let menuItemBookmarkSelectedTabs = document.getElementById("context_bookmarkSelectedTabs");
+  let menuItemBookmarkTab = document.getElementById("context_bookmarkTab");
+  let menuItemBookmarkSelectedTabs = document.getElementById(
+    "context_bookmarkSelectedTabs"
+  );
 
   is(gBrowser.multiSelectedTabsCount, 0, "Zero multiselected tabs");
 
@@ -37,14 +40,26 @@ add_task(async function test() {
 
   // Check the context menu with a non-multiselected tab
   updateTabContextMenu(tab3);
-  is(menuItemBookmarkAllTabs.hidden, false, "Bookmark All Tabs is visible");
-  is(menuItemBookmarkSelectedTabs.hidden, true, "Bookmark Selected Tabs is hidden");
+  is(menuItemBookmarkTab.hidden, false, "Bookmark Tab is visible");
+  is(
+    menuItemBookmarkSelectedTabs.hidden,
+    true,
+    "Bookmark Selected Tabs is hidden"
+  );
 
   // Check the context menu with a multiselected tab and one unique page in the selection.
   updateTabContextMenu(tab2);
-  is(menuItemBookmarkAllTabs.hidden, true, "Bookmark All Tabs is visible");
-  is(menuItemBookmarkSelectedTabs.hidden, false, "Bookmark Selected Tabs is hidden");
-  is(PlacesCommandHook.uniqueSelectedPages.length, 1, "No more than one unique selected page");
+  is(menuItemBookmarkTab.hidden, true, "Bookmark Tab is visible");
+  is(
+    menuItemBookmarkSelectedTabs.hidden,
+    false,
+    "Bookmark Selected Tabs is hidden"
+  );
+  is(
+    PlacesCommandHook.uniqueSelectedPages.length,
+    1,
+    "No more than one unique selected page"
+  );
 
   info("Add a different page to selection");
   let tab4 = await addTab_example_com();
@@ -55,10 +70,19 @@ add_task(async function test() {
 
   // Check the context menu with a multiselected tab and two unique pages in the selection.
   updateTabContextMenu(tab2);
-  is(menuItemBookmarkAllTabs.hidden, true, "Bookmark All Tabs is visible");
-  is(menuItemBookmarkSelectedTabs.hidden, false, "Bookmark Selected Tabs is hidden");
-  is(PlacesCommandHook.uniqueSelectedPages.length, 2, "More than one unique selected page");
+  is(menuItemBookmarkTab.hidden, true, "Bookmark Tab is visible");
+  is(
+    menuItemBookmarkSelectedTabs.hidden,
+    false,
+    "Bookmark Selected Tabs is hidden"
+  );
+  is(
+    PlacesCommandHook.uniqueSelectedPages.length,
+    2,
+    "More than one unique selected page"
+  );
 
-  for (let tab of [tab1, tab2, tab3, tab4])
+  for (let tab of [tab1, tab2, tab3, tab4]) {
     BrowserTestUtils.removeTab(tab);
+  }
 });

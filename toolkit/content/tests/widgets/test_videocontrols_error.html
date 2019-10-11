@@ -2,9 +2,8 @@
 <html>
 <head>
   <title>Video controls test - Error</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
@@ -18,11 +17,11 @@
 <pre id="test">
 <script clas="testbody" type="application/javascript">
   const video = document.getElementById("video");
-  const statusOverlay = getAnonElementWithinVideoByAttribute(video, "anonid", "statusOverlay");
-  const statusIcon = getAnonElementWithinVideoByAttribute(video, "anonid", "statusIcon");
+  const statusOverlay = getElementWithinVideo(video, "statusOverlay");
+  const statusIcon = getElementWithinVideo(video, "statusIcon");
+  const statusLabelErrorNoSource = getElementWithinVideo(video, "errorNoSource");
 
   add_task(async function setup() {
-    await new Promise(resolve => window.addEventListener("load", resolve, {once: true}));
     await SpecialPowers.pushPrefEnv({"set": [["media.cache_size", 40000]]});
   });
 
@@ -37,7 +36,7 @@
     await SimpleTest.promiseWaitForCondition(() => statusOverlay.hidden,
       "statusOverlay should not present without error");
 
-    ok(!statusOverlay.hasAttribute("error"), "statusOverlay should not in error state");
+    ok(!statusOverlay.hasAttribute("status"), "statusOverlay should not be showing a state message.");
     isnot(statusIcon.getAttribute("type"), "error", "should not show error icon");
   });
 
@@ -50,8 +49,10 @@
     });
 
     ok(!statusOverlay.hidden, `statusOverlay should show when ${errorType}`);
-    is(statusOverlay.getAttribute("error"), errorType, `statusOverlay should have correct error state: ${errorType}`);
+    is(statusOverlay.getAttribute("status"), errorType, `statusOverlay should have correct error state: ${errorType}`);
     is(statusIcon.getAttribute("type"), "error", `should show error icon when ${errorType}`);
+    isnot(statusLabelErrorNoSource.getBoundingClientRect().height, 0,
+      "errorNoSource status label should be visible.");
   });
 </script>
 </pre>

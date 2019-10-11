@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 /* Bug 1140839 */
@@ -16,20 +15,47 @@ function test() {
     openScratchpad(runTests);
   });
 
-  gBrowser.loadURI("data:text/html,<title>Bug 1140839</title>" +
-                   "<p>test Scratchpad should remember View options");
+  BrowserTestUtils.loadURI(
+    gBrowser,
+    "data:text/html,<title>Bug 1140839</title>" +
+      "<p>test Scratchpad should remember View options"
+  );
 }
 
 function runTests() {
   const doc = gScratchpadWindow.document;
 
   const testData = [
-    {itemMenuId: "sp-menu-line-numbers", prefId: "devtools.scratchpad.lineNumbers", expectedVal: false},
-    {itemMenuId: "sp-menu-word-wrap", prefId: "devtools.scratchpad.wrapText", expectedVal: true},
-    {itemMenuId: "sp-menu-highlight-trailing-space", prefId: "devtools.scratchpad.showTrailingSpace", expectedVal: true},
-    {itemMenuId: "sp-menu-larger-font", prefId: "devtools.scratchpad.editorFontSize", expectedVal: 13},
-    {itemMenuId: "sp-menu-normal-size-font", prefId: "devtools.scratchpad.editorFontSize", expectedVal: 12},
-    {itemMenuId: "sp-menu-smaller-font", prefId: "devtools.scratchpad.editorFontSize", expectedVal: 11},
+    {
+      itemMenuId: "sp-menu-line-numbers",
+      prefId: "devtools.scratchpad.lineNumbers",
+      expectedVal: false,
+    },
+    {
+      itemMenuId: "sp-menu-word-wrap",
+      prefId: "devtools.scratchpad.wrapText",
+      expectedVal: true,
+    },
+    {
+      itemMenuId: "sp-menu-highlight-trailing-space",
+      prefId: "devtools.scratchpad.showTrailingSpace",
+      expectedVal: true,
+    },
+    {
+      itemMenuId: "sp-menu-larger-font",
+      prefId: "devtools.scratchpad.editorFontSize",
+      expectedVal: 13,
+    },
+    {
+      itemMenuId: "sp-menu-normal-size-font",
+      prefId: "devtools.scratchpad.editorFontSize",
+      expectedVal: 12,
+    },
+    {
+      itemMenuId: "sp-menu-smaller-font",
+      prefId: "devtools.scratchpad.editorFontSize",
+      expectedVal: 11,
+    },
   ];
 
   testData.forEach(function(data) {
@@ -39,10 +65,17 @@ function runTests() {
       const menu = doc.getElementById(data.itemMenuId);
       menu.doCommand();
       const newPreferenceValue = getPref(data.prefId);
-      ok(newPreferenceValue === data.expectedVal, newPreferenceValue + " !== " + data.expectedVal);
+      ok(
+        newPreferenceValue === data.expectedVal,
+        newPreferenceValue + " !== " + data.expectedVal
+      );
       Services.prefs.clearUserPref(data.prefId);
     } catch (exception) {
-      ok(false, "Exception thrown while executing the command of menuitem #" + data.itemMenuId);
+      ok(
+        false,
+        "Exception thrown while executing the command of menuitem #" +
+          data.itemMenuId
+      );
     }
   });
 

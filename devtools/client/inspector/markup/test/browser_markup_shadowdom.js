@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -53,9 +52,9 @@ const TEST_DATA = [
           inner
         class="no-slot-class"
           no-slot-text
-          inner`
-
-  }, {
+          inner`,
+  },
+  {
     // Test that components without any direct children still display a shadow root node,
     // if a shadow root is attached to the host.
     title: "shadow root without direct children",
@@ -75,9 +74,9 @@ const TEST_DATA = [
       test-component
         #shadow-root
           slot
-            fallback-content`
-
-  }, {
+            fallback-content`,
+  },
+  {
     // Test that markup view is correctly displayed for non-trivial shadow DOM nesting.
     title: "nested components",
     url: `data:text/html;charset=utf-8,
@@ -128,9 +127,9 @@ const TEST_DATA = [
         div
         third-component
           #shadow-root
-            div`
-
-  }, {
+            div`,
+  },
+  {
     // Test that ::before and ::after pseudo elements are correctly displayed in host
     // components and in slot elements.
     title: "pseudo elements",
@@ -172,9 +171,9 @@ const TEST_DATA = [
             ::after
         ::before
         class="light-dom"
-        ::after`
-
-  }, {
+        ::after`,
+  },
+  {
     // Test empty web components are still displayed correctly.
     title: "empty components",
     url: `data:text/html;charset=utf-8,
@@ -192,22 +191,99 @@ const TEST_DATA = [
       </script>`,
     tree: `
       test-component
-        #shadow-root`
-  }
+        #shadow-root`,
+  },
+  {
+    // Test shadow hosts show their shadow root even if they contain just a short text.
+    title: "shadow host with inline-text-child",
+    url: `data:text/html;charset=utf-8,
+      <test-component>
+        <inner-component>short-text-outside</inner-component>
+      </test-component>
+
+      <script>
+        "use strict";
+
+        customElements.define("test-component", class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = "<div><slot></slot></div>";
+          }
+        });
+
+        customElements.define("inner-component", class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = "short-text-inside";
+          }
+        });
+      </script>`,
+    tree: `
+      test-component
+        #shadow-root
+          div
+            slot
+              inner-component!slotted
+        inner-component
+          #shadow-root
+            short-text-inside
+          short-text-outside`,
+  },
+  {
+    // Test for Bug 1537877, crash with nested custom elements without slot.
+    title: "nested components without slot",
+    url: `data:text/html;charset=utf-8,
+      <test-component>
+        <inner-component slot="non-existing-slot"></inner-component>
+      </test-component>
+
+      <script>
+        "use strict";
+
+        customElements.define('test-component', class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = '<div>test-component-content</div>'
+          }
+        });
+
+        customElements.define('inner-component', class extends HTMLElement {
+          constructor() {
+            super();
+            let shadowRoot = this.attachShadow({mode: "#MODE#"});
+            shadowRoot.innerHTML = 'inner-component-content'
+          }
+        });
+      </script>`,
+    tree: `
+      test-component
+        #shadow-root
+          div
+        inner-component
+          #shadow-root
+            inner-component-content`,
+  },
 ];
 
-for (const {url, tree, title} of TEST_DATA) {
+for (const { url, tree, title } of TEST_DATA) {
   // Test each configuration in both open and closed modes
   add_task(async function() {
     info(`Testing: [${title}] in OPEN mode`);
-    await enableWebComponents();
-    const {inspector} = await openInspectorForURL(url.replace("#MODE#", "open"));
+    const { inspector, tab } = await openInspectorForURL(
+      url.replace(/#MODE#/g, "open")
+    );
     await assertMarkupViewAsTree(tree, "test-component", inspector);
+    await removeTab(tab);
   });
   add_task(async function() {
     info(`Testing: [${title}] in CLOSED mode`);
-    await enableWebComponents();
-    const {inspector} = await openInspectorForURL(url.replace("#MODE#", "closed"));
+    const { inspector, tab } = await openInspectorForURL(
+      url.replace(/#MODE#/g, "closed")
+    );
     await assertMarkupViewAsTree(tree, "test-component", inspector);
+    await removeTab(tab);
   });
 }

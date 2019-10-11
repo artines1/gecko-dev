@@ -7,21 +7,21 @@ add_task(async function() {
   const AutocompletePopup = require("devtools/client/shared/autocomplete-popup");
 
   info("Create an autocompletion popup");
-  const [,, doc] = await createHost();
+  const [, , doc] = await createHost();
   const input = doc.createElement("input");
   doc.body.appendChild(input);
 
   const autocompleteOptions = {
     position: "top",
-    autoSelect: true
+    autoSelect: true,
   };
   const popup = new AutocompletePopup(doc, autocompleteOptions);
   input.focus();
 
   const items = [
-    {label: "item0", value: "value0"},
-    {label: "item1", value: "value1"},
-    {label: "item2", value: "value2"},
+    { label: "item0", value: "value0" },
+    { label: "item1", value: "value1" },
+    { label: "item2", value: "value2" },
   ];
 
   ok(!popup.isOpen, "popup is not open");
@@ -38,13 +38,16 @@ add_task(async function() {
   popup.setItems(items);
 
   is(popup.itemCount, items.length, "items added");
-  is(JSON.stringify(popup.getItems()), JSON.stringify(items),
-    "getItems returns back the same items");
+  is(
+    JSON.stringify(popup.getItems()),
+    JSON.stringify(items),
+    "getItems returns back the same items"
+  );
   is(popup.selectedIndex, 0, "Index of the first item from top is selected.");
   is(popup.selectedItem, items[0], "First item from top is selected");
   checkActiveDescendant(popup, input);
 
-  popup.selectedIndex = 1;
+  popup.selectItemAtIndex(1);
 
   is(popup.selectedIndex, 1, "index 1 is selected");
   is(popup.selectedItem, items[1], "item1 is selected");
@@ -74,22 +77,6 @@ add_task(async function() {
   is(popup.selectedItem, items[0], "item0 is selected");
   checkActiveDescendant(popup, input);
 
-  items.push({label: "label3", value: "value3"});
-  popup.appendItem(items[3]);
-
-  is(popup.itemCount, items.length, "item3 appended");
-
-  popup.selectedIndex = 3;
-  is(popup.selectedItem, items[3], "item3 is selected");
-  checkActiveDescendant(popup, input);
-
-  popup.removeItem(items[2]);
-
-  is(popup.selectedIndex, 2, "index2 is selected");
-  is(popup.selectedItem, items[3], "item3 is still selected");
-  checkActiveDescendant(popup, input);
-  is(popup.itemCount, items.length - 1, "item2 removed");
-
   popup.clearItems();
   is(popup.itemCount, 0, "items cleared");
   ok(!input.hasAttribute("aria-activedescendant"), "no aria-activedescendant");
@@ -111,6 +98,9 @@ function checkActiveDescendant(popup, input) {
 
   ok(popupItem, "Active descendant is found in the popup list");
   ok(cloneItem, "Active descendant is found in the list clone");
-  is(stripNS(popupItem.outerHTML), cloneItem.outerHTML,
-    "Cloned item has the same HTML as the original element");
+  is(
+    stripNS(popupItem.outerHTML),
+    cloneItem.outerHTML,
+    "Cloned item has the same HTML as the original element"
+  );
 }

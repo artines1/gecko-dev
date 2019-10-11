@@ -20,12 +20,25 @@
 /* eslint-env mozilla/frame-script */
 /* global Services */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "FormAutofill",
-                               "resource://formautofill/FormAutofill.jsm");
-ChromeUtils.defineModuleGetter(this, "FormAutofillUtils",
-                               "resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormAutofill",
+  "resource://formautofill/FormAutofill.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormAutofillUtils",
+  "resource://formautofill/FormAutofillUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AppConstants",
+  "resource://gre/modules/AppConstants.jsm"
+);
 
 const SAVE_CREDITCARD_DEFAULT_PREF = "dom.payments.defaults.saveCreditCard";
 const SAVE_ADDRESS_DEFAULT_PREF = "dom.payments.defaults.saveAddress";
@@ -33,7 +46,9 @@ const SAVE_ADDRESS_DEFAULT_PREF = "dom.payments.defaults.saveAddress";
 let PaymentFrameScript = {
   init() {
     XPCOMUtils.defineLazyGetter(this, "log", () => {
-      let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
+      let { ConsoleAPI } = ChromeUtils.import(
+        "resource://gre/modules/Console.jsm"
+      );
       return new ConsoleAPI({
         maxLogLevelPref: "dom.payments.loglevel",
         prefix: "paymentDialogFrameScript",
@@ -49,7 +64,7 @@ let PaymentFrameScript = {
     this.sendToChrome(event);
   },
 
-  receiveMessage({data: {messageType, data}}) {
+  receiveMessage({ data: { messageType, data } }) {
     this.sendToContent(messageType, data);
   },
 
@@ -61,9 +76,13 @@ let PaymentFrameScript = {
 
     let contentLogObject = Cu.waiveXrays(content).log;
     for (let name of ["error", "warn", "info", "debug"]) {
-      Cu.exportFunction(privilegedLogger[name].bind(privilegedLogger), contentLogObject, {
-        defineAs: name,
-      });
+      Cu.exportFunction(
+        privilegedLogger[name].bind(privilegedLogger),
+        contentLogObject,
+        {
+          defineAs: name,
+        }
+      );
     }
   },
 
@@ -74,10 +93,15 @@ let PaymentFrameScript = {
     let waivedContent = Cu.waiveXrays(content);
     let PaymentDialogUtils = {
       DEFAULT_REGION: FormAutofill.DEFAULT_REGION,
-      supportedCountries: FormAutofill.supportedCountries,
+      countries: FormAutofill.countries,
 
-      getAddressLabel(address) {
-        return FormAutofillUtils.getAddressLabel(address);
+      getAddressLabel(address, addressFields = null) {
+        return FormAutofillUtils.getAddressLabel(address, addressFields);
+      },
+
+      getCreditCardNetworks() {
+        let networks = FormAutofillUtils.getCreditCardNetworks();
+        return Cu.cloneInto(networks, waivedContent);
       },
 
       isCCNumber(value) {
@@ -89,23 +113,46 @@ let PaymentFrameScript = {
         return Cu.cloneInto(format, waivedContent);
       },
 
+      findAddressSelectOption(selectEl, address, fieldName) {
+        return FormAutofillUtils.findAddressSelectOption(
+          selectEl,
+          address,
+          fieldName
+        );
+      },
+
       getDefaultPreferences() {
-        let prefValues = Cu.cloneInto({
-          saveCreditCardDefaultChecked:
-            Services.prefs.getBoolPref(SAVE_CREDITCARD_DEFAULT_PREF, false),
-          saveAddressDefaultChecked:
-            Services.prefs.getBoolPref(SAVE_ADDRESS_DEFAULT_PREF, false),
-        }, waivedContent);
-        return prefValues;
+        let prefValues = Cu.cloneInto(
+          {
+            saveCreditCardDefaultChecked: Services.prefs.getBoolPref(
+              SAVE_CREDITCARD_DEFAULT_PREF,
+              false
+            ),
+            saveAddressDefaultChecked: Services.prefs.getBoolPref(
+              SAVE_ADDRESS_DEFAULT_PREF,
+              false
+            ),
+          },
+          waivedContent
+        );
+        return Cu.cloneInto(prefValues, waivedContent);
+      },
+
+      isOfficialBranding() {
+        return AppConstants.MOZILLA_OFFICIAL;
       },
     };
-    waivedContent.PaymentDialogUtils = Cu.cloneInto(PaymentDialogUtils, waivedContent, {
-      cloneFunctions: true,
-    });
+    waivedContent.PaymentDialogUtils = Cu.cloneInto(
+      PaymentDialogUtils,
+      waivedContent,
+      {
+        cloneFunctions: true,
+      }
+    );
   },
 
-  sendToChrome({detail}) {
-    let {messageType} = detail;
+  sendToChrome({ detail }) {
+    let { messageType } = detail;
     if (messageType == "initializeRequest") {
       this.setupContentConsole();
       this.exposeUtilityFunctions();
@@ -116,7 +163,7 @@ let PaymentFrameScript = {
 
   sendToContent(messageType, detail = {}) {
     this.log.debug("sendToContent", messageType, detail);
-    let response = Object.assign({messageType}, detail);
+    let response = Object.assign({ messageType }, detail);
     let event = new content.CustomEvent("paymentChromeToContent", {
       detail: Cu.cloneInto(response, content),
     });
@@ -124,7 +171,10 @@ let PaymentFrameScript = {
   },
 
   sendMessageToChrome(messageType, data = {}) {
-    sendAsyncMessage("paymentContentToChrome", Object.assign(data, {messageType}));
+    sendAsyncMessage(
+      "paymentContentToChrome",
+      Object.assign(data, { messageType })
+    );
   },
 };
 

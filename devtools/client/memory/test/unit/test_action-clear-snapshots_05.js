@@ -5,7 +5,10 @@
 
 // Test clearSnapshots deletes several snapshots
 
-const { takeSnapshotAndCensus, clearSnapshots } = require("devtools/client/memory/actions/snapshot");
+const {
+  takeSnapshotAndCensus,
+  clearSnapshots,
+} = require("devtools/client/memory/actions/snapshot");
 const { actions, treeMapState } = require("devtools/client/memory/constants");
 
 add_task(async function() {
@@ -19,13 +22,15 @@ add_task(async function() {
   dispatch(takeSnapshotAndCensus(front, heapWorker));
   dispatch(takeSnapshotAndCensus(front, heapWorker));
   ok(true, "snapshots created with a saved census");
-  await waitUntilCensusState(store, snapshot => snapshot.treeMap,
-                             [treeMapState.SAVED, treeMapState.SAVED]);
+  await waitUntilCensusState(store, snapshot => snapshot.treeMap, [
+    treeMapState.SAVED,
+    treeMapState.SAVED,
+  ]);
 
   const errorHeapWorker = {
     deleteHeapSnapshot: function() {
       return Promise.reject("_");
-    }
+    },
   };
 
   ok(true, "dispatch clearSnapshots action");

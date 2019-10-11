@@ -10,9 +10,10 @@
  * liability, trademark and document use rules apply.
  */
 
-[Constructor(DOMString type, optional EventInit eventInitDict),
- Exposed=(Window,Worker,System), ProbablyShortLivingWrapper]
+[Exposed=(Window,Worker), ProbablyShortLivingWrapper]
 interface Event {
+  constructor(DOMString type, optional EventInit eventInitDict = {});
+
   [Pure]
   readonly attribute DOMString type;
   [Pure, BindingAlias="srcElement"]
@@ -36,6 +37,8 @@ interface Event {
   readonly attribute boolean bubbles;
   [Pure]
   readonly attribute boolean cancelable;
+  [NeedsCallerType]
+  attribute boolean returnValue;
   [NeedsCallerType]
   void preventDefault();
   [Pure, NeedsCallerType]
@@ -79,6 +82,7 @@ partial interface Event {
    */
   readonly attribute EventTarget? explicitOriginalTarget;
   [ChromeOnly] readonly attribute EventTarget? composedTarget;
+  [ChromeOnly] void preventMultipleActions();
   [ChromeOnly] readonly attribute boolean multipleActionsPrevented;
   [ChromeOnly] readonly attribute boolean isSynthesized;
 };

@@ -10,14 +10,27 @@ include PBackgroundSharedTypes;
 
 include "mozilla/dom/quota/SerializationHelpers.h";
 
+using mozilla::OriginAttributesPattern
+  from "mozilla/OriginAttributes.h";
+
 using mozilla::dom::quota::PersistenceType
   from "mozilla/dom/quota/PersistenceType.h";
+
+using mozilla::dom::quota::Client::Type
+  from "mozilla/dom/quota/Client.h";
+
+using mozilla::dom::ContentParentId
+  from "mozilla/dom/ipc/IdType.h";
 
 namespace mozilla {
 namespace dom {
 namespace quota {
 
 struct InitParams
+{
+};
+
+struct InitTemporaryStorageParams
 {
 };
 
@@ -35,7 +48,7 @@ struct AllUsageParams
 struct OriginUsageParams
 {
   PrincipalInfo principalInfo;
-  bool getGroupUsage;
+  bool fromMemory;
 };
 
 union UsageRequestParams
@@ -44,17 +57,29 @@ union UsageRequestParams
   OriginUsageParams;
 };
 
-struct ClearOriginParams
+struct ClearResetOriginParams
 {
   PrincipalInfo principalInfo;
   PersistenceType persistenceType;
   bool persistenceTypeIsExplicit;
-  bool clearAll;
+  Type clientType;
+  bool clientTypeIsExplicit;
+  bool matchAll;
+};
+
+struct ClearOriginParams
+{
+  ClearResetOriginParams commonParams;
+};
+
+struct ResetOriginParams
+{
+  ClearResetOriginParams commonParams;
 };
 
 struct ClearDataParams
 {
-  nsString pattern;
+  OriginAttributesPattern pattern;
 };
 
 struct ClearAllParams
@@ -75,16 +100,29 @@ struct PersistParams
   PrincipalInfo principalInfo;
 };
 
+struct EstimateParams
+{
+  PrincipalInfo principalInfo;
+};
+
+struct ListOriginsParams
+{
+};
+
 union RequestParams
 {
   InitParams;
+  InitTemporaryStorageParams;
   InitOriginParams;
   ClearOriginParams;
+  ResetOriginParams;
   ClearDataParams;
   ClearAllParams;
   ResetAllParams;
   PersistedParams;
   PersistParams;
+  EstimateParams;
+  ListOriginsParams;
 };
 
 protocol PQuota
@@ -104,6 +142,8 @@ parent:
   async StartIdleMaintenance();
 
   async StopIdleMaintenance();
+
+  async AbortOperationsForProcess(ContentParentId contentParentId);
 };
 
 } // namespace quota

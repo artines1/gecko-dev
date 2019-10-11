@@ -2,8 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import
-
 import os
 
 import mozunit
@@ -40,6 +38,8 @@ def test_parse_valid_linter(parse):
     assert 'type' in lintobj
     assert 'payload' in lintobj
     assert 'extensions' in lintobj
+    assert 'include' in lintobj
+    assert lintobj['include'] == ['.']
     assert set(lintobj['extensions']) == set(['js', 'jsm'])
 
 
@@ -47,6 +47,7 @@ def test_parse_valid_linter(parse):
     'invalid_type.yml',
     'invalid_extension.ym',
     'invalid_include.yml',
+    'invalid_include_with_glob.yml',
     'invalid_exclude.yml',
     'invalid_support_files.yml',
     'missing_attrs.yml',

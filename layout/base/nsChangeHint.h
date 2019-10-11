@@ -12,6 +12,7 @@
 #include "mozilla/Types.h"
 #include "nsDebug.h"
 #include "nsTArray.h"
+#include "mozilla/ServoStyleConsts.h"
 
 // Defines for various style related constants
 
@@ -41,12 +42,8 @@ enum nsChangeHint : uint32_t {
   // Clear*Intrinsics flags are set.
   nsChangeHint_NeedDirtyReflow = 1 << 4,
 
-  // change requires view to be updated, if there is one (e.g., clip:).
-  // Updates all descendants (including following placeholders to out-of-flows).
-  nsChangeHint_SyncFrameView = 1 << 5,
-
   // The currently shown mouse cursor needs to be updated
-  nsChangeHint_UpdateCursor = 1 << 6,
+  nsChangeHint_UpdateCursor = 1 << 5,
 
   /**
    * Used when the computed value (a URI) of one or more of an element's
@@ -56,19 +53,19 @@ enum nsChangeHint : uint32_t {
    * hint results in SVGObserverUtils::UpdateEffects being called on the
    * element's frame.
    */
-  nsChangeHint_UpdateEffects = 1 << 7,
+  nsChangeHint_UpdateEffects = 1 << 6,
 
   /**
    * Visual change only, but the change can be handled entirely by
    * updating the layer(s) for the frame.
    * Updates all descendants (including following placeholders to out-of-flows).
    */
-  nsChangeHint_UpdateOpacityLayer = 1 << 8,
+  nsChangeHint_UpdateOpacityLayer = 1 << 7,
   /**
    * Updates all descendants. Any placeholder descendants' out-of-flows
    * are also descendants of the transformed frame, so they're updated.
    */
-  nsChangeHint_UpdateTransformLayer = 1 << 9,
+  nsChangeHint_UpdateTransformLayer = 1 << 8,
 
   /**
    * Change requires frame change (e.g., display:).
@@ -78,19 +75,19 @@ enum nsChangeHint : uint32_t {
    * Note that this subsumes all the other change hints. (see
    * RestyleManager::ProcessRestyledFrames for details).
    */
-  nsChangeHint_ReconstructFrame = 1 << 10,
+  nsChangeHint_ReconstructFrame = 1 << 9,
 
   /**
    * The frame's overflow area has changed. Does not update any descendant
    * frames.
    */
-  nsChangeHint_UpdateOverflow = 1 << 11,
+  nsChangeHint_UpdateOverflow = 1 << 10,
 
   /**
    * The overflow area of the frame and all of its descendants has changed. This
    * can happen through a text-decoration change.
    */
-  nsChangeHint_UpdateSubtreeOverflow = 1 << 12,
+  nsChangeHint_UpdateSubtreeOverflow = 1 << 11,
 
   /**
    * The frame's overflow area has changed, through a change in its transform.
@@ -100,7 +97,7 @@ enum nsChangeHint : uint32_t {
    * changed, see nsChangeHint_UpdateOverflow.
    * Does not update any descendant frames.
    */
-  nsChangeHint_UpdatePostTransformOverflow = 1 << 13,
+  nsChangeHint_UpdatePostTransformOverflow = 1 << 12,
 
   /**
    * This frame's effect on its parent's overflow area has changed.
@@ -108,13 +105,13 @@ enum nsChangeHint : uint32_t {
    * changed; if those are the case, see
    * nsChangeHint_UpdatePostTransformOverflow.)
    */
-  nsChangeHint_UpdateParentOverflow = 1 << 14,
+  nsChangeHint_UpdateParentOverflow = 1 << 13,
 
   /**
-   * The children-only transform of an SVG frame changed, requiring the
-   * overflow rects of the frame's immediate children to be updated.
+   * The children-only transform of an SVG frame changed, requiring overflows to
+   * be updated.
    */
-  nsChangeHint_ChildrenOnlyTransform = 1 << 15,
+  nsChangeHint_ChildrenOnlyTransform = 1 << 14,
 
   /**
    * The frame's offsets have changed, while its dimensions might have
@@ -126,7 +123,7 @@ enum nsChangeHint : uint32_t {
    * nsChangeHint_UpdateOverflow in order to get the overflow areas of
    * the ancestors updated as well.
    */
-  nsChangeHint_RecomputePosition = 1 << 16,
+  nsChangeHint_RecomputePosition = 1 << 15,
 
   /**
    * Behaves like ReconstructFrame, but only if the frame has descendants
@@ -139,7 +136,7 @@ enum nsChangeHint : uint32_t {
    * only if there was a change to whether the element's overall style
    * indicates that it establishes a containing block.
    */
-  nsChangeHint_UpdateContainingBlock = 1 << 17,
+  nsChangeHint_UpdateContainingBlock = 1 << 16,
 
   /**
    * This change hint has *no* change handling behavior.  However, it
@@ -147,19 +144,13 @@ enum nsChangeHint : uint32_t {
    * changes, and it's inherited by a child, that might require a reflow
    * due to the border-width change on the child.
    */
-  nsChangeHint_BorderStyleNoneChange = 1 << 18,
-
-  /**
-   * SVG textPath needs to be recomputed because the path has changed.
-   * This means that the glyph positions of the text need to be recomputed.
-   */
-  nsChangeHint_UpdateTextPath = 1 << 19,
+  nsChangeHint_BorderStyleNoneChange = 1 << 17,
 
   /**
    * This will schedule an invalidating paint. This is useful if something
    * has changed which will be invalidated by DLBI.
    */
-  nsChangeHint_SchedulePaint = 1 << 20,
+  nsChangeHint_SchedulePaint = 1 << 18,
 
   /**
    * A hint reflecting that style data changed with no change handling
@@ -175,26 +166,26 @@ enum nsChangeHint : uint32_t {
    * different data would be cached information that would be re-calculated
    * to the same values, such as nsStyleBorder::mSubImages.)
    */
-  nsChangeHint_NeutralChange = 1 << 21,
+  nsChangeHint_NeutralChange = 1 << 19,
 
   /**
    * This will cause rendering observers to be invalidated.
    */
-  nsChangeHint_InvalidateRenderingObservers = 1 << 22,
+  nsChangeHint_InvalidateRenderingObservers = 1 << 20,
 
   /**
    * Indicates that the reflow changes the size or position of the
    * element, and thus the reflow must start from at least the frame's
-   * parent.  Must be not be set without also setting nsChangeHint_NeedReflow
-   * and nsChangeHint_ClearAncestorIntrinsics.
+   * parent.  Must be not be set without also setting nsChangeHint_NeedReflow.
+   * And consider adding nsChangeHint_ClearAncestorIntrinsics if needed.
    */
-  nsChangeHint_ReflowChangesSizeOrPosition = 1 << 23,
+  nsChangeHint_ReflowChangesSizeOrPosition = 1 << 21,
 
   /**
    * Indicates that the style changes the computed BSize --- e.g. 'height'.
    * Must not be set without also setting nsChangeHint_NeedReflow.
    */
-  nsChangeHint_UpdateComputedBSize = 1 << 24,
+  nsChangeHint_UpdateComputedBSize = 1 << 22,
 
   /**
    * Indicates that the 'opacity' property changed between 1 and non-1.
@@ -204,7 +195,7 @@ enum nsChangeHint : uint32_t {
    * Note that we do not send this hint if the non-1 value was 0.99 or
    * greater, since in that case we send a RepaintFrame hint instead.
    */
-  nsChangeHint_UpdateUsesOpacity = 1 << 25,
+  nsChangeHint_UpdateUsesOpacity = 1 << 23,
 
   /**
    * Indicates that the 'background-position' property changed.
@@ -213,35 +204,37 @@ enum nsChangeHint : uint32_t {
    * the frame does not build individual background image display items
    * for each background layer.
    */
-  nsChangeHint_UpdateBackgroundPosition = 1 << 26,
+  nsChangeHint_UpdateBackgroundPosition = 1 << 24,
 
   /**
    * Indicates that a frame has changed to or from having the CSS
    * transform property set.
    */
-  nsChangeHint_AddOrRemoveTransform = 1 << 27,
+  nsChangeHint_AddOrRemoveTransform = 1 << 25,
 
   /**
-   * Indicates that the overflow-x and/or overflow-y property changed.
+   * Indicates that the presence of scrollbars might have changed.
+   *
+   * This happens when at least one of overflow-{x,y} properties changed.
    *
    * In most cases, this is equivalent to nsChangeHint_ReconstructFrame. But
    * in some special cases where the change is really targeting the viewport's
    * scrollframe, this is instead equivalent to nsChangeHint_AllReflowHints
    * (because the viewport always has an associated scrollframe).
    */
-  nsChangeHint_CSSOverflowChange = 1 << 28,
+  nsChangeHint_ScrollbarChange = 1 << 26,
 
   /**
    * Indicates that nsIFrame::UpdateWidgetProperties needs to be called.
    * This is used for -moz-window-* properties.
    */
-  nsChangeHint_UpdateWidgetProperties = 1 << 29,
+  nsChangeHint_UpdateWidgetProperties = 1 << 27,
 
   /**
    *  Indicates that there has been a colspan or rowspan attribute change
    *  on the cells of a table.
    */
-  nsChangeHint_UpdateTableCellSpans = 1 << 30,
+  nsChangeHint_UpdateTableCellSpans = 1 << 28,
 
   /**
    * Indicates that the visiblity property changed.
@@ -249,7 +242,7 @@ enum nsChangeHint : uint32_t {
    * visibility:hidden elements in the case where the elements have no visible
    * descendants.
    */
-  nsChangeHint_VisibilityChange = 1u << 31,
+  nsChangeHint_VisibilityChange = 1u << 29,
 
   // IMPORTANT NOTE: When adding a new hint, you will need to add it to
   // one of:
@@ -266,7 +259,7 @@ enum nsChangeHint : uint32_t {
   /**
    * Dummy hint value for all hints. It exists for compile time check.
    */
-  nsChangeHint_AllHints = uint32_t((1ull << 32) - 1),
+  nsChangeHint_AllHints = uint32_t((1ull << 30) - 1),
 };
 
 // Redefine these operators to return nothing. This will catch any use
@@ -290,42 +283,34 @@ inline bool NS_IsHintSubset(nsChangeHint aSubset, nsChangeHint aSuperSet) {
 // infinite recursion.
 typedef decltype(nsChangeHint(0) + nsChangeHint(0)) nsChangeHint_size_t;
 
-inline nsChangeHint constexpr
-operator|(nsChangeHint aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint constexpr operator|(nsChangeHint aLeft,
+                                        nsChangeHint aRight) {
   return nsChangeHint(nsChangeHint_size_t(aLeft) | nsChangeHint_size_t(aRight));
 }
 
-inline nsChangeHint constexpr
-operator&(nsChangeHint aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint constexpr operator&(nsChangeHint aLeft,
+                                        nsChangeHint aRight) {
   return nsChangeHint(nsChangeHint_size_t(aLeft) & nsChangeHint_size_t(aRight));
 }
 
-inline nsChangeHint& operator|=(nsChangeHint& aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint& operator|=(nsChangeHint& aLeft, nsChangeHint aRight) {
   return aLeft = aLeft | aRight;
 }
 
-inline nsChangeHint& operator&=(nsChangeHint& aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint& operator&=(nsChangeHint& aLeft, nsChangeHint aRight) {
   return aLeft = aLeft & aRight;
 }
 
-inline nsChangeHint constexpr
-operator~(nsChangeHint aArg)
-{
+inline nsChangeHint constexpr operator~(nsChangeHint aArg) {
   return nsChangeHint(~nsChangeHint_size_t(aArg));
 }
 
-inline nsChangeHint constexpr
-operator^(nsChangeHint aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint constexpr operator^(nsChangeHint aLeft,
+                                        nsChangeHint aRight) {
   return nsChangeHint(nsChangeHint_size_t(aLeft) ^ nsChangeHint_size_t(aRight));
 }
 
-inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight)
-{
+inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight) {
   return aLeft = aLeft ^ aRight;
 }
 
@@ -338,79 +323,58 @@ inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight)
  */
 
 // The change hints that are always handled for descendants.
-#define nsChangeHint_Hints_AlwaysHandledForDescendants (   \
-  nsChangeHint_ClearDescendantIntrinsics |                 \
-  nsChangeHint_NeedDirtyReflow |                           \
-  nsChangeHint_NeutralChange |                             \
-  nsChangeHint_ReconstructFrame |                          \
-  nsChangeHint_RepaintFrame |                              \
-  nsChangeHint_SchedulePaint |                             \
-  nsChangeHint_SyncFrameView |                             \
-  nsChangeHint_UpdateCursor |                              \
-  nsChangeHint_UpdateSubtreeOverflow |                     \
-  nsChangeHint_UpdateTextPath |                            \
-  nsChangeHint_VisibilityChange                            \
-)
+#define nsChangeHint_Hints_AlwaysHandledForDescendants                     \
+  (nsChangeHint_ClearDescendantIntrinsics | nsChangeHint_NeedDirtyReflow | \
+   nsChangeHint_NeutralChange | nsChangeHint_ReconstructFrame |            \
+   nsChangeHint_RepaintFrame | nsChangeHint_SchedulePaint |                \
+   nsChangeHint_UpdateCursor | nsChangeHint_UpdateSubtreeOverflow |        \
+   nsChangeHint_VisibilityChange)
 
 // The change hints that are never handled for descendants.
-#define nsChangeHint_Hints_NeverHandledForDescendants (    \
-  nsChangeHint_BorderStyleNoneChange |                     \
-  nsChangeHint_ChildrenOnlyTransform |                     \
-  nsChangeHint_CSSOverflowChange |                         \
-  nsChangeHint_InvalidateRenderingObservers |              \
-  nsChangeHint_RecomputePosition |                         \
-  nsChangeHint_UpdateBackgroundPosition |                  \
-  nsChangeHint_UpdateComputedBSize |                       \
-  nsChangeHint_UpdateContainingBlock |                     \
-  nsChangeHint_UpdateEffects |                             \
-  nsChangeHint_UpdateOpacityLayer |                        \
-  nsChangeHint_UpdateOverflow |                            \
-  nsChangeHint_UpdateParentOverflow |                      \
-  nsChangeHint_UpdatePostTransformOverflow |               \
-  nsChangeHint_UpdateTableCellSpans |                          \
-  nsChangeHint_UpdateTransformLayer |                      \
-  nsChangeHint_UpdateUsesOpacity |                         \
-  nsChangeHint_AddOrRemoveTransform |                      \
-  nsChangeHint_UpdateWidgetProperties                      \
-)
+#define nsChangeHint_Hints_NeverHandledForDescendants                         \
+  (nsChangeHint_BorderStyleNoneChange | nsChangeHint_ChildrenOnlyTransform |  \
+   nsChangeHint_ScrollbarChange | nsChangeHint_InvalidateRenderingObservers | \
+   nsChangeHint_RecomputePosition | nsChangeHint_UpdateBackgroundPosition |   \
+   nsChangeHint_UpdateComputedBSize | nsChangeHint_UpdateContainingBlock |    \
+   nsChangeHint_UpdateEffects | nsChangeHint_UpdateOpacityLayer |             \
+   nsChangeHint_UpdateOverflow | nsChangeHint_UpdateParentOverflow |          \
+   nsChangeHint_UpdatePostTransformOverflow |                                 \
+   nsChangeHint_UpdateTableCellSpans | nsChangeHint_UpdateTransformLayer |    \
+   nsChangeHint_UpdateUsesOpacity | nsChangeHint_AddOrRemoveTransform |       \
+   nsChangeHint_UpdateWidgetProperties)
 
 // The change hints that are sometimes considered to be handled for descendants.
-#define nsChangeHint_Hints_SometimesHandledForDescendants (\
-  nsChangeHint_ClearAncestorIntrinsics |                   \
-  nsChangeHint_NeedReflow |                                \
-  nsChangeHint_ReflowChangesSizeOrPosition                 \
-)
+#define nsChangeHint_Hints_SometimesHandledForDescendants           \
+  (nsChangeHint_ClearAncestorIntrinsics | nsChangeHint_NeedReflow | \
+   nsChangeHint_ReflowChangesSizeOrPosition)
 
 static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
                 nsChangeHint_Hints_NeverHandledForDescendants) &&
-              !(nsChangeHint_Hints_AlwaysHandledForDescendants &
-                nsChangeHint_Hints_SometimesHandledForDescendants) &&
-              !(nsChangeHint_Hints_NeverHandledForDescendants &
-                nsChangeHint_Hints_SometimesHandledForDescendants) &&
-              !(nsChangeHint_AllHints ^
-                nsChangeHint_Hints_AlwaysHandledForDescendants ^
-                nsChangeHint_Hints_NeverHandledForDescendants ^
-                nsChangeHint_Hints_SometimesHandledForDescendants),
+                  !(nsChangeHint_Hints_AlwaysHandledForDescendants &
+                    nsChangeHint_Hints_SometimesHandledForDescendants) &&
+                  !(nsChangeHint_Hints_NeverHandledForDescendants &
+                    nsChangeHint_Hints_SometimesHandledForDescendants) &&
+                  !(nsChangeHint_AllHints ^
+                    nsChangeHint_Hints_AlwaysHandledForDescendants ^
+                    nsChangeHint_Hints_NeverHandledForDescendants ^
+                    nsChangeHint_Hints_SometimesHandledForDescendants),
               "change hints must be present in exactly one of "
               "nsChangeHint_Hints_{Always,Never,Sometimes}"
               "HandledForDescendants");
 
 // The most hints that NS_HintsNotHandledForDescendantsIn could possibly return:
-#define nsChangeHint_Hints_NotHandledForDescendants (      \
-  nsChangeHint_Hints_NeverHandledForDescendants |          \
-  nsChangeHint_Hints_SometimesHandledForDescendants        \
-)
+#define nsChangeHint_Hints_NotHandledForDescendants \
+  (nsChangeHint_Hints_NeverHandledForDescendants |  \
+   nsChangeHint_Hints_SometimesHandledForDescendants)
 
 // Redefine the old NS_STYLE_HINT constants in terms of the new hint structure
 #define NS_STYLE_HINT_VISUAL \
-  nsChangeHint(nsChangeHint_RepaintFrame | nsChangeHint_SyncFrameView | \
-               nsChangeHint_SchedulePaint)
-#define nsChangeHint_AllReflowHints                     \
-  nsChangeHint(nsChangeHint_NeedReflow |                \
-               nsChangeHint_ReflowChangesSizeOrPosition|\
-               nsChangeHint_ClearAncestorIntrinsics |   \
-               nsChangeHint_ClearDescendantIntrinsics | \
-               nsChangeHint_NeedDirtyReflow)
+  nsChangeHint(nsChangeHint_RepaintFrame | nsChangeHint_SchedulePaint)
+#define nsChangeHint_AllReflowHints                                        \
+  nsChangeHint(                                                            \
+      nsChangeHint_NeedReflow | nsChangeHint_ReflowChangesSizeOrPosition | \
+      nsChangeHint_ClearAncestorIntrinsics |                               \
+      nsChangeHint_ClearDescendantIntrinsics | nsChangeHint_NeedDirtyReflow)
 
 // Below are the change hints that we send for ISize & BSize changes.
 // Each is similar to nsChangeHint_AllReflowHints with a few changes.
@@ -436,11 +400,11 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
 // NOTE: You might think that BSize changes could exclude
 // nsChangeHint_ClearAncestorIntrinsics (which is inline-axis specific), but we
 // do need to send it, to clear cached results from CSS Flex measuring reflows.
-#define nsChangeHint_ReflowHintsForBSizeChange            \
-  nsChangeHint((nsChangeHint_AllReflowHints |             \
-                nsChangeHint_UpdateComputedBSize) &       \
-               ~(nsChangeHint_ClearDescendantIntrinsics | \
-                 nsChangeHint_NeedDirtyReflow))
+#define nsChangeHint_ReflowHintsForBSizeChange                           \
+  nsChangeHint(                                                          \
+      (nsChangeHint_AllReflowHints | nsChangeHint_UpdateComputedBSize) & \
+      ~(nsChangeHint_ClearDescendantIntrinsics |                         \
+        nsChangeHint_NeedDirtyReflow))
 
 // * For changes to the float area of an already-floated element, we need all
 // reflow hints, but not the ones that apply to descendants.
@@ -448,7 +412,7 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
 // placement but not size/shape. (e.g. if we change which side we float to).
 // But our ancestors/siblings are potentially impacted, so we need to send
 // the non-descendant reflow hints.
-#define nsChangeHint_ReflowHintsForFloatAreaChange            \
+#define nsChangeHint_ReflowHintsForFloatAreaChange        \
   nsChangeHint(nsChangeHint_AllReflowHints &              \
                ~(nsChangeHint_ClearDescendantIntrinsics | \
                  nsChangeHint_NeedDirtyReflow))
@@ -456,17 +420,14 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
 #define NS_STYLE_HINT_REFLOW \
   nsChangeHint(NS_STYLE_HINT_VISUAL | nsChangeHint_AllReflowHints)
 
-#define nsChangeHint_Hints_CanIgnoreIfNotVisible           \
-  nsChangeHint(NS_STYLE_HINT_VISUAL |                      \
-               nsChangeHint_NeutralChange |                \
-               nsChangeHint_UpdateOpacityLayer |           \
-               nsChangeHint_AddOrRemoveTransform |         \
-               nsChangeHint_UpdateContainingBlock |        \
-               nsChangeHint_UpdateOverflow |               \
-               nsChangeHint_UpdatePostTransformOverflow  | \
-               nsChangeHint_UpdateTransformLayer |         \
-               nsChangeHint_UpdateUsesOpacity |            \
-               nsChangeHint_VisibilityChange)
+#define nsChangeHint_Hints_CanIgnoreIfNotVisible                            \
+  nsChangeHint(                                                             \
+      NS_STYLE_HINT_VISUAL | nsChangeHint_NeutralChange |                   \
+      nsChangeHint_UpdateOpacityLayer | nsChangeHint_AddOrRemoveTransform | \
+      nsChangeHint_UpdateContainingBlock | nsChangeHint_UpdateOverflow |    \
+      nsChangeHint_UpdatePostTransformOverflow |                            \
+      nsChangeHint_UpdateTransformLayer | nsChangeHint_UpdateUsesOpacity |  \
+      nsChangeHint_VisibilityChange)
 
 // Change hints for added or removed transform style.
 //
@@ -480,14 +441,14 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
 #define nsChangeHint_ComprehensiveAddOrRemoveTransform \
   nsChangeHint(nsChangeHint_UpdateContainingBlock |    \
                nsChangeHint_AddOrRemoveTransform |     \
-               nsChangeHint_UpdateOverflow |           \
-               nsChangeHint_RepaintFrame)
+               nsChangeHint_UpdateOverflow | nsChangeHint_RepaintFrame)
 
 // NB: Once we drop support for the old style system, this logic should be
 // inlined in the Servo style system to eliminate the FFI call.
-inline nsChangeHint NS_HintsNotHandledForDescendantsIn(nsChangeHint aChangeHint) {
+inline nsChangeHint NS_HintsNotHandledForDescendantsIn(
+    nsChangeHint aChangeHint) {
   nsChangeHint result =
-    aChangeHint & nsChangeHint_Hints_NeverHandledForDescendants;
+      aChangeHint & nsChangeHint_Hints_NeverHandledForDescendants;
 
   if (!NS_IsHintSubset(nsChangeHint_NeedDirtyReflow, aChangeHint)) {
     if (NS_IsHintSubset(nsChangeHint_NeedReflow, aChangeHint)) {
@@ -511,172 +472,60 @@ inline nsChangeHint NS_HintsNotHandledForDescendantsIn(nsChangeHint aChangeHint)
     result |= nsChangeHint_ClearAncestorIntrinsics;
   }
 
-  MOZ_ASSERT(NS_IsHintSubset(result,
-                             nsChangeHint_Hints_NotHandledForDescendants),
-             "something is inconsistent");
+  MOZ_ASSERT(
+      NS_IsHintSubset(result, nsChangeHint_Hints_NotHandledForDescendants),
+      "something is inconsistent");
 
   return result;
 }
 
-inline nsChangeHint
-NS_HintsHandledForDescendantsIn(nsChangeHint aChangeHint)
-{
+inline nsChangeHint NS_HintsHandledForDescendantsIn(nsChangeHint aChangeHint) {
   return aChangeHint & ~NS_HintsNotHandledForDescendantsIn(aChangeHint);
 }
 
 // Returns the change hints in aOurChange that are not subsumed by those
 // in aHintsHandled (which are hints that have been handled by an ancestor).
-inline nsChangeHint
-NS_RemoveSubsumedHints(nsChangeHint aOurChange, nsChangeHint aHintsHandled)
-{
+inline nsChangeHint NS_RemoveSubsumedHints(nsChangeHint aOurChange,
+                                           nsChangeHint aHintsHandled) {
   nsChangeHint result =
-    aOurChange & ~NS_HintsHandledForDescendantsIn(aHintsHandled);
+      aOurChange & ~NS_HintsHandledForDescendantsIn(aHintsHandled);
 
-  if (result & (nsChangeHint_ClearAncestorIntrinsics |
-                nsChangeHint_ClearDescendantIntrinsics |
-                nsChangeHint_NeedDirtyReflow |
-                nsChangeHint_ReflowChangesSizeOrPosition |
-                nsChangeHint_UpdateComputedBSize)) {
+  if (result &
+      (nsChangeHint_ClearAncestorIntrinsics |
+       nsChangeHint_ClearDescendantIntrinsics | nsChangeHint_NeedDirtyReflow |
+       nsChangeHint_ReflowChangesSizeOrPosition |
+       nsChangeHint_UpdateComputedBSize)) {
     result |= nsChangeHint_NeedReflow;
   }
 
   if (result & (nsChangeHint_ClearDescendantIntrinsics)) {
     MOZ_ASSERT(result & nsChangeHint_ClearAncestorIntrinsics);
-    result |= // nsChangeHint_ClearAncestorIntrinsics |
-              nsChangeHint_NeedDirtyReflow;
+    result |=  // nsChangeHint_ClearAncestorIntrinsics |
+        nsChangeHint_NeedDirtyReflow;
   }
 
   return result;
 }
 
-/**
- * |nsRestyleHint| is a bitfield for the result of
- * |HasStateDependentStyle| and |HasAttributeDependentStyle|.  When no
- * restyling is necessary, use |nsRestyleHint(0)|.
- *
- * Without eRestyle_Force or eRestyle_ForceDescendants, the restyling process
- * can stop processing at a frame when it detects no style changes and it is
- * known that the styles of the subtree beneath it will not change, leaving
- * the old ComputedStyle on the frame.  eRestyle_Force can be used to skip this
- * optimization on a frame, and to force its new ComputedStyle to be used.
- *
- * Similarly, eRestyle_ForceDescendants will cause the frame and all of its
- * descendants to be traversed and for the new ComputedStyles that are created
- * to be set on the frames.
- *
- * NOTE: When adding new restyle hints, please also add them to
- * RestyleManager::RestyleHintToString.
- */
-enum nsRestyleHint : uint32_t {
-  // Rerun selector matching on the element.  If a new ComputedStyle
-  // results, update the ComputedStyles of descendants.  (Irrelevant if
-  // eRestyle_Subtree is also set, since that implies a superset of the
-  // work.)
-  eRestyle_Self = 1 << 0,
+namespace mozilla {
 
-  // Rerun selector matching on descendants of the element that match
-  // a given selector.
-  eRestyle_SomeDescendants = 1 << 1,
+using RestyleHint = StyleRestyleHint;
 
-  // Rerun selector matching on the element and all of its descendants.
-  // (Implies eRestyle_ForceDescendants, which ensures that we continue
-  // the restyling process for all descendants, but doesn't cause
-  // selector matching.)
-  eRestyle_Subtree = 1 << 2,
-
-  // Rerun selector matching on all later siblings of the element and
-  // all of their descendants.
-  eRestyle_LaterSiblings = 1 << 3,
-
-  // Replace the style data coming from CSS transitions without updating
-  // any other style data.  If a new ComputedStyle results, update style
-  // contexts on the descendants.  (Irrelevant if eRestyle_Self or
-  // eRestyle_Subtree is also set, since those imply a superset of the
-  // work.)
-  eRestyle_CSSTransitions = 1 << 4,
-
-  // Replace the style data coming from CSS animations without updating
-  // any other style data.  If a new ComputedStyle results, update style
-  // contexts on the descendants.  (Irrelevant if eRestyle_Self or
-  // eRestyle_Subtree is also set, since those imply a superset of the
-  // work.)
-  eRestyle_CSSAnimations = 1 << 5,
-
-  // Replace the style data coming from inline style without updating
-  // any other style data.  If a new ComputedStyle results, update style
-  // contexts on the descendants.  (Irrelevant if eRestyle_Self or
-  // eRestyle_Subtree is also set, since those imply a superset of the
-  // work.)  Supported only for element ComputedStyles and not for
-  // pseudo-elements or anonymous boxes, on which it converts to
-  // eRestyle_Self.
-  // If the change is for the advance of a declarative animation, use
-  // the value below instead.
-  eRestyle_StyleAttribute = 1 << 6,
-
-  // Same as eRestyle_StyleAttribute, but for when the change results
-  // from the advance of a declarative animation.
-  eRestyle_StyleAttribute_Animations = 1 << 7,
-
-  // Continue the restyling process to the current frame's children even
-  // if this frame's restyling resulted in no style changes.
-  eRestyle_Force = 1 << 8,
-
-  // Continue the restyling process to all of the current frame's
-  // descendants, even if any frame's restyling resulted in no style
-  // changes.  (Implies eRestyle_Force.)  Note that this is weaker than
-  // eRestyle_Subtree, which makes us rerun selector matching on all
-  // descendants rather than just continuing the restyling process.
-  eRestyle_ForceDescendants = 1 << 9,
-
-  // Useful unions:
-  eRestyle_AllHintsWithAnimations = eRestyle_CSSTransitions |
-                                    eRestyle_CSSAnimations |
-                                    eRestyle_StyleAttribute_Animations,
-};
-
-// The functions below need an integral type to cast to to avoid
-// infinite recursion.
-typedef decltype(nsRestyleHint(0) + nsRestyleHint(0)) nsRestyleHint_size_t;
-
-inline constexpr nsRestyleHint operator|(nsRestyleHint aLeft,
-                                             nsRestyleHint aRight)
-{
-  return nsRestyleHint(nsRestyleHint_size_t(aLeft) |
-                       nsRestyleHint_size_t(aRight));
+inline RestyleHint RestyleHint::RestyleSubtree() {
+  return StyleRestyleHint_RESTYLE_SELF | StyleRestyleHint_RESTYLE_DESCENDANTS;
 }
 
-inline constexpr nsRestyleHint operator&(nsRestyleHint aLeft,
-                                             nsRestyleHint aRight)
-{
-  return nsRestyleHint(nsRestyleHint_size_t(aLeft) &
-                       nsRestyleHint_size_t(aRight));
+inline RestyleHint RestyleHint::RecascadeSubtree() {
+  return StyleRestyleHint_RECASCADE_SELF |
+         StyleRestyleHint_RECASCADE_DESCENDANTS;
 }
 
-inline nsRestyleHint& operator|=(nsRestyleHint& aLeft, nsRestyleHint aRight)
-{
-  return aLeft = aLeft | aRight;
+inline RestyleHint RestyleHint::ForAnimations() {
+  return StyleRestyleHint_RESTYLE_CSS_TRANSITIONS |
+         StyleRestyleHint_RESTYLE_CSS_ANIMATIONS |
+         StyleRestyleHint_RESTYLE_SMIL;
 }
 
-inline nsRestyleHint& operator&=(nsRestyleHint& aLeft, nsRestyleHint aRight)
-{
-  return aLeft = aLeft & aRight;
-}
-
-inline constexpr nsRestyleHint operator~(nsRestyleHint aArg)
-{
-  return nsRestyleHint(~nsRestyleHint_size_t(aArg));
-}
-
-inline constexpr nsRestyleHint operator^(nsRestyleHint aLeft,
-                                             nsRestyleHint aRight)
-{
-  return nsRestyleHint(nsRestyleHint_size_t(aLeft) ^
-                       nsRestyleHint_size_t(aRight));
-}
-
-inline nsRestyleHint operator^=(nsRestyleHint& aLeft, nsRestyleHint aRight)
-{
-  return aLeft = aLeft ^ aRight;
-}
+}  // namespace mozilla
 
 #endif /* nsChangeHint_h___ */

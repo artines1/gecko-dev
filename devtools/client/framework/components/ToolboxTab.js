@@ -6,7 +6,7 @@
 const { Component } = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
-const {img, button, span} = dom;
+const { img, button, span } = dom;
 
 class ToolboxTab extends Component {
   // See toolbox-toolbar propTypes for details on the props used here.
@@ -26,29 +26,43 @@ class ToolboxTab extends Component {
     this.renderIcon = this.renderIcon.bind(this);
   }
 
-  renderIcon(definition, isHighlighted) {
-    const {icon} = definition;
+  renderIcon(definition) {
+    const { icon } = definition;
     if (!icon) {
       return [];
     }
     return [
       img({
-        src: icon
+        alt: "",
+        src: icon,
       }),
     ];
   }
 
   render() {
-    const {panelDefinition, currentToolId, highlightedTools, selectTool,
-           focusedButton, focusButton} = this.props;
-    const {id, extensionId, tooltip, label, iconOnly} = panelDefinition;
+    const {
+      panelDefinition,
+      currentToolId,
+      highlightedTools,
+      selectTool,
+      focusedButton,
+      focusButton,
+    } = this.props;
+    const {
+      id,
+      extensionId,
+      tooltip,
+      label,
+      iconOnly,
+      badge,
+    } = panelDefinition;
     const isHighlighted = id === currentToolId;
 
     const className = [
       "devtools-tab",
       currentToolId === id ? "selected" : "",
       highlightedTools.has(id) ? "highlighted" : "",
-      iconOnly ? "devtools-tab-icon-only" : ""
+      iconOnly ? "devtools-tab-icon-only" : "",
     ].join(" ");
 
     return button(
@@ -63,26 +77,32 @@ class ToolboxTab extends Component {
         tabIndex: focusedButton === id ? "0" : "-1",
         onFocus: () => focusButton(id),
         onMouseDown: () => selectTool(id, "tab_switch"),
-        onKeyDown: (evt) => {
+        onKeyDown: evt => {
           if (evt.key === "Enter" || evt.key === " ") {
             selectTool(id, "tab_switch");
           }
         },
       },
-      span(
-        {
-          className: "devtools-tab-line"
-        }
-      ),
-      ...this.renderIcon(panelDefinition, isHighlighted),
-      iconOnly ?
-        null :
-        span(
-          {
-            className: "devtools-tab-label"
-          },
-          label
-        )
+      span({
+        className: "devtools-tab-line",
+      }),
+      ...this.renderIcon(panelDefinition),
+      iconOnly
+        ? null
+        : span(
+            {
+              className: "devtools-tab-label",
+            },
+            label,
+            badge && !isHighlighted
+              ? span(
+                  {
+                    className: "devtools-tab-badge",
+                  },
+                  badge
+                )
+              : null
+          )
     );
   }
 }

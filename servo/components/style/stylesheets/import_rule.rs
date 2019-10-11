@@ -1,24 +1,27 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The [`@import`][import] at-rule.
 //!
 //! [import]: https://drafts.csswg.org/css-cascade-3/#at-import
 
-use context::QuirksMode;
+use crate::context::QuirksMode;
+use crate::media_queries::MediaList;
+use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock};
+use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
+use crate::str::CssStringWriter;
+use crate::stylesheets::{CssRule, Origin, StylesheetInDocument};
+use crate::values::CssUrl;
 use cssparser::SourceLocation;
-use media_queries::MediaList;
-use shared_lock::{DeepCloneParams, DeepCloneWithLock};
-use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use std::fmt::{self, Write};
-use str::CssStringWriter;
+use std::mem::ManuallyDrop;
 use style_traits::{CssWriter, ToCss};
-use stylesheets::{CssRule, Origin, StylesheetInDocument};
-use values::CssUrl;
+use to_shmem::{SharedMemoryBuilder, ToShmem};
 
 /// With asynchronous stylesheet parsing, we can't synchronously create a
 /// GeckoStyleSheet. So we use this placeholder instead.
+#[cfg(feature = "gecko")]
 #[derive(Clone, Debug)]
 pub struct PendingSheet {
     origin: Origin,
@@ -30,7 +33,7 @@ pub struct PendingSheet {
 #[derive(Debug)]
 pub enum ImportSheet {
     /// A bonafide stylesheet.
-    Sheet(::gecko::data::GeckoStyleSheet),
+    Sheet(crate::gecko::data::GeckoStyleSheet),
     /// An @import created while parsing off-main-thread, whose Gecko sheet has
     /// yet to be created and attached.
     Pending(PendingSheet),
@@ -39,7 +42,7 @@ pub enum ImportSheet {
 #[cfg(feature = "gecko")]
 impl ImportSheet {
     /// Creates a new ImportSheet from a GeckoStyleSheet.
-    pub fn new(sheet: ::gecko::data::GeckoStyleSheet) -> Self {
+    pub fn new(sheet: crate::gecko::data::GeckoStyleSheet) -> Self {
         ImportSheet::Sheet(sheet)
     }
 
@@ -53,7 +56,7 @@ impl ImportSheet {
 
     /// Returns a reference to the GeckoStyleSheet in this ImportSheet, if it
     /// exists.
-    pub fn as_sheet(&self) -> Option<&::gecko::data::GeckoStyleSheet> {
+    pub fn as_sheet(&self) -> Option<&crate::gecko::data::GeckoStyleSheet> {
         match *self {
             ImportSheet::Sheet(ref s) => Some(s),
             ImportSheet::Pending(_) => None,
@@ -69,8 +72,8 @@ impl DeepCloneWithLock for ImportSheet {
         _guard: &SharedRwLockReadGuard,
         params: &DeepCloneParams,
     ) -> Self {
-        use gecko::data::GeckoStyleSheet;
-        use gecko_bindings::bindings;
+        use crate::gecko::data::GeckoStyleSheet;
+        use crate::gecko_bindings::bindings;
         match *self {
             ImportSheet::Sheet(ref s) => {
                 let clone = unsafe {
@@ -124,7 +127,7 @@ impl StylesheetInDocument for ImportSheet {
 /// A sheet that is held from an import rule.
 #[cfg(feature = "servo")]
 #[derive(Debug)]
-pub struct ImportSheet(pub ::servo_arc::Arc<::stylesheets::Stylesheet>);
+pub struct ImportSheet(pub ::servo_arc::Arc<crate::stylesheets::Stylesheet>);
 
 #[cfg(feature = "servo")]
 impl StylesheetInDocument for ImportSheet {
@@ -178,6 +181,12 @@ pub struct ImportRule {
 
     /// The line and column of the rule's source code.
     pub source_location: SourceLocation,
+}
+
+impl ToShmem for ImportRule {
+    fn to_shmem(&self, _builder: &mut SharedMemoryBuilder) -> ManuallyDrop<Self> {
+        panic!("ToShmem failed for ImportRule: cannot handle imported style sheets")
+    }
 }
 
 impl DeepCloneWithLock for ImportRule {

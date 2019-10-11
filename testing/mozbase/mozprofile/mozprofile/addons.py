@@ -11,14 +11,14 @@ import shutil
 import tempfile
 import zipfile
 import hashlib
+import binascii
 from xml.dom import minidom
-
 from six import reraise, string_types
 
 import mozfile
 from mozlog.unstructured import getLogger
 
-_SALT = os.urandom(32).encode('hex')
+_SALT = binascii.hexlify(os.urandom(32))
 _TEMPORARY_ADDON_SUFFIX = "@temporary-addon"
 
 # Logger for 'mozprofile.addons' module
@@ -203,7 +203,7 @@ class AddonManager(object):
     @classmethod
     def _gen_iid(cls, addon_path):
         hash = hashlib.sha1(_SALT)
-        hash.update(addon_path)
+        hash.update(addon_path.encode())
         return hash.hexdigest() + _TEMPORARY_ADDON_SUFFIX
 
     @classmethod
@@ -262,7 +262,7 @@ class AddonManager(object):
                         manifest = compressed_file.read('install.rdf')
                     elif 'manifest.json' in filenames:
                         is_webext = True
-                        manifest = compressed_file.read('manifest.json')
+                        manifest = compressed_file.read('manifest.json').decode()
                         manifest = json.loads(manifest)
                     else:
                         raise KeyError("No manifest")
@@ -279,14 +279,20 @@ class AddonManager(object):
             else:
                 raise IOError('Add-on path is neither an XPI nor a directory: %s' % addon_path)
         except (IOError, KeyError) as e:
-            reraise(AddonFormatError(str(e)), None, sys.exc_info()[2])
+            reraise(AddonFormatError, AddonFormatError(str(e)), sys.exc_info()[2])
 
         if is_webext:
             details['version'] = manifest['version']
             details['name'] = manifest['name']
-            try:
-                details['id'] = manifest['applications']['gecko']['id']
-            except KeyError:
+            # Bug 1572404 - we support two locations for gecko-specific
+            # metadata.
+            for location in ('applications', 'browser_specific_settings'):
+                try:
+                    details['id'] = manifest[location]['gecko']['id']
+                    break
+                except KeyError:
+                    pass
+            if details['id'] is None:
                 details['id'] = cls._gen_iid(addon_path)
             details['unpack'] = False
         else:
@@ -309,7 +315,7 @@ class AddonManager(object):
                     if entry in details.keys():
                         details.update({entry: get_text(node)})
             except Exception as e:
-                reraise(AddonFormatError(str(e)), None, sys.exc_info()[2])
+                reraise(AddonFormatError, AddonFormatError(str(e)), sys.exc_info()[2])
 
         # turn unpack into a true/false value
         if isinstance(details['unpack'], string_types):

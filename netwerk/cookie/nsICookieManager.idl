@@ -14,21 +14,15 @@ class OriginAttributes;
 [ptr] native OriginAttributesPtr(mozilla::OriginAttributes);
 
 interface nsISimpleEnumerator;
-interface nsICookie2;
+interface nsICookie;
 interface nsIFile;
 
-[scriptable, function, uuid(20709db8-8dad-4e45-b33e-6e7c761dfc5d)]
-interface nsIPrivateModeCallback : nsISupports
-{
-  void callback();
-};
-
-/** 
+/**
  * An optional interface for accessing or removing the cookies
  * that are in the cookie list
  */
 
-[scriptable, uuid(AAAB6710-0F2C-11d5-A53B-0010A401EB10)]
+[scriptable, builtinclass, uuid(AAAB6710-0F2C-11d5-A53B-0010A401EB10)]
 interface nsICookieManager : nsISupports
 {
 
@@ -65,25 +59,19 @@ interface nsICookieManager : nsISupports
    *              dot must be present.
    * @param aName The name specified in the cookie
    * @param aPath The path for which the cookie was set
-   * @param aOriginAttributes The originAttributes of this cookie. This
-   *                          attribute is optional to avoid breaking add-ons.
-   *                          In 1 or 2 releases it will be mandatory: bug 1260399.
-   * @param aBlocked Indicates if cookies from this host should be permanently
-   *                 blocked.
+   * @param aOriginAttributes The originAttributes of this cookie.
    *
    */
-  [implicit_jscontext, optional_argc]
+  [implicit_jscontext]
   void remove(in AUTF8String   aHost,
               in ACString      aName,
               in AUTF8String   aPath,
-              in boolean       aBlocked,
-              [optional] in jsval aOriginAttributes);
+              in jsval         aOriginAttributes);
 
   [notxpcom]
   nsresult removeNative(in AUTF8String   aHost,
                         in ACString      aName,
                         in AUTF8String   aPath,
-                        in boolean       aBlocked,
                         in OriginAttributesPtr aOriginAttributes);
 
   /**
@@ -118,29 +106,27 @@ interface nsICookieManager : nsISupports
    *        1970 UTC. note that expiry time will also be honored for session cookies;
    *        in this way, the more restrictive of the two will take effect.
    * @param aOriginAttributes
-   *        the originAttributes of this cookie. This attribute is optional to
-   *        avoid breaking add-ons.
+   *        the originAttributes of this cookie.
    * @param aSameSite
-   *        the SameSite attribute. This attribute is optional to avoid breaking
-   *        addons
+   *        the SameSite attribute.
    */
-  [implicit_jscontext, optional_argc]
+  [implicit_jscontext]
   void add(in AUTF8String aHost,
            in AUTF8String aPath,
            in ACString    aName,
-           in ACString    aValue,
+           in AUTF8String aValue,
            in boolean     aIsSecure,
            in boolean     aIsHttpOnly,
            in boolean     aIsSession,
            in int64_t     aExpiry,
-           [optional] in jsval aOriginAttributes,
-           [optional] in int32_t aSameSite);
+           in jsval aOriginAttributes,
+           in int32_t aSameSite);
 
   [notxpcom]
   nsresult addNative(in AUTF8String aHost,
                      in AUTF8String aPath,
                      in ACString    aName,
-                     in ACString    aValue,
+                     in AUTF8String aValue,
                      in boolean     aIsSecure,
                      in boolean     aIsHttpOnly,
                      in boolean     aIsSession,
@@ -151,23 +137,28 @@ interface nsICookieManager : nsISupports
   /**
    * Find whether a given cookie already exists.
    *
-   * @param aCookie
-   *        the cookie to look for
+   * @param aHost
+   *        the cookie's host to look for
+   * @param aPath
+   *        the cookie's path to look for
+   * @param aName
+   *        the cookie's name to look for
    * @param aOriginAttributes
-   *        nsICookie2 contains an originAttributes but if nsICookie2 is
-   *        implemented in JS, we can't retrieve its originAttributes because
-   *        the getter is marked [implicit_jscontext]. This optional parameter
-   *        is a workaround.
+   *        the cookie's originAttributes to look for
    *
-   * @return true if a cookie was found which matches the host, path, and name
-   *         fields of aCookie
+   * @return true if a cookie was found which matches the host, path, name and
+   *         originAttributes fields of aCookie
    */
-  [implicit_jscontext, optional_argc]
-  boolean cookieExists(in nsICookie2 aCookie,
-                       [optional] in jsval aOriginAttributes);
+  [implicit_jscontext]
+  boolean cookieExists(in AUTF8String aHost,
+                       in AUTF8String aPath,
+                       in ACString    aName,
+                       in jsval aOriginAttributes);
 
   [notxpcom]
-  nsresult cookieExistsNative(in nsICookie2 aCookie,
+  nsresult cookieExistsNative(in AUTF8String aHost,
+                              in AUTF8String aPath,
+                              in ACString    aName,
                               in OriginAttributesPtr aOriginAttributes,
                               out boolean aExists);
 
@@ -197,16 +188,15 @@ interface nsICookieManager : nsISupports
    *        of only the host portion of a URI. see @add for a description of
    *        acceptable host strings.
    * @param aOriginAttributes The originAttributes of cookies that would be
-   *                          retrived. This attribute is optional to avoid
-   *                          breaking add-ons.
+   *                          retrived.
    *
-   * @return an nsISimpleEnumerator of nsICookie2 objects.
+   * @return an nsISimpleEnumerator of nsICookie objects.
    *
    * @see countCookiesFromHost
    */
-  [implicit_jscontext, optional_argc]
+  [implicit_jscontext]
   nsISimpleEnumerator getCookiesFromHost(in AUTF8String aHost,
-                                         [optional] in jsval aOriginAttributes);
+                                         in jsval aOriginAttributes);
 
   /**
    * Import an old-style cookie file. Imported cookies will be added to the
@@ -228,7 +218,7 @@ interface nsICookieManager : nsISupports
    *        acceptable host strings. This attribute is optional. It will search
    *        all hosts if this attribute is not given.
    */
-  nsISimpleEnumerator getCookiesWithOriginAttributes(in DOMString aPattern,
+  nsISimpleEnumerator getCookiesWithOriginAttributes(in AString aPattern,
                                                      [optional] in AUTF8String aHost);
 
   /**
@@ -236,6 +226,15 @@ interface nsICookieManager : nsISupports
    *
    * @param aPattern origin attribute pattern in JSON format
    */
-  void removeCookiesWithOriginAttributes(in DOMString aPattern,
+  void removeCookiesWithOriginAttributes(in AString aPattern,
                                          [optional] in AUTF8String aHost);
+
+  /**
+   * Remove all the cookies whose origin attributes matches aPattern and the
+   * host is exactly aHost (without subdomain matching).
+   *
+   * @param aHost the host to match
+   * @param aPattern origin attribute pattern in JSON format
+   */
+  void removeCookiesFromExactHost(in AUTF8String aHost, in AString aPattern);
 };

@@ -11,8 +11,6 @@ const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { dumpn } = DevToolsUtils;
 const flags = require("devtools/shared/flags");
 const StreamUtils = require("devtools/shared/transport/stream-utils");
-const promise = require("promise");
-const defer = require("devtools/shared/defer");
 
 loader.lazyGetter(this, "Pipe", () => {
   return CC("@mozilla.org/pipe;1", "nsIPipe", "init");
@@ -57,15 +55,22 @@ LocalDebuggerTransport.prototype = {
     this._deepFreeze(packet);
     const other = this.other;
     if (other) {
-      DevToolsUtils.executeSoon(DevToolsUtils.makeInfallible(() => {
-        // Avoid the cost of JSON.stringify() when logging is disabled.
-        if (flags.wantLogging) {
-          dumpn("Received packet " + serial + ": " + JSON.stringify(packet, null, 2));
-        }
-        if (other.hooks) {
-          other.hooks.onPacket(packet);
-        }
-      }, "LocalDebuggerTransport instance's this.other.hooks.onPacket"));
+      DevToolsUtils.executeSoon(
+        DevToolsUtils.makeInfallible(() => {
+          // Avoid the cost of JSON.stringify() when logging is disabled.
+          if (flags.wantLogging) {
+            dumpn(
+              "Received packet " +
+                serial +
+                ": " +
+                JSON.stringify(packet, null, 2)
+            );
+          }
+          if (other.hooks) {
+            other.hooks.onPacket(packet);
+          }
+        }, "LocalDebuggerTransport instance's this.other.hooks.onPacket")
+      );
     }
   },
 
@@ -78,69 +83,76 @@ LocalDebuggerTransport.prototype = {
    * others temporarily.  Instead, we can just make a single use pipe and be
    * done with it.
    */
-  startBulkSend: function({actor, type, length}) {
+  startBulkSend: function({ actor, type, length }) {
     const serial = this._serial.count++;
 
     dumpn("Sent bulk packet " + serial + " for actor " + actor);
     if (!this.other) {
       const error = new Error("startBulkSend: other side of transport missing");
-      return promise.reject(error);
+      return Promise.reject(error);
     }
 
     const pipe = new Pipe(true, true, 0, 0, null);
 
-    DevToolsUtils.executeSoon(DevToolsUtils.makeInfallible(() => {
-      dumpn("Received bulk packet " + serial);
-      if (!this.other.hooks) {
-        return;
-      }
+    DevToolsUtils.executeSoon(
+      DevToolsUtils.makeInfallible(() => {
+        dumpn("Received bulk packet " + serial);
+        if (!this.other.hooks) {
+          return;
+        }
 
-      // Receiver
-      const deferred = defer();
-      const packet = {
-        actor: actor,
-        type: type,
-        length: length,
-        copyTo: (output) => {
-          const copying =
-          StreamUtils.copyStream(pipe.inputStream, output, length);
-          deferred.resolve(copying);
-          return copying;
-        },
-        stream: pipe.inputStream,
-        done: deferred
-      };
+        // Receiver
+        new Promise(receiverResolve => {
+          const packet = {
+            actor: actor,
+            type: type,
+            length: length,
+            copyTo: output => {
+              const copying = StreamUtils.copyStream(
+                pipe.inputStream,
+                output,
+                length
+              );
+              receiverResolve(copying);
+              return copying;
+            },
+            stream: pipe.inputStream,
+            done: receiverResolve,
+          };
 
-      this.other.hooks.onBulkPacket(packet);
-
-      // Await the result of reading from the stream
-      deferred.promise.then(() => pipe.inputStream.close(), this.close);
-    }, "LocalDebuggerTransport instance's this.other.hooks.onBulkPacket"));
+          this.other.hooks.onBulkPacket(packet);
+        })
+          // Await the result of reading from the stream
+          .then(() => pipe.inputStream.close(), this.close);
+      }, "LocalDebuggerTransport instance's this.other.hooks.onBulkPacket")
+    );
 
     // Sender
-    const sendDeferred = defer();
-
-    // The remote transport is not capable of resolving immediately here, so we
-    // shouldn't be able to either.
-    DevToolsUtils.executeSoon(() => {
-      const copyDeferred = defer();
-
-      sendDeferred.resolve({
-        copyFrom: (input) => {
-          const copying =
-          StreamUtils.copyStream(input, pipe.outputStream, length);
-          copyDeferred.resolve(copying);
-          return copying;
-        },
-        stream: pipe.outputStream,
-        done: copyDeferred
+    return new Promise(senderResolve => {
+      // The remote transport is not capable of resolving immediately here, so we
+      // shouldn't be able to either.
+      DevToolsUtils.executeSoon(() => {
+        return (
+          new Promise(copyResolve => {
+            senderResolve({
+              copyFrom: input => {
+                const copying = StreamUtils.copyStream(
+                  input,
+                  pipe.outputStream,
+                  length
+                );
+                copyResolve(copying);
+                return copying;
+              },
+              stream: pipe.outputStream,
+              done: copyResolve,
+            });
+          })
+            // Await the result of writing to the stream
+            .then(() => pipe.outputStream.close(), this.close)
+        );
       });
-
-      // Await the result of writing to the stream
-      copyDeferred.promise.then(() => pipe.outputStream.close(), this.close);
     });
-
-    return sendDeferred.promise;
   },
 
   /**
@@ -179,12 +191,15 @@ LocalDebuggerTransport.prototype = {
       // already frozen. Note that this might leave an unfrozen reference
       // somewhere in the object if there is an already frozen object containing
       // an unfrozen object.
-      if (object.hasOwnProperty(prop) && typeof object === "object" &&
-          !Object.isFrozen(object)) {
+      if (
+        object.hasOwnProperty(prop) &&
+        typeof object === "object" &&
+        !Object.isFrozen(object)
+      ) {
         this._deepFreeze(object[prop]);
       }
     }
-  }
+  },
 };
 
 exports.LocalDebuggerTransport = LocalDebuggerTransport;

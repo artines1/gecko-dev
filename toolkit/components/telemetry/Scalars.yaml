@@ -1,8 +1,31 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 # This file contains a definition of the scalar probes that are recorded in Telemetry.
 # They are submitted with the "main" pings and can be inspected in about:telemetry.
 
 # The following section contains the accessibility scalars.
 a11y:
+  backplate:
+    bug_numbers:
+      - 1539212
+    description: >
+      Boolean tracking if the user has the backplate preference enabled or disabled.
+    expires: "73"
+    kind: boolean
+    notification_emails:
+      - accessibility@mozilla.com
+      - mreschenberg@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+    release_channel_collection: opt-out
+    keyed: false
+
   instantiators:
     bug_numbers:
       - 1323069
@@ -15,11 +38,14 @@ a11y:
     notification_emails:
       - accessibility@mozilla.com
       - jteh@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
     release_channel_collection: opt-out
     keyed: false
-    cpp_guard: 'ACCESSIBILITY'
 
   indicator_acted_on:
     bug_numbers:
@@ -32,20 +58,31 @@ a11y:
     notification_emails:
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
-# The following section contains the aushelper system add-on scalars.
-aushelper:
-  websense_reg_version:
+  theme:
     bug_numbers:
-      - 1305847
-    description: The Websense version from the Windows registry.
-    expires: "60"
-    kind: string
+      - 1022528
+    description: >
+      OS high contrast or other accessibility theme is enabled.
+      The result is split into keys which represent the values of
+      browser.display.document_color_use: "default", "always", or "never".
+    keyed: true
+    expires: "73"
+    kind: boolean
     notification_emails:
-      - application-update-telemetry-alerts@mozilla.com
+      - accessibility@mozilla.com
+      - eisaacson@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -63,6 +100,10 @@ browser.engagement:
     notification_emails:
       - rweiss@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -78,6 +119,10 @@ browser.engagement:
     notification_emails:
       - rweiss@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -92,6 +137,10 @@ browser.engagement:
     notification_emails:
       - rweiss@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -107,12 +156,55 @@ browser.engagement:
     notification_emails:
       - rweiss@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  max_concurrent_tab_pinned_count:
+    bug_numbers:
+      - 1505535
+    description: >
+      The count of maximum number of pinned tabs open during a subsession. This
+      includes private windows and the ones opened when starting the browser.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bmiroglio@mozilla.com
+      - aoprea@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  tab_pinned_event_count:
+    bug_numbers:
+      - 1505535
+    description: >
+      The count of tab pinned events per subsession, across all windows, after the
+      session has been restored. This includes tab pinned events from private windows.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bmiroglio@mozilla.com
+      - aoprea@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   total_uri_count:
     bug_numbers:
       - 1271313
+      - 1529232
     description: >
       The count of the total non-unique http(s) URIs visited in a subsession, including
       page reloads, after the session has been restored. This does not include background
@@ -121,9 +213,17 @@ browser.engagement:
     kind: uint
     notification_emails:
       - rweiss@mozilla.com
+      - loines@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
+    record_into_store:
+      - 'main'
+      - 'pre-account'
 
   unfiltered_uri_count:
     bug_numbers:
@@ -138,6 +238,10 @@ browser.engagement:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -155,6 +259,10 @@ browser.engagement:
     notification_emails:
       - rweiss@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -170,12 +278,17 @@ browser.engagement:
       - chutten@mozilla.com
       - jrediger@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   active_ticks:
     bug_numbers:
       - 1376942
+      - 1545172
     description: >
       The count of the number of five-second intervals ('ticks') the user
       was considered 'active' in a subsession. Session activity involves keyboard or mouse
@@ -185,9 +298,18 @@ browser.engagement:
     kind: uint
     notification_emails:
       - bcolloran@mozilla.com
+      - loines@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
+    record_into_store:
+      - 'main'
+      - 'pre-account'
 
 # The following section contains the browser engagement scalars.
 browser.engagement.navigation:
@@ -203,6 +325,10 @@ browser.engagement.navigation:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -218,6 +344,10 @@ browser.engagement.navigation:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -233,6 +363,10 @@ browser.engagement.navigation:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -248,6 +382,10 @@ browser.engagement.navigation:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -263,74 +401,28 @@ browser.engagement.navigation:
     notification_emails:
       - bcolloran@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
-# The following section contains (RSS/Atom) feed usage
-browser.feeds:
-  preview_loaded:
+  webextension:
     bug_numbers:
-      - 1350349
+      - 1492233
     description: >
-      The number of times a feed preview page is loaded.
-    expires: "65"
+      The count URI loads triggered in a subsession from a webextension.
+    expires: never
     kind: uint
+    keyed: true
     notification_emails:
-      - gijs@mozilla.com
+      - mkaply@mozilla.com
     release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  feed_subscribed:
-    bug_numbers:
-      - 1350349
-    description: >
-      The number of times a user subscribes to a feed.
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - gijs@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  livebookmark_opened:
-    bug_numbers:
-      - 1350349
-    description: >
-      The number of times a user opens a live bookmark dropdown.
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - gijs@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  livebookmark_item_opened:
-    bug_numbers:
-      - 1350349
-    description: >
-      The number of times a user opens an item that is part of a live bookmark.
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - gijs@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  livebookmark_count:
-    bug_numbers:
-      - 1350349
-    description: >
-      The number of live bookmark folders the user has (ie not individual items).
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - gijs@mozilla.com
-    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -346,6 +438,10 @@ browser.usage:
     notification_emails:
       - tom@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all'
 
@@ -354,11 +450,15 @@ browser.usage:
       - 1381591
     description: >-
       The number of plugin instances that were created.
-    expires: never # Jan-2021 but we don't have a version number for that
+    expires: never  # Jan-2021 but we don't have a version number for that
     kind: uint
     notification_emails:
       - bsmedberg@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
@@ -374,6 +474,10 @@ extensions.updates:
     keyed: true
     notification_emails:
       - addons-dev-internal@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
 
@@ -393,6 +497,10 @@ storage.sync.api.usage:
     notification_emails:
       - eglassercamp@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   items_stored:
@@ -409,6 +517,10 @@ storage.sync.api.usage:
     notification_emails:
       - eglassercamp@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   storage_consumed:
@@ -425,56 +537,69 @@ storage.sync.api.usage:
     notification_emails:
       - eglassercamp@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
 
-services.sync:
-  sync_login_state_transitions:
+identity.fxaccounts:
+  missed_commands_fetched:
     bug_numbers:
-      - 1375635
+      - 1496638
     description: >
-      Records transitions between login states of "success", "unverified"
-      and "rejected.
-    expires: "65"
-    kind: boolean
-    keyed: true
+      The number of missed FxA commands we have recovered.
+    expires: "68"
+    kind: uint
+    keyed: false
     notification_emails:
-      - sync-staff@mozilla.com
+      - fxa-staff@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
 
 security:
-  pkcs11_modules_loaded:
+  contentblocker_permissions:
     bug_numbers:
-      - 1369911
-      - 1445961
+      - 1581056
     description: >
-      A keyed boolean indicating the library names of the PKCS#11 modules that
-      have been loaded by the browser.
-    expires: "69"
-    kind: boolean
+      Amount of set nsContentBlocker permissions at startup, keyed by permission type.
+    expires: "75"
+    kind: uint
     keyed: true
     notification_emails:
+      - pbz@mozilla.com
+      - jhofmann@mozilla.com
       - seceng-telemetry@mozilla.com
-      - dkeeler@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
     record_in_processes:
       - main
   webauthn_used:
     bug_numbers:
       - 1265472
+      - 1558870
     description: >
       Counts of how often Web Authentication was used in this session, keyed
       by authenticator protocol, method and result. Currently: U2FRegisterFinish,
       U2FRegisterAbort, U2FSignFinish, U2FSignAbort.
-    expires: "70"
+    expires: "78"
     kind: uint
     keyed: true
     notification_emails:
       - seceng-telemetry@mozilla.com
       - jjones@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   client_cert:
@@ -491,6 +616,129 @@ security:
       - seceng-telemetry@mozilla.com
       - dkeeler@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+  tls_delegated_credentials_txn:
+    bug_numbers:
+      - 1564179
+    description: >-
+      Count of how many transactions used delegated credentials (ietf-draft-tls-subcerts)
+    expires: "80"
+    kind: uint
+    notification_emails:
+      - seceng-telemetry@mozilla.com
+      - kjacobs@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+pwmgr:
+  potentially_breached_passwords:
+    bug_numbers:
+      - 1577808
+    description: >
+      The number of potentially breached passwords, as determined by
+      LoginBreaches.getPotentialBreachesByLoginGUID.
+    expires: never
+    kind: uint
+    notification_emails:
+      - seceng-telemetry@mozilla.com
+      - passwords-dev@mozilla.org
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
+contentblocking:
+  exceptions:
+    bug_numbers:
+      - 1484251
+      - 1564248
+    description: >
+      How many tracking protection/content blocking exceptions a user has at startup.
+    expires: "75"
+    kind: uint
+    notification_emails:
+      - jhofmann@mozilla.com
+      - chsiang@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+    products:
+      - 'firefox'
+  cryptomining_blocking_enabled:
+    bug_numbers:
+      - 1522919
+    description: >
+      True if cryptominer blocking is enabled globally at startup.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - aedelstein@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+  fingerprinting_blocking_enabled:
+    bug_numbers:
+      - 1522919
+    description: >
+      True if fingerprinter blocking is enabled globally at startup.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - aedelstein@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+  category:
+    bug_numbers:
+      - 1529425
+    description: >
+      This scalar reports the value of the content blocking category pref (0 = "standard", 1 = "strict", 2 = "custom", 3 = some other value, this is not supported).
+    expires: never
+    kind: uint
+    notification_emails:
+      - aedelstein@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+  trackers_blocked_count:
+    bug_numbers:
+      - 1577030
+    description: >
+      A count of the number of tracking events blocked.
+    expires: "75"
+    kind: uint
+    notification_emails:
+      - chsiang@mozilla.com
+      - seceng-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
     record_in_processes:
       - main
 
@@ -507,9 +755,78 @@ sandbox:
     notification_emails:
       - bowen@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
-    cpp_guard: 'XP_WIN'
+    operating_systems:
+      - "windows"
+
+os.environment:
+  is_admin_without_uac:
+    bug_numbers:
+      - 1567219
+    description: >
+      Indicates that the process is lauched with Admin privileges but without
+      UAC.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - tkikuchi@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+pictureinpicture:
+  opened_method:
+    bug_numbers:
+      - 1560590
+    description: >
+      The number of times a Picture-in-Picture window was opened, per trigger
+      mechanism (e.g.: the video toggle, the context menu).
+    expires: "74"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - mconley@mozilla.com
+      - astevenson@mozilla.com
+    release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - content
+    operating_systems:
+      - "windows"
+  closed_method:
+    bug_numbers:
+      - 1560590
+    description: >
+      The number of times a Picture-in-Picture window was closed, per trigger
+      mechanism (e.g.: the close button, the unpip button, originating tab going away,
+      process shutdown, etc).
+    expires: "74"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - mconley@mozilla.com
+      - astevenson@mozilla.com
+    release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
 
 preferences:
   created_new_user_prefs_file:
@@ -523,6 +840,10 @@ preferences:
     notification_emails:
       - bsmedberg@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   prefs_file_was_invalid:
@@ -535,6 +856,10 @@ preferences:
     notification_emails:
       - bsmedberg@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   read_user_js:
@@ -547,6 +872,10 @@ preferences:
     notification_emails:
       - bsmedberg@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   search_query:
@@ -562,6 +891,10 @@ preferences:
     notification_emails:
       - chsiang@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   browser_home_page_change:
@@ -576,6 +909,10 @@ preferences:
     notification_emails:
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   browser_home_page_count:
@@ -592,6 +929,10 @@ preferences:
     notification_emails:
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   use_current_page:
@@ -606,6 +947,10 @@ preferences:
     notification_emails:
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   use_bookmark:
@@ -620,6 +965,10 @@ preferences:
     notification_emails:
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
   prevent_accessibility_services:
@@ -634,104 +983,134 @@ preferences:
     notification_emails:
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
-# The following section contains WebRTC nICEr scalars
-# For more info on ICE, see https://tools.ietf.org/html/rfc5245
-# For more info on STUN, see https://tools.ietf.org/html/rfc5389
-# For more info on TURN, see https://tools.ietf.org/html/rfc5766
-webrtc.nicer:
-  stun_retransmits:
+webrtc.hostnameobfuscation:
+  disabled_failed:
     bug_numbers:
-      - 1325536
+      - 1569250
     description: >
-      The count of STUN message retransmissions during a WebRTC call.
-      When sending STUN request messages over UDP, messages may be
-      dropped by the network. Retransmissions are the mechanism used to
-      accomplish reliability of the STUN request/response transaction.
-      This can happen during both successful and unsuccessful WebRTC
-      calls.
-      For more info on ICE, see https://tools.ietf.org/html/rfc5245
-      For more info on STUN, see https://tools.ietf.org/html/rfc5389
-      For more info on TURN, see https://tools.ietf.org/html/rfc5766
-    expires: "62"
+      The number of times the connection failed with hostname obfuscation
+      disabled. Hostname obfuscation uses mDNS addresses to prevent browser
+      fingerprinting by using WebRTC to collect local IP addresses.
+    expires: "77"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com
-      - nohlmeier@mozilla.com
+      - dminor@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
 
-  turn_401s:
+  disabled_succeeded:
     bug_numbers:
-      - 1325536
+      - 1569250
     description: >
-      The count of TURN 401 (Unauthorized) responses to allocation
-      requests. Only 401 responses beyond the first, expected 401 are
-      counted. More than one 401 repsonse indicates the client is
-      experiencing difficulty authenticating with the TURN server. This
-      can happen during both successful and unsuccessful WebRTC calls.
-      For more info on ICE, see https://tools.ietf.org/html/rfc5245
-      For more info on STUN, see https://tools.ietf.org/html/rfc5389
-      For more info on TURN, see https://tools.ietf.org/html/rfc5766
-    expires: "62"
+      The number of times the connection succeeded with hostname obfuscation
+      disabled. Hostname obfuscation uses mDNS addresses to prevent browser
+      fingerprinting by using WebRTC to collect local IP addresses.
+    expires: "77"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com
-      - nohlmeier@mozilla.com
+      - dminor@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
 
-  turn_403s:
+  enabled_failed:
     bug_numbers:
-      - 1325536
+      - 1569250
     description: >
-      The count of TURN 403 (Forbidden) responses to CreatePermission or
-      ChannelBind requests.  This indicates that the TURN server is
-      refusing the request for an IP address or IP address/port
-      combination, likely due to administrative restrictions.
-      For more info on ICE, see https://tools.ietf.org/html/rfc5245
-      For more info on STUN, see https://tools.ietf.org/html/rfc5389
-      For more info on TURN, see https://tools.ietf.org/html/rfc5766
-    expires: "62"
+      The number of times the connection failed with hostname obfuscation
+      enabled. Hostname obfuscation uses mDNS addresses to prevent browser
+      fingerprinting by using WebRTC to collect local IP addresses.
+    expires: "77"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com
-      - nohlmeier@mozilla.com
+      - dminor@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
 
-  turn_438s:
+  enabled_succeeded:
     bug_numbers:
-      - 1325536
+      - 1569250
     description: >
-      The count of TURN 438 (Stale Nonce) responses to allocation
-      requests. This can happen during both successful and unsuccessful
-      WebRTC calls.
-      For more info on ICE, see https://tools.ietf.org/html/rfc5245
-      For more info on STUN, see https://tools.ietf.org/html/rfc5389
-      For more info on TURN, see https://tools.ietf.org/html/rfc5766
-    expires: "62"
+      The number of times the connection succeeded with hostname obfuscation
+      enabled. Hostname obfuscation uses mDNS addresses to prevent browser
+      fingerprinting by using WebRTC to collect local IP addresses.
+    expires: "77"
     kind: uint
     notification_emails:
-      - webrtc-ice-telemetry-alerts@mozilla.com
-      - nohlmeier@mozilla.com
+      - dminor@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
       - 'main'
+      - 'content'
+
+webrtc.video:
+  recv_codec_used:
+    bug_numbers:
+      - 1556766
+    description: >
+      The video codec used for receiving video on a WebRTC call.
+    expires: "never"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dminor@mozilla.com
+      - nohlmeier@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'content'
+
+  send_codec_used:
+    bug_numbers:
+      - 1556766
+    description: >
+      The video codec used for sending video on a WebRTC call.
+    expires: "never"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dminor@mozilla.com
+      - nohlmeier@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
       - 'content'
 
 webrtc.sdp:
   parser_diff:
     bug_numbers:
       - 1432955
+      - 1529787
     description: >
       The number of differences between the C based sipcc SDP parser and
       the new rust based rsdparsa SDP parser keyed by predefined
@@ -740,12 +1119,16 @@ webrtc.sdp:
       between the rsdparsa parsing result and the original sdp.
       This should help to improve the new rsdparsa to replace
       the sipcc parser.
-    expires: "64"
+    expires: "73"
     kind: uint
     keyed: true
     notification_emails:
       - nohlmeier@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'content'
 
@@ -753,13 +1136,20 @@ mathml:
   doc_count:
     bug_numbers:
       - 1362187
+      - 1538985
     description: >
       The number of documents that contained enabled MathML elements.
-    expires: "63"
+    expires: "73"
     kind: uint
     notification_emails:
-      - gsquelart@mozilla.com
-    release_channel_collection: opt-in
+      - emilio@mozilla.com
+      - fredw@igalia.com
+      - dev-tech-layout@lists.mozilla.org
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'content'
 
@@ -767,13 +1157,21 @@ mediarecorder:
   recording_count:
     bug_numbers:
       - 1400757
+      - 1429765
+      - 1480589
+      - 1532391
     description: >
       The number of times a MediaRecorder has been started. Recorded when a MediaRecorder starts
-    expires: "68"
+    expires: "72"
     kind: uint
     notification_emails:
       - bvandyk@mozilla.com
+      - nohlmeier@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
       - content
@@ -782,116 +1180,85 @@ media:
   page_count:
     bug_numbers:
       - 1476456
+      - 1499803
+      - 1570634
     description: >
       The number of times a top level document is loaded.
-    expires: "68"
+    expires: "74"
     kind: uint
     notification_emails:
       - cpearce@mozilla.com
       - alwu@mozilla.com
       - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
-      - main
       - content
 
   page_had_media_count:
     bug_numbers:
       - 1476456
+      - 1499803
+      - 1570634
     description: >
       The number of times a document hierarchy contained at least one audible HTMLMediaElement that had play() called upon it.
-    expires: "68"
+    expires: "74"
     kind: uint
     notification_emails:
       - cpearce@mozilla.com
       - alwu@mozilla.com
       - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
-      - main
-      - content
-
-  page_had_play_revoked_count:
-    bug_numbers:
-      - 1476456
-    description: >
-      The number of times a document hierarchy contained at least one muted playing HTMLMediaElement that was paused due to becoming unmuted while not being allowed to autoplay.
-    expires: "68"
-    kind: uint
-    notification_emails:
-      - cpearce@mozilla.com
-      - alwu@mozilla.com
-      - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
-    record_in_processes:
-      - main
       - content
 
   autoplay_would_not_be_allowed_count:
     bug_numbers:
       - 1476456
+      - 1499803
+      - 1570634
     description: >
       The number of HTMLMediaElement autoplays on audible HTMLMediaElements which would not be allowed to play if block autoplay was enabled; we'd either prompt for permission to play or block outright depending on user preferences.
-    expires: "68"
+    expires: "74"
     kind: uint
     notification_emails:
       - cpearce@mozilla.com
       - alwu@mozilla.com
       - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
-      - main
-      - content
-
-  blocked_autoplay_no_audio_track_count:
-    bug_numbers:
-      - 1480484
-    description: >
-      The number of HTMLMediaElement autoplays on HTMLMediaElements without an audio track which would not be allowed to play if block autoplay was enabled; we'd either prompt for permission to play or block outright depending on user preferences.
-    expires: "68"
-    kind: uint
-    notification_emails:
-      - cpearce@mozilla.com
-      - alwu@mozilla.com
-      - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
-    record_in_processes:
-      - main
       - content
 
   autoplay_would_be_allowed_count:
     bug_numbers:
       - 1476456
+      - 1499803
+      - 1570634
     description: >
       The number of HTMLMediaElement autoplays on audible HTMLMediaElements that would have been allowed (not blocked) by the autoplay policy if block autoplay was enabled.
-    expires: "68"
+    expires: "74"
     kind: uint
     notification_emails:
       - cpearce@mozilla.com
       - alwu@mozilla.com
       - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'geckoview'
     record_in_processes:
-      - main
       - content
 
 # The following section contains content process base counters.
 dom.contentprocess:
-  troubled_due_to_memory:
-    bug_numbers:
-      - 1305091
-    description: >
-      The number of content processes that were marked as troubled because
-      it was running low on virtual memory.
-    expires: "58"
-    kind: uint
-    notification_emails:
-      - benjamin@smedbergs.us
-      - mconley@mozilla.com
-    release_channel_collection: opt-in
-    record_in_processes:
-      - 'main'
-
   buildID_mismatch:
     bug_numbers:
       - 1366808
@@ -903,6 +1270,85 @@ dom.contentprocess:
     notification_emails:
       - spohl@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+  os_priority_lowered:
+    bug_numbers:
+      - 1538987
+    description: >
+      The number of times a content process has had its OS priority lowered
+      due to only containing background tabs without audible media playing.
+    expires: never
+    kind: uint
+    notification_emails:
+      - mconley@mozilla.com
+      - gsvelto@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+  os_priority_raised:
+    bug_numbers:
+      - 1538987
+    description: >
+      The number of times a content process has had its OS priority raised
+      due to containing at least one foregrounded tab, or a tab with audible
+      media has started playing in it.
+    expires: never
+    kind: uint
+    notification_emails:
+      - mconley@mozilla.com
+      - gsvelto@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+  os_priority_change_considered:
+    bug_numbers:
+      - 1538987
+    description: >
+      The number of times we've had the opportunity to change content process
+      priority due to a tab switch or a tab being opened.
+    expires: never
+    kind: uint
+    notification_emails:
+      - mconley@mozilla.com
+      - gsvelto@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+# The following section contains parent process base counters.
+dom.parentprocess:
+  private_window_used:
+    bug_numbers:
+      - 1491047
+    description: >
+      Whether a private browsing window has been used in the session.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - seceng-telemetry@mozilla.com
+      - ehsan+telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -917,6 +1363,10 @@ devtools.toolbar.eyedropper:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -925,12 +1375,18 @@ devtools.copy.unique.css.selector:
     bug_numbers:
       - 1323700
       - 1352115
+      - 1566395
     description: Number of times the DevTools copy unique CSS selector has been used.
-    expires: "59"
+    expires: never
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -939,12 +1395,18 @@ devtools.copy.full.css.selector:
     bug_numbers:
       - 1323700
       - 1352115
+      - 1566395
     description: Number of times the DevTools copy full CSS selector has been used.
-    expires: "59"
+    expires: never
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -952,12 +1414,90 @@ devtools.copy.xpath:
   opened:
     bug_numbers:
       - 987877
+      - 1566395
     description: Number of times the DevTools copy XPath has been used.
-    expires: "59"
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+devtools.layout.flexboxhighlighter:
+  opened:
+    bug_numbers:
+      - 1509907
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from the layout view.
+    expires: never
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+devtools.markup.flexboxhighlighter:
+  opened:
+    bug_numbers:
+      - 1509907
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from the markup view.
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+devtools.rules.flexboxhighlighter:
+  opened:
+    bug_numbers:
+      - 1509907
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from the rules view.
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+devtools.markup.gridinspector:
+  opened:
+    bug_numbers:
+      - 1509907
+    description: >
+      Number of times the DevTools grid inspector was opened from the markup view.
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -972,6 +1512,10 @@ devtools.rules.gridinspector:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -986,6 +1530,10 @@ devtools.grid.gridinspector:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1000,6 +1548,10 @@ devtools.grid.showGridAreasOverlay:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1014,6 +1566,10 @@ devtools.grid.showGridLineNumbers:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1028,6 +1584,10 @@ devtools.grid.showInfiniteLines:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1035,16 +1595,41 @@ devtools.inspector:
   three_pane_enabled:
     bug_numbers:
       - 1437881
+      - 1566395
     description: >
       Number of times the DevTools inspector was opened with the 3 pane inspector enabled,
       keyed by true/false.
-    expires: "65"
+    expires: never
     kind: uint
     keyed: true
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - gl@mozilla.com
+      - mbalfanz@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  node_selection_count:
+    bug_numbers:
+      - 1550794
+    description: >
+      Number of times a different node is marked as selected in the Inspector regardless
+      of the cause: context menu, manual selection in markup view, etc.
+    expires: "never"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1052,43 +1637,58 @@ devtools.shadowdom:
   shadow_root_displayed:
     bug_numbers:
       - 1470128
+      - 1566393
     description: >
       Whether the markup view displayed any #shadow-root element in the UI.
-    expires: "66"
+    expires: "never"
     kind: boolean
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - jdescottes@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   shadow_root_expanded:
     bug_numbers:
       - 1470128
+      - 1566393
     description: >
       Whether the user expanded any #shadow-root element.
-    expires: "66"
+    expires: "never"
     kind: boolean
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - jdescottes@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   reveal_link_clicked:
     bug_numbers:
       - 1470128
+      - 1566393
     description: >
       Whether the user clicked on any "reveal" link. "reveal" links are displayed in
       shadow dom trees in the markup view.
-    expires: "66"
+    expires: "never"
     kind: boolean
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - jdescottes@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1104,61 +1704,31 @@ devtools:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
-devtools.aboutdevtools:
-  opened:
+devtools.tooltip:
+  shown:
     bug_numbers:
-      - 1412029
+      - 1553471
     description: >
-      Number of times about:devtools was opened.
-    expires: "63"
+      Number of times a tooltip was shown, keyed by tooltip type. Currently supported types are "image", "font-family", "inactive-css" and "variable."
+    expires: never
     kind: uint
+    keyed: true
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
-      - jdescottes@mozilla.com
-    record_in_processes:
-      - 'main'
-  installed:
-    bug_numbers:
-      - 1412029
-    description: >
-      Number of times devtools were enabled/installed in about:devtools.
-    expires: "63"
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - jdescottes@mozilla.com
-    record_in_processes:
-      - 'main'
-  noinstall_exits:
-    bug_numbers:
-      - 1412029
-    description: >
-      Number of times the user left about:devtools without enabling devtools.
-    expires: "63"
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - jdescottes@mozilla.com
-    record_in_processes:
-      - 'main'
-
-devtools.onboarding:
-  is_devtools_user:
-    bug_numbers:
-      - 1408339
-    description: >
-      How many users are flagged as existing devtools users.
-    expires: "66"
-    kind: boolean
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - jdescottes@mozilla.com
-    record_in_processes:
-      - 'main'
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
 
 devtools.responsive:
   toolbox_opened_first:
@@ -1171,6 +1741,10 @@ devtools.responsive:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - jryans@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
     release_channel_collection: opt-out
@@ -1185,6 +1759,10 @@ devtools.responsive:
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - jryans@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
     release_channel_collection: opt-out
@@ -1193,18 +1771,23 @@ devtools.tool:
   registered:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Recorded on enable tool checkbox check/uncheck in Developer Tools options
       panel. Boolean stating if the tool was enabled or disabled by the user.
       Keyed by tool id. Current default tools with their id's are defined in
       https://dxr.mozilla.org/mozilla-central/source/devtools/client/definitions.js
-    expires: "65"
+    expires: "70"
     kind: boolean
     keyed: true
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1212,76 +1795,184 @@ devtools.accessibility:
   node_inspected_count:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Number of times a DOM node was inspected from within the Accessibility
       tool.
-    expires: "65"
+    expires: "70"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   opened_count:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Number of times the DevTools Accessibility tool has been opened.
-    expires: "65"
+    expires: "70"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   picker_used_count:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Number of times the picker tool has been used in DevTools Accessibility
       panel.
-    expires: "65"
+    expires: "70"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   select_accessible_for_node:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Number of times an accessible object was inspected from outside the
       Accessibility tool (navigation to Accessibility panel). Keyed by the
       source of user action (inspector context menu, browser context menu, etc).
-    expires: "65"
+    expires: "70"
     kind: uint
     keyed: true
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
   service_enabled_count:
     bug_numbers:
       - 1447302
+      - 1503568
     description: >
       Number of times platform accessibility has been enabled in DevTools
       Accessibility panel.
-    expires: "65"
+    expires: "70"
     kind: uint
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - yzenevich@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  accessible_context_menu_opened:
+    bug_numbers:
+      - 1507870
+    description: >
+      Number of times a context menu was opened for an accessible object in the
+      accessibility tree.
+    expires: "70"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  accessible_context_menu_item_activated:
+    bug_numbers:
+      - 1507870
+    description: >
+      Number of times a context menu item for an accessible object was activated (with
+      mouse or keyboard) from the context menu opened in the accessibility tree. Keyed by
+      the id of the context menu item.
+    expires: "70"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  audit_activated:
+    bug_numbers:
+      - 1548241
+    description: >
+      Number of times accessibility audit was activated (with mouse or keyboard)
+      from the accessibility panel's toolbar. Keyed by the audit filter type
+      (e.g. "CONTRAST").
+    expires: "73"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  simulation_activated:
+    bug_numbers:
+      - 1567200
+    description: >
+      Number of times accessibility simulation was activated (with mouse or keyboard)
+      from the accessibility panel's toolbar. Keyed by the simulation type
+      (e.g. "DEUTERANOMALY").
+    expires: "74"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - yzenevich@mozilla.com
+      - mislam@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1297,6 +1988,10 @@ devtools.application:
       - dev-developer-tools@lists.mozilla.org
       - jdescottes@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1304,18 +1999,241 @@ devtools.toolbox:
   tabs_reordered:
     bug_numbers:
       - 1456551
+      - 1566362
     description: >
       Number of times the DevTools tab was reordered.
       Keyed by tab's id.
-    expires: "65"
+    expires: never
     kind: uint
     keyed: true
     notification_emails:
       - dev-developer-tools@lists.mozilla.org
       - daisuke@mozilla.com
+      - hkirschner@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
+
+devtools.webreplay:
+  new_recording:
+    bug_numbers:
+      - 1495910
+    description: >
+      Number of times a blank recording tab was created.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bhackett@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  reload_recording:
+    bug_numbers:
+      - 1495910
+    description: >
+      Number of times a non-recording tab was reloaded to create a recording tab.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bhackett@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  stop_recording:
+    bug_numbers:
+      - 1495910
+    description: >
+      Number of times a recording tab was reloaded to create a non-recording tab.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bhackett@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  save_recording:
+    bug_numbers:
+      - 1495910
+    description: >
+      Number of times a recording was saved.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bhackett@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  load_recording:
+    bug_numbers:
+      - 1495910
+    description: >
+      Number of times a recording was loaded.
+    expires: never
+    kind: uint
+    notification_emails:
+      - bhackett@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+devtools.changesview:
+  opened_count:
+    bug_numbers:
+      - 1509890
+    description: >
+      Number of times the Changes panel has been opened.
+    expires: never
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  copy_all_changes:
+    bug_numbers:
+      - 1532583
+    description: >
+      Number of times the Copy All Changes button is used in the Changes panel.
+    expires: "73"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  copy_rule:
+    bug_numbers:
+      - 1532583
+    description: >
+      Number of times the Copy Rule button is used in the Changes panel.
+    expires: "73"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  contextmenu_copy_declaration:
+    bug_numbers:
+      - 1532583
+    description: >
+      Number of times the Copy Declaration option is picked from the Changes panel
+      context menu.
+    expires: "73"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  contextmenu_copy_rule:
+    bug_numbers:
+      - 1532583
+    description: >
+      Number of times the Copy Rule option is picked from the Changes panel
+      context menu.
+    expires: "73"
+    kind: uint
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+dom.event:
+  confluence_load_count:
+    bug_numbers:
+      - 1514940
+    description: >
+      Number of times Confluence instances are loaded, and whether they are
+      compatible with conflated keypress event model or not, using "new"/"old".
+      I.e., collecting percentage of too old Confluence instance use count in
+      all Confluence instance use count.
+    expires: "71"
+    keyed: true
+    kind: uint
+    notification_emails:
+      - mnakano@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'content'
+
+  office_online_load_count:
+    bug_numbers:
+      - 1545410
+    description: >
+      Number of times Office Online Server instances are loaded, and whether
+      they are compatible with conflated keypress event model or not, using
+      "new"/"old".  I.e., collecting percentage of too old Confluence instance
+      use count in all Office Online Server instance use count.
+    expires: "71"
+    keyed: true
+    kind: uint
+    notification_emails:
+      - mnakano@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'content'
 
 navigator.storage:
   estimate_count:
@@ -1329,6 +2247,10 @@ navigator.storage:
       - shuang@mozilla.com
       - ttung@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
@@ -1344,6 +2266,10 @@ navigator.storage:
       - shuang@mozilla.com
       - ttung@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
@@ -1362,6 +2288,11 @@ telemetry:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - all
 
@@ -1378,6 +2309,10 @@ telemetry:
       - telemetry-client-dev@mozilla.com
       - chutten@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1395,6 +2330,10 @@ telemetry:
       - telemetry-client-dev@mozilla.com
       - chutten@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all'
 
@@ -1409,6 +2348,10 @@ telemetry:
       - jrediger@mozilla.com
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all'
 
@@ -1423,40 +2366,10 @@ telemetry:
       - jrediger@mozilla.com
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  # While the following probe could be restricted to GeckoView, we can't
-  # turn the product filter on as we don't run GeckoView test coverage on
-  # GeckoView.
-  persistence_timer_hit_count:
-    bug_numbers:
-      - 1463152
-    description: >
-      How many times the GeckoView Telemetry persistence timer was hit during
-      the current subsession.
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - telemetry-client-dev@mozilla.com
-      - aplacitelli@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-
-  pending_operations_highwatermark_reached:
-    bug_numbers:
-      - 1465052
-    description: >
-      The number of times the pending operations list reached the
-      high-water mark, leading to operations being applied immediately.
-    expires: "65"
-    kind: uint
-    keyed: false
-    notification_emails:
-      - jrediger@mozilla.com
-      - telemetry-client-dev@mozilla.com
-    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1471,23 +2384,106 @@ telemetry:
       - jrediger@mozilla.com
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
-  os_shutting_down:
+  keyed_scalars_exceed_limit:
     bug_numbers:
-      - 1480826
+      - 1451813
     description: >
-      Records true if there is a signal that Firefox was quitting because
-      the OS was shutting down. Only available on Windows.
-    expires: "64"
-    kind: boolean
+      The number of times keyed scalars exceeded the number of keys limit, keyed by scalar name.
+    expires: "never"
+    kind: uint
+    keyed: true
     notification_emails:
-      - telemetry-client-dev@mozilla.com
-      - agashlin@mozilla.com
+      - chutten@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
+
+  about_telemetry_pageload:
+    bug_numbers:
+      - 1512503
+    description: >
+      The number of times about:telemetry was loaded.
+    expires: "70"
+    kind: uint
+    notification_emails:
+      - chutten@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  process_creation_timestamp_inconsistent:
+    bug_numbers:
+      - 1514392
+    description: >
+      The number of times ProcessCreation saw an inconsistent value.
+    expires: "72"
+    kind: uint
+    notification_emails:
+      - jrediger@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+      - 'content'
+
+  ecosystem_old_send_time:
+    bug_numbers:
+      - 1545365
+    description: >
+      The timestamp im milliseconds of the last time we tried to send an Ecosystem ping
+    expires: "73"
+    kind: string
+    notification_emails:
+      - jrediger@mozilla.com
+    release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'pre-account'
+
+  ecosystem_new_send_time:
+    bug_numbers:
+      - 1545365
+    description: >
+      The timestamp im milliseconds of the last time we tried to send an Ecosystem ping
+    expires: "73"
+    kind: string
+    notification_emails:
+      - jrediger@mozilla.com
+    release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'pre-account'
 
 telemetry.discarded:
   accumulations:
@@ -1500,6 +2496,10 @@ telemetry.discarded:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all_childs'
   keyed_accumulations:
@@ -1512,6 +2512,10 @@ telemetry.discarded:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all_childs'
   scalar_actions:
@@ -1524,6 +2528,10 @@ telemetry.discarded:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all_childs'
   keyed_scalar_actions:
@@ -1536,6 +2544,10 @@ telemetry.discarded:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all_childs'
   child_events:
@@ -1548,8 +2560,31 @@ telemetry.discarded:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'all_childs'
+
+normandy:
+  recipe_freshness:
+    bug_numbers:
+      - 1530508
+    description: >
+      For each recipe ID seen by the Normandy client, its last_modified.
+    expires: "never"
+    keyed: true
+    kind: uint
+    notification_emails:
+      - product-delivery@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
 
 # The following section contains graphics-related scalars.
 gfx.advanced.layers:
@@ -1567,6 +2602,10 @@ gfx.advanced.layers:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
       - rhunt@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1574,64 +2613,44 @@ gfx.omtp:
   paint_wait_ratio:
     bug_numbers:
       - 1386968
+      - 1518669
     description: >
       Ratio (in units of 1/100th of a percent) of how many times OMTP waited
       for a paint for more than 200us, versus the total number of paints.
     keyed: false
     kind: uint
-    expires: "66"
+    expires: "never"
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
       - rhunt@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'content'
 
-images.webp:
-  probe_observed:
+gfx.hdr:
+  windows_display_colorspace_bitfield:
     bug_numbers:
-      - 1472145
+      - 1514840
     description: >
-      Whether we received a probe detecting our WebP image support.
-    kind: boolean
-    expires: "65"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - aosmond@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  content_observed:
-    bug_numbers:
-      - 1472145
-    description: >
-      Whether we received a request to decode a WebP image, excluding probes.
-    kind: boolean
-    expires: "65"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - aosmond@mozilla.com
-    release_channel_collection: opt-out
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  content_frequency:
-    bug_numbers:
-      - 1472145
-    description: >
-      How many image requests are WebP images, excluding probes.
+      A bitfield representation of the available DXGI color spaces of the connected displays on Windows.
+      See (https://docs.microsoft.com/en-us/windows/desktop/api/dxgicommon/ne-dxgicommon-dxgi_color_space_type)
+      for definitions of color spaces. Each N'th bit of this scalar indicates whether the DXGI color space with
+      index 'N' is available on at least one connected monitor.
+    keyed: false
     kind: uint
-    keyed: true
-    expires: "65"
+    expires: "70"
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
-      - aosmond@mozilla.com
-    release_channel_collection: opt-out
+      - rhunt@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
-      - 'content'
 
 # The following section contains the form autofill related scalars.
 formautofill:
@@ -1646,6 +2665,10 @@ formautofill:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1661,6 +2684,10 @@ formautofill.addresses:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
   fill_type_autofill:
@@ -1674,6 +2701,10 @@ formautofill.addresses:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
   fill_type_autofill_update:
@@ -1689,6 +2720,10 @@ formautofill.addresses:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1704,6 +2739,10 @@ formautofill.creditCards:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
   fill_type_autofill:
@@ -1717,6 +2756,10 @@ formautofill.creditCards:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
   fill_type_autofill_modified:
@@ -1732,6 +2775,10 @@ formautofill.creditCards:
       - jcheng@mozilla.com
       - chsiang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1751,6 +2798,10 @@ screenshots:
       - ibicking@mozilla.com
       - clouserw@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1768,6 +2819,10 @@ screenshots:
       - ibicking@mozilla.com
       - clouserw@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1784,34 +2839,74 @@ screenshots:
       - ibicking@mozilla.com
       - clouserw@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
-idb.type:
-  persistent_count:
+# The following section is for tracking the number of failure for indexedDB.
+idb.failure:
+  fileinfo_error:
     bug_numbers:
-      - 1360567
+      - 1432133
     description: >
-      Number of times indexeddb.open(name, {storage: "persistent"}) has been used.
-    expires: "62"
+      Tracking the number of failure due to missing fileInfo while doing
+      structured clone.
+    expires: "70"
     kind: uint
     notification_emails:
-      - shuang@mozilla.com
-    release_channel_collection: opt-in
+      - ttung@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+# The following section contains scalars for the PDF viewer.
+pdf.viewer:
+  used:
+    bug_numbers:
+      - 1566882
+    description: >
+      How many times PDF Viewer was used.
+    expires: never
+    notification_emails:
+      - bdahl@mozilla.com
+    kind: uint
+    products:
+      - 'firefox'
     record_in_processes:
       - 'main'
       - 'content'
-
-  temporary_count:
+  fallback_shown:
     bug_numbers:
-      - 1360567
+      - 1566882
     description: >
-      Number of times indexeddb.open(name, {storage: "temporary"}) has been used.
-    expires: "62"
-    kind: uint
+      How many times PDF Viewer fallback bar was shown.
+    expires: "75"
     notification_emails:
-      - shuang@mozilla.com
-    release_channel_collection: opt-in
+      - bdahl@mozilla.com
+    kind: uint
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+      - 'content'
+  print:
+    bug_numbers:
+      - 1566882
+    description: >
+      How many times PDF Viewer print functionality was used.
+    expires: "75"
+    notification_emails:
+      - bdahl@mozilla.com
+    kind: uint
+    products:
+      - 'firefox'
     record_in_processes:
       - 'main'
       - 'content'
@@ -1828,6 +2923,28 @@ timestamps:
     notification_emails:
       - hkirschner@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  about_home_topsites_first_paint:
+    bug_numbers:
+      - 1518521
+    description: >
+      Record the timestamp of when the first about:home's Topsites are painted. Only records if
+      about:home is set as the default homepage, and if sessions are not being restored by default.
+    expires: never
+    kind: uint
+    notification_emails:
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - main
 
@@ -1844,6 +2961,10 @@ browser.timings:
     notification_emails:
       - florian@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -1861,6 +2982,10 @@ sw:
       - sw-telemetry@mozilla.com
       - ttung@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
@@ -1877,6 +3002,10 @@ sw:
       - sw-telemetry@mozilla.com
       - ttung@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
@@ -1893,97 +3022,13 @@ sw:
       - sw-telemetry@mozilla.com
       - echuang@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
       - 'content'
-
-# The following section contains the BrowserErrorReporter scalars.
-browser.errors:
-  collected_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were collected locally.
-    expires: "64"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  collected_with_stack_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of browser chrome JS errors that were collected locally and had
-      a usable stack trace.
-    expires: "64"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  reported_success_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were reported to the
-      remote collection service.
-    expires: "64"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  reported_failure_count:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that we attempted to report to
-      the remote collection service, but failed to.
-    expires: "64"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  sample_rate:
-    bug_numbers:
-      - 1444554
-    description: >
-      The sample rate at which collected errors were reported.
-    expires: "64"
-    kind: string
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
-
-  collected_count_by_filename:
-    bug_numbers:
-      - 1444554
-    description: >
-      The count of all browser chrome JS errors that were collected locally,
-      keyed by the filename of the file in which the error occurred. Collected
-      filenames are limited to specific paths under the resource:// and
-      chrome:// protocols; non-matching filenames are reported as "FILTERED".
-      Long filenames are truncated to the first 70 characters.
-    keyed: true
-    expires: "64"
-    kind: uint
-    notification_emails:
-      - nightly-js-errors@mozilla.com
-      - mkelly@mozilla.com
-    record_in_processes:
-      - 'main'
 
 widget:
   ime_name_on_windows:
@@ -2001,6 +3046,10 @@ widget:
     notification_emails:
       - mnakano@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -2018,6 +3067,10 @@ widget:
     notification_emails:
       - mnakano@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -2035,6 +3088,10 @@ widget:
     notification_emails:
       - mnakano@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'main'
 
@@ -2050,8 +3107,1444 @@ memoryreporter:
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
     record_in_processes:
       - 'content'
+
+update:
+  binarytransparencyresult:
+    bug_numbers:
+      - 1501889
+    description: >
+      If the binary transparency information for an update does not verify
+      successfully, this probe will contain an error code from
+      toolkit/mozapps/update/common/updatererrors.h indicating why.
+    expires: "73"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - seceng-telemetry@mozilla.com
+      - dkeeler@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  bitshresult:
+    bug_numbers:
+      - 1343669
+      - 1540193
+      - 1520321
+    description: >
+      If a BITS download fails on the Windows side (that is to say, BITS
+      ecounters an error rather than Firefox failing to interact with BITS),
+      it will likely give an hresult error indicating what happened. This probe
+      reports those error codes to allow us to see if BITS is commonly failing
+      on some systems. This probe is keyed on the type of update download,
+      either "PARTIAL" or "COMPLETE".
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - windows
+
+  fix_permissions_attempted:
+    bug_numbers:
+      - 1577317
+    description: Set when we attempt to fix update directory permissions.
+    expires: "76"
+    kind: boolean
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - agashlin@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+    operating_systems:
+      - windows
+
+update.startup:
+  from_app_version:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the previous application version that the update was applied to
+      when the update makes it to the last phase where the application has
+      exited and started.
+    expires: "76"
+    kind: string
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  mar_partial_size_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes of a partial update MAR file when
+      the update makes it to the last phase where the application has exited and
+      started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  mar_complete_size_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes of a complete update MAR file when
+      the update makes it to the last phase where the application has exited and
+      started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+update.startup.intervals:
+  check:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the check phase of the update process
+      when an update makes it to the last phase where the application has exited
+      and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  download_bits_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the BITS downloader for a partial update MAR file when the
+      update makes it to the last phase where the application has exited and
+      and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  download_bits_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the BITS downloader for a complete update MAR file when the
+      update makes it to the last phase where the application has exited and
+      started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  download_internal_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the internal application downloader for a partial update MAR
+      file when the update makes it to the last phase where the application has
+      exited and and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  download_internal_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the internal application downloader for a complete update
+      MAR file when the update makes it to the last phase where the application
+      has exited and and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  stage_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the stage phase of the update process
+      for a partial update MAR file when the update makes it to the last phase
+      where the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  stage_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the stage phase of the update process
+      for a complete update MAR file when the update makes it to the last phase
+      where the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  apply_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the apply phase of the update process
+      for a partial update MAR file when the update makes it to the last phase
+      where the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  apply_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the apply phase of the update process
+      for a complete update MAR file when the update makes it to the last phase
+      where the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+update.startup.downloads:
+  bits_partial_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the BITS downloader for
+      a partial update MAR file when the update makes it to the last phase where
+      the application has exited and started. This value can be different than
+      the size of the update MAR file because the value is only monitored
+      during the initial download while the application is running and not if
+      the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_partial_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the BITS downloader for a
+      partial update MAR file when the update makes it to the last phase where
+      the application has exited and started. This value can be used with the
+      value of update.startup.downloads.bits_partial_bytes to estimate the bytes
+      per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_complete_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the BITS downloader for
+      a complete update MAR file when the update makes it to the last phase
+      where the application has exited and started. This value can be different
+      than the size of the update MAR file because the value is only monitored
+      during the initial download while the application is running and not if
+      the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_complete_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the BITS downloader for a
+      complete update MAR file when the update makes it to the last phase where
+      the application has exited and started. This value can be used with the
+      value of update.startup.downloads.bits_complete_bytes to estimate the
+      bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  internal_partial_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the internal application
+      downloader for a partial update MAR file when the update makes it to the
+      last phase where the application has exited and started. This value can be
+      different than the size of the update MAR file because the value is only
+      monitored during the initial download while the application is running and
+      not if the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_partial_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the internal application
+      downloader for a partial update MAR file when the update makes it to the
+      last phase where the application has exited and started. This value can be
+      used with the value of update.startup.downloads.internal_partial_bytes to
+      estimate the bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_complete_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded by the internal
+      application downloader for a complete update MAR file when an update makes
+      it to the last phase where the application has exited and started. This
+      value can be different than the size of the update MAR file because the
+      value is only monitored during the initial download while the
+      application is running and not if the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_complete_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the internal application
+      downloader for a complete update MAR file when the update makes it to the
+      last phase where the application has exited and started. This value can be
+      used with the value of update.startup.downloads.internal_complete_bytes to
+      estimate the bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+update.session:
+  from_app_version:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the previous application version that the update was applied to
+      when the update has finished due to a failure before the application has
+      exited and started.
+    expires: "76"
+    kind: string
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  mar_partial_size_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes of a partial update MAR file when
+      the update has finished due to a failure before the application has exited
+      and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  mar_complete_size_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes of a complete update MAR file when
+      the update has finished due to a failure before the application has exited
+      and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+update.session.intervals:
+  check:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the check phase of the update process
+      when an update has finished due to a failure before the application has
+      exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  download_bits_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the BITS downloader for a partial update MAR file when the
+      update has finished due to a failure before the application has exited
+      and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  download_bits_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the BITS downloader for a complete update MAR file when the
+      update has finished due to a failure before the application has exited and
+      started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  download_internal_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the internal application downloader for a partial update MAR
+      file when the update has finished due to a failure before the application
+      has exited and and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  download_internal_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the download phase of the update
+      process using the internal application downloader for a complete update
+      MAR file when the update has finished due to a failure before the
+      application has exited and and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  stage_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the stage phase of the update process
+      for a partial update MAR file when the update has finished due to a
+      failure before the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  stage_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the stage phase of the update process
+      for a complete update MAR file when the update has finished due to a
+      failure before the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  apply_partial:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the apply phase of the update process
+      for a partial update MAR file when the update has finished due to a
+      failure before the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  apply_complete:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the interval in seconds of the apply phase of the update process
+      for a complete update MAR file when the update has finished due to a
+      failure before the application has exited and started.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+update.session.downloads:
+  bits_partial_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the BITS downloader for
+      a partial update MAR file when the update has finished due to a failure
+      before the application has exited and started. This value can be
+      different than the size of the update MAR file because the value is only
+      monitored during the initial download while the application is running and
+      not if the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_partial_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the BITS downloader for a
+      partial update MAR file when the update has finished due to a failure
+      before the application has exited and started. This value can be used with
+      the value of update.session.downloads.bits_partial_bytes to estimate the
+      bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_complete_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the BITS downloader for
+      a complete update MAR file when the update has finished due to a failure
+      before the application has exited and started. This value can be different
+      than the size of the update MAR file because the value is only monitored
+      during the initial download while the application is running and not if
+      the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  bits_complete_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the BITS downloader for a
+      complete update MAR file when the update has finished due to a failure
+      before the application has exited and started. This value can be used with
+      the value of update.session.downloads.bits_complete_bytes to estimate the
+      bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+    operating_systems:
+      - "windows"
+
+  internal_partial_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded using the internal
+      application downloader for a partial update MAR file when the update has
+      finished due to a failure before the application has exited and started.
+      This value can be different than the size of the update MAR file because
+      the value is only monitored during the initial download while the
+      application is running and not if the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_partial_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the internal application
+      downloader for a partial update MAR file when the update has finished due
+      to a failure before the application has exited and started. This value can
+      be used with the value of update.session.downloads.internal_partial_bytes
+      to estimate the bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_complete_bytes:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of bytes downloaded by the internal
+      application downloader for a complete update MAR file when an update has
+      finished due to a failure before the application has exited and started.
+      This value can be different than the size of the update MAR file because
+      the value is only monitored during the initial download while the
+      application is running and not if the download is resumed.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  internal_complete_seconds:
+    bug_numbers:
+      - 1539154
+      - 1578262
+    description: >
+      Records the total number of seconds spent downloading during the initial
+      download without exiting the application using the internal application
+      downloader for a complete update MAR file when the update has finished due
+      to a failure before the application has exited and started. This value can
+      be used with the value of update.session.downloads.internal_complete_bytes
+      to estimate the bytes per second for the download.
+    expires: "76"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - application-update-telemetry-alerts@mozilla.com
+      - rstrong@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+# The following section contains search counters.
+browser.search:
+  with_ads:
+    bug_numbers:
+      - 1495548
+      - 1505411
+    description: >
+      Records counts of SERP pages with adverts displayed. The key format is ‘<engine-name>’.
+    expires: never
+    keyed: true
+    kind: uint
+    notification_emails:
+      - fx-search@mozilla.com
+      - adw@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  ad_clicks:
+    bug_numbers:
+      - 1495548
+      - 1505411
+    description: >
+      Records clicks of adverts on SERP pages. The key format is ‘<engine-name>’.
+    expires: never
+    keyed: true
+    kind: uint
+    notification_emails:
+      - fx-search@mozilla.com
+      - adw@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+browser.searchinit:
+  engines_cache_corrupted:
+    bug_numbers:
+      - 1578807
+    description: >-
+          Whether the list of engines in the search cache was found to be corrupt during initialization.
+    expires: "77"
+    kind: boolean
+    notification_emails:
+      - fx-search@mozilla.com
+      - mbanner@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
+encoding:
+  override_used:
+    bug_numbers:
+      - 840476
+      - 1513473
+      - 1554592
+    description: >-
+      Whether the Text Encoding menu was used to override an encoding in this subsession.
+    expires: "72"
+    kind: boolean
+    notification_emails:
+      - hsivonen@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+      - content
+
+startup:
+  profile_selection_reason:
+    bug_numbers:
+      - 1522934
+      - 1570652
+    description: >
+      How the profile was selected during startup. One of the following reasons:
+        unknown:
+          Generally should not happen, set as a default in case no other reason
+          occured.
+        profile-manager:
+          The profile was selected by the profile manager.
+        profile-reset:
+          The profile was selected for reset, normally this would mean a restart.
+        restart:
+          The user restarted the application, the same profile as previous will
+          be used.
+        argument-profile:
+          The profile was selected by the --profile command line argument.
+        argument-p:
+          The profile was selected by the -p command line argument.
+        firstrun-claimed-default:
+          A first run of a dedicated profiles build chose the old default
+          profile to be the default for this install.
+        firstrun-skipped-default:
+          A first run of a dedicated profiles build skipped over the old default
+          profile and created a new profile.
+        restart-claimed-default:
+          A first run of a dedicated profiles build after a restart chose the
+          old default profile to be the default for this install.
+        restart-skipped-default:
+          A first run of a dedicated profiles build after a restart skipped over
+          the old default profile and created a new profile.
+        firstrun-created-default:
+          A first run of the application created a new profile to use.
+        default:
+          The default profile was selected as normal.
+    expires: "77"
+    keyed: false
+    kind: string
+    notification_emails:
+      - dtownsend@mozilla.com
+      - rtestard@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+    record_into_store:
+      - main
+      - new-profile
+
+  is_cold:
+    bug_numbers:
+      - 1542833
+    description: >
+      Whether or not this startup is the first startup since OS reboot (according to our
+      best guess.)
+    expires: never
+    kind: boolean
+    notification_emails:
+      - dothayer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+script.preloader:
+  mainthread_recompile:
+    bug_numbers:
+      - 1364235
+    description:
+      How many times we ended up recompiling a script from the script preloader
+      on the main thread.
+    expires: "73"
+    keyed: false
+    kind: uint
+    notification_emails:
+      - dothayer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+      - 'content'
+
+networking:
+  data_transferred_v3_kb:
+    bug_numbers:
+      - 1533363
+      - 1546903
+      - 1546796
+      - 1546906
+      - 1550756
+      - 1572666
+    description: >
+      How many KB of HTTP data transferred by type, there are some categories
+      separated by keys based on 5 parameters:
+        1. normal browsing or private browsing
+        2. system principal or not
+        3. first party or third party
+        4. class of service (Leader/Background/Others)
+        5. tracking classification (Basic/Content/FingerprintingContent)
+
+      Available keys are:
+        "Y0_N1Sys",
+        "Y1_N1",
+        "Y2_N3Oth",
+        "Y3_N3BasicLead",
+        "Y4_N3BasicBg",
+        "Y5_N3BasicOth",
+        "Y6_N3ContentLead",
+        "Y7_N3ContentBg",
+        "Y8_N3ContentOth",
+        "Y9_N3FpLead",
+        "Y10_N3FpBg",
+        "Y11_N3FpOth",
+        "Y12_P1Sys",
+        "Y13_P1",
+        "Y14_P3Oth",
+        "Y15_P3BasicLead",
+        "Y16_P3BasicBg",
+        "Y17_P3BasicOth",
+        "Y18_P3ContentLead",
+        "Y19_P3ContentBg",
+        "Y20_P3ContentOth",
+        "Y21_P3FpLead",
+        "Y22_P3FpBg",
+        "Y23_P3FpOth"
+    expires: "73"
+    keyed: true
+    kind: uint
+    notification_emails:
+      - gachen@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+    release_channel_collection: opt-out
+
+  data_transferred_captive_portal:
+    bug_numbers:
+      - 1543005
+    description: >
+      Hom many KB has been transfer over a captive portal during a subsession.
+    expires: "73"
+    keyed: false
+    kind: uint
+    notification_emails:
+      - ddamjanovic@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  http_transactions_captive_portal:
+    bug_numbers:
+      - 1543005
+    description: >
+      Number of http transactions transfer over a captive portal during a subsession.
+    expires: "73"
+    keyed: false
+    kind: uint
+    notification_emails:
+      - ddamjanovic@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+  http_connections_captive_portal:
+    bug_numbers:
+      - 1543005
+    description: >
+      Number of http connections transfer over a captive portal during a subsession.
+    expires: "73"
+    keyed: false
+    kind: uint
+    notification_emails:
+      - ddamjanovic@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - 'main'
+
+blocklist:
+  lastModified_xml:
+    bug_numbers:
+      - 1572711
+    description: >
+      Keep track of the lastupdate datetime from a successfully loaded xml blocklist,
+      set to "Invalid Date" or "Missing Date" when the timestamp is invalid or missing.
+      (based on the lastupdate attribute set on the XML document element,
+      converted from a milliseconds timestamp into a datetime string in UTC format).
+    expires: "75"
+    kind: string
+    release_channel_collection: opt-out
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - lgreco@mozilla.com
+      - awagner@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+
+  lastModified_rs_addons:
+    bug_numbers:
+      - 1572711
+    description: >
+      Keep track of the last time the "addons" remotesetting blocklist has been successfully
+      updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
+      couldn't be retrieved.
+    expires: "75"
+    kind: string
+    release_channel_collection: opt-out
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - lgreco@mozilla.com
+      - awagner@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+
+  lastModified_rs_plugins:
+    bug_numbers:
+      - 1572711
+    description: >
+      Keep track of the last time the "plugins" remotesetting blocklist has been successfully
+      updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
+      couldn't be retrieved.
+    expires: "75"
+    kind: string
+    release_channel_collection: opt-out
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - lgreco@mozilla.com
+      - awagner@mozilla.com
+    products:
+      - 'firefox'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+
+  useXML:
+    bug_numbers:
+      - 1572711
+    description: >
+      Keep track of the currently enabled blocklist engine (set to false if the
+      remote settings blocklist is the one enabled).
+    expires: "75"
+    kind: boolean
+    release_channel_collection: opt-out
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - lgreco@mozilla.com
+      - awagner@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+
+firstStartup:
+  statusCode:
+    bug_numbers:
+      - 1515712
+    description: >-
+      Status of the FirstRun service, which runs post-install/early-startup in Firefox.
+    expires: "75"
+    kind: uint
+    notification_emails:
+      - rhelmer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'thunderbird'
+    record_in_processes:
+      - main
+  elapsed:
+    bug_numbers:
+      - 1515712
+    description: >-
+      Number of milliseconds the FirstRun service took to run.
+    expires: "75"
+    kind: uint
+    notification_emails:
+      - rhelmer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'thunderbird'
+    record_in_processes:
+      - main
 
 # The following section is for probes testing the Telemetry system. They will not be
 # submitted in pings and are only used for testing.
@@ -2066,6 +4559,13 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'geckoview_streaming'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2077,6 +4577,13 @@ telemetry.test:
     kind: string
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'geckoview_streaming'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2088,6 +4595,13 @@ telemetry.test:
     kind: boolean
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'geckoview_streaming'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2099,6 +4613,11 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2110,6 +4629,11 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2122,6 +4646,11 @@ telemetry.test:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2134,6 +4663,11 @@ telemetry.test:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2147,6 +4681,11 @@ telemetry.test:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-in
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2160,6 +4699,11 @@ telemetry.test:
     notification_emails:
       - telemetry-client-dev@mozilla.com
     release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2172,6 +4716,11 @@ telemetry.test:
     keyed: true
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2184,6 +4733,11 @@ telemetry.test:
     keyed: true
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
 
@@ -2196,6 +4750,11 @@ telemetry.test:
     keyed: true
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'content'
 
@@ -2208,6 +4767,11 @@ telemetry.test:
     keyed: true
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'main'
       - 'content'
@@ -2220,8 +4784,29 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'content'
+
+  socket_only_uint:
+    bug_numbers:
+      - 1486033
+    description: A testing uint scalar; not meant to be touched.
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'socket'
 
   all_processes_uint:
     bug_numbers:
@@ -2231,6 +4816,11 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'all'
 
@@ -2242,6 +4832,11 @@ telemetry.test:
     kind: string
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'all_childs'
 
@@ -2253,6 +4848,11 @@ telemetry.test:
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
     record_in_processes:
       - 'all'
 
@@ -2268,6 +4868,7 @@ telemetry.test:
       - 'all'
     products:
       - firefox
+      - thunderbird
 
   keyed_desktop_only:
     bug_numbers:
@@ -2282,6 +4883,7 @@ telemetry.test:
       - 'all'
     products:
       - firefox
+      - thunderbird
 
   multiproduct:
     bug_numbers:
@@ -2297,6 +4899,7 @@ telemetry.test:
       - firefox
       - fennec
       - geckoview
+      - thunderbird
 
   mobile_only:
     bug_numbers:
@@ -2339,6 +4942,161 @@ telemetry.test:
     products:
       - fennec
       - geckoview
+
+  main_only:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test uint type with only the main store.
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'main'
+
+  sync_only:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test uint type with only the sync store.
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'sync'
+
+  multiple_stores:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test uint type with multiple stores.
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'main'
+      - 'sync'
+
+  multiple_stores_string:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test string type with multiple stores.
+    expires: never
+    kind: string
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'main'
+      - 'sync'
+
+  multiple_stores_bool:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test bool type with multiple stores.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'main'
+      - 'sync'
+
+  multiple_stores_keyed:
+    bug_numbers:
+      - 1498164
+    description: >
+      This is a test keyed uint type with multiple stores.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+    record_into_store:
+      - 'main'
+      - 'sync'
+
+# The following section contains counters for corruption of internal JAR and XPI files.
+corroborate:
+  omnijar_corrupted:
+    bug_numbers:
+      - 1515712
+    description: >-
+          Whether the omni jar (omni.ja) was found to be missing or corrupt when checked during startup.
+    expires: "71"
+    kind: boolean
+    notification_emails:
+      - rhelmer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
+
+  system_addons_corrupted:
+    bug_numbers:
+      - 1515712
+    description: >-
+      Whether any system add-on (XPI files) were found to be missing or corrupt when checked during startup.
+    expires: "71"
+    kind: boolean
+    notification_emails:
+      - rhelmer@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'geckoview'
+    record_in_processes:
+      - main
 
 # NOTE: Please don't add new definitions below this point. Consider adding
 # them earlier in the file and leave the telemetry.test category as the last

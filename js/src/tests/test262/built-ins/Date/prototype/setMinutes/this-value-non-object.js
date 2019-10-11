@@ -2,7 +2,6 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-date.prototype.setminutes
-es6id: 20.3.4.24
 description: Behavior when "this" value is not an Object
 info: |
   1. Let t be LocalTime(? thisTimeValue(this value)).
@@ -51,6 +50,6 @@ assert.throws(TypeError, function() {
   setMinutes.call(symbol, arg);
 }, 'symbol');
 
-assert.sameValue(callCount, 0, 'validation preceeds input coercion');
+assert.sameValue(callCount, 0, 'validation precedes input coercion');
 
 reportCompare(0, 0);

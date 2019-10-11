@@ -8,6 +8,7 @@
 
 #include "permissionsService.h"
 #include <algorithm>
+#include <string>
 #include <winternl.h>
 
 namespace mozilla {
@@ -83,9 +84,8 @@ GetPlainFileName(const wchar_t* aNTFileName, std::wstring* aFolder=nullptr)
   return nameCopy;
 }
 
-/* static */ PermissionsService*
-PermissionsService::GetInstance()
-{
+/* static */
+PermissionsService* PermissionsService::GetInstance() {
   static PermissionsService sPermissionsService;
   return &sPermissionsService;
 }

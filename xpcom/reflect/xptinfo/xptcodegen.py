@@ -79,11 +79,11 @@ nsXPTMethodInfo = mkstruct(
     "mNumParams",
     "mGetter",
     "mSetter",
-    "mNotXPCOM",
-    "mHidden",
+    "mReflectable",
     "mOptArgc",
     "mContext",
     "mHasRetval",
+    "mIsSymbol",
 )
 
 ##########################################################
@@ -170,7 +170,7 @@ utility_types = [
     {'tag': 'TD_BOOL'},
     {'tag': 'TD_CHAR'},
     {'tag': 'TD_WCHAR'},
-    {'tag': 'TD_PNSIID'},
+    {'tag': 'TD_NSIDPTR'},
     {'tag': 'TD_PSTRING'},
     {'tag': 'TD_PWSTRING'},
     {'tag': 'TD_INTERFACE_IS_TYPE', 'iid_is': 0},
@@ -244,12 +244,19 @@ def link_to_cpp(interfaces, fd):
             strings[s] = 0
         return strings[s]
 
+    def lower_symbol(s):
+        return "uint32_t(JS::SymbolCode::%s)" % s
+
     def lower_extra_type(type):
         key = describe_type(type)
         idx = type_cache.get(key)
         if idx is None:
             idx = type_cache[key] = len(types)
-            types.append(lower_type(type))
+            # Make sure `types` is the proper length for any recursive calls
+            # to `lower_extra_type` that might happen from within `lower_type`.
+            types.append(None)
+            realtype = lower_type(type)
+            types[idx] = realtype
         return idx
 
     def describe_type(type):  # Create the type's documentation comment.
@@ -270,6 +277,10 @@ def link_to_cpp(interfaces, fd):
     def lower_type(type, in_=False, out=False, optional=False):
         tag = type['tag']
         d1 = d2 = 0
+
+        # TD_VOID is used for types that can't be represented in JS, so they
+        # should not be represented in the XPT info.
+        assert tag != 'TD_VOID'
 
         if tag == 'TD_LEGACY_ARRAY':
             d1 = type['size_is']
@@ -312,13 +323,34 @@ def link_to_cpp(interfaces, fd):
                              optional='optional' in param['flags'])
         ))
 
+    def is_method_reflectable(method):
+        if 'hidden' in method['flags']:
+            return False
+
+        for param in method['params']:
+            # Reflected methods can't use native types. All native types end up
+            # getting tagged as void*, so this check is easy.
+            if param['type']['tag'] == 'TD_VOID':
+                return False
+
+        return True
+
     def lower_method(method, ifacename):
         methodname = "%s::%s" % (ifacename, method['name'])
 
-        if 'notxpcom' in method['flags'] or 'hidden' in method['flags']:
-            paramidx = name = numparams = 0  # hide parameters
+        isSymbol = 'symbol' in method['flags']
+        reflectable = is_method_reflectable(method)
+
+        if not reflectable:
+            # Hide the parameters of methods that can't be called from JS to
+            # reduce the size of the file.
+            paramidx = name = numparams = 0
         else:
-            name = lower_string(method['name'])
+            if isSymbol:
+                name = lower_symbol(method['name'])
+            else:
+                name = lower_string(method['name'])
+
             numparams = len(method['params'])
 
             # Check cache for parameters
@@ -332,8 +364,6 @@ def link_to_cpp(interfaces, fd):
         methods.append(nsXPTMethodInfo(
             "%d = %s" % (len(methods), methodname),
 
-            # If our method is hidden, we can save some memory by not
-            # generating parameter info about it.
             mName=name,
             mParams=paramidx,
             mNumParams=numparams,
@@ -341,16 +371,16 @@ def link_to_cpp(interfaces, fd):
             # Flags
             mGetter='getter' in method['flags'],
             mSetter='setter' in method['flags'],
-            mNotXPCOM='notxpcom' in method['flags'],
-            mHidden='hidden' in method['flags'],
+            mReflectable=reflectable,
             mOptArgc='optargc' in method['flags'],
             mContext='jscontext' in method['flags'],
             mHasRetval='hasretval' in method['flags'],
+            mIsSymbol=isSymbol,
         ))
 
     def lower_const(const, ifacename):
         assert const['type']['tag'] in \
-            ['TD_INT16', 'TD_INT32', 'TD_UINT16', 'TD_UINT32']
+            ['TD_INT16', 'TD_INT32', 'TD_UINT8', 'TD_UINT16', 'TD_UINT32']
         is_signed = const['type']['tag'] in ['TD_INT16', 'TD_INT32']
 
         # Constants are always either signed or unsigned 16 or 32 bit integers,
@@ -429,15 +459,16 @@ def link_to_cpp(interfaces, fd):
     # Write out our header
     fd.write("""
 #include "xptinfo.h"
+#include "mozilla/PerfectHash.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/dom/BindingUtils.h"
 
 // These template methods are specialized to be used in the sDOMObjects table.
 template<mozilla::dom::prototypes::ID PrototypeID, typename T>
-static nsresult UnwrapDOMObject(JS::HandleValue aHandle, void** aObj)
+static nsresult UnwrapDOMObject(JS::HandleValue aHandle, void** aObj, JSContext* aCx)
 {
   RefPtr<T> p;
-  nsresult rv = mozilla::dom::UnwrapObject<PrototypeID, T>(aHandle, p);
+  nsresult rv = mozilla::dom::UnwrapObject<PrototypeID, T>(aHandle, p, aCx);
   p.forget(aObj);
   return rv;
 }

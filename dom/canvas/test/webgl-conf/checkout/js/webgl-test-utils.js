@@ -184,6 +184,17 @@ var simpleVertexShader = [
   '}'].join('\n');
 
 /**
+ * A vertex shader for a uniform color.
+ * @type {string}
+ */
+var simpleVertexShaderESSL300 = [
+  '#version 300 es',
+  'in vec4 vPosition;',
+  'void main() {',
+  '    gl_Position = vPosition;',
+  '}'].join('\n');
+
+/**
  * A fragment shader for a uniform color.
  * @type {string}
  */
@@ -689,6 +700,7 @@ var setupIndexedQuadWithOptions = function (gl, options) {
 
   if (options.colorLocation !== undefined) {
     var colors = new Float32Array(numVerts * 4);
+    poffset = 0;
     for (var yy = 0; yy <= gridRes; ++yy) {
       for (var xx = 0; xx <= gridRes; ++xx) {
         if (options.color !== undefined) {
@@ -981,15 +993,14 @@ var drawUnitQuad = function(gl) {
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 };
 
-var dummyProgram = null;
 var dummySetProgramAndDrawNothing = function(gl) {
-  if (!dummyProgram) {
-    dummyProgram = setupProgram(gl, [
+  if (!gl._wtuDummyProgram) {
+    gl._wtuDummyProgram = setupProgram(gl, [
       "void main() { gl_Position = vec4(0.0); }",
       "void main() { gl_FragColor = vec4(0.0); }"
     ], [], []);
   }
-  gl.useProgram(dummyProgram);
+  gl.useProgram(gl._wtuDummyProgram);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 };
 
@@ -1500,7 +1511,7 @@ var create3DContext = function(opt_canvas, opt_attributes, opt_version) {
     attributes.antialias = false;
   }
   if (!opt_version) {
-    opt_version = parseInt(getUrlOptions().webglVersion, 10) || default3DContextVersion;
+    opt_version = getDefault3DContextVersion();
   }
   opt_canvas = opt_canvas || document.createElement("canvas");
   if (typeof opt_canvas == 'string') {
@@ -1527,6 +1538,11 @@ var create3DContext = function(opt_canvas, opt_attributes, opt_version) {
   }
   if (!context) {
     testFailed("Unable to fetch WebGL rendering context for Canvas");
+  } else {
+    if (!window._wtu_contexts) {
+      window._wtu_contexts = []
+    }
+    window._wtu_contexts.push(context);
   }
   return context;
 };
@@ -1672,6 +1688,45 @@ var glErrorShouldBeImpl = function(gl, glErrors, reportSuccesses, opt_msg) {
     testPassed(msg + expected + " : " + opt_msg);
   }
   return err;
+};
+
+/**
+ * Tests that a function throws or not.
+ * @param {!WebGLContext} gl The WebGLContext to use.
+ * @param throwType Type of thrown error (e.g. TypeError), or false.
+ * @param {string} info Info on what's being tested
+ * @param {function} func The func to test.
+ */
+var shouldThrow = function(gl, throwType, info, func) {
+  while (gl.getError()) {}
+
+  var shouldThrow = (throwType != false);
+
+  try {
+    func();
+
+    if (shouldThrow) {
+      testFailed("Should throw a " + throwType.name + ": " + info);
+    } else {
+      testPassed("Should not have thrown: " + info);
+    }
+  } catch (e) {
+    if (shouldThrow) {
+      if (e instanceof throwType) {
+        testPassed("Should throw a " + throwType.name + ": " + info);
+      } else {
+        testFailed("Should throw a " + throwType.name + ", threw " + e.name + ": " + info);
+      }
+    } else {
+      testFailed("Should not have thrown: " + info);
+    }
+
+    if (gl.getError()) {
+      testFailed("Should not generate an error when throwing: " + info);
+    }
+  }
+
+  while (gl.getError()) {}
 };
 
 /**
@@ -2450,6 +2505,7 @@ var makeImageFromCanvas = function(canvas, onload, imageFormat) {
  */
 var makeVideo = function(src, onerror) {
   var vid = document.createElement('video');
+  vid.muted = true;
   if (onerror) {
     vid.onerror = onerror;
   } else {
@@ -2608,6 +2664,28 @@ var getSupportedExtensionWithKnownPrefixes = function(gl, name) {
     }
   }
 };
+
+/**
+ * @param {WebGLRenderingContext} gl The WebGLRenderingContext to use.
+ * @param {string} name Name of extension to look for.
+ * @param {boolean} extensionEnabled True if the extension was enabled successfully via gl.getExtension().
+ */
+var runExtensionSupportedTest = function(gl, name, extensionEnabled) {
+  var prefixedName = getSupportedExtensionWithKnownPrefixes(gl, name);
+  if (prefixedName !== undefined) {
+      if (extensionEnabled) {
+          testPassed(name + " listed as supported and getExtension succeeded");
+      } else {
+          testFailed(name + " listed as supported but getExtension failed");
+      }
+  } else {
+      if (extensionEnabled) {
+          testFailed(name + " not listed as supported but getExtension succeeded");
+      } else {
+          testPassed(name + " not listed as supported and getExtension failed -- this is legal");
+      }
+  }
+}
 
 /**
  * Given an extension name like WEBGL_compressed_texture_s3tc
@@ -2866,6 +2944,43 @@ var waitForComposite = function(callback) {
   countDown();
 };
 
+var setZeroTimeout = (function() {
+  // See https://dbaron.org/log/20100309-faster-timeouts
+
+  var timeouts = [];
+  var messageName = "zero-timeout-message";
+
+  // Like setTimeout, but only takes a function argument.  There's
+  // no time argument (always zero) and no arguments (you have to
+  // use a closure).
+  function setZeroTimeout(fn) {
+      timeouts.push(fn);
+      window.postMessage(messageName, "*");
+  }
+
+  function handleMessage(event) {
+      if (event.source == window && event.data == messageName) {
+          event.stopPropagation();
+          if (timeouts.length > 0) {
+              var fn = timeouts.shift();
+              fn();
+          }
+      }
+  }
+
+  window.addEventListener("message", handleMessage, true);
+
+  return setZeroTimeout;
+})();
+
+function dispatchPromise(fn) {
+  return new Promise((fn_resolve, fn_reject) => {
+    setZeroTimeout(() => {
+      fn_resolve(fn());
+    });
+  });
+}
+
 /**
  * Runs an array of functions, yielding to the browser between each step.
  * If you want to know when all the steps are finished add a last step.
@@ -2895,35 +3010,15 @@ var runSteps = function(steps) {
  *        video is ready.
  */
 var startPlayingAndWaitForVideo = function(video, callback) {
-  var gotPlaying = false;
-  var gotTimeUpdate = false;
-
-  var maybeCallCallback = function() {
-    if (gotPlaying && gotTimeUpdate && callback) {
+  var timeWatcher = function() {
+    if (video.currentTime > 0) {
       callback(video);
-      callback = undefined;
-      video.removeEventListener('playing', playingListener, true);
-      video.removeEventListener('timeupdate', timeupdateListener, true);
+    } else {
+      requestAnimFrame.call(window, timeWatcher);
     }
   };
 
-  var playingListener = function() {
-    gotPlaying = true;
-    maybeCallCallback();
-  };
-
-  var timeupdateListener = function() {
-    // Checking to make sure the current time has advanced beyond
-    // the start time seems to be a reliable heuristic that the
-    // video element has data that can be consumed.
-    if (video.currentTime > 0.0) {
-      gotTimeUpdate = true;
-      maybeCallCallback();
-    }
-  };
-
-  video.addEventListener('playing', playingListener, true);
-  video.addEventListener('timeupdate', timeupdateListener, true);
+  requestAnimFrame.call(window, timeWatcher);
   video.loop = true;
   video.play();
 };
@@ -3070,10 +3165,12 @@ function comparePixels(cmp, ref, tolerance, diff) {
 
     var count = 0;
     for (var i = 0; i < cmp.length; i++) {
-        diff[i * 4] = 0;
-        diff[i * 4 + 1] = 255;
-        diff[i * 4 + 2] = 0;
-        diff[i * 4 + 3] = 255;
+        if (diff) {
+            diff[i * 4] = 0;
+            diff[i * 4 + 1] = 255;
+            diff[i * 4 + 2] = 0;
+            diff[i * 4 + 3] = 255;
+        }
         if (Math.abs(cmp[i * 4] - ref[i * 4]) > tolerance ||
             Math.abs(cmp[i * 4 + 1] - ref[i * 4 + 1]) > tolerance ||
             Math.abs(cmp[i * 4 + 2] - ref[i * 4 + 2]) > tolerance ||
@@ -3084,12 +3181,32 @@ function comparePixels(cmp, ref, tolerance, diff) {
                 [cmp[i * 4], cmp[i * 4 + 1], cmp[i * 4 + 2], cmp[i * 4 + 3]] + ")");
             }
             count++;
-            diff[i * 4] = 255;
-            diff[i * 4 + 1] = 0;
+            if (diff) {
+                diff[i * 4] = 255;
+                diff[i * 4 + 1] = 0;
+            }
         }
     }
 
     return count;
+}
+
+function destroyContext(gl) {
+  gl.canvas.width = 1;
+  gl.canvas.height = 1;
+  const ext = gl.getExtension('WEBGL_lose_context');
+  if (ext) {
+    ext.loseContext();
+  }
+}
+
+function destroyAllContexts() {
+  if (!window._wtu_contexts)
+    return;
+  for (const x of window._wtu_contexts) {
+    destroyContext(x);
+  }
+  window._wtu_contexts = [];
 }
 
 function displayImageDiff(cmp, ref, diff, width, height) {
@@ -3140,6 +3257,9 @@ var API = {
   clearAndDrawUnitQuad: clearAndDrawUnitQuad,
   clearAndDrawIndexedQuad: clearAndDrawIndexedQuad,
   comparePixels: comparePixels,
+  destroyAllContexts: destroyAllContexts,
+  destroyContext: destroyContext,
+  dispatchPromise: dispatchPromise,
   displayImageDiff: displayImageDiff,
   drawUnitQuad: drawUnitQuad,
   drawIndexedQuad: drawIndexedQuad,
@@ -3169,6 +3289,7 @@ var API = {
   glTypeToTypedArrayType: glTypeToTypedArrayType,
   hasAttributeCaseInsensitive: hasAttributeCaseInsensitive,
   insertImage: insertImage,
+  linkProgram: linkProgram,
   loadImageAsync: loadImageAsync,
   loadImagesAsync: loadImagesAsync,
   loadProgram: loadProgram,
@@ -3196,6 +3317,7 @@ var API = {
   makeImageFromCanvas: makeImageFromCanvas,
   makeVideo: makeVideo,
   error: error,
+  runExtensionSupportedTest: runExtensionSupportedTest,
   shallowCopyObject: shallowCopyObject,
   setDefault3DContextVersion: setDefault3DContextVersion,
   setupColorQuad: setupColorQuad,
@@ -3219,6 +3341,7 @@ var API = {
   startPlayingAndWaitForVideo: startPlayingAndWaitForVideo,
   startsWith: startsWith,
   shouldGenerateGLError: shouldGenerateGLError,
+  shouldThrow: shouldThrow,
   readFile: readFile,
   readFileList: readFileList,
   replaceParams: replaceParams,
@@ -3249,6 +3372,7 @@ Object.defineProperties(API, {
   simpleColorFragmentShader: { value: simpleColorFragmentShader, writable: false },
   simpleColorFragmentShaderESSL300: { value: simpleColorFragmentShaderESSL300, writable: false },
   simpleVertexShader: { value: simpleVertexShader, writable: false },
+  simpleVertexShaderESSL300: { value: simpleVertexShaderESSL300, writable: false },
   simpleTextureFragmentShader: { value: simpleTextureFragmentShader, writable: false },
   simpleCubeMapTextureFragmentShader: { value: simpleCubeMapTextureFragmentShader, writable: false },
   simpleVertexColorFragmentShader: { value: simpleVertexColorFragmentShader, writable: false },

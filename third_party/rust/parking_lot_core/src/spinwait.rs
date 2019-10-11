@@ -5,97 +5,29 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#[cfg(windows)]
-use kernel32;
-#[cfg(unix)]
-use libc;
-#[cfg(not(any(windows, unix)))]
-use std::thread;
-#[cfg(not(feature = "nightly"))]
-use std::sync::atomic::{fence, Ordering};
+use crate::thread_parker;
+use std::sync::atomic::spin_loop_hint;
 
-// Yields the rest of the current timeslice to the OS
-#[cfg(windows)]
-#[inline]
-fn thread_yield() {
-    unsafe {
-        // We don't use SwitchToThread here because it doesn't consider all
-        // threads in the system and the thread we are waiting for may not get
-        // selected.
-        kernel32::Sleep(0);
-    }
-}
-#[cfg(unix)]
-#[inline]
-fn thread_yield() {
-    unsafe {
-        libc::sched_yield();
-    }
-}
-#[cfg(not(any(windows, unix)))]
-#[inline]
-fn thread_yield() {
-    thread::yield_now();
-}
-
-// Wastes some CPU time for the given number of iterations, preferably also
+// Wastes some CPU time for the given number of iterations,
 // using a hint to indicate to the CPU that we are spinning.
-#[cfg(all(feature = "nightly", any(target_arch = "x86", target_arch = "x86_64")))]
 #[inline]
 fn cpu_relax(iterations: u32) {
     for _ in 0..iterations {
-        unsafe {
-            asm!("pause" ::: "memory" : "volatile");
-        }
-    }
-}
-#[cfg(all(feature = "nightly", target_arch = "aarch64"))]
-#[inline]
-fn cpu_relax(iterations: u32) {
-    for _ in 0..iterations {
-        unsafe {
-            asm!("yield" ::: "memory" : "volatile");
-        }
-    }
-}
-#[cfg(all(feature = "nightly",
-          not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))))]
-#[inline]
-fn cpu_relax(iterations: u32) {
-    for _ in 0..iterations {
-        unsafe {
-            asm!("" ::: "memory" : "volatile");
-        }
-    }
-}
-#[cfg(not(feature = "nightly"))]
-#[inline]
-fn cpu_relax(iterations: u32) {
-    // This is a bit tricky: we rely on the fact that LLVM doesn't optimize
-    // atomic operations and effectively treats them as volatile.
-    for _ in 0..iterations {
-        fence(Ordering::SeqCst);
+        spin_loop_hint()
     }
 }
 
 /// A counter used to perform exponential backoff in spin loops.
+#[derive(Default)]
 pub struct SpinWait {
     counter: u32,
 }
 
 impl SpinWait {
     /// Creates a new `SpinWait`.
-    #[cfg(feature = "nightly")]
     #[inline]
-    pub const fn new() -> SpinWait {
-        SpinWait { counter: 0 }
-    }
-
-    /// Creates a new `SpinWait`.
-    #[cfg(not(feature = "nightly"))]
-    #[inline]
-    pub fn new() -> SpinWait {
-        SpinWait { counter: 0 }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Resets a `SpinWait` to its initial state.
@@ -114,14 +46,14 @@ impl SpinWait {
     /// to yielding the CPU to the OS after a few iterations.
     #[inline]
     pub fn spin(&mut self) -> bool {
-        if self.counter >= 20 {
+        if self.counter >= 10 {
             return false;
         }
         self.counter += 1;
-        if self.counter <= 10 {
-            cpu_relax(4 << self.counter);
+        if self.counter <= 3 {
+            cpu_relax(1 << self.counter);
         } else {
-            thread_yield();
+            thread_parker::thread_yield();
         }
         true
     }
@@ -137,13 +69,6 @@ impl SpinWait {
         if self.counter > 10 {
             self.counter = 10;
         }
-        cpu_relax(4 << self.counter);
-    }
-}
-
-impl Default for SpinWait {
-    #[inline]
-    fn default() -> SpinWait {
-        SpinWait::new()
+        cpu_relax(1 << self.counter);
     }
 }

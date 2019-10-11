@@ -7,7 +7,8 @@
  * http://www.whatwg.org/html/#the-select-element
  */
 
-[HTMLConstructor]
+[HTMLConstructor,
+ Exposed=Window]
 interface HTMLSelectElement : HTMLElement {
   [CEReactions, SetterThrows, Pure]
   attribute boolean autofocus;
@@ -43,7 +44,7 @@ interface HTMLSelectElement : HTMLElement {
   setter void (unsigned long index, HTMLOptionElement? option);
 
   readonly attribute HTMLCollection selectedOptions;
-  [SetterThrows, Pure]
+  [Pure]
   attribute long selectedIndex;
   [Pure]
   attribute DOMString value;

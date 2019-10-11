@@ -13,19 +13,19 @@ class RecordingList extends Component {
   static get propTypes() {
     return {
       items: PropTypes.arrayOf(PropTypes.object).isRequired,
-      itemComponent: PropTypes.func.isRequired
+      itemComponent: PropTypes.func.isRequired,
     };
   }
 
   render() {
-    const {
-      items,
-      itemComponent: Item,
-    } = this.props;
+    const { items, itemComponent: Item } = this.props;
 
     return items.length > 0
       ? ul({ className: "recording-list" }, ...items.map(Item))
-      : div({ className: "recording-list-empty" }, L10N.getStr("noRecordingsText"));
+      : div(
+          { className: "recording-list-empty" },
+          L10N.getStr("noRecordingsText")
+        );
   }
 }
 

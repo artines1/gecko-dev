@@ -1,16 +1,29 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
 
-const {parseDeclarations} = require("devtools/shared/css/parsing-utils");
 const promise = require("promise");
-const {getCSSLexer} = require("devtools/shared/css/lexer");
-const {KeyCodes} = require("devtools/client/shared/keycodes");
-const {throttle} = require("devtools/shared/throttle");
+
+loader.lazyRequireGetter(
+  this,
+  "KeyCodes",
+  "devtools/client/shared/keycodes",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "getCSSLexer",
+  "devtools/shared/css/lexer",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "parseDeclarations",
+  "devtools/shared/css/parsing-utils",
+  true
+);
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -72,7 +85,7 @@ function appendText(parent, text) {
  * multiple CSS properties as the value.
  */
 function blurOnMultipleProperties(cssProperties) {
-  return (e) => {
+  return e => {
     setTimeout(() => {
       const props = parseDeclarations(cssProperties.isKnown, e.target.value);
       if (props.length > 1) {
@@ -110,6 +123,66 @@ function createChild(parent, tagName, attributes = {}) {
 }
 
 /**
+ * Retrieve the content of a longString (via a promise resolving a LongStringActor).
+ *
+ * @param  {Promise} longStringActorPromise
+ *         promise expected to resolve a LongStringActor instance
+ * @return {Promise} promise resolving with the retrieved string as argument
+ */
+function getLongString(longStringActorPromise) {
+  return longStringActorPromise
+    .then(longStringActor => {
+      return longStringActor.string().then(string => {
+        longStringActor.release().catch(console.error);
+        return string;
+      });
+    })
+    .catch(console.error);
+}
+
+/**
+ * Returns a selector of the Element Rep from the grip. This is based on the
+ * getElements() function in our devtools-reps component for a ElementNode.
+ *
+ * @param  {Object} grip
+ *         Grip-like object that can be used with Reps.
+ * @return {String} selector of the element node.
+ */
+function getSelectorFromGrip(grip) {
+  const {
+    attributes,
+    nodeName,
+    isAfterPseudoElement,
+    isBeforePseudoElement,
+    isMarkerPseudoElement,
+  } = grip.preview;
+
+  if (isAfterPseudoElement) {
+    return "::after";
+  } else if (isBeforePseudoElement) {
+    return "::before";
+  } else if (isMarkerPseudoElement) {
+    return "::marker";
+  }
+
+  let selector = nodeName;
+
+  if (attributes.id) {
+    selector += `#${attributes.id}`;
+  }
+
+  if (attributes.class) {
+    selector += attributes.class
+      .trim()
+      .split(/\s+/)
+      .map(cls => `.${cls}`)
+      .join("");
+  }
+
+  return selector;
+}
+
+/**
  * Log the provided error to the console and return a rejected Promise for
  * this error.
  *
@@ -123,7 +196,7 @@ function promiseWarn(error) {
 }
 
 /**
- * While waiting for a reps fix in https://github.com/devtools-html/reps/issues/92,
+ * While waiting for a reps fix in https://github.com/firefox-devtools/reps/issues/92,
  * translate nodeFront to a grip-like object that can be used with an ElementNode rep.
  *
  * @params  {NodeFront} nodeFront
@@ -136,7 +209,7 @@ function translateNodeFrontToGrip(nodeFront) {
   // The main difference between NodeFront and grips is that attributes are treated as
   // a map in grips and as an array in NodeFronts.
   const attributesMap = {};
-  for (const {name, value} of attributes) {
+  for (const { name, value } of attributes) {
     attributesMap[name] = value;
   }
 
@@ -147,12 +220,13 @@ function translateNodeFrontToGrip(nodeFront) {
       attributesLength: attributes.length,
       isAfterPseudoElement: nodeFront.isAfterPseudoElement,
       isBeforePseudoElement: nodeFront.isBeforePseudoElement,
+      isMarkerPseudoElement: nodeFront.isMarkerPseudoElement,
       // All the grid containers are assumed to be in the DOM tree.
       isConnected: true,
       // nodeName is already lowerCased in Node grips
       nodeName: nodeFront.nodeName.toLowerCase(),
       nodeType: nodeFront.nodeType,
-    }
+    },
   };
 }
 
@@ -160,6 +234,7 @@ exports.advanceValidate = advanceValidate;
 exports.appendText = appendText;
 exports.blurOnMultipleProperties = blurOnMultipleProperties;
 exports.createChild = createChild;
+exports.getLongString = getLongString;
+exports.getSelectorFromGrip = getSelectorFromGrip;
 exports.promiseWarn = promiseWarn;
-exports.throttle = throttle;
 exports.translateNodeFrontToGrip = translateNodeFrontToGrip;

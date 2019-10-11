@@ -119,6 +119,9 @@ else
         DEFINES += -DNSS_X86
 endif
 endif
+ifeq ($(CPU_ARCH),aarch64)
+    EXTRA_SRCS += gcm-aarch64.c
+endif
 
 ifeq ($(OS_TARGET),OSF1)
     DEFINES += -DMP_ASSEMBLY_MULTIPLY -DMP_NO_MP_WORD
@@ -493,6 +496,9 @@ endif # Solaris for non-sparc family CPUs
 endif # target == SunO
 
 ifdef USE_64
+# no __int128 at least up to lcc 1.23 (pretending to be gcc5)
+# NB: CC_NAME is not defined here
+ifneq ($(shell $(CC) -? 2>&1 >/dev/null </dev/null | sed -e 's/:.*//;1q'),lcc)
     ifdef CC_IS_CLANG
             HAVE_INT128_SUPPORT = 1
             DEFINES += -DHAVE_INT128_SUPPORT
@@ -506,7 +512,8 @@ ifdef USE_64
             DEFINES += -DHAVE_INT128_SUPPORT
         endif
     endif
-endif
+endif # lcc
+endif # USE_64
 
 ifndef HAVE_INT128_SUPPORT
     DEFINES += -DKRML_NOUINT128
@@ -752,4 +759,8 @@ ifdef INTEL_GCM_CLANG_CL
 # clang-cl needs -mssse3
 #
 $(OBJDIR)/$(PROG_PREFIX)intel-gcm-wrap$(OBJ_SUFFIX): CFLAGS += -mssse3
+endif
+
+ifeq ($(CPU_ARCH),aarch64)
+$(OBJDIR)/$(PROG_PREFIX)gcm-aarch64$(OBJ_SUFFIX): CFLAGS += -march=armv8-a+crypto
 endif

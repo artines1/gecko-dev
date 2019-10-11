@@ -13,14 +13,11 @@ with Files("*CompositorWidget*"):
 with Files("*WindowSurface*"):
     BUG_COMPONENT = ("Core", "Graphics")
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     DIRS += ['mozgtk']
 
 if CONFIG['MOZ_WAYLAND']:
-    if CONFIG['GLIB_LIBS']:
-        DIRS += ['wayland', 'mozwayland']
-    else:
-        error('We support Wayland on glibc systems only, see Bug 1409707 for reference.')
+    DIRS += ['wayland', 'mozwayland']
 
 EXPORTS += [
     'mozcontainer.h',
@@ -47,6 +44,7 @@ UNIFIED_SOURCES += [
     'nsSound.cpp',
     'nsToolkit.cpp',
     'nsWidgetFactory.cpp',
+    'ProcInfo.cpp',
     'ScreenHelperGTK.cpp',
     'TaskbarProgress.cpp',
     'WakeLockListener.cpp',
@@ -100,7 +98,13 @@ if CONFIG['MOZ_X11']:
 if CONFIG['MOZ_WAYLAND']:
     UNIFIED_SOURCES += [
         'nsClipboardWayland.cpp',
+        'nsWaylandDisplay.cpp',
+        'WaylandDMABufSurface.cpp',
         'WindowSurfaceWayland.cpp',
+    ]
+    EXPORTS.mozilla.widget += [
+        'nsWaylandDisplay.h',
+        'WaylandDMABufSurface.h',
     ]
 
 if CONFIG['ACCESSIBILITY']:
@@ -108,22 +112,22 @@ if CONFIG['ACCESSIBILITY']:
         'maiRedundantObjectFactory.c',
     ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk2':
-    UNIFIED_SOURCES += [
-        'gtk2drawing.c',
-    ]
-else:
-    UNIFIED_SOURCES += [
-        'gtk3drawing.cpp',
-        'nsApplicationChooser.cpp',
-        'WidgetStyleCache.cpp',
-    ]
+UNIFIED_SOURCES += [
+    'gtk3drawing.cpp',
+    'nsApplicationChooser.cpp',
+    'WidgetStyleCache.cpp',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
+    '/layout/base',
     '/layout/generic',
     '/layout/xul',
     '/other-licenses/atk-1.0',
@@ -149,13 +153,17 @@ CFLAGS += CONFIG['MOZ_STARTUP_NOTIFICATION_CFLAGS']
 # use only system Cairo symbols that GTK3 uses. This allows that
 # any Cairo objects created can be freely passed back and forth
 # between the widget code and GTK3.
-if not (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3' and CONFIG['MOZ_TREE_CAIRO']):
+if not (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk' and CONFIG['MOZ_TREE_CAIRO']):
     CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 
 CXXFLAGS += CONFIG['MOZ_STARTUP_NOTIFICATION_CFLAGS']
 
 CFLAGS += CONFIG['TK_CFLAGS']
 CXXFLAGS += CONFIG['TK_CFLAGS']
+
+if CONFIG['MOZ_WAYLAND']:
+    CFLAGS += CONFIG['MOZ_WAYLAND_CFLAGS']
+    CXXFLAGS += CONFIG['MOZ_WAYLAND_CFLAGS']
 
 if CONFIG['MOZ_ENABLE_DBUS']:
     CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']

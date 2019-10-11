@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
 # Pretty-printers for SpiderMonkey JSObjects.
 
 import re
@@ -50,7 +54,7 @@ class JSObjectPtrOrRef(prettyprinters.Pointer):
             return '[object {}]'.format(class_name)
         else:
             native = self.value.cast(self.otc.NativeObject_ptr_t)
-            shape = native['shapeOrExpando_'].cast(self.otc.Shape_ptr_t)
+            shape = native['shape_'].cast(self.otc.Shape_ptr_t)
             baseshape = deref(shape['base_'])
             flags = baseshape['flags']
             is_delegate = bool(flags & self.otc.flag_DELEGATE)

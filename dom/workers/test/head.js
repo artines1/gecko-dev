@@ -37,10 +37,10 @@ function jsonrpc(tab, method, params) {
   let messageManager = tab.linkedBrowser.messageManager;
   messageManager.sendAsyncMessage("jsonrpc", {
     id: currentId,
-    method: method,
-    params: params
+    method,
+    params,
   });
-  return new Promise(function (resolve, reject) {
+  return new Promise(function(resolve, reject) {
     messageManager.addMessageListener("jsonrpc", function listener(event) {
       let { id, result, error } = event.data;
       if (id !== currentId) {

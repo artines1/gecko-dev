@@ -8,9 +8,11 @@
 #define MOZILLA_LAYERS_RENDEREROGL_H
 
 #include "mozilla/layers/CompositorTypes.h"
+#include "mozilla/gfx/Point.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/webrender/webrender_ffi.h"
+#include "mozilla/webrender/RendererScreenshotGrabber.h"
 
 namespace mozilla {
 
@@ -24,8 +26,10 @@ class GLContext;
 
 namespace layers {
 class CompositorBridgeParent;
+class NativeLayerRoot;
+class NativeLayer;
 class SyncObjectHost;
-}
+}  // namespace layers
 
 namespace widget {
 class CompositorWidget;
@@ -41,22 +45,28 @@ class RenderTextureHost;
 /// There is one renderer per window, all owned by the render thread.
 /// This class is a similar abstraction to CompositorOGL except that it is used
 /// on the render thread instead of the compositor thread.
-class RendererOGL
-{
-  friend wr::WrExternalImage LockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex);
-  friend void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex);
+class RendererOGL {
+  friend wr::WrExternalImage LockExternalImage(void* aObj,
+                                               wr::ExternalImageId aId,
+                                               uint8_t aChannelIndex,
+                                               wr::ImageRendering);
+  friend void UnlockExternalImage(void* aObj, wr::ExternalImageId aId,
+                                  uint8_t aChannelIndex);
 
-public:
+ public:
   wr::WrExternalImageHandler GetExternalImageHandler();
 
   /// This can be called on the render thread only.
   void Update();
 
   /// This can be called on the render thread only.
-  bool UpdateAndRender(bool aReadback);
+  bool UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
+                       const Maybe<wr::ImageFormat>& aReadbackFormat,
+                       const Maybe<Range<uint8_t>>& aReadbackBuffer,
+                       bool aHadSlowFrame, RendererStats* aOutStats);
 
   /// This can be called on the render thread only.
-  bool RenderToTarget(gfx::DrawTarget& aTarget);
+  void WaitForGPU();
 
   /// This can be called on the render thread only.
   void SetProfilerEnabled(bool aEnabled);
@@ -69,10 +79,8 @@ public:
 
   /// This can be called on the render thread only.
   RendererOGL(RefPtr<RenderThread>&& aThread,
-              UniquePtr<RenderCompositor> aCompositor,
-              wr::WindowId aWindowId,
-              wr::Renderer* aRenderer,
-              layers::CompositorBridgeParent* aBridge);
+              UniquePtr<RenderCompositor> aCompositor, wr::WindowId aWindowId,
+              wr::Renderer* aRenderer, layers::CompositorBridgeParent* aBridge);
 
   /// This can be called on the render thread only.
   void Pause();
@@ -80,31 +88,37 @@ public:
   /// This can be called on the render thread only.
   bool Resume();
 
+  /// This can be called on the render thread only.
+  void CheckGraphicsResetStatus();
+
   layers::SyncObjectHost* GetSyncObject() const;
 
   layers::CompositorBridgeParent* GetCompositorBridge() { return mBridge; }
 
-  wr::WrPipelineInfo FlushPipelineInfo();
+  RefPtr<WebRenderPipelineInfo> FlushPipelineInfo();
 
-  RenderTextureHost* GetRenderTexture(wr::WrExternalImageId aExternalImageId);
+  RenderTextureHost* GetRenderTexture(wr::ExternalImageId aExternalImageId);
+
+  void AccumulateMemoryReport(MemoryReport* aReport);
 
   wr::Renderer* GetRenderer() { return mRenderer; }
 
   gl::GLContext* gl() const;
 
-protected:
-  void NotifyWebRenderError(WebRenderError aError);
-
+ protected:
   RefPtr<RenderThread> mThread;
   UniquePtr<RenderCompositor> mCompositor;
+  RefPtr<layers::NativeLayerRoot> mNativeLayerRoot;
+  RefPtr<layers::NativeLayer> mNativeLayerForEntireWindow;
   wr::Renderer* mRenderer;
   layers::CompositorBridgeParent* mBridge;
   wr::WindowId mWindowId;
   TimeStamp mFrameStartTime;
-  wr::DebugFlags mDebugFlags;
+
+  RendererScreenshotGrabber mScreenshotGrabber;
 };
 
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla
 
 #endif

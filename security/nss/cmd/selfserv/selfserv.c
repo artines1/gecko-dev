@@ -165,9 +165,8 @@ PrintUsageHeader(const char *progName)
             "         [-f password_file] [-L [seconds]] [-M maxProcs] [-P dbprefix]\n"
             "         [-V [min-version]:[max-version]] [-a sni_name]\n"
             "         [ T <good|revoked|unknown|badsig|corrupted|none|ocsp>] [-A ca]\n"
-            "         [-C SSLCacheEntries] [-S dsa_nickname] -Q [-I groups]"
-            " [-e ec_nickname]"
-            "\n"
+            "         [-C SSLCacheEntries] [-S dsa_nickname] [-Q]\n"
+            "         [-I groups] [-J signatureschemes] [-e ec_nickname]\n"
             "         -U [0|1] -H [0|1|2] -W [0|1]\n"
             "\n",
             progName);
@@ -179,7 +178,7 @@ PrintParameterUsage()
     fputs(
         "-V [min]:[max] restricts the set of enabled SSL/TLS protocol versions.\n"
         "   All versions are enabled by default.\n"
-        "   Possible values for min/max: ssl3 tls1.0 tls1.1 tls1.2\n"
+        "   Possible values for min/max: ssl3 tls1.0 tls1.1 tls1.2 tls1.3\n"
         "   Example: \"-V ssl3:\" enables SSL 3 and newer.\n"
         "-D means disable Nagle delays in TCP\n"
         "-R means disable detection of rollback from TLS to SSL3\n"
@@ -195,7 +194,6 @@ PrintParameterUsage()
         "-s means disable SSL socket locking for performance\n"
         "-u means enable Session Ticket extension for TLS.\n"
         "-v means verbose output\n"
-        "-z means enable compression.\n"
         "-L seconds means log statistics every 'seconds' seconds (default=30).\n"
         "-M maxProcs tells how many processes to run in a multi-process server\n"
         "-N means do NOT use the server session cache.  Incompatible with -M.\n"
@@ -228,7 +226,22 @@ PrintParameterUsage()
         "-I comma separated list of enabled groups for TLS key exchange.\n"
         "   The following values are valid:\n"
         "   P256, P384, P521, x25519, FF2048, FF3072, FF4096, FF6144, FF8192\n"
-        "-Z enable 0-RTT (for TLS 1.3; also use -u)\n",
+        "-J comma separated list of enabled signature schemes in preference order.\n"
+        "   The following values are valid:\n"
+        "     rsa_pkcs1_sha1, rsa_pkcs1_sha256, rsa_pkcs1_sha384, rsa_pkcs1_sha512,\n"
+        "     ecdsa_sha1, ecdsa_secp256r1_sha256, ecdsa_secp384r1_sha384,\n"
+        "     ecdsa_secp521r1_sha512,\n"
+        "     rsa_pss_rsae_sha256, rsa_pss_rsae_sha384, rsa_pss_rsae_sha512,\n"
+        "     rsa_pss_pss_sha256, rsa_pss_pss_sha384, rsa_pss_pss_sha512,\n"
+        "-Z enable 0-RTT (for TLS 1.3; also use -u)\n"
+        "-E enable post-handshake authentication\n"
+        "   (for TLS 1.3; only has an effect with 3 or more -r options)\n"
+        "-x Export and print keying material after successful handshake\n"
+        "   The argument is a comma separated list of exporters in the form:\n"
+        "     LABEL[:OUTPUT-LENGTH[:CONTEXT]]\n"
+        "   where LABEL and CONTEXT can be either a free-form string or\n"
+        "   a hex string if it is preceded by \"0x\"; OUTPUT-LENGTH\n"
+        "   is a decimal integer.\n",
         stderr);
 }
 
@@ -795,13 +808,18 @@ PRBool NoReuse = PR_FALSE;
 PRBool hasSidCache = PR_FALSE;
 PRBool disableLocking = PR_FALSE;
 PRBool enableSessionTickets = PR_FALSE;
-PRBool enableCompression = PR_FALSE;
 PRBool failedToNegotiateName = PR_FALSE;
 PRBool enableExtendedMasterSecret = PR_FALSE;
 PRBool zeroRTT = PR_FALSE;
+SSLAntiReplayContext *antiReplay = NULL;
 PRBool enableALPN = PR_FALSE;
+PRBool enablePostHandshakeAuth = PR_FALSE;
 SSLNamedGroup *enabledGroups = NULL;
 unsigned int enabledGroupsCount = 0;
+const SSLSignatureScheme *enabledSigSchemes = NULL;
+unsigned int enabledSigSchemeCount = 0;
+const secuExporter *enabledExporters = NULL;
+unsigned int enabledExporterCount = 0;
 
 static char *virtServerNameArray[MAX_VIRT_SERVER_NAME_ARRAY_INDEX];
 static int virtServerNameIndex = 1;
@@ -1425,15 +1443,28 @@ handle_connection(PRFileDesc *tcp_sock, PRFileDesc *model_sock)
                         errWarn("second SSL_OptionSet SSL_REQUIRE_CERTIFICATE");
                         break;
                     }
-                    rv = SSL_ReHandshake(ssl_sock, PR_TRUE);
-                    if (rv != 0) {
-                        errWarn("SSL_ReHandshake");
-                        break;
-                    }
-                    rv = SSL_ForceHandshake(ssl_sock);
-                    if (rv < 0) {
-                        errWarn("SSL_ForceHandshake");
-                        break;
+                    if (enablePostHandshakeAuth) {
+                        rv = SSL_SendCertificateRequest(ssl_sock);
+                        if (rv != SECSuccess) {
+                            errWarn("SSL_SendCertificateRequest");
+                            break;
+                        }
+                        rv = SSL_ForceHandshake(ssl_sock);
+                        if (rv != SECSuccess) {
+                            errWarn("SSL_ForceHandshake");
+                            break;
+                        }
+                    } else {
+                        rv = SSL_ReHandshake(ssl_sock, PR_TRUE);
+                        if (rv != 0) {
+                            errWarn("SSL_ReHandshake");
+                            break;
+                        }
+                        rv = SSL_ForceHandshake(ssl_sock);
+                        if (rv < 0) {
+                            errWarn("SSL_ForceHandshake");
+                            break;
+                        }
                     }
                 }
             }
@@ -1799,6 +1830,15 @@ handshakeCallback(PRFileDesc *fd, void *client_data)
             SECITEM_FreeItem(hostInfo, PR_TRUE);
         }
     }
+    if (enabledExporters) {
+        SECStatus rv = exportKeyingMaterials(fd, enabledExporters, enabledExporterCount);
+        if (rv != SECSuccess) {
+            PRErrorCode err = PR_GetError();
+            fprintf(stderr,
+                    "couldn't export keying material: %s\n",
+                    SECU_Strerror(err));
+        }
+    }
 }
 
 void
@@ -1857,13 +1897,6 @@ server_main(
         }
     }
 
-    if (enableCompression) {
-        rv = SSL_OptionSet(model_sock, SSL_ENABLE_DEFLATE, PR_TRUE);
-        if (rv != SECSuccess) {
-            errExit("error enabling compression ");
-        }
-    }
-
     if (virtServerNameIndex > 1) {
         rv = SSL_SNISocketConfigHook(model_sock, mySSLSNISocketConfig,
                                      (void *)&virtServerNameArray);
@@ -1910,7 +1943,7 @@ server_main(
     for (i = 0; i < certNicknameIndex; i++) {
         if (cert[i] != NULL) {
             const SSLExtraServerCertData ocspData = {
-                ssl_auth_null, NULL, certStatus[i], NULL
+                ssl_auth_null, NULL, certStatus[i], NULL, NULL, NULL
             };
 
             secStatus = SSL_ConfigServerCert(model_sock, cert[i],
@@ -1939,13 +1972,23 @@ server_main(
         if (enabledVersions.max < SSL_LIBRARY_VERSION_TLS_1_3) {
             errExit("You tried enabling 0RTT without enabling TLS 1.3!");
         }
-        rv = SSL_SetupAntiReplay(10 * PR_USEC_PER_SEC, 7, 14);
+        rv = SSL_SetAntiReplayContext(model_sock, antiReplay);
         if (rv != SECSuccess) {
             errExit("error configuring anti-replay ");
         }
         rv = SSL_OptionSet(model_sock, SSL_ENABLE_0RTT_DATA, PR_TRUE);
         if (rv != SECSuccess) {
             errExit("error enabling 0RTT ");
+        }
+    }
+
+    if (enablePostHandshakeAuth) {
+        if (enabledVersions.max < SSL_LIBRARY_VERSION_TLS_1_3) {
+            errExit("You tried enabling post-handshake auth without enabling TLS 1.3!");
+        }
+        rv = SSL_OptionSet(model_sock, SSL_ENABLE_POST_HANDSHAKE_AUTH, PR_TRUE);
+        if (rv != SECSuccess) {
+            errExit("error enabling post-handshake auth");
         }
     }
 
@@ -1970,6 +2013,13 @@ server_main(
         }
     }
 
+    if (enabledSigSchemes) {
+        rv = SSL_SignatureSchemePrefSet(model_sock, enabledSigSchemes, enabledSigSchemeCount);
+        if (rv < 0) {
+            errExit("SSL_SignatureSchemePrefSet failed");
+        }
+    }
+
     /* This cipher is not on by default. The Acceptance test
      * would like it to be. Turn this cipher on.
      */
@@ -1979,7 +2029,7 @@ server_main(
         errExit("SSL_CipherPrefSetDefault:TLS_RSA_WITH_NULL_MD5");
     }
 
-    if (expectedHostNameVal) {
+    if (expectedHostNameVal || enabledExporters) {
         SSL_HandshakeCallback(model_sock, handshakeCallback,
                               (void *)expectedHostNameVal);
     }
@@ -2213,10 +2263,11 @@ main(int argc, char **argv)
 
     /* please keep this list of options in ASCII collating sequence.
     ** numbers, then capital letters, then lower case, alphabetical.
-    ** XXX: 'B', 'E', 'q', and 'x' were used in the past but removed
-    **      in 3.28, please leave some time before resuing those. */
+    ** XXX: 'B', and 'q' were used in the past but removed
+    **      in 3.28, please leave some time before resuing those.
+    **      'z' was removed in 3.39. */
     optstate = PL_CreateOptState(argc, argv,
-                                 "2:A:C:DGH:I:L:M:NP:QRS:T:U:V:W:YZa:bc:d:e:f:g:hi:jk:lmn:op:rst:uvw:yz");
+                                 "2:A:C:DEGH:I:J:L:M:NP:QRS:T:U:V:W:YZa:bc:d:e:f:g:hi:jk:lmn:op:rst:uvw:x:y");
     while ((status = PL_GetNextOpt(optstate)) == PL_OPT_OK) {
         ++optionsFound;
         switch (optstate->option) {
@@ -2236,6 +2287,11 @@ main(int argc, char **argv)
             case 'D':
                 noDelay = PR_TRUE;
                 break;
+
+            case 'E':
+                enablePostHandshakeAuth = PR_TRUE;
+                break;
+
             case 'H':
                 configureDHE = (PORT_Atoi(optstate->value) != 0);
                 break;
@@ -2429,10 +2485,6 @@ main(int argc, char **argv)
                 debugCache = PR_TRUE;
                 break;
 
-            case 'z':
-                enableCompression = PR_TRUE;
-                break;
-
             case 'Z':
                 zeroRTT = PR_TRUE;
                 break;
@@ -2446,6 +2498,27 @@ main(int argc, char **argv)
                 if (rv != SECSuccess) {
                     PL_DestroyOptState(optstate);
                     fprintf(stderr, "Bad group specified.\n");
+                    fprintf(stderr, "Run '%s -h' for usage information.\n", progName);
+                    exit(5);
+                }
+                break;
+
+            case 'J':
+                rv = parseSigSchemeList(optstate->value, &enabledSigSchemes, &enabledSigSchemeCount);
+                if (rv != SECSuccess) {
+                    PL_DestroyOptState(optstate);
+                    fprintf(stderr, "Bad signature scheme specified.\n");
+                    fprintf(stderr, "Run '%s -h' for usage information.\n", progName);
+                    exit(5);
+                }
+                break;
+
+            case 'x':
+                rv = parseExporters(optstate->value,
+                                    &enabledExporters, &enabledExporterCount);
+                if (rv != SECSuccess) {
+                    PL_DestroyOptState(optstate);
+                    fprintf(stderr, "Bad exporter specified.\n");
                     fprintf(stderr, "Run '%s -h' for usage information.\n", progName);
                     exit(5);
                 }
@@ -2640,8 +2713,10 @@ main(int argc, char **argv)
             }
             if (cipher > 0) {
                 rv = SSL_CipherPrefSetDefault(cipher, SSL_ALLOWED);
-                if (rv != SECSuccess)
-                    SECU_PrintError(progName, "SSL_CipherPrefSet()");
+                if (rv != SECSuccess) {
+                    SECU_PrintError(progName, "SSL_CipherPrefSetDefault()");
+                    exit(9);
+                }
             } else {
                 fprintf(stderr,
                         "Invalid cipher specification (-c arg).\n");
@@ -2678,6 +2753,12 @@ main(int argc, char **argv)
             goto cleanup;
         }
         fprintf(stderr, "selfserv: Done creating dynamic weak DH parameters\n");
+    }
+    if (zeroRTT) {
+        rv = SSL_CreateAntiReplayContext(PR_Now(), 10L * PR_USEC_PER_SEC, 7, 14, &antiReplay);
+        if (rv != SECSuccess) {
+            errExit("Unable to create anti-replay context for 0-RTT.");
+        }
     }
 
     /* allocate the array of thread slots, and launch the worker threads. */
@@ -2753,6 +2834,9 @@ cleanup:
     }
     if (enabledGroups) {
         PORT_Free(enabledGroups);
+    }
+    if (antiReplay) {
+        SSL_ReleaseAntiReplayContext(antiReplay);
     }
     if (NSS_Shutdown() != SECSuccess) {
         SECU_PrintError(progName, "NSS_Shutdown");

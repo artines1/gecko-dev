@@ -7,20 +7,35 @@
 
 "use strict";
 
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "Services",
+  "resource://gre/modules/Services.jsm"
+);
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "searchLoadInBackground",
-                                      "browser.search.context.loadInBackground");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
+});
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "searchLoadInBackground",
+  "browser.search.context.loadInBackground"
+);
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch", "btoa"]);
 
-var {
-  ExtensionError,
-} = ExtensionUtils;
+var { ExtensionError } = ExtensionUtils;
 
-async function getDataURI(resourceURI) {
-  let response = await fetch(resourceURI);
+async function getDataURI(localIconUrl) {
+  let response;
+  try {
+    response = await fetch(localIconUrl);
+  } catch (e) {
+    // Failed to fetch, ignore engine's favicon.
+    Cu.reportError(e);
+    return;
+  }
   let buffer = await response.arrayBuffer();
   let contentType = response.headers.get("content-type");
   let bytes = new Uint8Array(buffer);
@@ -34,61 +49,76 @@ this.search = class extends ExtensionAPI {
       search: {
         async get() {
           await searchInitialized;
-          let engines = Services.search.getEngines();
-          let visibleEngines = engines.filter(engine => !engine.hidden);
-          return Promise.all(visibleEngines.map(async engine => {
-            let favIconUrl;
-            if (engine.iconURI) {
-              if (engine.iconURI.schemeIs("resource") ||
-                  engine.iconURI.schemeIs("chrome")) {
-                // Convert internal URLs to data URLs
-                favIconUrl = await getDataURI(engine.iconURI.spec);
-              } else {
-                favIconUrl = engine.iconURI.spec;
+          let visibleEngines = await Services.search.getVisibleEngines();
+          let defaultEngine = await Services.search.getDefault();
+          return Promise.all(
+            visibleEngines.map(async engine => {
+              let favIconUrl;
+              if (engine.iconURI) {
+                // Convert moz-extension:-URLs to data:-URLs to make sure that
+                // extensions can see icons from other extensions, even if they
+                // are not web-accessible.
+                // Also prevents leakage of extension UUIDs to other extensions..
+                if (
+                  engine.iconURI.schemeIs("moz-extension") &&
+                  engine.iconURI.host !== context.extension.uuid
+                ) {
+                  favIconUrl = await getDataURI(engine.iconURI.spec);
+                } else {
+                  favIconUrl = engine.iconURI.spec;
+                }
               }
-            }
 
-            return {
-              name: engine.name,
-              isDefault: engine === Services.search.currentEngine,
-              alias: engine.alias || undefined,
-              favIconUrl,
-            };
-          }));
+              return {
+                name: engine.name,
+                isDefault: engine.name === defaultEngine.name,
+                alias: engine.alias || undefined,
+                favIconUrl,
+              };
+            })
+          );
         },
 
-        async search(name, searchTerms, tabId) {
+        async search(searchProperties) {
           await searchInitialized;
-          let engine = Services.search.getEngineByName(name);
-          if (!engine) {
-            throw new ExtensionError(`${name} was not found`);
+          let engine;
+          if (searchProperties.engine) {
+            engine = Services.search.getEngineByName(searchProperties.engine);
+            if (!engine) {
+              throw new ExtensionError(
+                `${searchProperties.engine} was not found`
+              );
+            }
+          } else {
+            engine = await Services.search.getDefault();
           }
-          let submission = engine.getSubmission(searchTerms, null, "webextension");
+          let submission = engine.getSubmission(
+            searchProperties.query,
+            null,
+            "webextension"
+          );
           let options = {
             postData: submission.postData,
             triggeringPrincipal: context.principal,
           };
-          if (tabId === null) {
-            let browser = context.pendingEventBrowser || context.xulBrowser;
-            let {gBrowser} = browser.ownerGlobal;
-            if (!gBrowser || !gBrowser.addTab) {
-              // In some cases (about:addons, sidebar, maybe others), we need
-              // to go up one more level.
-              browser = browser.ownerDocument.docShell.chromeEventHandler;
-
-              ({gBrowser} = browser.ownerGlobal);
-            }
-            if (!gBrowser || !gBrowser.addTab) {
-              throw new ExtensionError("Unable to locate a browser.");
-            }
+          let tabbrowser;
+          if (searchProperties.tabId === null) {
+            let { gBrowser } = windowTracker.topWindow;
             let nativeTab = gBrowser.addTab(submission.uri.spec, options);
             if (!searchLoadInBackground) {
               gBrowser.selectedTab = nativeTab;
             }
+            tabbrowser = gBrowser;
           } else {
-            let tab = tabTracker.getTab(tabId);
+            let tab = tabTracker.getTab(searchProperties.tabId);
             tab.linkedBrowser.loadURI(submission.uri.spec, options);
+            tabbrowser = tab.linkedBrowser.getTabBrowser();
           }
+          BrowserUsageTelemetry.recordSearch(
+            tabbrowser,
+            engine,
+            "webextension"
+          );
         },
       },
     };

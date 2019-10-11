@@ -6,7 +6,7 @@
 <head>
   <title>Indexed Database Property Test</title>
 
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 
   <script type="text/javascript">
@@ -23,11 +23,11 @@
 
     const fileData1 = {
       key: 1,
-      obj: { id: 1, file: getRandomFile("random.bin", 100000) }
+      obj: { id: 1, file: getRandomFile("random.bin", 100000) },
     };
     const fileData2 = {
       key: 2,
-      obj: { id: 1, file: getRandomFile("random.bin", 100000) }
+      obj: { id: 1, file: getRandomFile("random.bin", 100000) },
     };
 
     SpecialPowers.pushPrefEnv({ set: [["dom.indexedDB.dataThreshold", -1]] },

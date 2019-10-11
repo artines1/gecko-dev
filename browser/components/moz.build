@@ -13,9 +13,6 @@ with Files("distribution.js"):
 with Files("tests/**"):
     BUG_COMPONENT = ("Firefox", "General")
 
-with Files("tests/browser/browser_bug538331.js"):
-    BUG_COMPONENT = ("Toolkit", "Application Update")
-
 with Files("tests/browser/browser_contentpermissionprompt.js"):
     BUG_COMPONENT = ("Firefox", "Site Identity and Permission Panels")
 
@@ -31,6 +28,7 @@ with Files('controlcenter/**'):
 
 DIRS += [
     'about',
+    'aboutlogins',
     'attribution',
     'contextualidentity',
     'customizableui',
@@ -38,27 +36,40 @@ DIRS += [
     'downloads',
     'enterprisepolicies',
     'extensions',
-    'feeds',
+    'fxmonitor',
     'library',
     'migration',
     'newtab',
     'originattributes',
     'places',
+    'pocket',
     'preferences',
     'privatebrowsing',
+    'protections',
+    'protocolhandler',
     'resistfingerprinting',
     'search',
     'sessionstore',
     'shell',
     'syncedtabs',
     'uitour',
+    'urlbar',
     'translation',
+    'webshare',
 ]
 
 DIRS += ['build']
 
 if CONFIG['NIGHTLY_BUILD']:
-    DIRS += ['payments']
+    DIRS += [
+        'aboutconfig',
+        'payments',
+    ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
+    DIRS += ['touchbar']
+elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+    DIRS += ['installerprefs']
 
 XPIDL_SOURCES += [
     'nsIBrowserHandler.idl',
@@ -66,25 +77,31 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
-EXTRA_PP_COMPONENTS += [
-    'BrowserComponents.manifest',
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 EXTRA_COMPONENTS += [
-    'nsBrowserContentHandler.js',
-    'nsBrowserGlue.js',
+    'BrowserComponents.manifest',
     'tests/startupRecorder.js',
     'tests/testComponents.manifest',
 ]
 
 EXTRA_JS_MODULES += [
+    'BrowserContentHandler.jsm',
+    'BrowserGlue.jsm',
     'distribution.js',
 ]
 
 BROWSER_CHROME_MANIFESTS += [
     'safebrowsing/content/test/browser.ini',
-    'tests/browser/browser.ini'
+    'tests/browser/browser.ini',
 ]
+
+if CONFIG['MOZ_UPDATER']:
+    BROWSER_CHROME_MANIFESTS += [
+        'tests/browser/whats_new_page/browser.ini',
+    ]
 
 XPCSHELL_TESTS_MANIFESTS += [
     'tests/unit/xpcshell.ini'

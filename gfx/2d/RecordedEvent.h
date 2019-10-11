@@ -13,11 +13,10 @@
 #include <cstring>
 #include <vector>
 
+#include "RecordingTypes.h"
+
 namespace mozilla {
 namespace gfx {
-
-struct PathOp;
-class PathRecording;
 
 const uint32_t kMagicInt = 0xc001feed;
 
@@ -30,108 +29,98 @@ const uint16_t kMajorRevision = 10;
 // not play in older players.
 const uint16_t kMinorRevision = 0;
 
-struct ReferencePtr
-{
-  ReferencePtr()
-    : mLongPtr(0)
-  {}
+struct ReferencePtr {
+  ReferencePtr() : mLongPtr(0) {}
 
   MOZ_IMPLICIT ReferencePtr(const void* aLongPtr)
-    : mLongPtr(uint64_t(aLongPtr))
-  {}
+      : mLongPtr(uint64_t(aLongPtr)) {}
 
   template <typename T>
   MOZ_IMPLICIT ReferencePtr(const RefPtr<T>& aPtr)
-    : mLongPtr(uint64_t(aPtr.get()))
-  {}
+      : mLongPtr(uint64_t(aPtr.get())) {}
 
-  ReferencePtr &operator =(const void* aLongPtr) {
+  ReferencePtr& operator=(const void* aLongPtr) {
     mLongPtr = uint64_t(aLongPtr);
     return *this;
   }
 
   template <typename T>
-  ReferencePtr &operator =(const RefPtr<T>& aPtr) {
+  ReferencePtr& operator=(const RefPtr<T>& aPtr) {
     mLongPtr = uint64_t(aPtr.get());
     return *this;
   }
 
-  operator void*() const {
-    return (void*)mLongPtr;
-  }
+  operator void*() const { return (void*)mLongPtr; }
 
   uint64_t mLongPtr;
 };
 
-struct RecordedFontDetails
-{
+struct RecordedFontDetails {
   uint64_t fontDataKey;
   uint32_t size;
   uint32_t index;
 };
 
 // Used by the Azure drawing debugger (player2d)
-inline std::string StringFromPtr(ReferencePtr aPtr)
-{
+inline std::string StringFromPtr(ReferencePtr aPtr) {
   std::stringstream stream;
   stream << aPtr;
   return stream.str();
 }
 
-class Translator
-{
-public:
-  virtual ~Translator() {}
+class Translator {
+ public:
+  virtual ~Translator() = default;
 
-  virtual DrawTarget *LookupDrawTarget(ReferencePtr aRefPtr) = 0;
-  virtual Path *LookupPath(ReferencePtr aRefPtr) = 0;
-  virtual SourceSurface *LookupSourceSurface(ReferencePtr aRefPtr) = 0;
-  virtual FilterNode *LookupFilterNode(ReferencePtr aRefPtr) = 0;
-  virtual GradientStops *LookupGradientStops(ReferencePtr aRefPtr) = 0;
-  virtual ScaledFont *LookupScaledFont(ReferencePtr aRefPtr) = 0;
+  virtual DrawTarget* LookupDrawTarget(ReferencePtr aRefPtr) = 0;
+  virtual Path* LookupPath(ReferencePtr aRefPtr) = 0;
+  virtual SourceSurface* LookupSourceSurface(ReferencePtr aRefPtr) = 0;
+  virtual FilterNode* LookupFilterNode(ReferencePtr aRefPtr) = 0;
+  virtual GradientStops* LookupGradientStops(ReferencePtr aRefPtr) = 0;
+  virtual ScaledFont* LookupScaledFont(ReferencePtr aRefPtr) = 0;
   virtual UnscaledFont* LookupUnscaledFont(ReferencePtr aRefPtr) = 0;
-  virtual UnscaledFont* LookupUnscaledFontByIndex(size_t aIndex) { return nullptr; }
-  virtual NativeFontResource *LookupNativeFontResource(uint64_t aKey) = 0;
-  virtual already_AddRefed<SourceSurface> LookupExternalSurface(uint64_t aKey) { return nullptr; }
-  virtual void AddDrawTarget(ReferencePtr aRefPtr, DrawTarget *aDT) = 0;
+  virtual NativeFontResource* LookupNativeFontResource(uint64_t aKey) = 0;
+  virtual already_AddRefed<SourceSurface> LookupExternalSurface(uint64_t aKey) {
+    return nullptr;
+  }
+  virtual void AddDrawTarget(ReferencePtr aRefPtr, DrawTarget* aDT) = 0;
   virtual void RemoveDrawTarget(ReferencePtr aRefPtr) = 0;
-  virtual void AddPath(ReferencePtr aRefPtr, Path *aPath) = 0;
+  virtual void AddPath(ReferencePtr aRefPtr, Path* aPath) = 0;
   virtual void RemovePath(ReferencePtr aRefPtr) = 0;
-  virtual void AddSourceSurface(ReferencePtr aRefPtr, SourceSurface *aPath) = 0;
+  virtual void AddSourceSurface(ReferencePtr aRefPtr, SourceSurface* aPath) = 0;
   virtual void RemoveSourceSurface(ReferencePtr aRefPtr) = 0;
-  virtual void AddFilterNode(mozilla::gfx::ReferencePtr aRefPtr, FilterNode *aSurface) = 0;
+  virtual void AddFilterNode(mozilla::gfx::ReferencePtr aRefPtr,
+                             FilterNode* aSurface) = 0;
   virtual void RemoveFilterNode(mozilla::gfx::ReferencePtr aRefPtr) = 0;
-  virtual void AddGradientStops(ReferencePtr aRefPtr, GradientStops *aPath) = 0;
+  virtual void AddGradientStops(ReferencePtr aRefPtr, GradientStops* aPath) = 0;
   virtual void RemoveGradientStops(ReferencePtr aRefPtr) = 0;
-  virtual void AddScaledFont(ReferencePtr aRefPtr, ScaledFont *aScaledFont) = 0;
+  virtual void AddScaledFont(ReferencePtr aRefPtr, ScaledFont* aScaledFont) = 0;
   virtual void RemoveScaledFont(ReferencePtr aRefPtr) = 0;
-  virtual void AddUnscaledFont(ReferencePtr aRefPtr, UnscaledFont* aUnscaledFont) = 0;
+  virtual void AddUnscaledFont(ReferencePtr aRefPtr,
+                               UnscaledFont* aUnscaledFont) = 0;
   virtual void RemoveUnscaledFont(ReferencePtr aRefPtr) = 0;
-  virtual void AddNativeFontResource(uint64_t aKey,
-                                     NativeFontResource *aNativeFontResource) = 0;
+  virtual void AddNativeFontResource(
+      uint64_t aKey, NativeFontResource* aNativeFontResource) = 0;
 
   virtual already_AddRefed<DrawTarget> CreateDrawTarget(ReferencePtr aRefPtr,
-                                                        const IntSize &aSize,
+                                                        const IntSize& aSize,
                                                         SurfaceFormat aFormat);
-  virtual DrawTarget *GetReferenceDrawTarget() = 0;
+  virtual DrawTarget* GetReferenceDrawTarget() = 0;
   virtual void* GetFontContext() { return nullptr; }
 };
 
-struct ColorPatternStorage
-{
+struct ColorPatternStorage {
   Color mColor;
 };
 
-struct LinearGradientPatternStorage
-{
+struct LinearGradientPatternStorage {
   Point mBegin;
   Point mEnd;
   ReferencePtr mStops;
   Matrix mMatrix;
 };
 
-struct RadialGradientPatternStorage
-{
+struct RadialGradientPatternStorage {
   Point mCenter1;
   Point mCenter2;
   Float mRadius1;
@@ -140,8 +129,7 @@ struct RadialGradientPatternStorage
   Matrix mMatrix;
 };
 
-struct SurfacePatternStorage
-{
+struct SurfacePatternStorage {
   ExtendMode mExtend;
   SamplingFilter mSamplingFilter;
   ReferencePtr mSurface;
@@ -149,18 +137,16 @@ struct SurfacePatternStorage
   IntRect mSamplingRect;
 };
 
-struct PatternStorage
-{
+struct PatternStorage {
   PatternType mType;
   union {
-    char *mStorage;
+    char* mStorage;
     char mColor[sizeof(ColorPatternStorage)];
     char mLinear[sizeof(LinearGradientPatternStorage)];
     char mRadial[sizeof(RadialGradientPatternStorage)];
     char mSurface[sizeof(SurfacePatternStorage)];
   };
 };
-
 
 /* SizeCollector and MemWriter are used
  * in a pair to first collect the size of the
@@ -169,23 +155,88 @@ struct PatternStorage
  * size. */
 struct SizeCollector {
   SizeCollector() : mTotalSize(0) {}
-    void write(const char*, size_t s) {
-      mTotalSize += s;
-    }
+  void write(const char*, size_t s) { mTotalSize += s; }
   size_t mTotalSize;
 };
 
 struct MemWriter {
   explicit MemWriter(char* aPtr) : mPtr(aPtr) {}
-    void write(const char* aData, size_t aSize) {
-       memcpy(mPtr, aData, aSize);
-       mPtr += aSize;
-    }
+  void write(const char* aData, size_t aSize) {
+    memcpy(mPtr, aData, aSize);
+    mPtr += aSize;
+  }
   char* mPtr;
 };
 
+// This is a simple interface for an EventRingBuffer, so we can use it in the
+// RecordedEvent reading and writing machinery.
+class EventRingBuffer {
+ public:
+  /**
+   * Templated RecordEvent function so that when we have enough contiguous
+   * space we can record into the buffer quickly using MemWriter.
+   *
+   * @param aRecordedEvent the event to record
+   */
+  template <class RE>
+  void RecordEvent(const RE* aRecordedEvent) {
+    SizeCollector size;
+    WriteElement(size, aRecordedEvent->GetType());
+    aRecordedEvent->Record(size);
+    if (size.mTotalSize > mAvailable) {
+      WaitForAndRecalculateAvailableSpace();
+    }
+    if (size.mTotalSize <= mAvailable) {
+      MemWriter writer(mBufPos);
+      WriteElement(writer, aRecordedEvent->GetType());
+      aRecordedEvent->Record(writer);
+      UpdateWriteTotalsBy(size.mTotalSize);
+    } else {
+      WriteElement(*this, aRecordedEvent->GetType());
+      aRecordedEvent->Record(*this);
+    }
+  }
+
+  /**
+   * Simple write function required by WriteElement.
+   *
+   * @param aData the data to be written to the buffer
+   * @param aSize the number of chars to write
+   */
+  virtual void write(const char* const aData, const size_t aSize) = 0;
+
+  /**
+   * Simple read function required by ReadElement.
+   *
+   * @param aOut the pointer to read into
+   * @param aSize the number of chars to read
+   */
+  virtual void read(char* const aOut, const size_t aSize) = 0;
+
+  virtual bool good() const = 0;
+
+  virtual void SetIsBad() = 0;
+
+ protected:
+  /**
+   * Wait until space is available for writing and then set mBufPos and
+   * mAvailable.
+   */
+  virtual bool WaitForAndRecalculateAvailableSpace() = 0;
+
+  /**
+   * Update write count, mBufPos and mAvailable.
+   *
+   * @param aCount number of bytes written
+   */
+  virtual void UpdateWriteTotalsBy(uint32_t aCount) = 0;
+
+  char* mBufPos = nullptr;
+  uint32_t mAvailable = 0;
+};
+
 struct MemStream {
-  char *mData;
+  char* mData;
   size_t mLength;
   size_t mCapacity;
   void Resize(size_t aSize) {
@@ -211,13 +262,15 @@ struct MemStream {
 };
 
 class EventStream {
-public:
+ public:
   virtual void write(const char* aData, size_t aSize) = 0;
   virtual void read(char* aOut, size_t aSize) = 0;
+  virtual bool good() = 0;
+  virtual void SetIsBad() = 0;
 };
 
 class RecordedEvent {
-public:
+ public:
   enum EventType {
     DRAWTARGETCREATION = 0,
     DRAWTARGETDESTRUCTION,
@@ -235,6 +288,7 @@ public:
     MASK,
     STROKE,
     DRAWSURFACE,
+    DRAWDEPENDENTSURFACE,
     DRAWSURFACEWITHSHADOW,
     PATHCREATION,
     PATHDESTRUCTION,
@@ -244,7 +298,6 @@ public:
     GRADIENTSTOPSDESTRUCTION,
     SNAPSHOT,
     SCALEDFONTCREATION,
-    SCALEDFONTCREATIONBYINDEX,
     SCALEDFONTDESTRUCTION,
     MASKSURFACE,
     FILTERNODECREATION,
@@ -254,6 +307,7 @@ public:
     FILTERNODESETINPUT,
     CREATESIMILARDRAWTARGET,
     CREATECLIPPEDDRAWTARGET,
+    CREATEDRAWTARGETFORFILTER,
     FONTDATA,
     FONTDESC,
     PUSHLAYER,
@@ -263,75 +317,113 @@ public:
     UNSCALEDFONTDESTRUCTION,
     INTOLUMINANCE,
     EXTERNALSURFACECREATION,
+    FLUSH,
+    DETACHALLSNAPSHOTS,
+    LAST,
   };
-  static const uint32_t kTotalEventTypes = RecordedEvent::FILTERNODESETINPUT + 1;
 
-  virtual ~RecordedEvent() {}
+  virtual ~RecordedEvent() = default;
 
   static std::string GetEventName(EventType aType);
 
   /**
-   * Play back this event using the translator. Note that derived classes should
-   * only return false when there is a fatal error, as it will probably mean the
+   * Play back this event using the translator. Note that derived classes
+   * should
+   * only return false when there is a fatal error, as it will probably mean
+   * the
    * translation will abort.
    * @param aTranslator Translator to be used for retrieving other referenced
    *                    objects and making playback decisions.
-   * @return true unless a fatal problem has occurred and playback should abort.
+   * @return true unless a fatal problem has occurred and playback should
+   * abort.
    */
-  virtual bool PlayEvent(Translator *aTranslator) const { return true; }
+  virtual bool PlayEvent(Translator* aTranslator) const { return true; }
 
   virtual void RecordToStream(std::ostream& aStream) const = 0;
   virtual void RecordToStream(EventStream& aStream) const = 0;
+  virtual void RecordToStream(EventRingBuffer& aStream) const = 0;
   virtual void RecordToStream(MemStream& aStream) const = 0;
 
-  virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const { }
+  virtual void OutputSimpleEventInfo(std::stringstream& aStringStream) const {}
 
-  template<class S>
-  void RecordPatternData(S &aStream, const PatternStorage &aPatternStorage) const;
-  template<class S>
-  void ReadPatternData(S &aStream, PatternStorage &aPatternStorage) const;
-  void StorePattern(PatternStorage &aDestination, const Pattern &aSource) const;
-  template<class S>
-  void RecordStrokeOptions(S &aStream, const StrokeOptions &aStrokeOptions) const;
-  template<class S>
-  void ReadStrokeOptions(S &aStream, StrokeOptions &aStrokeOptions);
+  template <class S>
+  void RecordPatternData(S& aStream,
+                         const PatternStorage& aPatternStorage) const;
+  template <class S>
+  void ReadPatternData(S& aStream, PatternStorage& aPatternStorage) const;
+  void StorePattern(PatternStorage& aDestination, const Pattern& aSource) const;
+  template <class S>
+  void RecordStrokeOptions(S& aStream,
+                           const StrokeOptions& aStrokeOptions) const;
+  template <class S>
+  void ReadStrokeOptions(S& aStream, StrokeOptions& aStrokeOptions);
 
   virtual std::string GetName() const = 0;
 
-  virtual ReferencePtr GetObjectRef() const = 0;
-
   virtual ReferencePtr GetDestinedDT() { return nullptr; }
 
-  void OutputSimplePatternInfo(const PatternStorage &aStorage, std::stringstream &aOutput) const;
+  void OutputSimplePatternInfo(const PatternStorage& aStorage,
+                               std::stringstream& aOutput) const;
 
-  template<class S>
-  static RecordedEvent *LoadEvent(S &aStream, EventType aType);
-  static RecordedEvent *LoadEventFromStream(std::istream &aStream, EventType aType);
-  static RecordedEvent *LoadEventFromStream(EventStream& aStream, EventType aType);
-
-  // An alternative to LoadEvent that avoids a heap allocation for the event.
-  // This accepts a callable `f' that will take a RecordedEvent* as a single parameter
-  template<class S, class F>
-  static bool DoWithEvent(S &aStream, EventType aType, F f);
+  template <class S>
+  static bool DoWithEvent(S& aStream, EventType aType,
+                          const std::function<bool(RecordedEvent*)>& aAction);
+  static bool DoWithEventFromStream(
+      EventStream& aStream, EventType aType,
+      const std::function<bool(RecordedEvent*)>& aAction);
+  static bool DoWithEventFromStream(
+      EventRingBuffer& aStream, EventType aType,
+      const std::function<bool(RecordedEvent*)>& aAction);
 
   EventType GetType() const { return (EventType)mType; }
-protected:
+
+ protected:
   friend class DrawEventRecorderPrivate;
   friend class DrawEventRecorderFile;
   friend class DrawEventRecorderMemory;
-  static void RecordUnscaledFont(UnscaledFont *aUnscaledFont, std::ostream *aOutput);
-  static void RecordUnscaledFont(UnscaledFont *aUnscaledFont, MemStream &aOutput);
-  template<class S>
-  static void RecordUnscaledFontImpl(UnscaledFont *aUnscaledFont, S &aOutput);
+  static void RecordUnscaledFont(UnscaledFont* aUnscaledFont,
+                                 std::ostream* aOutput);
+  static void RecordUnscaledFont(UnscaledFont* aUnscaledFont,
+                                 MemStream& aOutput);
+  template <class S>
+  static void RecordUnscaledFontImpl(UnscaledFont* aUnscaledFont, S& aOutput);
 
-  MOZ_IMPLICIT RecordedEvent(int32_t aType) : mType(aType)
-  {}
+  MOZ_IMPLICIT RecordedEvent(int32_t aType) : mType(aType) {}
 
   int32_t mType;
   std::vector<Float> mDashPatternStorage;
 };
 
-} // namespace gfx
-} // namespace mozilla
+template <class Derived>
+class RecordedEventDerived : public RecordedEvent {
+  using RecordedEvent::RecordedEvent;
+
+ public:
+  void RecordToStream(std::ostream& aStream) const override {
+    WriteElement(aStream, this->mType);
+    static_cast<const Derived*>(this)->Record(aStream);
+  }
+  void RecordToStream(EventStream& aStream) const override {
+    WriteElement(aStream, this->mType);
+    static_cast<const Derived*>(this)->Record(aStream);
+  }
+  void RecordToStream(EventRingBuffer& aStream) const final {
+    aStream.RecordEvent(static_cast<const Derived*>(this));
+  }
+  void RecordToStream(MemStream& aStream) const override {
+    SizeCollector size;
+    WriteElement(size, this->mType);
+    static_cast<const Derived*>(this)->Record(size);
+
+    aStream.Resize(aStream.mLength + size.mTotalSize);
+
+    MemWriter writer(aStream.mData + aStream.mLength - size.mTotalSize);
+    WriteElement(writer, this->mType);
+    static_cast<const Derived*>(this)->Record(writer);
+  }
+};
+
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif

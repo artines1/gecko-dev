@@ -1,12 +1,47 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { L10nRegistry, FileSource } = ChromeUtils.import(
+  "resource://gre/modules/L10nRegistry.jsm"
+);
 
+const fs = {
+  "toolkit/intl/languageNames.ftl": `
+language-name-en = English
+  `,
+  "toolkit/intl/regionNames.ftl": `
+region-name-us = United States
+region-name-ru = Russia
+  `,
+};
 
-const gLangDN = Services.intl.getLanguageDisplayNames.bind(Services.intl, undefined);
-const gRegDN = Services.intl.getRegionDisplayNames.bind(Services.intl, undefined);
-const gLocDN = Services.intl.getLocaleDisplayNames.bind(Services.intl, undefined);
+L10nRegistry.loadSync = function(url) {
+  if (!fs.hasOwnProperty(url)) {
+    return false;
+  }
+  return fs[url];
+};
+
+let locales = Services.locale.packagedLocales;
+const mockSource = new FileSource("mock", locales, "");
+L10nRegistry.registerSource(mockSource);
+
+const gLangDN = Services.intl.getLanguageDisplayNames.bind(
+  Services.intl,
+  undefined
+);
+const gAvLocDN = Services.intl.getAvailableLocaleDisplayNames.bind(
+  Services.intl
+);
+const gRegDN = Services.intl.getRegionDisplayNames.bind(
+  Services.intl,
+  undefined
+);
+const gLocDN = Services.intl.getLocaleDisplayNames.bind(
+  Services.intl,
+  undefined
+);
 
 add_test(function test_valid_language_tag() {
   deepEqual(gLocDN([]), []);
@@ -30,7 +65,9 @@ add_test(function test_valid_script_tag() {
 add_test(function test_valid_variants_tag() {
   deepEqual(gLocDN(["en-Cyrl-macos"]), ["English (Cyrl, macos)"]);
   deepEqual(gLocDN(["en-Cyrl-RU-macos"]), ["English (Cyrl, Russia, macos)"]);
-  deepEqual(gLocDN(["en-Cyrl-RU-macos-modern"]), ["English (Cyrl, Russia, macos, modern)"]);
+  deepEqual(gLocDN(["en-Cyrl-RU-macos-modern"]), [
+    "English (Cyrl, Russia, macos, modern)",
+  ]);
   run_next_test();
 });
 
@@ -79,5 +116,17 @@ add_test(function test_invalid_regions() {
   Assert.throws(() => gRegDN([2]), /All region codes must be strings/);
   Assert.throws(() => gRegDN([{}]), /All region codes must be strings/);
   Assert.throws(() => gRegDN([true]), /All region codes must be strings/);
+  run_next_test();
+});
+
+add_test(function test_availableLocaleDisplayNames() {
+  let langCodes = gAvLocDN("language");
+  equal(
+    !!langCodes.length,
+    true,
+    "There should be some language codes available"
+  );
+  let regCodes = gAvLocDN("region");
+  equal(!!regCodes.length, true, "There should be some region codes available");
   run_next_test();
 });

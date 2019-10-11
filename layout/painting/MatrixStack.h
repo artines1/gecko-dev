@@ -16,37 +16,27 @@ namespace mozilla {
  * MatrixStack stores a stack of matrices and keeps track of the accumulated
  * transform matrix.
  */
-template<typename T>
+template <typename T>
 class MatrixStack {
-public:
+ public:
   MatrixStack() = default;
 
-  ~MatrixStack()
-  {
-    MOZ_ASSERT(mMatrices.IsEmpty());
-  }
+  ~MatrixStack() { MOZ_ASSERT(mMatrices.IsEmpty()); }
 
   /**
    * Returns the current accumulated transform matrix.
    */
-  const T& CurrentMatrix() const
-  {
-    return mCurrentMatrix;
-  }
+  const T& CurrentMatrix() const { return mCurrentMatrix; }
 
   /**
    * Returns true if any matrices are currently pushed to the stack.
    */
-  bool HasTransform() const
-  {
-    return mMatrices.Length() > 0;
-  }
+  bool HasTransform() const { return mMatrices.Length() > 0; }
 
   /**
    * Pushes the given |aMatrix| to the stack.
    */
-  void Push(const T& aMatrix)
-  {
+  void Push(const T& aMatrix) {
     mMatrices.AppendElement(mCurrentMatrix);
     mCurrentMatrix = aMatrix * mCurrentMatrix;
   }
@@ -54,19 +44,18 @@ public:
   /**
    * Pops the most recently added matrix from the stack.
    */
-  void Pop()
-  {
+  void Pop() {
     MOZ_ASSERT(mMatrices.Length() > 0);
     mCurrentMatrix = mMatrices.PopLastElement();
   }
 
-private:
+ private:
   T mCurrentMatrix;
   AutoTArray<T, 2> mMatrices;
 };
 
 typedef MatrixStack<gfx::Matrix4x4Flagged> MatrixStack4x4;
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif /* MOZILLA_PAINTING_MATRIXSTACK_H */

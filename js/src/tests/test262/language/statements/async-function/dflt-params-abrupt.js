@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-abrupt.case
 // - src/function-forms/error/async-func-decl.template
 /*---
 description: Abrupt completion returned by evaluation of initializer (async function declaration)
 esid: sec-async-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.6 Async Function Definitions

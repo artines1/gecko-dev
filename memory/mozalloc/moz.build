@@ -6,6 +6,7 @@
 NoVisibilityFlags()
 
 EXPORTS.mozilla += [
+    'cxxalloc.h',
     'mozalloc.h',
     'mozalloc_abort.h',
     'mozalloc_oom.h',
@@ -14,12 +15,11 @@ EXPORTS.mozilla += [
 if CONFIG['WRAP_STL_INCLUDES']:
     if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         EXPORTS.mozilla += ['throw_gcc.h']
-    elif CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+    elif CONFIG['CC_TYPE'] == 'clang-cl':
         DEFINES['_HAS_EXCEPTIONS'] = 0
-        if CONFIG['MOZ_MSVC_STL_WRAP_RAISE']:
-            SOURCES += [
-                'msvc_raise_wrappers.cpp',
-            ]
+        SOURCES += [
+            'msvc_raise_wrappers.cpp',
+        ]
 
 if CONFIG['OS_TARGET'] == 'WINNT':
     # Keep this file separate to avoid #include'ing windows.h everywhere.
@@ -36,6 +36,15 @@ SOURCES += [
     'mozalloc_abort.cpp',
 ]
 
+if CONFIG['MOZ_MEMORY']:
+    # In MinGW, we don't want to actually export these functions out of the library
+    # as the functions in libc++ correctly forward to jemalloc and exporting them
+    # produces duplicate symbol errors.
+    if not (CONFIG['CC_TYPE'] == 'clang' and CONFIG['OS_TARGET'] == 'WINNT'):
+        SOURCES += [
+            'cxxalloc.cpp',
+        ]
+
 if CONFIG['CPU_ARCH'] == 'arm' and CONFIG['CC_TYPE'] == 'clang':
     SOURCES['mozalloc_abort.cpp'].flags += ['-Wno-infinite-recursion']
 
@@ -45,8 +54,6 @@ FINAL_LIBRARY = 'mozglue'
 DEFINES['_GNU_SOURCE'] = True
 
 DisableStlWrapping()
-
-DEFINES['IMPL_MFBT'] = True
 
 LOCAL_INCLUDES += [
     '!/xpcom',

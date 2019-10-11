@@ -13,19 +13,12 @@ namespace mozilla {
 namespace dom {
 
 ServiceWorkerRegisterJob::ServiceWorkerRegisterJob(
-    nsIPrincipal* aPrincipal,
-    const nsACString& aScope,
-    const nsACString& aScriptSpec,
-    nsILoadGroup* aLoadGroup,
-    ServiceWorkerUpdateViaCache aUpdateViaCache)
-  : ServiceWorkerUpdateJob(Type::Register, aPrincipal, aScope, aScriptSpec,
-                           aLoadGroup, aUpdateViaCache)
-{
-}
+    nsIPrincipal* aPrincipal, const nsACString& aScope,
+    const nsACString& aScriptSpec, ServiceWorkerUpdateViaCache aUpdateViaCache)
+    : ServiceWorkerUpdateJob(Type::Register, aPrincipal, aScope, aScriptSpec,
+                             aUpdateViaCache) {}
 
-void
-ServiceWorkerRegisterJob::AsyncExecute()
-{
+void ServiceWorkerRegisterJob::AsyncExecute() {
   MOZ_ASSERT(NS_IsMainThread());
 
   RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
@@ -35,20 +28,12 @@ ServiceWorkerRegisterJob::AsyncExecute()
   }
 
   RefPtr<ServiceWorkerRegistrationInfo> registration =
-    swm->GetRegistration(mPrincipal, mScope);
+      swm->GetRegistration(mPrincipal, mScope);
 
   if (registration) {
     bool sameUVC = GetUpdateViaCache() == registration->GetUpdateViaCache();
     registration->SetUpdateViaCache(GetUpdateViaCache());
 
-    if (registration->IsPendingUninstall()) {
-      registration->ClearPendingUninstall();
-      // Its possible that a ready promise is created between when the
-      // uninstalling flag is set and when we resurrect the registration
-      // here.  In that case we might need to fire the ready promise
-      // now.
-      swm->CheckPendingReadyPromises();
-    }
     RefPtr<ServiceWorkerInfo> newest = registration->Newest();
     if (newest && mScriptSpec.Equals(newest->ScriptSpec()) && sameUVC) {
       SetRegistration(registration);
@@ -56,8 +41,8 @@ ServiceWorkerRegisterJob::AsyncExecute()
       return;
     }
   } else {
-    registration = swm->CreateNewRegistration(mScope, mPrincipal,
-                                              GetUpdateViaCache());
+    registration =
+        swm->CreateNewRegistration(mScope, mPrincipal, GetUpdateViaCache());
     if (!registration) {
       FailUpdateJob(NS_ERROR_DOM_ABORT_ERR);
       return;
@@ -68,9 +53,7 @@ ServiceWorkerRegisterJob::AsyncExecute()
   Update();
 }
 
-ServiceWorkerRegisterJob::~ServiceWorkerRegisterJob()
-{
-}
+ServiceWorkerRegisterJob::~ServiceWorkerRegisterJob() {}
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

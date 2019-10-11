@@ -12,10 +12,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-MFBT_API bool
-mozilla::IsValidUtf8(const void* aCodeUnits, size_t aCount)
-{
-  const auto* s = static_cast<const unsigned char*>(aCodeUnits);
+MFBT_API bool mozilla::detail::IsValidUtf8(const void* aCodeUnits,
+                                           size_t aCount) {
+  const auto* s = reinterpret_cast<const unsigned char*>(aCodeUnits);
   const auto* const limit = s + aCount;
 
   while (s < limit) {
@@ -28,7 +27,7 @@ mozilla::IsValidUtf8(const void* aCodeUnits, size_t aCount)
     }
 
     Maybe<char32_t> maybeCodePoint =
-      DecodeOneUtf8CodePoint(Utf8Unit(c), &s, limit);
+        DecodeOneUtf8CodePoint(Utf8Unit(c), &s, limit);
     if (maybeCodePoint.isNothing()) {
       return false;
     }

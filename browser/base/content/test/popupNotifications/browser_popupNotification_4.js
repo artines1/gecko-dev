@@ -13,7 +13,8 @@ function test() {
 
 var tests = [
   // Popup Notifications main actions should catch exceptions from callbacks
-  { id: "Test#1",
+  {
+    id: "Test#1",
     run() {
       this.testNotif = new ErrorNotification(this.id);
       showNotification(this.testNotif);
@@ -24,10 +25,11 @@ var tests = [
     },
     onHidden(popup) {
       ok(this.testNotif.mainActionClicked, "main action has been triggered");
-    }
+    },
   },
   // Popup Notifications secondary actions should catch exceptions from callbacks
-  { id: "Test#2",
+  {
+    id: "Test#2",
     run() {
       this.testNotif = new ErrorNotification(this.id);
       showNotification(this.testNotif);
@@ -37,11 +39,15 @@ var tests = [
       triggerSecondaryCommand(popup, 0);
     },
     onHidden(popup) {
-      ok(this.testNotif.secondaryActionClicked, "secondary action has been triggered");
-    }
+      ok(
+        this.testNotif.secondaryActionClicked,
+        "secondary action has been triggered"
+      );
+    },
   },
   // Existing popup notification shouldn't disappear when adding a dismissed notification
-  { id: "Test#3",
+  {
+    id: "Test#3",
     run() {
       this.notifyObj1 = new BasicNotification(this.id);
       this.notifyObj1.id += "_1";
@@ -60,20 +66,31 @@ var tests = [
       checkPopup(popup, this.notifyObj1);
 
       // check that both anchor icons are showing
-      is(document.getElementById("default-notification-icon").getAttribute("showing"), "true",
-         "notification1 anchor should be visible");
-      is(document.getElementById("geo-notification-icon").getAttribute("showing"), "true",
-         "notification2 anchor should be visible");
+      is(
+        document
+          .getElementById("default-notification-icon")
+          .getAttribute("showing"),
+        "true",
+        "notification1 anchor should be visible"
+      );
+      is(
+        document
+          .getElementById("geo-notification-icon")
+          .getAttribute("showing"),
+        "true",
+        "notification2 anchor should be visible"
+      );
 
       dismissNotification(popup);
     },
     onHidden(popup) {
       this.notification1.remove();
       this.notification2.remove();
-    }
+    },
   },
   // Showing should be able to modify the popup data
-  { id: "Test#4",
+  {
+    id: "Test#4",
     run() {
       this.notifyObj = new BasicNotification(this.id);
       let normalCallback = this.notifyObj.options.eventCallback;
@@ -92,12 +109,16 @@ var tests = [
       checkPopup(popup, this.notifyObj);
       triggerMainCommand(popup);
     },
-    onHidden() { }
+    onHidden() {},
   },
   // Moving a tab to a new window should remove non-swappable notifications.
-  { id: "Test#5",
+  {
+    id: "Test#5",
     async run() {
-      await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
+      await BrowserTestUtils.openNewForegroundTab(
+        gBrowser,
+        "http://example.com/"
+      );
 
       let notifyObj = new BasicNotification(this.id);
 
@@ -111,21 +132,33 @@ var tests = [
 
       let anchor = win.document.getElementById("default-notification-icon");
       win.PopupNotifications._reshowNotifications(anchor);
-      ok(win.PopupNotifications.panel.childNodes.length == 0,
-         "no notification displayed in new window");
-      ok(notifyObj.swappingCallbackTriggered, "the swapping callback was triggered");
-      ok(notifyObj.removedCallbackTriggered, "the removed callback was triggered");
+      ok(
+        !win.PopupNotifications.panel.children.length,
+        "no notification displayed in new window"
+      );
+      ok(
+        notifyObj.swappingCallbackTriggered,
+        "the swapping callback was triggered"
+      );
+      ok(
+        notifyObj.removedCallbackTriggered,
+        "the removed callback was triggered"
+      );
 
       await BrowserTestUtils.closeWindow(win);
       await waitForWindowReadyForPopupNotifications(window);
 
       goNext();
-    }
+    },
   },
   // Moving a tab to a new window should preserve swappable notifications.
-  { id: "Test#6",
+  {
+    id: "Test#6",
     async run() {
-      await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
+      await BrowserTestUtils.openNewForegroundTab(
+        gBrowser,
+        "http://example.com/"
+      );
       let notifyObj = new BasicNotification(this.id);
       let originalCallback = notifyObj.options.eventCallback;
       notifyObj.options.eventCallback = function(eventName) {
@@ -155,16 +188,20 @@ var tests = [
       });
 
       checkPopup(win.PopupNotifications.panel, notifyObj);
-      ok(notifyObj.swappingCallbackTriggered, "the swapping callback was triggered");
+      ok(
+        notifyObj.swappingCallbackTriggered,
+        "the swapping callback was triggered"
+      );
 
       await BrowserTestUtils.closeWindow(win);
       await waitForWindowReadyForPopupNotifications(window);
 
       goNext();
-    }
+    },
   },
   // the main action callback can keep the notification.
-  { id: "Test#8",
+  {
+    id: "Test#8",
     run() {
       this.notifyObj = new BasicNotification(this.id);
       this.notifyObj.mainAction.dismiss = true;
@@ -175,13 +212,20 @@ var tests = [
       triggerMainCommand(popup);
     },
     onHidden(popup) {
-      ok(this.notifyObj.dismissalCallbackTriggered, "dismissal callback was triggered");
-      ok(!this.notifyObj.removedCallbackTriggered, "removed callback wasn't triggered");
+      ok(
+        this.notifyObj.dismissalCallbackTriggered,
+        "dismissal callback was triggered"
+      );
+      ok(
+        !this.notifyObj.removedCallbackTriggered,
+        "removed callback wasn't triggered"
+      );
       this.notification.remove();
-    }
+    },
   },
   // a secondary action callback can keep the notification.
-  { id: "Test#9",
+  {
+    id: "Test#9",
     run() {
       this.notifyObj = new BasicNotification(this.id);
       this.notifyObj.secondaryActions[0].dismiss = true;
@@ -192,13 +236,20 @@ var tests = [
       triggerSecondaryCommand(popup, 0);
     },
     onHidden(popup) {
-      ok(this.notifyObj.dismissalCallbackTriggered, "dismissal callback was triggered");
-      ok(!this.notifyObj.removedCallbackTriggered, "removed callback wasn't triggered");
+      ok(
+        this.notifyObj.dismissalCallbackTriggered,
+        "dismissal callback was triggered"
+      );
+      ok(
+        !this.notifyObj.removedCallbackTriggered,
+        "removed callback wasn't triggered"
+      );
       this.notification.remove();
-    }
+    },
   },
   // returning true in the showing callback should dismiss the notification.
-  { id: "Test#10",
+  {
+    id: "Test#10",
     run() {
       let notifyObj = new BasicNotification(this.id);
       let originalCallback = notifyObj.options.eventCallback;
@@ -208,14 +259,21 @@ var tests = [
       };
 
       let notification = showNotification(notifyObj);
-      ok(notifyObj.showingCallbackTriggered, "the showing callback was triggered");
-      ok(!notifyObj.shownCallbackTriggered, "the shown callback wasn't triggered");
+      ok(
+        notifyObj.showingCallbackTriggered,
+        "the showing callback was triggered"
+      );
+      ok(
+        !notifyObj.shownCallbackTriggered,
+        "the shown callback wasn't triggered"
+      );
       notification.remove();
       goNext();
-    }
+    },
   },
   // the main action button should apply non-default(no highlight) style.
-  { id: "Test#11",
+  {
+    id: "Test#11",
     run() {
       this.notifyObj = new BasicNotification(this.id);
       this.notifyObj.mainAction.disableHighlight = true;
@@ -226,6 +284,6 @@ var tests = [
       checkPopup(popup, this.notifyObj);
       dismissNotification(popup);
     },
-    onHidden() { }
+    onHidden() {},
   },
 ];

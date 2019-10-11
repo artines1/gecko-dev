@@ -8,16 +8,14 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
   <meta charset="utf-8">
   <title>Test for Bug 942288</title>
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://global/skin"/>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
 
-  ChromeUtils.import("resource://gre/modules/HomeProvider.jsm");
-  ChromeUtils.import("resource://gre/modules/osfile.jsm");
-  ChromeUtils.import("resource://gre/modules/Services.jsm");
-  ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
-  ChromeUtils.import("resource://gre/modules/Task.jsm");
+  const {HomeProvider} = ChromeUtils.import("resource://gre/modules/HomeProvider.jsm");
+  const {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm");
+  const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+  const {Sqlite} = ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
 
   const TEST_DATASET_ID = "test-dataset-id";
   const TEST_URL = "http://test.com";
@@ -63,7 +61,7 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
       title: TEST_TITLE,
       url: TEST_URL,
       background_url: TEST_BACKGROUND_URL,
-      background_color: TEST_BACKGROUND_COLOR
+      background_color: TEST_BACKGROUND_COLOR,
     }]);
 
     // Peek in the DB to make sure we have the right data.
@@ -98,7 +96,7 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
       { url: "url" },
       { title: "title" },
       { description: "description" },
-      { image_url: "image_url" }
+      { image_url: "image_url" },
     ];
 
     // None of these save calls should save anything
@@ -130,7 +128,7 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
     // One valid, one invalid
     let rows = [
       { title: TEST_TITLE, url: TEST_URL },
-      { image_url: "image_url" }
+      { image_url: "image_url" },
     ];
 
     // Try to save all the rows at once

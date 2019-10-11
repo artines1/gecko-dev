@@ -22,7 +22,7 @@ add_task(async function() {
     tab2 = BrowserTestUtils.addTab(gBrowser);
     await promiseBrowserLoaded(tab2.linkedBrowser);
     await setUsePrivateBrowsing(tab2.linkedBrowser, true);
-    tab2.linkedBrowser.loadURI(URL_PRIVATE);
+    BrowserTestUtils.loadURI(tab2.linkedBrowser, URL_PRIVATE);
     await promiseBrowserLoaded(tab2.linkedBrowser);
 
     info("Flush to make sure chrome received all data.");
@@ -47,8 +47,11 @@ add_task(async function() {
     tab1 = ss.undoCloseTab(window, 0);
     ok(true, "Public tab supports undo close");
 
-    is(ss.getClosedTabCount(window), 0, "Private tab does not support undo close");
-
+    is(
+      ss.getClosedTabCount(window),
+      0,
+      "Private tab does not support undo close"
+    );
   } finally {
     if (tab1) {
       gBrowser.removeTab(tab1);
@@ -60,7 +63,8 @@ add_task(async function() {
 });
 
 add_task(async function() {
-  const FRAME_SCRIPT = "data:," +
+  const FRAME_SCRIPT =
+    "data:," +
     "docShell.QueryInterface%28Components.interfaces.nsILoadContext%29.usePrivateBrowsing%3Dtrue";
 
   // Clear the list of closed windows.
@@ -72,7 +76,7 @@ add_task(async function() {
   mm.loadFrameScript(FRAME_SCRIPT, true);
 
   // Create a new tab in the new window that will load the frame script.
-  let tab = win.gBrowser.addTab("about:mozilla");
+  let tab = BrowserTestUtils.addTab(win.gBrowser, "about:mozilla");
   let browser = tab.linkedBrowser;
   await promiseBrowserLoaded(browser);
   await TabStateFlusher.flush(browser);
@@ -86,7 +90,7 @@ add_task(async function() {
   is(ss.getClosedTabCount(win), 0, "no tabs to restore");
 
   // Create a new tab in the new window that will load the frame script.
-  tab = win.gBrowser.addTab("about:mozilla");
+  tab = BrowserTestUtils.addTab(win.gBrowser, "about:mozilla");
   browser = tab.linkedBrowser;
   await promiseBrowserLoaded(browser);
   await TabStateFlusher.flush(browser);
@@ -106,10 +110,10 @@ add_task(async function() {
   forgetClosedWindows();
 
   // Create a new window to attach our frame script to.
-  let win = await promiseNewWindowLoaded({private: true});
+  let win = await promiseNewWindowLoaded({ private: true });
 
   // Create a new tab in the new window that will load the frame script.
-  let tab = win.gBrowser.addTab("about:mozilla");
+  let tab = BrowserTestUtils.addTab(win.gBrowser, "about:mozilla");
   let browser = tab.linkedBrowser;
   await promiseBrowserLoaded(browser);
   await TabStateFlusher.flush(browser);
@@ -130,4 +134,3 @@ add_task(async function() {
 function setUsePrivateBrowsing(browser, val) {
   return sendMessage(browser, "ss-test:setUsePrivateBrowsing", val);
 }
-

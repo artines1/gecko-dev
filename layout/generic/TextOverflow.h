@@ -27,30 +27,36 @@ namespace css {
  *  1. allocate an object using WillProcessLines
  *  2. then call ProcessLine for each line you are building display lists for
  */
-class MOZ_HEAP_CLASS TextOverflow final {
+class TextOverflow final {
  public:
   /**
    * Allocate an object for text-overflow processing.
    * @return nullptr if no processing is necessary.  The caller owns the object.
    */
-  static UniquePtr<TextOverflow>
-  WillProcessLines(nsDisplayListBuilder* aBuilder,
-                   nsIFrame*             aBlockFrame);
+  static Maybe<TextOverflow> WillProcessLines(nsDisplayListBuilder* aBuilder,
+                                              nsIFrame* aBlockFrame);
 
   /**
    * Constructor, which client code SHOULD NOT use directly. Instead, clients
    * should call WillProcessLines(), which is basically the factory function
    * for TextOverflow instances.
    */
-  TextOverflow(nsDisplayListBuilder* aBuilder,
-               nsIFrame* aBlockFrame);
+  TextOverflow(nsDisplayListBuilder* aBuilder, nsIFrame* aBlockFrame);
+
+  TextOverflow() = delete;
+  ~TextOverflow() = default;
+  TextOverflow(TextOverflow&&) = default;
+  TextOverflow(const TextOverflow&) = delete;
+  TextOverflow& operator=(TextOverflow&&) = default;
+  TextOverflow& operator=(const TextOverflow&) = delete;
 
   /**
    * Analyze the display lists for text overflow and what kind of item is at
    * the content edges.  Add display items for text-overflow markers as needed
    * and remove or clip items that would overlap a marker.
    */
-  void ProcessLine(const nsDisplayListSet& aLists, nsLineBox* aLine, uint32_t aLineNumber);
+  void ProcessLine(const nsDisplayListSet& aLists, nsLineBox* aLine,
+                   uint32_t aLineNumber);
 
   /**
    * Get the resulting text-overflow markers (the list may be empty).
@@ -58,14 +64,14 @@ class MOZ_HEAP_CLASS TextOverflow final {
    */
   nsDisplayList& GetMarkers() { return mMarkerList; }
 
-  /**
-   * @return true if aBlockFrmae has text-overflow:clip on both sides.
-   */
-  static bool HasClippedOverflow(nsIFrame* aBlockFrame);
-  /**
-   * @return true if aBlockFrame needs analysis for text overflow.
-   */
-  static bool CanHaveTextOverflow(nsIFrame* aBlockFrame);
+  // Returns whether aBlockFrame has text-overflow:clip on both sides.
+  static bool HasClippedTextOverflow(nsIFrame* aBlockFrame);
+
+  // Returns whether aBlockFrame has a block ellipsis on one of its lines.
+  static bool HasBlockEllipsis(nsIFrame* aBlockFrame);
+
+  // Returns whether aBlockFrame needs analysis for text overflow.
+  static bool CanHaveOverflowMarkers(nsIFrame* aBlockFrame);
 
   typedef nsTHashtable<nsPtrHashKey<nsIFrame>> FrameHashtable;
 
@@ -73,33 +79,42 @@ class MOZ_HEAP_CLASS TextOverflow final {
   typedef mozilla::WritingMode WritingMode;
   typedef mozilla::LogicalRect LogicalRect;
 
+  // Edges to align the IStart and IEnd markers to.
   struct AlignmentEdges {
-    AlignmentEdges() : mIStart(0), mIEnd(0), mAssigned(false) {}
-    void Accumulate(WritingMode aWM, const LogicalRect& aRect)
-    {
-      if (MOZ_LIKELY(mAssigned)) {
+    AlignmentEdges()
+        : mIStart(0), mIEnd(0), mIEndOuter(0), mAssignedInner(false) {}
+    void AccumulateInner(WritingMode aWM, const LogicalRect& aRect) {
+      if (MOZ_LIKELY(mAssignedInner)) {
         mIStart = std::min(mIStart, aRect.IStart(aWM));
         mIEnd = std::max(mIEnd, aRect.IEnd(aWM));
       } else {
         mIStart = aRect.IStart(aWM);
         mIEnd = aRect.IEnd(aWM);
-        mAssigned = true;
+        mAssignedInner = true;
       }
     }
+    void AccumulateOuter(WritingMode aWM, const LogicalRect& aRect) {
+      mIEndOuter = std::max(mIEndOuter, aRect.IEnd(aWM));
+    }
     nscoord ISize() { return mIEnd - mIStart; }
+
+    // The outermost edges of all text and atomic inline-level frames that are
+    // inside the area between the markers.
     nscoord mIStart;
     nscoord mIEnd;
-    bool mAssigned;
+
+    // The closest IEnd edge of all text and atomic inline-level frames that
+    // fall completely before the IStart edge of the content area.  (Used to
+    // align a block ellipsis when there are no visible frames to align to.)
+    nscoord mIEndOuter;
+
+    bool mAssignedInner;
   };
 
   struct InnerClipEdges {
     InnerClipEdges()
-      : mIStart(0)
-      , mIEnd(0)
-      , mAssignedIStart(false)
-      , mAssignedIEnd(false) {}
-    void AccumulateIStart(WritingMode aWM, const LogicalRect& aRect)
-    {
+        : mIStart(0), mIEnd(0), mAssignedIStart(false), mAssignedIEnd(false) {}
+    void AccumulateIStart(WritingMode aWM, const LogicalRect& aRect) {
       if (MOZ_LIKELY(mAssignedIStart)) {
         mIStart = std::max(mIStart, aRect.IStart(aWM));
       } else {
@@ -107,8 +122,7 @@ class MOZ_HEAP_CLASS TextOverflow final {
         mAssignedIStart = true;
       }
     }
-    void AccumulateIEnd(WritingMode aWM, const LogicalRect& aRect)
-    {
+    void AccumulateIEnd(WritingMode aWM, const LogicalRect& aRect) {
       if (MOZ_LIKELY(mAssignedIEnd)) {
         mIEnd = std::min(mIEnd, aRect.IEnd(aWM));
       } else {
@@ -122,13 +136,12 @@ class MOZ_HEAP_CLASS TextOverflow final {
     bool mAssignedIEnd;
   };
 
-  LogicalRect
-    GetLogicalScrollableOverflowRectRelativeToBlock(nsIFrame* aFrame) const
-  {
-    return LogicalRect(mBlockWM,
-                       aFrame->GetScrollableOverflowRect() +
-                         aFrame->GetOffsetTo(mBlock),
-                       mBlockSize);
+  LogicalRect GetLogicalScrollableOverflowRectRelativeToBlock(
+      nsIFrame* aFrame) const {
+    return LogicalRect(
+        mBlockWM,
+        aFrame->GetScrollableOverflowRect() + aFrame->GetOffsetTo(mBlock),
+        mBlockSize);
   }
 
   /**
@@ -137,13 +150,14 @@ class MOZ_HEAP_CLASS TextOverflow final {
    * and the bounds of what will be displayed between the markers.
    * @param aLine the line we're processing
    * @param aFramesToHide frames that should have their display items removed
-   * @param aAlignmentEdges the outermost edges of all text and atomic
-   *   inline-level frames that are inside the area between the markers
+   * @param aAlignmentEdges edges the markers will be aligned to, including
+   *   the outermost edges of all text and atomic inline-level frames that
+   *   are inside the content area, and the closest IEnd edge of such a frame
+   *   outside the content area
    * @return the area inside which we should add any markers;
    *   this is the block's content area narrowed by any floats on this line.
    */
-  LogicalRect ExamineLineFrames(nsLineBox*      aLine,
-                                FrameHashtable* aFramesToHide,
+  LogicalRect ExamineLineFrames(nsLineBox* aLine, FrameHashtable* aFramesToHide,
                                 AlignmentEdges* aAlignmentEdges);
 
   /**
@@ -153,19 +167,20 @@ class MOZ_HEAP_CLASS TextOverflow final {
    * @param aContentArea the block's content area
    * @param aInsideMarkersArea the rectangle between the markers
    * @param aFramesToHide frames that should have their display items removed
-   * @param aAlignmentEdges the outermost edges of all text and atomic
-   *   inline-level frames that are inside the area between the markers
+   * @param aAlignmentEdges edges the markers will be aligned to, including
+   *   the outermost edges of all text and atomic inline-level frames that
+   *   are inside the content area, and the closest IEnd edge of such a frame
+   *   outside the content area
    * @param aFoundVisibleTextOrAtomic is set to true if a text or atomic
    *   inline-level frame is visible between the marker edges
    * @param aClippedMarkerEdges the innermost edges of all text and atomic
    *   inline-level frames that are clipped by the current marker width
    */
-  void ExamineFrameSubtree(nsIFrame*       aFrame,
-                           const LogicalRect& aContentArea,
+  void ExamineFrameSubtree(nsIFrame* aFrame, const LogicalRect& aContentArea,
                            const LogicalRect& aInsideMarkersArea,
                            FrameHashtable* aFramesToHide,
                            AlignmentEdges* aAlignmentEdges,
-                           bool*           aFoundVisibleTextOrAtomic,
+                           bool* aFoundVisibleTextOrAtomic,
                            InnerClipEdges* aClippedMarkerEdges);
 
   /**
@@ -182,13 +197,16 @@ class MOZ_HEAP_CLASS TextOverflow final {
    * @param aAlignmentEdges the outermost edges of all text and atomic
    *   inline-level frames that are inside the area between the markers
    *                       inside aInsideMarkersArea
+   * @param aAlignmentEdges edges the markers will be aligned to, including
+   *   the outermost edges of all text and atomic inline-level frames that
+   *   are inside aInsideMarkersArea, and the closest IEnd edge of such a frame
+   *   outside the content area
    * @param aFoundVisibleTextOrAtomic is set to true if a text or atomic
    *   inline-level frame is visible between the marker edges
    * @param aClippedMarkerEdges the innermost edges of all text and atomic
    *   inline-level frames that are clipped by the current marker width
    */
-  void AnalyzeMarkerEdges(nsIFrame* aFrame,
-                          mozilla::LayoutFrameType aFrameType,
+  void AnalyzeMarkerEdges(nsIFrame* aFrame, mozilla::LayoutFrameType aFrameType,
                           const LogicalRect& aInsideMarkersArea,
                           FrameHashtable* aFramesToHide,
                           AlignmentEdges* aAlignmentEdges,
@@ -216,31 +234,31 @@ class MOZ_HEAP_CLASS TextOverflow final {
    * @param aContentArea is the area inside which we should add the markers;
    *   this is the block's content area narrowed by any floats on this line.
    */
-  void CreateMarkers(const nsLineBox* aLine,
-                     bool aCreateIStart, bool aCreateIEnd,
-                     const LogicalRect& aInsideMarkersArea,
-                     const LogicalRect& aContentArea,
-                     uint32_t aLineNumber);
+  void CreateMarkers(const nsLineBox* aLine, bool aCreateIStart,
+                     bool aCreateIEnd, const LogicalRect& aInsideMarkersArea,
+                     const LogicalRect& aContentArea, uint32_t aLineNumber);
 
-  LogicalRect            mContentArea;
-  nsDisplayListBuilder*  mBuilder;
-  nsIFrame*              mBlock;
-  nsIScrollableFrame*    mScrollableFrame;
-  nsDisplayList          mMarkerList;
-  nsSize                 mBlockSize;
-  WritingMode            mBlockWM;
-  bool                   mCanHaveInlineAxisScrollbar;
-  bool                   mAdjustForPixelSnapping;
+  LogicalRect mContentArea;
+  nsDisplayListBuilder* mBuilder;
+  nsIFrame* mBlock;
+  nsIScrollableFrame* mScrollableFrame;
+  nsDisplayList mMarkerList;
+  nsSize mBlockSize;
+  WritingMode mBlockWM;
+  bool mCanHaveInlineAxisScrollbar;
+  bool mAdjustForPixelSnapping;
 
   class Marker {
-  public:
-    void Init(const nsStyleTextOverflowSide& aStyle) {
+   public:
+    void Init(const StyleTextOverflowSide& aStyle) {
       mInitialized = false;
       mISize = 0;
       mStyle = &aStyle;
       mIntrinsicISize = 0;
       mHasOverflow = false;
+      mHasBlockEllipsis = false;
       mActive = false;
+      mEdgeAligned = false;
     }
 
     /**
@@ -248,33 +266,40 @@ class MOZ_HEAP_CLASS TextOverflow final {
      */
     void SetupString(nsIFrame* aFrame);
 
-    bool IsNeeded() const {
-      return mHasOverflow;
-    }
+    bool IsSuppressed() const { return !mHasBlockEllipsis && mStyle->IsClip(); }
+    bool IsNeeded() const { return mHasOverflow || mHasBlockEllipsis; }
     void Reset() {
       mHasOverflow = false;
+      mHasBlockEllipsis = false;
+      mEdgeAligned = false;
     }
 
     // The current width of the marker, the range is [0 .. mIntrinsicISize].
-    nscoord                        mISize;
+    nscoord mISize;
     // The intrinsic width of the marker.
-    nscoord                        mIntrinsicISize;
-    // The style for this side.
-    const nsStyleTextOverflowSide* mStyle;
+    nscoord mIntrinsicISize;
+    // The text-overflow style for this side.  Ignored if we're rendering a
+    // block ellipsis.
+    const StyleTextOverflowSide* mStyle;
     // True if there is visible overflowing inline content on this side.
-    bool                           mHasOverflow;
-    // True if mMarkerString and mWidth have been setup from style.
-    bool                           mInitialized;
-    // True if the style is text-overflow:clip on this side and the marker
+    bool mHasOverflow;
+    // True if this side has a block ellipsis (from -webkit-line-clamp).
+    bool mHasBlockEllipsis;
+    // True if mISize and mIntrinsicISize have been setup from style.
+    bool mInitialized;
+    // True if the style is not text-overflow:clip on this side and the marker
     // won't cause the line to become empty.
-    bool                           mActive;
+    bool mActive;
+    // True if this marker is aligned to the edge of the content box, so that
+    // when scrolling the marker doesn't jump around.
+    bool mEdgeAligned;
   };
 
-  Marker mIStart; // the inline start marker
-  Marker mIEnd; // the inline end marker
+  Marker mIStart;  // the inline start marker
+  Marker mIEnd;    // the inline end marker
 };
 
-} // namespace css
-} // namespace mozilla
+}  // namespace css
+}  // namespace mozilla
 
 #endif /* !defined(TextOverflow_h_) */

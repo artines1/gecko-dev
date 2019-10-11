@@ -11,45 +11,60 @@
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
+var gThreadFront;
 
 function run_test() {
+  Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
+  registerCleanupFunction(() => {
+    Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
+  });
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-grips");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-grips",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_thread_lifetime();
-                           });
+    attachTestTabAndResume(gClient, "test-grips", function(
+      response,
+      targetFront,
+      threadFront
+    ) {
+      gThreadFront = threadFront;
+      test_thread_lifetime();
+    });
   });
   do_test_pending();
 }
 
 function test_thread_lifetime() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadFront.once("paused", function(packet) {
     const pauseGrip = packet.frame.arguments[0];
 
-    gClient.request({ to: pauseGrip.actor, type: "threadGrip" }, function(response) {
+    gClient.request({ to: pauseGrip.actor, type: "threadGrip" }, function(
+      response
+    ) {
       // Successful promotion won't return an error.
       Assert.equal(response.error, undefined);
 
       const threadGrip1 = response.from;
 
-      gClient.request({ to: pauseGrip.actor, type: "threadGrip" }, function(response) {
+      gClient.request({ to: pauseGrip.actor, type: "threadGrip" }, function(
+        response
+      ) {
         Assert.equal(threadGrip1, response.from);
-        gThreadClient.resume(function() {
+        gThreadFront.resume().then(function() {
           finishClient(gClient);
         });
       });
     });
   });
 
-  gDebuggee.eval("(" + function() {
-    function stopMe(arg1) {
-      debugger;
-    }
-    stopMe({obj: true});
-  } + ")()");
+  gDebuggee.eval(
+    "(" +
+      function() {
+        function stopMe(arg1) {
+          debugger;
+        }
+        stopMe({ obj: true });
+      } +
+      ")()"
+  );
 }

@@ -4,7 +4,12 @@
 
 "use strict";
 
-ChromeUtils.import("resource://formautofill/FormAutofillNameUtils.jsm");
+var FormAutofillNameUtils;
+add_task(async function setup() {
+  ({ FormAutofillNameUtils } = ChromeUtils.import(
+    "resource://formautofill/FormAutofillNameUtils.jsm"
+  ));
+});
 
 // Test cases is initially copied from
 // https://cs.chromium.org/chromium/src/components/autofill/core/browser/autofill_data_util_unittest.cc

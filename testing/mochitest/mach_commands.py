@@ -59,16 +59,7 @@ test path(s):
 Please check spelling and make sure there are mochitests living there.
 '''.lstrip()
 
-ROBOCOP_TESTS_NOT_FOUND = '''
-The robocop command could not find any tests under the following
-test path(s):
-
-{}
-
-Please check spelling and make sure the named tests exist.
-'''.lstrip()
-
-SUPPORTED_APPS = ['firefox', 'android']
+SUPPORTED_APPS = ['firefox', 'android', 'thunderbird']
 
 parser = None
 
@@ -105,12 +96,8 @@ class MochitestRunner(MozbuildObject):
         tests = list(resolver.resolve_tests(paths=test_paths, cwd=cwd))
         return tests
 
-    def run_desktop_test(self, context, tests=None, suite=None, **kwargs):
-        """Runs a mochitest.
-
-        suite is the type of mochitest to run. It can be one of ('plain',
-        'chrome', 'browser', 'a11y').
-        """
+    def run_desktop_test(self, context, tests=None, **kwargs):
+        """Runs a mochitest."""
         # runtests.py is ambiguous, so we load the file/module manually.
         if 'mochitest' not in sys.modules:
             import imp
@@ -144,7 +131,10 @@ class MochitestRunner(MozbuildObject):
             # refresh the page to pick up modifications. Therefore leave the browser
             # open if only running a single mochitest-plain test. This behaviour can
             # be overridden by passing in --keep-open=false.
-            if len(tests) == 1 and options.keep_open is None and suite == 'plain':
+            if (len(tests) == 1
+                    and options.keep_open is None
+                    and not options.headless
+                    and getattr(options, 'flavor', 'plain') == 'plain'):
                 options.keep_open = True
 
         # We need this to enable colorization of output.
@@ -153,7 +143,7 @@ class MochitestRunner(MozbuildObject):
         self.log_manager.disable_unstructured()
         return result
 
-    def run_android_test(self, context, tests, suite=None, **kwargs):
+    def run_android_test(self, context, tests, **kwargs):
         host_ret = verify_host_bin()
         if host_ret != 0:
             return host_ret
@@ -177,6 +167,11 @@ class MochitestRunner(MozbuildObject):
             manifest.tests.extend(tests)
             options.manifestFile = manifest
 
+        # Firefox for Android doesn't use e10s
+        if options.app is not None and 'geckoview' not in options.app:
+            options.e10s = False
+            print("using e10s=False for non-geckoview app")
+
         return runtestsremote.run_test_harness(parser, options)
 
     def run_geckoview_junit_test(self, context, **kwargs):
@@ -187,28 +182,6 @@ class MochitestRunner(MozbuildObject):
         import runjunit
         options = Namespace(**kwargs)
         return runjunit.run_test_harness(parser, options)
-
-    def run_robocop_test(self, context, tests, suite=None, **kwargs):
-        host_ret = verify_host_bin()
-        if host_ret != 0:
-            return host_ret
-
-        import imp
-        path = os.path.join(self.mochitest_dir, 'runrobocop.py')
-        with open(path, 'r') as fh:
-            imp.load_module('runrobocop', fh, path,
-                            ('.py', 'r', imp.PY_SOURCE))
-        import runrobocop
-
-        options = Namespace(**kwargs)
-
-        from manifestparser import TestManifest
-        if tests and not options.manifestFile:
-            manifest = TestManifest()
-            manifest.tests.extend(tests)
-            options.manifestFile = manifest
-
-        return runrobocop.run_test_harness(parser, options)
 
 # parser
 
@@ -275,7 +248,7 @@ def setup_junit_argument_parser():
         import runjunit
 
         from mozrunner.devices.android_device import verify_android_device
-        verify_android_device(build_obj, install=False, xre=True)
+        verify_android_device(build_obj, install=False, xre=True, network=True)
 
     global parser
     parser = runjunit.JunitArgumentParser()
@@ -323,6 +296,7 @@ class MachCommands(MachCommandBase):
         from mochitest_options import ALL_FLAVORS
         from mozlog.commandline import setup_logging
         from mozlog.handlers import StreamHandler
+        from moztest.resolve import get_suite_definition
 
         buildapp = None
         for app in SUPPORTED_APPS:
@@ -346,6 +320,11 @@ class MachCommands(MachCommandBase):
 
         test_paths = kwargs['test_paths']
         kwargs['test_paths'] = []
+
+        if kwargs.get('debugger', None):
+            import mozdebug
+            if not mozdebug.get_debugger_info(kwargs.get('debugger')):
+                sys.exit(1)
 
         mochitest = self._spawn(MochitestRunner)
         tests = []
@@ -439,33 +418,32 @@ class MachCommands(MachCommandBase):
             return 1
 
         if buildapp == 'android':
-            from mozrunner.devices.android_device import grant_runtime_permissions
             from mozrunner.devices.android_device import verify_android_device
             app = kwargs.get('app')
             if not app:
-                app = self.substs["ANDROID_PACKAGE_NAME"]
+                app = "org.mozilla.geckoview.test"
             device_serial = kwargs.get('deviceSerial')
+            install = not kwargs.get('no_install')
 
             # verify installation
-            verify_android_device(self, install=True, xre=False, app=app,
-                                  device_serial=device_serial)
-            grant_runtime_permissions(self, app, device_serial=device_serial)
+            verify_android_device(self, install=install, xre=False, network=True,
+                                  app=app, device_serial=device_serial)
             run_mochitest = mochitest.run_android_test
         else:
             run_mochitest = mochitest.run_desktop_test
 
         overall = None
         for (flavor, subsuite), tests in sorted(suites.items()):
-            fobj = ALL_FLAVORS[flavor]
+            _, suite = get_suite_definition(flavor, subsuite)
+            if 'test_paths' in suite['kwargs']:
+                del suite['kwargs']['test_paths']
 
             harness_args = kwargs.copy()
-            harness_args['subsuite'] = subsuite
-            harness_args.update(fobj.get('extra_args', {}))
+            harness_args.update(suite['kwargs'])
 
             result = run_mochitest(
                 self._mach_context,
                 tests=tests,
-                suite=fobj['suite'],
                 **harness_args)
 
             if result:
@@ -489,18 +467,20 @@ class GeckoviewJunitCommands(MachCommandBase):
              conditions=[conditions.is_android],
              description='Run remote geckoview junit tests.',
              parser=setup_junit_argument_parser)
-    def run_junit(self, **kwargs):
+    @CommandArgument('--no-install', help='Do not try to install application on device before ' +
+                     'running (default: False)',
+                     action='store_true',
+                     default=False)
+    def run_junit(self, no_install, **kwargs):
         self._ensure_state_subdir_exists('.')
 
-        from mozrunner.devices.android_device import (grant_runtime_permissions,
-                                                      get_adb_path,
+        from mozrunner.devices.android_device import (get_adb_path,
                                                       verify_android_device)
         # verify installation
         app = kwargs.get('app')
         device_serial = kwargs.get('deviceSerial')
-        verify_android_device(self, install=True, xre=False, app=app,
+        verify_android_device(self, install=not no_install, xre=False, app=app,
                               device_serial=device_serial)
-        grant_runtime_permissions(self, app, device_serial=device_serial)
 
         if not kwargs.get('adbPath'):
             kwargs['adbPath'] = get_adb_path(self)
@@ -514,60 +494,6 @@ class GeckoviewJunitCommands(MachCommandBase):
 
         mochitest = self._spawn(MochitestRunner)
         return mochitest.run_geckoview_junit_test(self._mach_context, **kwargs)
-
-
-@CommandProvider
-class RobocopCommands(MachCommandBase):
-
-    @Command('robocop', category='testing',
-             conditions=[conditions.is_android],
-             description='Run a Robocop test.',
-             parser=setup_argument_parser)
-    @CommandArgument('--serve', default=False, action='store_true',
-                     help='Run no tests but start the mochi.test web server '
-                     'and launch Fennec with a test profile.')
-    def run_robocop(self, serve=False, **kwargs):
-        if serve:
-            kwargs['autorun'] = False
-
-        if not kwargs.get('robocopIni'):
-            kwargs['robocopIni'] = os.path.join(self.topobjdir, '_tests', 'testing',
-                                                'mochitest', 'robocop.ini')
-
-        from mozbuild.controller.building import BuildDriver
-        self._ensure_state_subdir_exists('.')
-
-        test_paths = kwargs['test_paths']
-        kwargs['test_paths'] = []
-
-        from moztest.resolve import TestResolver
-        resolver = self._spawn(TestResolver)
-        tests = list(resolver.resolve_tests(paths=test_paths, cwd=self._mach_context.cwd,
-                                            flavor='instrumentation', subsuite='robocop'))
-        driver = self._spawn(BuildDriver)
-        driver.install_tests(tests)
-
-        if len(tests) < 1:
-            print(ROBOCOP_TESTS_NOT_FOUND.format('\n'.join(
-                sorted(list(test_paths)))))
-            return 1
-
-        from mozrunner.devices.android_device import grant_runtime_permissions, get_adb_path
-        from mozrunner.devices.android_device import verify_android_device
-        # verify installation
-        app = kwargs.get('app')
-        if not app:
-            app = self.substs["ANDROID_PACKAGE_NAME"]
-        device_serial = kwargs.get('deviceSerial')
-        verify_android_device(self, install=True, xre=False, app=app,
-                              device_serial=device_serial)
-        grant_runtime_permissions(self, app, device_serial=device_serial)
-
-        if not kwargs['adbPath']:
-            kwargs['adbPath'] = get_adb_path(self)
-
-        mochitest = self._spawn(MochitestRunner)
-        return mochitest.run_robocop_test(self._mach_context, tests, 'robocop', **kwargs)
 
 
 # NOTE python/mach/mach/commands/commandinfo.py references this function
@@ -610,4 +536,8 @@ class DeprecatedCommands(MachCommandBase):
 
     @Command('mochitest-a11y', category='testing', conditions=[REMOVED])
     def mochitest_a11y(self):
+        pass
+
+    @Command('robocop', category='testing', conditions=[REMOVED])
+    def robocop(self):
         pass

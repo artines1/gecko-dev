@@ -38,7 +38,9 @@ function fakeUIResponse() {
     if (topic === "captive-portal-login-success") {
       loginSuccessCount++;
       if (loginSuccessCount > 1) {
-        throw "We should only receive 'captive-portal-login-success' once";
+        throw new Error(
+          "We should only receive 'captive-portal-login-success' once"
+        );
       }
       Assert.equal(++step, 4);
     }
@@ -70,7 +72,7 @@ function test_multiple_requests() {
       Assert.equal(++step, 6);
       Assert.ok(success);
       gServer.stop(do_test_finished);
-    }
+    },
   };
 
   gCaptivePortalDetector.checkCaptivePortal(kInterfaceName, callback);

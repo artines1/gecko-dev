@@ -5,7 +5,7 @@ const testData = {
   "http://foo.com/": ["tag1", "tag 2", "Space ☺️ Between"].sort(),
   "http://bar.com/": ["tag1", "tag 2"].sort(),
   "http://baz.com/": ["tag 2", "Space ☺️ Between"].sort(),
-  "http://qux.com/": ["Space ☺️ Between"]
+  "http://qux.com/": ["Space ☺️ Between"],
 };
 
 const formattedTestData = [];
@@ -15,7 +15,7 @@ for (const [uri, tagArray] of Object.entries(testData)) {
     uri,
     isBookmark: true,
     isTag: true,
-    tagArray
+    tagArray,
   });
 }
 
@@ -42,8 +42,11 @@ add_task(async function test_results_as_tags_root() {
   for (let i = 0; i < root.childCount; ++i) {
     const node = root.getChild(i);
     const tagName = node.title;
-    Assert.equal(node.type, node.RESULT_TYPE_QUERY,
-                 "Result type should be RESULT_TYPE_QUERY.");
+    Assert.equal(
+      node.type,
+      node.RESULT_TYPE_QUERY,
+      "Result type should be RESULT_TYPE_QUERY."
+    );
     const subRoot = node.QueryInterface(Ci.nsINavHistoryContainerResultNode);
     subRoot.containerOpen = true;
     for (let j = 0; j < subRoot.childCount; ++j) {
@@ -52,6 +55,9 @@ add_task(async function test_results_as_tags_root() {
     }
   }
 
-  Assert.deepEqual(actualData, testData,
-                   "URI-tag mapping should be same from query and initial data.");
+  Assert.deepEqual(
+    actualData,
+    testData,
+    "URI-tag mapping should be same from query and initial data."
+  );
 });

@@ -5,9 +5,10 @@
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/tree-icons.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/sidebar.css"?>
 
-<!DOCTYPE page [
+<!DOCTYPE window [
 <!ENTITY % placesDTD SYSTEM "chrome://browser/locale/places/places.dtd">
 %placesDTD;
 <!ENTITY % editMenuDTD SYSTEM "chrome://global/locale/editMenuOverlay.dtd">
@@ -16,35 +17,34 @@
 %browserDTD;
 ]>
 
-<page id="bookmarksPanel"
-      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-      xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-      onload="init();"
-      onunload="PlacesUIUtils.setMouseoverURL('', window);"
-      aria-label="&bookmarksButton.label;">
+<window id="bookmarksPanel"
+        class="sidebar-panel"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        onload="init();"
+        onunload="PlacesUIUtils.setMouseoverURL('', window);"
+        aria-label="&bookmarksButton.label;">
 
-  <script type="application/javascript"
-          src="chrome://browser/content/places/bookmarksSidebar.js"/>
-  <script type="application/javascript"
-          src="chrome://global/content/globalOverlay.js"/>
-  <script type="application/javascript"
-          src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://browser/content/places/bookmarksSidebar.js"/>
+  <script src="chrome://global/content/globalOverlay.js"/>
+  <script src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://browser/content/contentTheme.js"/>
+  <script src="chrome://browser/content/places/places-tree.js"/>
+  <script src="chrome://global/content/editMenuOverlay.js"/>
 
 #include placesCommands.inc.xul
-#include ../../../../toolkit/content/editMenuCommands.inc.xul
 #include placesContextMenu.inc.xul
 #include bookmarksHistoryTooltip.inc.xul
 
   <hbox id="sidebar-search-container" align="center">
-    <textbox id="search-box" flex="1" type="search"
-             placeholder="&bookmarksSearch.placeholder;"
-             aria-controls="bookmarks-view"
-             oncommand="searchBookmarks(this.value);"/>
+    <search-textbox id="search-box" flex="1"
+                    placeholder="&bookmarksSearch.placeholder;"
+                    aria-controls="bookmarks-view"
+                    oncommand="searchBookmarks(this.value);"/>
   </hbox>
 
   <tree id="bookmarks-view"
         class="sidebar-placesTree"
-        type="places"
+        is="places-tree"
         flex="1"
         hidecolumnpicker="true"
         context="placesContext"
@@ -58,4 +58,4 @@
     <treechildren view="bookmarks-view"
                   class="sidebar-placesTreechildren" flex="1" tooltip="bhTooltip"/>
   </tree>
-</page>
+</window>

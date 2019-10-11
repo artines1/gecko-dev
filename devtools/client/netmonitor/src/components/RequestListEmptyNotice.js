@@ -4,18 +4,24 @@
 
 "use strict";
 
-const { Component, createFactory } = require("devtools/client/shared/vendor/react");
+const {
+  Component,
+  createFactory,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
+const {
+  connect,
+} = require("devtools/client/shared/redux/visibility-handler-connect");
 const Actions = require("../actions/index");
 const { ACTIVITY_TYPE } = require("../constants");
 const { L10N } = require("../utils/l10n");
 const { getPerformanceAnalysisURL } = require("../utils/mdn-utils");
 
 // Components
-const MDNLink = createFactory(require("devtools/client/shared/components/MdnLink"));
-const RequestListHeader = createFactory(require("./RequestListHeader"));
+const MDNLink = createFactory(
+  require("devtools/client/shared/components/MdnLink")
+);
 
 const { button, div, span } = dom;
 
@@ -25,6 +31,7 @@ const RELOAD_NOTICE_3 = L10N.getStr("netmonitor.reloadNotice3");
 const PERFORMANCE_NOTICE_1 = L10N.getStr("netmonitor.perfNotice1");
 const PERFORMANCE_NOTICE_2 = L10N.getStr("netmonitor.perfNotice2");
 const PERFORMANCE_NOTICE_3 = L10N.getStr("netmonitor.perfNotice3");
+const PERFORMANCE_LEARN_MORE = L10N.getStr("charts.learnMore");
 
 /**
  * UI displayed when the request list is empty. Contains instructions on reloading
@@ -44,8 +51,8 @@ class RequestListEmptyNotice extends Component {
       {
         className: "request-list-empty-notice",
       },
-      RequestListHeader(),
-      div({ className: "notice-reload-message empty-notice-element" },
+      div(
+        { className: "notice-reload-message empty-notice-element" },
         span(null, RELOAD_NOTICE_1),
         button(
           {
@@ -57,7 +64,8 @@ class RequestListEmptyNotice extends Component {
         ),
         span(null, RELOAD_NOTICE_3)
       ),
-      div({ className: "notice-perf-message empty-notice-element" },
+      div(
+        { className: "notice-perf-message empty-notice-element" },
         span(null, PERFORMANCE_NOTICE_1),
         button({
           title: PERFORMANCE_NOTICE_3,
@@ -66,7 +74,10 @@ class RequestListEmptyNotice extends Component {
           onClick: this.props.onPerfClick,
         }),
         span(null, PERFORMANCE_NOTICE_2),
-        MDNLink({ url: getPerformanceAnalysisURL() })
+        MDNLink({
+          url: getPerformanceAnalysisURL(),
+          title: PERFORMANCE_LEARN_MORE,
+        })
       )
     );
   }
@@ -76,7 +87,7 @@ module.exports = connect(
   undefined,
   (dispatch, props) => ({
     onPerfClick: () => dispatch(Actions.openStatistics(props.connector, true)),
-    onReloadClick: () => props.connector.triggerActivity(
-      ACTIVITY_TYPE.RELOAD.WITH_CACHE_DEFAULT),
+    onReloadClick: () =>
+      props.connector.triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_DEFAULT),
   })
 )(RequestListEmptyNotice);

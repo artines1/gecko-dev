@@ -8,6 +8,7 @@ const {
   MESSAGES_ADD,
   MESSAGES_CLEAR,
   PRIVATE_MESSAGES_CLEAR,
+  MESSAGES_CLEAR_LOGPOINT,
   REMOVED_ACTORS_CLEAR,
 } = require("devtools/client/webconsole/constants");
 
@@ -16,22 +17,28 @@ const {
  * When messages with arguments are removed from the store we should also
  * clean up the backend.
  */
-function enableActorReleaser(hud) {
+function enableActorReleaser(webConsoleUI) {
   return next => (reducer, initialState, enhancer) => {
     function releaseActorsEnhancer(state, action) {
       state = reducer(state, action);
 
       const type = action.type;
-      const proxy = hud ? hud.proxy : null;
       if (
-        proxy &&
-        ([MESSAGES_ADD, MESSAGES_CLEAR, PRIVATE_MESSAGES_CLEAR].includes(type))
+        webConsoleUI &&
+        [
+          MESSAGES_ADD,
+          MESSAGES_CLEAR,
+          PRIVATE_MESSAGES_CLEAR,
+          MESSAGES_CLEAR_LOGPOINT,
+        ].includes(type)
       ) {
-        releaseActors(state.messages.removedActors, proxy);
+        state.messages.removedActors.forEach(actor =>
+          webConsoleUI.releaseActor(actor)
+        );
 
         // Reset `removedActors` in message reducer.
         state = reducer(state, {
-          type: REMOVED_ACTORS_CLEAR
+          type: REMOVED_ACTORS_CLEAR,
         });
       }
 
@@ -40,17 +47,6 @@ function enableActorReleaser(hud) {
 
     return next(releaseActorsEnhancer, initialState, enhancer);
   };
-}
-
-/**
- * Helper function for releasing backend actors.
- */
-function releaseActors(removedActors, proxy) {
-  if (!proxy) {
-    return;
-  }
-
-  removedActors.forEach(actor => proxy.releaseActor(actor));
 }
 
 module.exports = enableActorReleaser;

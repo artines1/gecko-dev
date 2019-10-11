@@ -1,22 +1,23 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-/*
- * The list of phases mapped to their corresponding profiles.  The object
- * here must be in strict JSON format, as it will get parsed by the Python
- * testrunner (no single quotes, extra comma's, etc).
- */
 EnableEngines(["bookmarks"]);
 
-var phases = { "phase1": "profile1",
-               "phase2": "profile2",
-               "phase3": "profile1",
-               "phase4": "profile2" };
-
+/*
+ * The list of phases mapped to their corresponding profiles.  The object
+ * here must be in JSON format as it will get parsed by the Python
+ * testrunner. It is parsed by the YAML package, so it relatively flexible.
+ */
+var phases = {
+  phase1: "profile1",
+  phase2: "profile2",
+  phase3: "profile1",
+  phase4: "profile2",
+};
 
 // the initial list of bookmarks to add to the browser
 var bookmarksInitial = {
-  "menu": [
+  menu: [
     { folder: "foldera" },
     { folder: "folderb" },
     { folder: "folderc" },
@@ -27,23 +28,19 @@ var bookmarksInitial = {
   "menu/folderb": [{ uri: "http://www.apple.com", title: "Apple", tags: [] }],
   "menu/folderc": [{ uri: "http://www.yahoo.com", title: "Yahoo" }],
 
-  "menu/folderd": []
+  "menu/folderd": [],
 };
 
 // a list of bookmarks to delete during a 'delete' action on P2
 var bookmarksToDelete = {
-  "menu": [
-    { folder: "foldera" },
-    { folder: "folderb" },
-  ],
+  menu: [{ folder: "foldera" }, { folder: "folderb" }],
   "menu/folderc": [{ uri: "http://www.yahoo.com", title: "Yahoo" }],
 };
-
 
 // the modifications to make on P1, after P2 has synced, but before P1 has gotten
 // P2's changes
 var bookmarkMods = {
-  "menu": [
+  menu: [
     { folder: "foldera" },
     { folder: "folderb" },
     { folder: "folderc" },
@@ -52,59 +49,57 @@ var bookmarkMods = {
 
   // we move this child out of its folder (p1), after deleting the folder (p2)
   // and expect the child to come back to p2 after sync.
-  "menu/foldera": [{
-    uri: "http://www.cnn.com",
-    title: "CNN",
-    changes: { location: "menu/folderd" }
-  }],
+  "menu/foldera": [
+    {
+      uri: "http://www.cnn.com",
+      title: "CNN",
+      changes: { location: "menu/folderd" },
+    },
+  ],
 
   // we rename this child (p1) after deleting the folder (p2), and expect the child
   // to be moved into great grandparent (menu)
-  "menu/folderb": [{
-    uri: "http://www.apple.com",
-    title: "Apple",
-    tags: [],
-    changes: { title: "Mac" }
-  }],
-
+  "menu/folderb": [
+    {
+      uri: "http://www.apple.com",
+      title: "Apple",
+      tags: [],
+      changes: { title: "Mac" },
+    },
+  ],
 
   // we move this child (p1) after deleting the child (p2) and expect it to survive
-  "menu/folderc": [{
-    uri: "http://www.yahoo.com",
-    title: "Yahoo",
-    changes: { location: "menu/folderd" }
-  }],
+  "menu/folderc": [
+    {
+      uri: "http://www.yahoo.com",
+      title: "Yahoo",
+      changes: { location: "menu/folderd" },
+    },
+  ],
 
-  "menu/folderd": []
+  "menu/folderd": [],
 };
 
 // a list of bookmarks to delete during a 'delete' action
 bookmarksToDelete = {
-  "menu": [
-    { folder: "foldera" },
-    { folder: "folderb" },
-  ],
-  "menu/folderc": [
-    { uri: "http://www.yahoo.com", title: "Yahoo" },
-  ],
+  menu: [{ folder: "foldera" }, { folder: "folderb" }],
+  "menu/folderc": [{ uri: "http://www.yahoo.com", title: "Yahoo" }],
 };
-
-
 
 // expected bookmark state after conflict resolution
 var bookmarksExpected = {
-  "menu": [
+  menu: [
     { folder: "folderc" },
     { folder: "folderd" },
-    { uri: "http://www.apple.com", title: "Mac", },
+    { uri: "http://www.apple.com", title: "Mac" },
   ],
 
   "menu/folderc": [],
 
   "menu/folderd": [
     { uri: "http://www.cnn.com", title: "CNN" },
-    { uri: "http://www.yahoo.com", title: "Yahoo" }
-  ]
+    { uri: "http://www.yahoo.com", title: "Yahoo" },
+  ],
 };
 
 // Add bookmarks to profile1 and sync.
@@ -122,7 +117,7 @@ Phase("phase2", [
   [Bookmarks.verify, bookmarksInitial],
   [Bookmarks.delete, bookmarksToDelete],
   [Bookmarks.verifyNot, bookmarksToDelete],
-  [Sync]
+  [Sync],
 ]);
 
 // Using profile1, modify the bookmarks, and sync *after* the modification,

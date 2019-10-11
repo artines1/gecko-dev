@@ -10,6 +10,7 @@ with Files('**'):
 
 EXTRA_JS_MODULES += [
     'Extension.jsm',
+    'ExtensionActivityLog.jsm',
     'ExtensionChild.jsm',
     'ExtensionChildDevToolsUtils.jsm',
     'ExtensionCommon.jsm',
@@ -18,23 +19,38 @@ EXTRA_JS_MODULES += [
     'ExtensionParent.jsm',
     'ExtensionPermissions.jsm',
     'ExtensionPreferencesManager.jsm',
+    'ExtensionProcessScript.jsm',
+    'extensionProcessScriptLoader.js',
     'ExtensionSettingsStore.jsm',
+    'ExtensionShortcuts.jsm',
     'ExtensionStorage.jsm',
     'ExtensionStorageIDB.jsm',
     'ExtensionStorageSync.jsm',
+    'ExtensionTelemetry.jsm',
     'ExtensionUtils.jsm',
     'FindContent.jsm',
-    'LegacyExtensionsUtils.jsm',
+    'MatchURLFilters.jsm',
     'MessageChannel.jsm',
     'MessageManagerProxy.jsm',
     'NativeManifests.jsm',
     'NativeMessaging.jsm',
-    'ProxyScriptContext.jsm',
+    'onExtensionBrowser.js',
+    'PerformanceCounters.jsm',
+    'ProxyChannelFilter.jsm',
     'Schemas.jsm',
+    'WebNavigation.jsm',
+    'WebNavigationContent.js',
+    'WebNavigationFrames.jsm',
 ]
 
+if CONFIG['MOZ_WIDGET_TOOLKIT'] != "android":
+    EXTRA_JS_MODULES += [
+        'profiler_get_symbols.js',
+        'ProfilerGetSymbols-worker.js',
+        'ProfilerGetSymbols.jsm',
+    ]
+
 EXTRA_COMPONENTS += [
-    'extension-process-script.js',
     'extensions-toolkit.manifest',
 ]
 
@@ -59,6 +75,7 @@ EXPORTS.mozilla = [
 ]
 
 EXPORTS.mozilla.extensions = [
+    'DocumentObserver.h',
     'MatchGlob.h',
     'MatchPattern.h',
     'WebExtensionContentScript.h',
@@ -98,6 +115,3 @@ with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 
 include('/ipc/chromium/chromium-config.mozbuild')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

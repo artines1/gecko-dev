@@ -1,7 +1,7 @@
- /**
-  * This test checks that editing tags doesn't scroll the tags selector
-  * listbox to wrong positions.
-  */
+/**
+ * This test checks that editing tags doesn't scroll the tags selector
+ * listbox to wrong positions.
+ */
 
 const TEST_URL = "about:buildconfig";
 
@@ -16,15 +16,29 @@ function scrolledIntoView(item, parentItem) {
 
 add_task(async function() {
   await PlacesUtils.bookmarks.eraseEverything();
-  let tags = ["a", "b", "c", "d", "e", "f", "g",
-              "h", "i", "l", "m", "n", "o", "p"];
+  let tags = [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+  ];
 
   // Add a bookmark and tag it.
   let uri1 = Services.io.newURI(TEST_URL);
   let bm1 = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
     title: "mozilla",
-    url: uri1.spec
+    url: uri1.spec,
   });
   PlacesUtils.tagging.tagURI(uri1, tags);
 
@@ -33,14 +47,14 @@ add_task(async function() {
   let bm2 = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
     title: "mozilla",
-    url: uri2.spec
+    url: uri2.spec,
   });
   PlacesUtils.tagging.tagURI(uri2, tags);
 
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: TEST_URL,
-    waitForStateStop: true
+    waitForStateStop: true,
   });
 
   registerCleanupFunction(async () => {
@@ -78,9 +92,11 @@ add_task(async function() {
     let selectedTag = listItem.label;
 
     // Uncheck the tag.
-    let promise = BrowserTestUtils.waitForEvent(tagsSelector,
-                                                "BookmarkTagsSelectorUpdated");
-    EventUtils.synthesizeMouseAtCenter(listItem.firstChild, {});
+    let promise = BrowserTestUtils.waitForEvent(
+      tagsSelector,
+      "BookmarkTagsSelectorUpdated"
+    );
+    EventUtils.synthesizeMouseAtCenter(listItem.firstElementChild, {});
     await promise;
     is(scrollTop, tagsSelector.scrollTop, "Scroll position did not change");
 
@@ -91,9 +107,11 @@ add_task(async function() {
     is(newItem.label, selectedTag, "Correct tag is still selected");
 
     // Check the tag.
-    promise = BrowserTestUtils.waitForEvent(tagsSelector,
-                                            "BookmarkTagsSelectorUpdated");
-    EventUtils.synthesizeMouseAtCenter(newItem.firstChild, {});
+    promise = BrowserTestUtils.waitForEvent(
+      tagsSelector,
+      "BookmarkTagsSelectorUpdated"
+    );
+    EventUtils.synthesizeMouseAtCenter(newItem.firstElementChild, {});
     await promise;
     is(scrollTop, tagsSelector.scrollTop, "Scroll position did not change");
   }
@@ -102,33 +120,37 @@ add_task(async function() {
   await PlacesUtils.bookmarks.remove(bm2);
 
   // Doing this backwords tests more interesting paths.
-  for (let i = tags.length - 1; i >= 0 ; i -= 2) {
+  for (let i = tags.length - 1; i >= 0; i -= 2) {
     tagsSelector.selectedIndex = i;
     let listItem = tagsSelector.selectedItem;
     isnot(listItem, null, "Valid listItem found");
 
     tagsSelector.ensureElementIsVisible(listItem);
-    let items = [...tagsSelector.children];
+    let items = [...tagsSelector.itemChildren];
     let topTag = items.find(e => scrolledIntoView(e, tagsSelector)).label;
 
     ok(listItem.hasAttribute("checked"), "Item is checked " + i);
 
     // Uncheck the tag.
-    let promise = BrowserTestUtils.waitForEvent(tagsSelector,
-                                                "BookmarkTagsSelectorUpdated");
-    EventUtils.synthesizeMouseAtCenter(listItem.firstChild, {});
+    let promise = BrowserTestUtils.waitForEvent(
+      tagsSelector,
+      "BookmarkTagsSelectorUpdated"
+    );
+    EventUtils.synthesizeMouseAtCenter(listItem.firstElementChild, {});
     await promise;
 
     // The listbox is rebuilt, so we have to get the new element.
-    let topItem = [...tagsSelector.children].find(e => e.label == topTag);
+    let topItem = [...tagsSelector.itemChildren].find(e => e.label == topTag);
     ok(scrolledIntoView(topItem, tagsSelector), "Scroll position is correct");
 
     let newItem = tagsSelector.selectedItem;
     isnot(newItem, null, "Valid new listItem found");
     ok(newItem.hasAttribute("checked"), "New listItem is checked " + i);
-    is(tagsSelector.selectedItem.label,
-       tags[Math.min(i + 1, tags.length - 2)],
-       "The next tag is now selected");
+    is(
+      tagsSelector.selectedItem.label,
+      tags[Math.min(i + 1, tags.length - 2)],
+      "The next tag is now selected"
+    );
   }
 
   let hiddenPromise = promisePopupHidden(bookmarkPanel);
@@ -142,7 +164,8 @@ add_task(async function() {
 function openTagSelector() {
   let promise = BrowserTestUtils.waitForEvent(
     document.getElementById("editBMPanel_tagsSelector"),
-    "BookmarkTagsSelectorUpdated");
+    "BookmarkTagsSelectorUpdated"
+  );
   // Open the tags selector.
   document.getElementById("editBMPanel_tagsSelectorExpander").doCommand();
   return promise;

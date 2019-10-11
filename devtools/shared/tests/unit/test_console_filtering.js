@@ -4,7 +4,9 @@
 "use strict";
 
 const { console, ConsoleAPI } = require("resource://gre/modules/Console.jsm");
-const { ConsoleAPIListener } = require("devtools/server/actors/webconsole/listeners");
+const {
+  ConsoleAPIListener,
+} = require("devtools/server/actors/webconsole/listeners/console-api");
 
 var seenMessages = 0;
 var seenTypes = 0;
@@ -25,7 +27,7 @@ var callback = {
       seenTypes |= 4;
     }
     seenMessages++;
-  }
+  },
 };
 
 let policy;
@@ -33,8 +35,10 @@ registerCleanupFunction(() => {
   policy.active = false;
 });
 
-function createFakeAddonWindow({addonId} = {}) {
-  const uuidGen = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
+function createFakeAddonWindow({ addonId } = {}) {
+  const uuidGen = Cc["@mozilla.org/uuid-generator;1"].getService(
+    Ci.nsIUUIDGenerator
+  );
   const uuid = uuidGen.generateUUID().number.slice(1, -1);
 
   if (policy) {
@@ -51,14 +55,16 @@ function createFakeAddonWindow({addonId} = {}) {
   policy.active = true;
 
   const baseURI = Services.io.newURI(`moz-extension://${uuid}/`);
-  const principal = Services.scriptSecurityManager
-        .createCodebasePrincipal(baseURI, {});
+  const principal = Services.scriptSecurityManager.createContentPrincipal(
+    baseURI,
+    {}
+  );
   const chromeWebNav = Services.appShell.createWindowlessBrowser(true);
   const { docShell } = chromeWebNav;
-  docShell.createAboutBlankContentViewer(principal);
+  docShell.createAboutBlankContentViewer(principal, principal);
   const addonWindow = docShell.contentViewer.DOMDocument.defaultView;
 
-  return {addonWindow, chromeWebNav};
+  return { addonWindow, chromeWebNav };
 }
 
 /**
@@ -69,12 +75,14 @@ function run_test() {
   // console1 Test Console.jsm messages tagged by the Addon SDK
   // are still filtered correctly.
   const console1 = new ConsoleAPI({
-    consoleID: "addon/foo"
+    consoleID: "addon/foo",
   });
 
   // console2 - WebExtension page's console messages tagged
   // by 'originAttributes.addonId' are filtered correctly.
-  const {addonWindow, chromeWebNav} = createFakeAddonWindow({addonId: "bar"});
+  const { addonWindow, chromeWebNav } = createFakeAddonWindow({
+    addonId: "bar",
+  });
   const console2 = addonWindow.console;
 
   // console - Plain console object (messages are tagged with window ids
@@ -104,7 +112,7 @@ function run_test() {
 
   listener.destroy();
 
-  listener = new ConsoleAPIListener(null, callback, {addonId: "foo"});
+  listener = new ConsoleAPIListener(null, callback, { addonId: "foo" });
   listener.init();
   messages = listener.getCachedMessages();
 
@@ -124,7 +132,7 @@ function run_test() {
 
   listener.destroy();
 
-  listener = new ConsoleAPIListener(null, callback, {addonId: "bar"});
+  listener = new ConsoleAPIListener(null, callback, { addonId: "bar" });
   listener.init();
   messages = listener.getCachedMessages();
 

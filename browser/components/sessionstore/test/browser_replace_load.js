@@ -1,8 +1,8 @@
 "use strict";
 
 const STATE = {
-  entries: [{url: "about:robots"}, {url: "about:mozilla"}],
-  selected: 2
+  entries: [{ url: "about:robots" }, { url: "about:mozilla" }],
+  selected: 2,
 };
 
 /**
@@ -13,8 +13,10 @@ const STATE = {
  * restored history around.
  */
 add_task(async function() {
-  await testSwitchToTab("about:mozilla#fooobar", {ignoreFragment: "whenComparingAndReplace"});
-  await testSwitchToTab("about:mozilla?foo=bar", {replaceQueryString: true});
+  await testSwitchToTab("about:mozilla#fooobar", {
+    ignoreFragment: "whenComparingAndReplace",
+  });
+  await testSwitchToTab("about:mozilla?foo=bar", { replaceQueryString: true });
 });
 
 var testSwitchToTab = async function(url, options) {
@@ -31,6 +33,8 @@ var testSwitchToTab = async function(url, options) {
   ss.setTabState(tab, JSON.stringify(STATE));
   ok(tab.hasAttribute("pending"), "tab is pending");
   await promise;
+
+  options.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
 
   // Switch-to-tab with a similar URI.
   switchToTabHavingURI(url, false, options);

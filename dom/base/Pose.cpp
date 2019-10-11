@@ -41,46 +41,48 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(Pose, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(Pose, Release)
 
-
 Pose::Pose(nsISupports* aParent)
-  : mParent(aParent),
-    mPosition(nullptr),
-    mLinearVelocity(nullptr),
-    mLinearAcceleration(nullptr),
-    mOrientation(nullptr),
-    mAngularVelocity(nullptr),
-    mAngularAcceleration(nullptr)
-{
+    : mParent(aParent),
+      mPosition(nullptr),
+      mLinearVelocity(nullptr),
+      mLinearAcceleration(nullptr),
+      mOrientation(nullptr),
+      mAngularVelocity(nullptr),
+      mAngularAcceleration(nullptr) {
   mozilla::HoldJSObjects(this);
 }
 
-Pose::~Pose()
-{
-  mozilla::DropJSObjects(this);
-}
+Pose::~Pose() { mozilla::DropJSObjects(this); }
 
-nsISupports*
-Pose::GetParentObject() const
-{
-  return mParent;
-}
+nsISupports* Pose::GetParentObject() const { return mParent; }
 
-void
-Pose::SetFloat32Array(JSContext* aJSContext, JS::MutableHandle<JSObject*> aRetVal,
-                      JS::Heap<JSObject*>& aObj, float* aVal, uint32_t sizeOfVal,
-                      bool bCreate, ErrorResult& aRv)
-{
-  if (bCreate) {
-    aObj = Float32Array::Create(aJSContext, this,
-                                 sizeOfVal, aVal);
+void Pose::SetFloat32Array(JSContext* aJSContext, nsWrapperCache* creator,
+                           JS::MutableHandle<JSObject*> aRetVal,
+                           JS::Heap<JSObject*>& aObj, float* aVal,
+                           uint32_t aValLength, ErrorResult& aRv) {
+  if (!aVal) {
+    aRetVal.set(nullptr);
+    return;
+  }
+
+  if (!aObj) {
+    aObj = Float32Array::Create(aJSContext, creator, aValLength, aVal);
     if (!aObj) {
       aRv.NoteJSContextException(aJSContext);
       return;
+    }
+  } else {
+    JS::AutoCheckCannotGC nogc;
+    bool isShared = false;
+    JS::RootedObject obj(aJSContext, aObj.get());
+    float* data = JS_GetFloat32ArrayData(obj, &isShared, nogc);
+    if (data) {
+      memcpy(data, aVal, aValLength * sizeof(float));
     }
   }
 
   aRetVal.set(aObj);
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

@@ -4,29 +4,36 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+EXPORTS.mozilla.intl += [
+    'Localization.h',
+]
+
+UNIFIED_SOURCES += [
+    'Localization.cpp',
+]
+
 EXTRA_JS_MODULES += [
-    'DOMLocalization.jsm',
+    'Fluent.jsm',
     'L10nRegistry.jsm',
     'Localization.jsm',
-    'MessageContext.jsm',
+]
+
+TESTING_JS_MODULES += [
+    'FluentSyntax.jsm',
 ]
 
 XPIDL_SOURCES += [
-    'mozIDOMLocalization.idl',
+    'mozILocalization.idl',
 ]
 
 XPIDL_MODULE = 'locale'
 
-EXTRA_COMPONENTS += [
-    'mozDOMLocalization.js',
-    'mozDOMLocalization.manifest',
+LOCAL_INCLUDES += [
+    '/dom/base',
 ]
 
 XPCSHELL_TESTS_MANIFESTS += ['test/xpcshell.ini']
-
-MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
-
-JAR_MANIFESTS += ['jar.mn']
+MOCHITEST_CHROME_MANIFESTS += ['test/mochitest/chrome.ini']
 
 SPHINX_TREES['l10n'] = 'docs'
 

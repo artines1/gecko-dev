@@ -6,16 +6,23 @@
 #ifndef HTMLEditUtils_h
 #define HTMLEditUtils_h
 
-#include <stdint.h>
+#include "mozilla/Attributes.h"
+#include "mozilla/dom/Element.h"
+#include "nsGkAtoms.h"
 
-class nsINode;
+class nsAtom;
 
 namespace mozilla {
 
-class HTMLEditUtils final
-{
-public:
+class HTMLEditUtils final {
+ public:
   static bool IsInlineStyle(nsINode* aNode);
+  /**
+   * IsRemovableInlineStyleElement() returns true if aElement is an inline
+   * element and can be removed or split to in order to modifying inline
+   * styles.
+   */
+  static bool IsRemovableInlineStyleElement(dom::Element& aElement);
   static bool IsFormatNode(nsINode* aNode);
   static bool IsNodeThatCanOutdent(nsINode* aNode);
   static bool IsHeader(nsINode& aNode);
@@ -45,9 +52,52 @@ public:
    */
   static bool IsNonListSingleLineContainer(nsINode& aNode);
   static bool IsSingleLineContainer(nsINode& aNode);
+
+  static EditAction GetEditActionForInsert(const nsAtom& aTagName);
+  static EditAction GetEditActionForRemoveList(const nsAtom& aTagName);
+  static EditAction GetEditActionForInsert(const Element& aElement);
+  static EditAction GetEditActionForFormatText(const nsAtom& aProperty,
+                                               const nsAtom* aAttribute,
+                                               bool aToSetStyle);
+  static EditAction GetEditActionForAlignment(const nsAString& aAlignType);
 };
 
-} // namespace mozilla
+/**
+ * DefinitionListItemScanner() scans given `<dl>` element's children.
+ * Then, you can check whether `<dt>` and/or `<dd>` elements are in it.
+ */
+class MOZ_STACK_CLASS DefinitionListItemScanner final {
+ public:
+  DefinitionListItemScanner() = delete;
+  explicit DefinitionListItemScanner(dom::Element& aDLElement) {
+    MOZ_ASSERT(aDLElement.IsHTMLElement(nsGkAtoms::dl));
+    for (nsIContent* child = aDLElement.GetFirstChild(); child;
+         child = child->GetNextSibling()) {
+      if (child->IsHTMLElement(nsGkAtoms::dt)) {
+        mDTFound = true;
+        if (mDDFound) {
+          break;
+        }
+        continue;
+      }
+      if (child->IsHTMLElement(nsGkAtoms::dd)) {
+        mDDFound = true;
+        if (mDTFound) {
+          break;
+        }
+        continue;
+      }
+    }
+  }
 
-#endif // #ifndef HTMLEditUtils_h
+  bool DTElementFound() const { return mDTFound; }
+  bool DDElementFound() const { return mDDFound; }
 
+ private:
+  bool mDTFound = false;
+  bool mDDFound = false;
+};
+
+}  // namespace mozilla
+
+#endif  // #ifndef HTMLEditUtils_h

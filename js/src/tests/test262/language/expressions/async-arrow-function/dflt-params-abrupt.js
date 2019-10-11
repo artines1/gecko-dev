@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-abrupt.case
 // - src/function-forms/error/async-arrow-function.template
 /*---
 description: Abrupt completion returned by evaluation of initializer (async arrow function expression)
 esid: sec-async-arrow-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.7 Async Arrow Function Definitions

@@ -5,8 +5,7 @@
 <window title="Preferences Window beforeaccept Tests"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
   <script type="application/javascript">
   <![CDATA[
@@ -19,7 +18,7 @@
     });
 
     // No instant-apply for this test
-    var prefWindow = openDialog("window_preferences_beforeaccept.xul", "", "", windowOnload);
+    var prefWindow = window.docShell.rootTreeItem.domWindow.openDialog("window_preferences_beforeaccept.xul", "", "", windowOnload);
 
     function windowOnload() {
       var dialogShown = prefWindow.Preferences.get("tests.beforeaccept.dialogShown");

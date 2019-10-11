@@ -1,18 +1,21 @@
-var {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+var { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /**
  * Test optional duration reporting that can be used for telemetry.
  */
 add_task(async function duration() {
-  const availableDurations = ["outSerializationDuration", "outExecutionDuration"];
+  const availableDurations = [
+    "outSerializationDuration",
+    "outExecutionDuration",
+  ];
   Services.prefs.setBoolPref("toolkit.osfile.log", true);
   // Options structure passed to a OS.File copy method.
   let copyOptions = {
     // These fields should be overwritten with the actual duration
     // measurements.
     outSerializationDuration: null,
-    outExecutionDuration: null
+    outExecutionDuration: null,
   };
   let currentDir = await OS.File.getCurrentDirectory();
   let pathSource = OS.Path.join(currentDir, "test_duration.js");
@@ -27,7 +30,12 @@ add_task(async function duration() {
     }
   }
 
-  function testOptionIncrements(options, name, backupDuration, durations = availableDurations) {
+  function testOptionIncrements(
+    options,
+    name,
+    backupDuration,
+    durations = availableDurations
+  ) {
     for (let duration of durations) {
       info(`Checking ${duration} increment for operation: ${name}`);
       info(`${name}: Gathered method duration time: ${options[duration]} ms`);
@@ -43,13 +51,15 @@ add_task(async function duration() {
   await OS.File.remove(copyFile);
 
   // Trying an operation where options are cloned.
-  let pathDest = OS.Path.join(OS.Constants.Path.tmpDir,
-    "osfile async test read writeAtomic.tmp");
+  let pathDest = OS.Path.join(
+    OS.Constants.Path.tmpDir,
+    "osfile async test read writeAtomic.tmp"
+  );
   let tmpPath = pathDest + ".tmp";
   let readOptions = {
     // We do not check for |outSerializationDuration| since |Scheduler.post|
     // may not be called whenever |read| is called.
-    outExecutionDuration: null
+    outExecutionDuration: null,
   };
   let contents = await OS.File.read(pathSource, undefined, readOptions);
   testOptions(readOptions, "OS.File.read", ["outExecutionDuration"]);
@@ -58,21 +68,27 @@ add_task(async function duration() {
     // This field should be first initialized with the actual
     // duration measurement then progressively incremented.
     outExecutionDuration: null,
-    tmpPath
+    tmpPath,
   };
   // Note that |contents| cannot be reused after this call since it is detached.
   await OS.File.writeAtomic(pathDest, contents, writeAtomicOptions);
-  testOptions(writeAtomicOptions, "OS.File.writeAtomic", ["outExecutionDuration"]);
+  testOptions(writeAtomicOptions, "OS.File.writeAtomic", [
+    "outExecutionDuration",
+  ]);
   await OS.File.remove(pathDest);
 
-  info(`Ensuring that we can use ${availableDurations.join(", ")} to accumulate durations`);
+  info(
+    `Ensuring that we can use ${availableDurations.join(
+      ", "
+    )} to accumulate durations`
+  );
 
   let ARBITRARY_BASE_DURATION = 5;
   copyOptions = {
     // This field should now be incremented with the actual duration
     // measurement.
     outSerializationDuration: ARBITRARY_BASE_DURATION,
-    outExecutionDuration: ARBITRARY_BASE_DURATION
+    outExecutionDuration: ARBITRARY_BASE_DURATION,
   };
 
   // We need to copy the object, since having a reference would make this pointless.
@@ -91,13 +107,18 @@ add_task(async function duration() {
   writeAtomicOptions = {
     // We do not check for |outSerializationDuration| since |Scheduler.post|
     // may not be called whenever |writeAtomic| is called.
-    outExecutionDuration: ARBITRARY_BASE_DURATION
+    outExecutionDuration: ARBITRARY_BASE_DURATION,
   };
   writeAtomicOptions.tmpPath = tmpPath;
   backupDuration = Object.assign({}, writeAtomicOptions);
   contents = await OS.File.read(pathSource, undefined, readOptions);
   await OS.File.writeAtomic(pathDest, contents, writeAtomicOptions);
-  testOptionIncrements(writeAtomicOptions, "writeAtomicOptions", backupDuration, ["outExecutionDuration"]);
+  testOptionIncrements(
+    writeAtomicOptions,
+    "writeAtomicOptions",
+    backupDuration,
+    ["outExecutionDuration"]
+  );
   OS.File.remove(pathDest);
 
   // Testing an operation that doesn't take arguments at all

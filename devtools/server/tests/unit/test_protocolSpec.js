@@ -7,13 +7,10 @@ const run_test = Test(async function() {
 
   await client.connect();
 
-  const response = await client.request({
-    to: "root",
-    type: "protocolDescription"
-  });
+  const response = await client.mainRoot.protocolDescription();
 
   assert(response.from == "root");
-  assert(typeof (response.types) === "object");
+  assert(typeof response.types === "object");
 
   await client.close();
 });

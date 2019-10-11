@@ -21,12 +21,11 @@ namespace net {
 
 class HttpChannelParent;
 
-class HttpBackgroundChannelParent final : public PHttpBackgroundChannelParent
-{
-public:
+class HttpBackgroundChannelParent final : public PHttpBackgroundChannelParent {
+ public:
   explicit HttpBackgroundChannelParent();
 
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(HttpBackgroundChannelParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(HttpBackgroundChannelParent, final)
 
   // Try to find associated HttpChannelParent with the same
   // channel Id.
@@ -46,8 +45,7 @@ public:
   // To send OnTransportAndData message over background channel.
   bool OnTransportAndData(const nsresult& aChannelStatus,
                           const nsresult& aTransportStatus,
-                          const uint64_t& aOffset,
-                          const uint32_t& aCount,
+                          const uint64_t& aOffset, const uint32_t& aCount,
                           const nsCString& aData);
 
   // To send OnStopRequest message over background channel.
@@ -56,8 +54,7 @@ public:
                      const nsHttpHeaderArray& aResponseTrailers);
 
   // To send OnProgress message over background channel.
-  bool OnProgress(const int64_t& aProgress,
-                  const int64_t& aProgressMax);
+  bool OnProgress(const int64_t& aProgress, const int64_t& aProgressMax);
 
   // To send OnStatus message over background channel.
   bool OnStatus(const nsresult& aStatus);
@@ -66,21 +63,36 @@ public:
   // over background channel.
   bool OnDiversion();
 
-  // To send NotifyTrackingProtectionDisabled message over background channel.
-  bool OnNotifyTrackingProtectionDisabled();
+  // To send NotifyChannelClassifierProtectionDisabled message over background
+  // channel.
+  bool OnNotifyChannelClassifierProtectionDisabled(uint32_t aAcceptedReason);
 
-  // To send NotifyTrackingResource message over background channel.
-  bool OnNotifyTrackingResource();
+  // To send NotifyCookieAllowed message over background channel.
+  bool OnNotifyCookieAllowed();
+
+  // To send NotifyCookieBlocked message over background channel.
+  bool OnNotifyCookieBlocked(uint32_t aRejectedReason);
+
+  // To send NotifyClassificationFlags message over background channel.
+  bool OnNotifyClassificationFlags(uint32_t aClassificationFlags,
+                                   bool aIsThirdParty);
+
+  // To send NotifyFlashPluginStateChanged message over background channel.
+  bool OnNotifyFlashPluginStateChanged(nsIHttpChannel::FlashPluginState aState);
 
   // To send SetClassifierMatchedInfo message over background channel.
   bool OnSetClassifierMatchedInfo(const nsACString& aList,
                                   const nsACString& aProvider,
                                   const nsACString& aFullHash);
 
-protected:
+  // To send SetClassifierMatchedTrackingInfo message over background channel.
+  bool OnSetClassifierMatchedTrackingInfo(const nsACString& aLists,
+                                          const nsACString& aFullHashes);
+
+ protected:
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-private:
+ private:
   virtual ~HttpBackgroundChannelParent();
 
   Atomic<bool> mIPCOpened;
@@ -94,7 +106,7 @@ private:
   RefPtr<HttpChannelParent> mChannelParent;
 };
 
-} // namespace net
-} // namespace mozilla
+}  // namespace net
+}  // namespace mozilla
 
-#endif // mozilla_net_HttpBackgroundChannelParent_h
+#endif  // mozilla_net_HttpBackgroundChannelParent_h

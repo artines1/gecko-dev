@@ -17,10 +17,10 @@ namespace recordreplay {
 // Thread Snapshots Overview.
 //
 // The functions below are used when a thread saves or restores its stack and
-// register state at a checkpoint. The steps taken in saving and restoring a
-// thread snapshot are as follows:
+// register state. The steps taken in saving and restoring a thread snapshot are
+// as follows:
 //
-// 1. Before idling (non-main threads) or before reaching a checkpoint (main
+// 1. Before idling (non-main threads) or before creating a snapshot (main
 //    thread), the thread calls SaveThreadState. This saves the register state
 //    for the thread as well as a portion of the top of the stack, and after
 //    saving the state it returns true.
@@ -52,8 +52,7 @@ namespace recordreplay {
 bool SaveThreadState(size_t aId, int* aStackSeparator);
 
 // Information saved about the state of a thread.
-struct SavedThreadStack
-{
+struct SavedThreadStack {
   // Saved stack pointer.
   void* mStackPointer;
 
@@ -64,10 +63,7 @@ struct SavedThreadStack
   // Saved register state.
   jmp_buf mRegisters;
 
-  SavedThreadStack()
-  {
-    PodZero(this);
-  }
+  SavedThreadStack() { PodZero(this); }
 
   void ReleaseContents() {
     if (mStackBytes) {
@@ -76,14 +72,8 @@ struct SavedThreadStack
   }
 };
 
-struct SavedCheckpoint
-{
-  CheckpointId mCheckpoint;
+struct AllSavedThreadStacks {
   SavedThreadStack mStacks[MaxRecordedThreadId];
-
-  explicit SavedCheckpoint(CheckpointId aCheckpoint)
-    : mCheckpoint(aCheckpoint)
-  {}
 
   void ReleaseContents() {
     for (SavedThreadStack& stack : mStacks) {
@@ -96,13 +86,13 @@ struct SavedCheckpoint
 // own stack and the stacks of all other threads. The return value is true if
 // the stacks were just saved, or false if they were just restored due to a
 // rewind from a later point of execution.
-bool SaveAllThreads(SavedCheckpoint& aSavedCheckpoint);
+bool SaveAllThreads(AllSavedThreadStacks& aSaved);
 
-// Restore the saved stacks for a checkpoint and rewind state to that point.
+// Restore a set of saved stacks and rewind state to that point.
 // This function does not return.
-void RestoreAllThreads(const SavedCheckpoint& aSavedCheckpoint);
+void RestoreAllThreads(const AllSavedThreadStacks& aSaved);
 
-// After rewinding to an earlier checkpoint, the main thread will call this to
+// After rewinding to an earlier point, the main thread will call this to
 // ensure that each thread has woken up and restored its own stack contents.
 // The main thread does not itself write to the stacks of other threads.
 void WaitForIdleThreadsToRestoreTheirStacks();
@@ -113,7 +103,7 @@ void RestoreThreadStack(size_t aId);
 // Initialize state for taking thread snapshots.
 void InitializeThreadSnapshots(size_t aNumThreads);
 
-} // namespace recordreplay
-} // namespace mozilla
+}  // namespace recordreplay
+}  // namespace mozilla
 
-#endif // mozilla_recordreplay_ThreadSnapshot_h
+#endif  // mozilla_recordreplay_ThreadSnapshot_h

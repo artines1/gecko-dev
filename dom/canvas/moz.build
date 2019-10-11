@@ -28,10 +28,6 @@ with Files('test/chrome/*webgl*'):
 with Files('test/crossorigin/*webgl*'):
     BUG_COMPONENT = ('Core', 'Canvas: WebGL')
 
-TEST_DIRS += [
-    'gtest'
-]
-
 # Change the following line(s) to avoid bug 1081323 (clobber after changing a manifest):
 # * Adjust failure errata for webgl-conf.
 
@@ -74,9 +70,7 @@ UNIFIED_SOURCES += [
     'CanvasRenderingContextHelper.cpp',
     'CanvasUtils.cpp',
     'ImageBitmap.cpp',
-    'ImageBitmapColorUtils.cpp',
     'ImageBitmapRenderingContext.cpp',
-    'ImageBitmapUtils.cpp',
     'ImageData.cpp',
     'OffscreenCanvas.cpp',
 ]
@@ -87,7 +81,7 @@ SOURCES += [
 
 # WebGL Sources
 UNIFIED_SOURCES += [
-    'CacheMap.cpp',
+    'CacheInvalidator.cpp',
     'TexUnpackBlob.cpp',
     'WebGL1Context.cpp',
     'WebGL2Context.cpp',
@@ -115,20 +109,19 @@ UNIFIED_SOURCES += [
     'WebGLContextLossHandler.cpp',
     'WebGLContextState.cpp',
     'WebGLContextTextures.cpp',
-    'WebGLContextUnchecked.cpp',
     'WebGLContextUtils.cpp',
     'WebGLContextValidate.cpp',
     'WebGLContextVertexArray.cpp',
     'WebGLContextVertices.cpp',
-    'WebGLExtensionBase.cpp',
     'WebGLExtensionBlendMinMax.cpp',
     'WebGLExtensionColorBufferFloat.cpp',
     'WebGLExtensionColorBufferHalfFloat.cpp',
     'WebGLExtensionCompressedTextureASTC.cpp',
-    'WebGLExtensionCompressedTextureATC.cpp',
+    'WebGLExtensionCompressedTextureBPTC.cpp',
     'WebGLExtensionCompressedTextureES3.cpp',
     'WebGLExtensionCompressedTextureETC1.cpp',
     'WebGLExtensionCompressedTexturePVRTC.cpp',
+    'WebGLExtensionCompressedTextureRGTC.cpp',
     'WebGLExtensionCompressedTextureS3TC.cpp',
     'WebGLExtensionCompressedTextureS3TC_SRGB.cpp',
     'WebGLExtensionDebugRendererInfo.cpp',
@@ -142,6 +135,7 @@ UNIFIED_SOURCES += [
     'WebGLExtensionInstancedArrays.cpp',
     'WebGLExtensionLoseContext.cpp',
     'WebGLExtensionMOZDebug.cpp',
+    'WebGLExtensions.cpp',
     'WebGLExtensionShaderTextureLod.cpp',
     'WebGLExtensionSRGB.cpp',
     'WebGLExtensionStandardDerivatives.cpp',
@@ -153,7 +147,6 @@ UNIFIED_SOURCES += [
     'WebGLExtensionVertexArray.cpp',
     'WebGLFormats.cpp',
     'WebGLFramebuffer.cpp',
-    'WebGLFramebufferAttachable.cpp',
     'WebGLMemoryTracker.cpp',
     'WebGLObjectModel.cpp',
     'WebGLProgram.cpp',
@@ -218,3 +211,6 @@ LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow', '-Wno-missing-braces']
+
+if CONFIG['CC_TYPE'] in ('clang', 'clang-cl'):
+    CXXFLAGS += ['-Werror=implicit-int-conversion']

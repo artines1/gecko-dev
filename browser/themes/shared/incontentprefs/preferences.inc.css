@@ -5,6 +5,18 @@
 %endif
 @namespace html "http://www.w3.org/1999/xhtml";
 
+:root {
+  --in-content-warning-container: var(--grey-20);
+}
+
+@supports -moz-bool-pref("browser.in-content.dark-mode") {
+@media (prefers-color-scheme: dark) {
+  :root {
+    --in-content-warning-container: var(--grey-90-a30);
+  }
+}
+}
+
 * {
   -moz-user-select: text;
 }
@@ -24,22 +36,26 @@
   padding: 0;
 }
 
-.prefpane > groupbox + groupbox {
-  margin-top: 16px;
+groupbox[data-category] {
+  margin: 0 0 32px;
 }
 
-groupbox + groupbox > .groupbox-body,
-groupbox + vbox groupbox > .groupbox-body {
-  margin-top: 4px;
+html|h1 {
+  margin: 0 0 8px;
+  font-size: 1.46em;
+  font-weight: 300;
+  line-height: 1.3em;
 }
 
-.groupbox-title {
-  margin-top: 16px;
+html|h2 {
+  margin: 16px 0 4px;
+  font-size: 1.14em;
+  line-height: normal;
 }
 
 description.indent,
-.indent > description {
-  color: #737373;
+.indent:not(#browserPrivateEngineSelection) > description {
+  color: var(--in-content-deemphasized-text);
 }
 
 button,
@@ -49,11 +65,18 @@ html|option {
   -moz-user-select: none;
 }
 
+/* Buttons get a default min-width in XUL. When they also have flex, they will
+ * be large enough anyway, and we don't want them to become smaller than their inner
+ * text which would then overflow the button. Set min-width back to auto for that:
+ */
+button[flex] {
+  min-width: auto;
+}
+
 description,
 label {
   line-height: 1.8em;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  margin: 0;
 }
 
 .tip-caption {
@@ -72,8 +95,6 @@ button > hbox > label {
 
 .checkbox-check {
   margin-inline-end: 8px;
-  width: 20px;
-  height: 20px;
 }
 
 .tail-with-learn-more {
@@ -100,10 +121,20 @@ button > hbox > label {
 }
 
 .spotlight {
-  background-color: rgba(0,200,215,0.3);
+  background-color: var(--blue-40-a10);
+  outline: var(--blue-60) 1px dotted;
+  -moz-outline-radius: 2px;
+  animation: fade-out 0.5s ease-out 2s forwards;
   /* Show the border to spotlight the components in high-contrast mode. */
   border: 1px solid transparent;
   border-radius: 2px;
+}
+
+@keyframes fade-out {
+  100% {
+    background-color: transparent;
+    outline-color: transparent;
+   }
 }
 
 [data-subcategory] {
@@ -111,10 +142,6 @@ button > hbox > label {
   margin-right: -4px;
   padding-left: 4px;
   padding-right: 4px;
-}
-
-[data-subcategory] > .groupbox-title {
-  padding-inline-start: 4px;
 }
 
 .ac-site-icon {
@@ -130,16 +157,13 @@ button > hbox > label {
 .subcategory:not([hidden]) ~ .subcategory {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(12, 12, 13, 0.15);
+  border-top: 1px solid var(--in-content-border-color);
 }
 
 /* Category List */
 
-#categories > scrollbox {
+#categories {
   overflow: visible !important; /* Cancel scrollbar and do not clip overflow content when window size goes very small */
-}
-
-#categories > scrollbox > box {
   padding: 1px; /* Adding padding around richlistitem in order to make entire keyboard focusing outline visible */
 }
 
@@ -174,10 +198,48 @@ button > hbox > label {
   display: none;
 }
 
+/* All panes */
+
+.info-icon,
+.androidIcon,
+.iOSIcon,
+#updateSettingCrossUserWarning,
+.extension-controlled > description,
+.info-panel > description {
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
 /* General Pane */
 
 #isDefaultLabel {
   font-weight: 600;
+}
+
+.info-panel,
+.extension-controlled {
+  margin-top: 18px !important;
+  margin-bottom: 18px !important;
+  background: var(--in-content-warning-container);
+  border-radius: 5px;
+  padding-inline-end: 10px;
+}
+
+.info-panel > description,
+.extension-controlled > description {
+  line-height: 16px;
+  background: url(chrome://browser/skin/identity-icon.svg) 10px 14px no-repeat;
+  padding: 10px;
+  padding-inline-start: 32px;
+}
+
+.info-panel > description {
+  line-height: unset;
+}
+
+.info-panel > description:-moz-locale-dir(rtl),
+.extension-controlled > description:-moz-locale-dir(rtl) {
+  background-position-x: right 10px;
 }
 
 .extension-controlled-icon {
@@ -209,8 +271,8 @@ button > hbox > label {
   font-size: 90%;
 }
 
-#activeLanguages {
-  height: 16em;
+#useDocumentColors {
+  margin: 0;
 }
 
 #activeLanguages > richlistitem {
@@ -218,6 +280,7 @@ button > hbox > label {
 }
 
 #downloadFolder {
+  -moz-box-flex: 1;
   margin-inline-start: 0;
   padding-inline-start: 30px;
   background-repeat: no-repeat;
@@ -227,14 +290,6 @@ button > hbox > label {
 
 #downloadFolder:-moz-locale-dir(rtl) {
   background-position-x: right 8px;
-}
-
-#updateApp > .groupbox-body > label {
-  margin: 0 0 4px;
-}
-
-#updateApp > .groupbox-body > description {
-  margin: 0;
 }
 
 #updateBox {
@@ -304,20 +359,32 @@ button > hbox > label {
 }
 
 /* Home Pane */
+
 #homepageGroup menulist,
-#homepageGroup textbox {
+#homepageGroup html|input {
   margin: 5px 0;
 }
+
+#homepageGroup html|input {
+  text-align: match-parent;
+}
+
+#homepageGroup:-moz-locale-dir(rtl) html|input {
+  unicode-bidi: plaintext;
+}
+
 #homepageAndNewWindowsOption {
   margin-top: 20px;
 }
-#homepageGroup:-moz-locale-dir(rtl) input {
-  unicode-bidi: plaintext;
+
+#homepageGroup:-moz-locale-dir(rtl) panel[type="autocomplete-richlistbox"] {
   direction: rtl;
 }
+
 .homepage-button:first-of-type {
   margin-inline-start: 0;
 }
+
 .homepage-button:last-of-type {
   margin-inline-end: 0;
 }
@@ -330,12 +397,9 @@ button > hbox > label {
 
 #engineList > treechildren::-moz-tree-image(engineShown, checked),
 #blocklistsTree > treechildren::-moz-tree-image(selectionCol, checked) {
-  list-style-image: url("chrome://global/skin/in-content/check.svg");
+  list-style-image: url("chrome://global/skin/icons/check.svg");
   -moz-context-properties: fill, stroke;
   fill: #2292d0;
-  stroke: none;
-  width: 21px;
-  height: 21px;
 }
 
 #engineList > treechildren::-moz-tree-image(engineShown, checked, selected),
@@ -359,10 +423,6 @@ button > hbox > label {
 
 /* Privacy Pane */
 
-#formAutofillGroup {
-  margin-top: 28px;
-}
-
 .doNotTrackLearnMore {
   margin-inline-start: calc(1em + 30px);
   margin-bottom: 1em;
@@ -384,16 +444,8 @@ button > hbox > label {
   margin-bottom: 4px;
 }
 
-#trackingProtectionBox {
-  margin-top: 16px;
-}
-
 #doNotTrackLearnMoreBox {
   margin-top: 32px;
-}
-
-#trackingProtectionAdvancedSettings {
-  margin-inline-start: 15px;
 }
 
 #historyPane {
@@ -406,7 +458,13 @@ button > hbox > label {
   justify-content: space-between;
 }
 
-#acceptCookies {
+#sanitizeEverythingWarningBox {
+  background-color: var(--in-content-box-background);
+  border: 1px solid var(--in-content-box-border-color);
+}
+
+#blockCookies,
+#keepRow {
   margin-top: 1.5em;
 }
 
@@ -416,21 +474,9 @@ button > hbox > label {
 #historyPane:not([selectedIndex="2"]) > #historyCustomPane,
 #weavePrefsDeck:not([selectedIndex="1"]) > #hasFxaAccount,
 #fxaLoginStatus:not([selectedIndex="1"]) > #fxaLoginUnverified,
-#fxaLoginStatus:not([selectedIndex="2"]) > #fxaLoginRejected {
+#fxaLoginStatus:not([selectedIndex="2"]) > #fxaLoginRejected,
+#syncStatus:not([selectedIndex="1"]) > #syncConfigured {
   visibility: collapse;
-}
-
-#weavePrefsDeck > vbox > label,
-#weavePrefsDeck > vbox > groupbox,
-#weavePrefsDeck > vbox > description,
-#weavePrefsDeck > #hasFxaAccount > vbox > label,
-#weavePrefsDeck > #hasFxaAccount > hbox > label {
-  /* no margin-inline-start for elements at the beginning of a line */
-  margin-inline-start: 0;
-}
-
-#weavePrefsDeck > vbox > groupbox {
-  margin-top: 16px;
 }
 
 #tabsElement {
@@ -462,9 +508,9 @@ button > hbox > label {
 }
 
 .dialogBox {
-  background-color: #fbfbfb;
+  background-color: var(--in-content-page-background);
   background-clip: content-box;
-  color: #424e5a;
+  color: var(--in-content-page-color);
   /* `transparent` will use the dialogText color in high-contrast themes and
      when page colors are disabled */
   border: 1px solid transparent;
@@ -482,15 +528,16 @@ button > hbox > label {
   min-width: 66ch;
 }
 
-.dialogBox > .groupbox-title {
+.dialogTitleBar {
   margin-top: 0;
   padding: 3.5px 0;
-  background-color: #F1F1F1;
-  border-bottom: 1px solid #C1C1C1;
+  background-color: var(--in-content-dialog-header-background);
+  border-bottom: 1px solid var(--in-content-border-color);
 }
 
 .dialogTitle {
   font-size: .9em;
+  font-weight: 600;
   text-align: center;
   -moz-user-select: none;
 }
@@ -502,20 +549,11 @@ button > hbox > label {
   min-height: auto;
 }
 
-.dialogBox > .groupbox-body {
-  -moz-appearance: none;
-  padding: 20px;
-}
-
 .dialogFrame {
+  margin: 20px;
   -moz-box-flex: 1;
   /* Default dialog dimensions */
   width: 66ch;
-}
-
-.largeDialogContainer.doScroll {
-  overflow-y: auto;
-  -moz-box-flex: 1;
 }
 
 /**
@@ -546,7 +584,7 @@ button > hbox > label {
   height: 80px;
   border-radius: 50%;
   border: 1px solid transparent;
-  list-style-image: url("chrome://browser/skin/preferences/in-content/fxa-avatar.svg");
+  list-style-image: url(chrome://browser/skin/fxa/avatar-color.svg);
   margin-inline-end: 24px;
   -moz-user-focus: normal;
 }
@@ -574,6 +612,7 @@ button > hbox > label {
 }
 
 #fxaSyncComputerName {
+  -moz-box-flex: 1;
   margin-inline-start: 0;
   margin-bottom: 4px;
 }
@@ -581,14 +620,6 @@ button > hbox > label {
 #fxaChangeDeviceName {
   margin-top: 4px;
   margin-bottom: 4px;
-}
-
-#tosPP-small {
-  margin-top: 32px;
-}
-
-#tosPP-small-ToS {
-  margin-bottom: 14px;
 }
 
 #noFxaCaption {
@@ -602,7 +633,7 @@ button > hbox > label {
 }
 
 .fxaSyncIllustration {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/sync-devices.svg");
+  list-style-image: url(chrome://browser/skin/fxa/sync-devices.svg);
   width: 312px;
   height: 136px;
 }
@@ -638,8 +669,79 @@ button > hbox > label {
   margin-inline-end: 8px;
 }
 
-#fxaSyncEngines > vbox > checkbox {
+#syncStatus {
+  margin-top: 32px;
+}
+
+.sync-group {
+  border-radius: 4px;
+  padding: 16px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background-color: var(--in-content-box-info-background);
+  border: 1px solid var(--in-content-border-color);
+}
+
+.sync-configured {
+  display: block;
+}
+
+.sync-engines-list > div,
+.sync-engines-list + hbox {
+  margin-top: 0px;
+  padding-top: 16px;
   max-width: 224px;
+  height: auto;
+}
+
+.sync-engines-list checkbox .checkbox-icon,
+.sync-engine-image {
+  margin-inline-start: 4px;
+  margin-inline-end: 8px;
+  width: 16px;
+  height: 16px;
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+.sync-engines-list {
+  column-count: 2;
+  column-fill: balance;
+}
+
+.sync-engine-bookmarks .checkbox-icon,
+.sync-engine-bookmarks.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/bookmark.svg");
+}
+
+.sync-engine-history .checkbox-icon,
+.sync-engine-history.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/history.svg");
+}
+
+.sync-engine-tabs .checkbox-icon,
+.sync-engine-tabs.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/tab.svg");
+}
+
+.sync-engine-passwords .checkbox-icon,
+.sync-engine-passwords.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/login.svg");
+}
+
+.sync-engine-addons .checkbox-icon,
+.sync-engine-addons.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/extensions.svg");
+}
+
+.sync-engine-prefs .checkbox-icon,
+.sync-engine-prefs.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/preferences.svg");
+}
+
+.sync-engine-addresses .checkbox-icon,
+.sync-engine-addresses.sync-engine-image {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/formfill.svg");
 }
 
 .fxaMobilePromo {
@@ -653,8 +755,6 @@ button > hbox > label {
   width: 20px;
   height: 20px;
   vertical-align: text-bottom;
-  -moz-context-properties: fill;
-  fill: currentColor;
 }
 
 #updateDeck > hbox > label {
@@ -667,6 +767,13 @@ button > hbox > label {
   margin-inline-end: 8px;
   margin-top: 7px;
   margin-bottom: 7px;
+}
+
+html|img.update-throbber {
+  vertical-align: middle;
+}
+
+image.update-throbber {
   list-style-image: url("chrome://global/skin/icons/loading.png");
 }
 
@@ -679,73 +786,6 @@ button > hbox > label {
 .navigation {
   overflow-x: hidden;
   overflow-y: auto;
-}
-
-.navigation > .help-button {
-  margin-bottom: 36px;
-  padding: 1px; /* Adding padding around help label in order to make entire keyboard focusing outline visible */
-}
-
-.help-button > .text-link {
-  -moz-box-flex: 1;
-  margin-inline-start: 34px;
-  margin-inline-end: 0;
-  text-decoration: none;
-  color: currentColor;
-  width: 36px;
-  height: 36px;
-  cursor: default;
-}
-
-.help-button > .text-link:hover {
-  background-color: var(--in-content-category-background-hover);
-  border-radius: 2px;
-}
-
-.help-button > .text-link:hover:active:not([disabled]) {
-  background-color: var(--in-content-category-background-active);
-}
-
-.help-button > .text-link:-moz-focusring {
-  outline: var(--in-content-category-outline-focus);
-}
-
-.help-icon {
-  list-style-image: url("chrome://global/skin/icons/help.svg");
-  -moz-context-properties: fill, fill-opacity;
-  fill: currentColor;
-  width: 16px;
-  height: 16px;
-  margin: 10px;
-  margin-inline-start: 13px;
-  vertical-align: middle;
-}
-
-.help-icon:hover {
-  fill: currentColor !important;
-}
-
-.help-label {
-  margin: 0 4px;
-  font-size: .9em;
-  -moz-user-select: none;
-}
-
-@media (max-width: 830px) {
-  .help-button > .text-link {
-    -moz-box-flex: 0;
-    width: 36px;
-    height: 36px;
-    margin-inline-start: 0;
-  }
-
-  .help-icon {
-    margin: 10px;
-  }
-
-  .help-label {
-    display: none;
-  }
 }
 
 .face-sad {
@@ -773,16 +813,18 @@ button > hbox > label {
 }
 
 #policies-container {
-  background-color: #ededf0;
+  background-color: var(--in-content-warning-container);
   padding: 0px 8px;
   margin-inline-end: 16px;
   border-radius: 2px;
 }
 
+.policies-label {
+  margin-left: 2px;
+}
+
 .info-icon {
   list-style-image: url("chrome://browser/skin/identity-icon.svg");
-  fill: currentColor;
-  -moz-context-properties: fill;
   width: 16px;
   height: 16px;
   margin-top: calc((32px - 16px) / 2);
@@ -812,6 +854,7 @@ button > hbox > label {
   position: absolute;
   padding: 0 10px;
   background-color: #ffe900;
+  color: #000;
   border: 1px solid #d7b600;
   bottom: 36px;
   opacity: .85;
@@ -913,9 +956,77 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 /* Proxy port input */
 
 .proxy-port-input {
-  width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
+  width: calc(5ch + 18px); /* 5 chars + (8px padding + 1px border) on both sides */
+  margin-inline-start: 4px;
 }
 
 #defaultBrowserLanguage {
+  margin-inline-start: 0;
   min-width: 20em;
+}
+
+#selectedLocales > richlistitem {
+  padding-inline-start: 13px;
+}
+
+#availableLanguages,
+#availableLocales {
+  margin: 0;
+  margin-inline-end: 4px;
+}
+
+#warning-message > .message-bar-description {
+  width: 32em;
+}
+
+#warning-message {
+  margin-top: 8px;
+}
+
+.add-web-language,
+.add-browser-language {
+  margin: 0;
+  margin-inline-start: 4px;
+}
+
+.action-button {
+  margin-inline-end: 0;
+}
+
+/* Menulist styles */
+.label-item {
+  font-size: 0.8em;
+}
+
+.updateSettingCrossUserWarningContainer {
+  background: var(--in-content-warning-container);
+  border-radius: 5px;
+  padding-inline: 8px;
+  padding-block-start: 2px;
+  padding-block-end: 8px;
+  margin-block-end: 17px;
+}
+
+#updateSettingCrossUserWarning {
+  padding-inline-start: 30px;
+  margin-block-start: 20px;
+  line-height: 20px;
+  background-image: url("chrome://browser/skin/identity-icon.svg");
+  background-position-x: left 2px;
+  background-position-y: top 2px;
+  background-size: 16px 16px;
+  background-repeat: no-repeat;
+}
+
+#updateSettingCrossUserWarning:-moz-locale-dir(rtl) {
+  background-position-x: right 2px;
+}
+
+richlistitem .text-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+richlistitem .text-link:hover {
+  color: inherit;
 }

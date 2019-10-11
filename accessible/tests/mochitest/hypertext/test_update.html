@@ -5,8 +5,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <script type="application/javascript"
           src="../common.js"></script>
@@ -19,7 +18,7 @@
       this.containerNode = getNode(aContainerID);
 
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, this.containerNode)
+        new invokerChecker(EVENT_REORDER, this.containerNode),
       ];
 
       this.invoke = function addLinks_invoke() {
@@ -60,7 +59,7 @@
       this.textLen = this.textNode.data.length;
 
       this.eventSeq = [
-        new invokerChecker(EVENT_TEXT_INSERTED, this.containerNode)
+        new invokerChecker(EVENT_TEXT_INSERTED, this.containerNode),
       ];
 
       this.invoke = function updateText_invoke() {
@@ -93,7 +92,7 @@
          "Wrong text before child removal");
 
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, this.containerNode)
+        new invokerChecker(EVENT_REORDER, this.containerNode),
       ];
 
       this.invoke = function removeChild_invoke() {
@@ -115,7 +114,7 @@
     function removeFirstChild(aContainer) {
       this.ht = getAccessible(aContainer, [ nsIAccessibleHyperText ]);
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, aContainer)
+        new invokerChecker(EVENT_REORDER, aContainer),
       ];
 
       this.invoke = function removeFirstChild_invoke() {
@@ -138,7 +137,7 @@
     function removeLastChild(aContainer) {
       this.ht = getAccessible(aContainer, [ nsIAccessibleHyperText ]);
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, aContainer)
+        new invokerChecker(EVENT_REORDER, aContainer),
       ];
 
       this.invoke = function removeLastChild_invoke() {

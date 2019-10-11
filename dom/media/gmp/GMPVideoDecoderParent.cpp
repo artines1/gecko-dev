@@ -4,30 +4,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GMPVideoDecoderParent.h"
-#include "mozilla/Logging.h"
-#include "mozilla/Unused.h"
-#include "nsAutoRef.h"
-#include "nsThreadUtils.h"
+
+#include "GMPContentParent.h"
 #include "GMPUtils.h"
+#include "GMPLog.h"
+#include "GMPMessageUtils.h"
 #include "GMPVideoEncodedFrameImpl.h"
 #include "GMPVideoi420FrameImpl.h"
-#include "GMPContentParent.h"
-#include "GMPMessageUtils.h"
 #include "mozilla/gmp/GMPTypes.h"
+#include "mozilla/Unused.h"
+#include "nsAutoRef.h"
 #include "nsPrintfCString.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
-
-#ifdef LOG
-#undef LOG
-#endif
-
-extern LogModule* GetGMPLog();
-
-#define LOGV(msg) MOZ_LOG(GetGMPLog(), mozilla::LogLevel::Verbose, msg)
-#define LOGD(msg) MOZ_LOG(GetGMPLog(), mozilla::LogLevel::Debug, msg)
-#define LOGE(msg) MOZ_LOG(GetGMPLog(), mozilla::LogLevel::Error, msg)
-#define LOG(level, msg) MOZ_LOG(GetGMPLog(), (level), msg)
 
 namespace gmp {
 
@@ -42,36 +32,27 @@ namespace gmp {
 // Dead: mIsOpen == false
 
 GMPVideoDecoderParent::GMPVideoDecoderParent(GMPContentParent* aPlugin)
-  : GMPSharedMemManager(aPlugin)
-  , mIsOpen(false)
-  , mShuttingDown(false)
-  , mActorDestroyed(false)
-  , mIsAwaitingResetComplete(false)
-  , mIsAwaitingDrainComplete(false)
-  , mPlugin(aPlugin)
-  , mCallback(nullptr)
-  , mVideoHost(this)
-  , mPluginId(aPlugin->GetPluginId())
-  , mFrameCount(0)
-{
+    : GMPSharedMemManager(aPlugin),
+      mIsOpen(false),
+      mShuttingDown(false),
+      mActorDestroyed(false),
+      mIsAwaitingResetComplete(false),
+      mIsAwaitingDrainComplete(false),
+      mPlugin(aPlugin),
+      mCallback(nullptr),
+      mVideoHost(this),
+      mPluginId(aPlugin->GetPluginId()),
+      mFrameCount(0) {
   MOZ_ASSERT(mPlugin);
 }
 
-GMPVideoDecoderParent::~GMPVideoDecoderParent()
-{
-}
+GMPVideoDecoderParent::~GMPVideoDecoderParent() {}
 
-GMPVideoHostImpl&
-GMPVideoDecoderParent::Host()
-{
-  return mVideoHost;
-}
+GMPVideoHostImpl& GMPVideoDecoderParent::Host() { return mVideoHost; }
 
 // Note: may be called via Terminated()
-void
-GMPVideoDecoderParent::Close()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::Close()", this));
+void GMPVideoDecoderParent::Close() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::Close()", this);
   MOZ_ASSERT(!mPlugin || mPlugin->GMPEventTarget()->IsOnCurrentThread());
 
   // Ensure if we've received a Close while waiting for a ResetComplete
@@ -90,13 +71,11 @@ GMPVideoDecoderParent::Close()
   Shutdown();
 }
 
-nsresult
-GMPVideoDecoderParent::InitDecode(const GMPVideoCodec& aCodecSettings,
-                                  const nsTArray<uint8_t>& aCodecSpecific,
-                                  GMPVideoDecoderCallbackProxy* aCallback,
-                                  int32_t aCoreCount)
-{
-  LOGD(("GMPVideoDecoderParent[%p]::InitDecode()", this));
+nsresult GMPVideoDecoderParent::InitDecode(
+    const GMPVideoCodec& aCodecSettings,
+    const nsTArray<uint8_t>& aCodecSpecific,
+    GMPVideoDecoderCallbackProxy* aCallback, int32_t aCoreCount) {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::InitDecode()", this);
 
   if (mActorDestroyed) {
     NS_WARNING("Trying to use a destroyed GMP video decoder!");
@@ -123,18 +102,17 @@ GMPVideoDecoderParent::InitDecode(const GMPVideoCodec& aCodecSettings,
   return NS_OK;
 }
 
-nsresult
-GMPVideoDecoderParent::Decode(GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame,
-                              bool aMissingFrames,
-                              const nsTArray<uint8_t>& aCodecSpecificInfo,
-                              int64_t aRenderTimeMs)
-{
-  LOGV(("GMPVideoDecoderParent[%p]::Decode() timestamp=%" PRId64 " keyframe=%d",
-        this, aInputFrame->TimeStamp(),
-        aInputFrame->FrameType() == kGMPKeyFrame));
+nsresult GMPVideoDecoderParent::Decode(
+    GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame, bool aMissingFrames,
+    const nsTArray<uint8_t>& aCodecSpecificInfo, int64_t aRenderTimeMs) {
+  GMP_LOG_VERBOSE(
+      "GMPVideoDecoderParent[%p]::Decode() timestamp=%" PRId64 " keyframe=%d",
+      this, aInputFrame->TimeStamp(), aInputFrame->FrameType() == kGMPKeyFrame);
 
   if (!mIsOpen) {
-    LOGE(("GMPVideoDecoderParent[%p]::Decode() ERROR; dead GMPVideoDecoder", this));
+    GMP_LOG_ERROR(
+        "GMPVideoDecoderParent[%p]::Decode() ERROR; dead GMPVideoDecoder",
+        this);
     NS_WARNING("Trying to use an dead GMP video decoder");
     return NS_ERROR_FAILURE;
   }
@@ -142,26 +120,30 @@ GMPVideoDecoderParent::Decode(GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame,
   MOZ_ASSERT(mPlugin->GMPEventTarget()->IsOnCurrentThread());
 
   GMPUniquePtr<GMPVideoEncodedFrameImpl> inputFrameImpl(
-    static_cast<GMPVideoEncodedFrameImpl*>(aInputFrame.release()));
+      static_cast<GMPVideoEncodedFrameImpl*>(aInputFrame.release()));
 
   // Very rough kill-switch if the plugin stops processing.  If it's merely
   // hung and continues, we'll come back to life eventually.
   // 3* is because we're using 3 buffers per frame for i420 data for now.
-  if ((NumInUse(GMPSharedMem::kGMPFrameData) > 3*GMPSharedMem::kGMPBufLimit) ||
+  if ((NumInUse(GMPSharedMem::kGMPFrameData) >
+       3 * GMPSharedMem::kGMPBufLimit) ||
       (NumInUse(GMPSharedMem::kGMPEncodedData) > GMPSharedMem::kGMPBufLimit)) {
-    LOGE(("GMPVideoDecoderParent[%p]::Decode() ERROR; shmem buffer limit hit frame=%d encoded=%d",
-          this, NumInUse(GMPSharedMem::kGMPFrameData), NumInUse(GMPSharedMem::kGMPEncodedData)));
+    GMP_LOG_ERROR(
+        "GMPVideoDecoderParent[%p]::Decode() ERROR; shmem buffer limit hit "
+        "frame=%d encoded=%d",
+        this, NumInUse(GMPSharedMem::kGMPFrameData),
+        NumInUse(GMPSharedMem::kGMPEncodedData));
     return NS_ERROR_FAILURE;
   }
 
   GMPVideoEncodedFrameData frameData;
   inputFrameImpl->RelinquishFrameData(frameData);
 
-  if (!SendDecode(frameData,
-                  aMissingFrames,
-                  aCodecSpecificInfo,
+  if (!SendDecode(frameData, aMissingFrames, aCodecSpecificInfo,
                   aRenderTimeMs)) {
-    LOGE(("GMPVideoDecoderParent[%p]::Decode() ERROR; SendDecode() failure.", this));
+    GMP_LOG_ERROR(
+        "GMPVideoDecoderParent[%p]::Decode() ERROR; SendDecode() failure.",
+        this);
     return NS_ERROR_FAILURE;
   }
   mFrameCount++;
@@ -170,10 +152,8 @@ GMPVideoDecoderParent::Decode(GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame,
   return NS_OK;
 }
 
-nsresult
-GMPVideoDecoderParent::Reset()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::Reset()", this));
+nsresult GMPVideoDecoderParent::Reset() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::Reset()", this);
 
   if (!mIsOpen) {
     NS_WARNING("Trying to use an dead GMP video decoder");
@@ -190,14 +170,15 @@ GMPVideoDecoderParent::Reset()
 
   RefPtr<GMPVideoDecoderParent> self(this);
   nsCOMPtr<nsIRunnable> task = NS_NewRunnableFunction(
-    "gmp::GMPVideoDecoderParent::Reset", [self]() -> void {
-      LOGD(("GMPVideoDecoderParent[%p]::ResetCompleteTimeout() timed out "
+      "gmp::GMPVideoDecoderParent::Reset", [self]() -> void {
+        GMP_LOG_DEBUG(
+            "GMPVideoDecoderParent[%p]::ResetCompleteTimeout() timed out "
             "waiting for ResetComplete",
-            self.get()));
-      self->mResetCompleteTimeout = nullptr;
-      LogToBrowserConsole(NS_LITERAL_STRING(
-        "GMPVideoDecoderParent timed out waiting for ResetComplete()"));
-    });
+            self.get());
+        self->mResetCompleteTimeout = nullptr;
+        LogToBrowserConsole(NS_LITERAL_STRING(
+            "GMPVideoDecoderParent timed out waiting for ResetComplete()"));
+      });
   CancelResetCompleteTimeout();
   nsCOMPtr<nsISerialEventTarget> target = mPlugin->GMPEventTarget();
   mResetCompleteTimeout = SimpleTimer::Create(task, 5000, target);
@@ -206,19 +187,16 @@ GMPVideoDecoderParent::Reset()
   return NS_OK;
 }
 
-void
-GMPVideoDecoderParent::CancelResetCompleteTimeout()
-{
+void GMPVideoDecoderParent::CancelResetCompleteTimeout() {
   if (mResetCompleteTimeout) {
     mResetCompleteTimeout->Cancel();
     mResetCompleteTimeout = nullptr;
   }
 }
 
-nsresult
-GMPVideoDecoderParent::Drain()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::Drain() frameCount=%d", this, mFrameCount));
+nsresult GMPVideoDecoderParent::Drain() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::Drain() frameCount=%d", this,
+                mFrameCount);
 
   if (!mIsOpen) {
     NS_WARNING("Trying to use an dead GMP video decoder");
@@ -237,9 +215,7 @@ GMPVideoDecoderParent::Drain()
   return NS_OK;
 }
 
-const nsCString&
-GMPVideoDecoderParent::GetDisplayName() const
-{
+const nsCString& GMPVideoDecoderParent::GetDisplayName() const {
   if (!mIsOpen) {
     NS_WARNING("Trying to use an dead GMP video decoder");
   }
@@ -250,10 +226,8 @@ GMPVideoDecoderParent::GetDisplayName() const
 }
 
 // Note: Consider keeping ActorDestroy sync'd up when making changes here.
-nsresult
-GMPVideoDecoderParent::Shutdown()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::Shutdown()", this));
+nsresult GMPVideoDecoderParent::Shutdown() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::Shutdown()", this);
   MOZ_ASSERT(!mPlugin || mPlugin->GMPEventTarget()->IsOnCurrentThread());
 
   if (mShuttingDown) {
@@ -281,10 +255,9 @@ GMPVideoDecoderParent::Shutdown()
 }
 
 // Note: Keep this sync'd up with Shutdown
-void
-GMPVideoDecoderParent::ActorDestroy(ActorDestroyReason aWhy)
-{
-  LOGD(("GMPVideoDecoderParent[%p]::ActorDestroy reason=%d", this, aWhy));
+void GMPVideoDecoderParent::ActorDestroy(ActorDestroyReason aWhy) {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::ActorDestroy reason=%d", this,
+                aWhy);
 
   mIsOpen = false;
   mActorDestroyed = true;
@@ -300,7 +273,8 @@ GMPVideoDecoderParent::ActorDestroy(ActorDestroyReason aWhy)
     mCallback = nullptr;
   }
   if (mPlugin) {
-    // Ignore any return code. It is OK for this to fail without killing the process.
+    // Ignore any return code. It is OK for this to fail without killing the
+    // process.
     mPlugin->VideoDecoderDestroyed(this);
     mPlugin = nullptr;
   }
@@ -308,78 +282,80 @@ GMPVideoDecoderParent::ActorDestroy(ActorDestroyReason aWhy)
   MaybeDisconnect(aWhy == AbnormalShutdown);
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvDecoded(const GMPVideoi420FrameData& aDecodedFrame)
-{
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvDecoded(
+    const GMPVideoi420FrameData& aDecodedFrame) {
   --mFrameCount;
-  LOGV(("GMPVideoDecoderParent[%p]::RecvDecoded() timestamp=%" PRId64 " frameCount=%d",
-    this, aDecodedFrame.mTimestamp(), mFrameCount));
+  GMP_LOG_VERBOSE("GMPVideoDecoderParent[%p]::RecvDecoded() timestamp=%" PRId64
+                  " frameCount=%d",
+                  this, aDecodedFrame.mTimestamp(), mFrameCount);
 
   if (!mCallback) {
     return IPC_FAIL_NO_REASON(this);
   }
 
   if (!GMPVideoi420FrameImpl::CheckFrameData(aDecodedFrame)) {
-    LOGE(("GMPVideoDecoderParent[%p]::RecvDecoded() "
-          "timestamp=%" PRId64 " decoded frame corrupt, ignoring",
-          this, aDecodedFrame.mTimestamp()));
+    GMP_LOG_ERROR(
+        "GMPVideoDecoderParent[%p]::RecvDecoded() "
+        "timestamp=%" PRId64 " decoded frame corrupt, ignoring",
+        this, aDecodedFrame.mTimestamp());
     return IPC_FAIL_NO_REASON(this);
   }
   auto f = new GMPVideoi420FrameImpl(aDecodedFrame, &mVideoHost);
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->Decoded(f);
 
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvReceivedDecodedReferenceFrame(const uint64_t& aPictureId)
-{
+GMPVideoDecoderParent::RecvReceivedDecodedReferenceFrame(
+    const uint64_t& aPictureId) {
   if (!mCallback) {
     return IPC_FAIL_NO_REASON(this);
   }
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->ReceivedDecodedReferenceFrame(aPictureId);
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvReceivedDecodedFrame(const uint64_t& aPictureId)
-{
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvReceivedDecodedFrame(
+    const uint64_t& aPictureId) {
   if (!mCallback) {
     return IPC_FAIL_NO_REASON(this);
   }
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->ReceivedDecodedFrame(aPictureId);
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvInputDataExhausted()
-{
-  LOGV(("GMPVideoDecoderParent[%p]::RecvInputDataExhausted()", this));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvInputDataExhausted() {
+  GMP_LOG_VERBOSE("GMPVideoDecoderParent[%p]::RecvInputDataExhausted()", this);
 
   if (!mCallback) {
     return IPC_FAIL_NO_REASON(this);
   }
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->InputDataExhausted();
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvDrainComplete()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::RecvDrainComplete() frameCount=%d", this, mFrameCount));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvDrainComplete() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::RecvDrainComplete() frameCount=%d",
+                this, mFrameCount);
   nsAutoString msg;
-  msg.AppendLiteral("GMPVideoDecoderParent::RecvDrainComplete() outstanding frames=");
+  msg.AppendLiteral(
+      "GMPVideoDecoderParent::RecvDrainComplete() outstanding frames=");
   msg.AppendInt(mFrameCount);
   LogToBrowserConsole(msg);
 
@@ -395,16 +371,15 @@ GMPVideoDecoderParent::RecvDrainComplete()
   }
   mIsAwaitingDrainComplete = false;
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->DrainComplete();
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvResetComplete()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::RecvResetComplete()", this));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvResetComplete() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::RecvResetComplete()", this);
 
   CancelResetCompleteTimeout();
 
@@ -421,16 +396,15 @@ GMPVideoDecoderParent::RecvResetComplete()
   mIsAwaitingResetComplete = false;
   mFrameCount = 0;
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->ResetComplete();
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvError(const GMPErr& aError)
-{
-  LOGD(("GMPVideoDecoderParent[%p]::RecvError(error=%d)", this, aError));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvError(const GMPErr& aError) {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::RecvError(error=%d)", this, aError);
 
   if (!mCallback) {
     return IPC_FAIL_NO_REASON(this);
@@ -441,24 +415,22 @@ GMPVideoDecoderParent::RecvError(const GMPErr& aError)
   // the error.
   UnblockResetAndDrain();
 
-  // Ignore any return code. It is OK for this to fail without killing the process.
+  // Ignore any return code. It is OK for this to fail without killing the
+  // process.
   mCallback->Error(aError);
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvShutdown()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::RecvShutdown()", this));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvShutdown() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::RecvShutdown()", this);
 
   Shutdown();
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::RecvParentShmemForPool(Shmem&& aEncodedBuffer)
-{
+mozilla::ipc::IPCResult GMPVideoDecoderParent::RecvParentShmemForPool(
+    Shmem&& aEncodedBuffer) {
   if (aEncodedBuffer.IsWritable()) {
     mVideoHost.SharedMemMgr()->MgrDeallocShmem(GMPSharedMem::kGMPEncodedData,
                                                aEncodedBuffer);
@@ -466,18 +438,15 @@ GMPVideoDecoderParent::RecvParentShmemForPool(Shmem&& aEncodedBuffer)
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::AnswerNeedShmem(const uint32_t& aFrameBufferSize,
-                                       Shmem* aMem)
-{
+mozilla::ipc::IPCResult GMPVideoDecoderParent::AnswerNeedShmem(
+    const uint32_t& aFrameBufferSize, Shmem* aMem) {
   ipc::Shmem mem;
 
-  if (!mVideoHost.SharedMemMgr()->MgrAllocShmem(GMPSharedMem::kGMPFrameData,
-                                                aFrameBufferSize,
-                                                ipc::SharedMemory::TYPE_BASIC, &mem))
-  {
-    LOGE(("%s: Failed to get a shared mem buffer for Child! size %u",
-         __FUNCTION__, aFrameBufferSize));
+  if (!mVideoHost.SharedMemMgr()->MgrAllocShmem(
+          GMPSharedMem::kGMPFrameData, aFrameBufferSize,
+          ipc::SharedMemory::TYPE_BASIC, &mem)) {
+    GMP_LOG_ERROR("%s: Failed to get a shared mem buffer for Child! size %u",
+                  __FUNCTION__, aFrameBufferSize);
     return IPC_FAIL_NO_REASON(this);
   }
   *aMem = mem;
@@ -485,13 +454,12 @@ GMPVideoDecoderParent::AnswerNeedShmem(const uint32_t& aFrameBufferSize,
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-GMPVideoDecoderParent::Recv__delete__()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::Recv__delete__()", this));
+mozilla::ipc::IPCResult GMPVideoDecoderParent::Recv__delete__() {
+  GMP_LOG_DEBUG("GMPVideoDecoderParent[%p]::Recv__delete__()", this);
 
   if (mPlugin) {
-    // Ignore any return code. It is OK for this to fail without killing the process.
+    // Ignore any return code. It is OK for this to fail without killing the
+    // process.
     mPlugin->VideoDecoderDestroyed(this);
     mPlugin = nullptr;
   }
@@ -499,12 +467,11 @@ GMPVideoDecoderParent::Recv__delete__()
   return IPC_OK();
 }
 
-void
-GMPVideoDecoderParent::UnblockResetAndDrain()
-{
-  LOGD(("GMPVideoDecoderParent[%p]::UnblockResetAndDrain() "
-        "awaitingResetComplete=%d awaitingDrainComplete=%d",
-       this, mIsAwaitingResetComplete, mIsAwaitingDrainComplete));
+void GMPVideoDecoderParent::UnblockResetAndDrain() {
+  GMP_LOG_DEBUG(
+      "GMPVideoDecoderParent[%p]::UnblockResetAndDrain() "
+      "awaitingResetComplete=%d awaitingDrainComplete=%d",
+      this, mIsAwaitingResetComplete, mIsAwaitingDrainComplete);
 
   if (!mCallback) {
     MOZ_ASSERT(!mIsAwaitingResetComplete);
@@ -522,5 +489,5 @@ GMPVideoDecoderParent::UnblockResetAndDrain()
   CancelResetCompleteTimeout();
 }
 
-} // namespace gmp
-} // namespace mozilla
+}  // namespace gmp
+}  // namespace mozilla

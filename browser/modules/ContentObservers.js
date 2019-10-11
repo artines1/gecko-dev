@@ -14,11 +14,13 @@
 
 "use strict";
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.defineModuleGetter(this, "ContentWebRTC",
-  "resource:///modules/ContentWebRTC.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "WebRTCChild",
+  "resource:///actors/WebRTCChild.jsm"
+);
 
 var gEMEUIObserver = function(subject, topic, data) {
   let win = subject.top;
@@ -43,24 +45,26 @@ function getMessageManagerForWindow(aContentWindow) {
 Services.obs.addObserver(gEMEUIObserver, "mediakeys-request");
 Services.obs.addObserver(gDecoderDoctorObserver, "decoder-doctor-notification");
 
-
-// ContentWebRTC observer registration.
-const kWebRTCObserverTopics = ["getUserMedia:request",
-                               "recording-device-stopped",
-                               "PeerConnection:request",
-                               "recording-device-events",
-                               "recording-window-ended"];
+// WebRTCChild observer registration.
+const kWebRTCObserverTopics = [
+  "getUserMedia:request",
+  "recording-device-stopped",
+  "PeerConnection:request",
+  "recording-device-events",
+  "recording-window-ended",
+];
 
 function webRTCObserve(aSubject, aTopic, aData) {
-  ContentWebRTC.observe(aSubject, aTopic, aData);
+  WebRTCChild.observe(aSubject, aTopic, aData);
 }
 
 for (let topic of kWebRTCObserverTopics) {
   Services.obs.addObserver(webRTCObserve, topic);
 }
 
-if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT)
+if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
   Services.obs.addObserver(processShutdown, "content-child-shutdown");
+}
 
 function processShutdown() {
   for (let topic of kWebRTCObserverTopics) {

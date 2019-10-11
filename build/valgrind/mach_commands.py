@@ -101,9 +101,8 @@ class MachCommands(MachCommandBase):
             env['G_SLICE'] = 'always-malloc'
             env['MOZ_CC_RUN_DURING_SHUTDOWN'] = '1'
             env['MOZ_CRASHREPORTER_NO_REPORT'] = '1'
+            env['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = '1'
             env['XPCOM_DEBUG_BREAK'] = 'warn'
-
-            env.update(self.extra_environment_variables)
 
             outputHandler = OutputHandler(self.log)
             kp_kwargs = {'processOutputLine': [outputHandler]}
@@ -114,6 +113,7 @@ class MachCommands(MachCommandBase):
 
             valgrind_args = [
                 valgrind,
+                '--sym-offsets=yes',
                 '--smc-check=all-non-file',
                 '--vex-iropt-register-updates=allregs-at-mem-access',
                 '--gen-suppressions=all',
@@ -187,9 +187,10 @@ class MachCommands(MachCommandBase):
                              '(reached {timeout} second limit)')
                 elif exitcode != 0:
                     status = 2  # turns the TBPL job red
-                    self.log(logging.ERROR, 'valgrind-fail-errors', {},
-                             'TEST-UNEXPECTED-FAIL | valgrind-test | non-zero exit code'
-                             'from Valgrind')
+                    self.log(logging.ERROR, 'valgrind-fail-errors',
+                             {'exitcode': exitcode},
+                             'TEST-UNEXPECTED-FAIL | valgrind-test | non-zero exit code '
+                             'from Valgrind: {exitcode}')
 
                 httpd.stop()
 

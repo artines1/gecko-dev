@@ -1,15 +1,17 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const TEST_PATH = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "http://example.com");
+const TEST_PATH = getRootDirectory(gTestPath).replace(
+  "chrome://mochitests/content",
+  "http://example.com"
+);
 
 add_task(async function test() {
-  const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+  const XUL_NS =
+    "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
   await SpecialPowers.pushPrefEnv({
-    "set": [
-      ["dom.require_user_interaction_for_beforeunload", false],
-    ]
+    set: [["dom.require_user_interaction_for_beforeunload", false]],
   });
 
   let url = TEST_PATH + "file_bug1415918_beforeunload.html";
@@ -21,9 +23,13 @@ add_task(async function test() {
 
   let observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
-      if (buttonId && mutation.type == "attributes" && browser.hasAttribute("tabmodalPromptShowing")) {
+      if (
+        buttonId &&
+        mutation.type == "attributes" &&
+        browser.hasAttribute("tabmodalPromptShowing")
+      ) {
         let prompt = stack.getElementsByTagNameNS(XUL_NS, "tabmodalprompt")[0];
-        document.getAnonymousElementByAttribute(prompt, "anonid", buttonId).click();
+        prompt.querySelector(`.tabmodalprompt-${buttonId}`).click();
         promptShown = true;
       }
     });
@@ -42,11 +48,17 @@ add_task(async function test() {
 
   // Check that all beforeunload handlers fired and reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
       frame.document.body.removeAttribute("fired");
     }
   });
@@ -60,40 +72,64 @@ add_task(async function test() {
 
   // Check that only the parent beforeunload handler fired, and reset attribute.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(!frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should not fire");
+      ok(
+        !frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should not fire"
+      );
     }
   });
 
   // Prompt is not shown, don't permit unload.
   promptShown = false;
-  ok(!browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload, "permit unload should be false");
+  ok(
+    !browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload,
+    "permit unload should be false"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that only the parent beforeunload handler fired, and reset attribute.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(!frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should not fire");
+      ok(
+        !frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should not fire"
+      );
     }
   });
 
   // Prompt is not shown, permit unload.
   promptShown = false;
-  ok(browser.permitUnload(browser.dontPromptAndUnload).permitUnload, "permit unload should be true");
+  ok(
+    browser.permitUnload(browser.dontPromptAndUnload).permitUnload,
+    "permit unload should be true"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that all beforeunload handlers fired.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
     }
   });
 
@@ -104,7 +140,7 @@ add_task(async function test() {
 
   buttonId = "button0";
   url = TEST_PATH + "file_bug1415918_beforeunload_2.html";
-  browser.loadURI(url);
+  BrowserTestUtils.loadURI(browser, url);
   await BrowserTestUtils.browserLoaded(browser, false, url);
   buttonId = "";
 
@@ -114,40 +150,64 @@ add_task(async function test() {
 
   // Check that all beforeunload handlers fired and reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
       frame.document.body.removeAttribute("fired");
     }
   });
 
   promptShown = false;
-  ok(browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload, "permit unload should be true");
+  ok(
+    browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload,
+    "permit unload should be true"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that all beforeunload handlers fired and reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
       frame.document.body.removeAttribute("fired");
     }
   });
 
   promptShown = false;
-  ok(browser.permitUnload(browser.dontPromptAndUnload).permitUnload, "permit unload should be true");
+  ok(
+    browser.permitUnload(browser.dontPromptAndUnload).permitUnload,
+    "permit unload should be true"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that all beforeunload handlers fired.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
     }
   });
 
@@ -158,7 +218,7 @@ add_task(async function test() {
 
   buttonId = "button0";
   url = TEST_PATH + "file_bug1415918_beforeunload_3.html";
-  browser.loadURI(url);
+  BrowserTestUtils.loadURI(browser, url);
   await BrowserTestUtils.browserLoaded(browser, false, url);
 
   // Prompt is shown, user clicks OK.
@@ -168,11 +228,17 @@ add_task(async function test() {
 
   // Check that all beforeunload handlers fired and reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
       frame.document.body.removeAttribute("fired");
     }
   });
@@ -187,7 +253,10 @@ add_task(async function test() {
   // Check that the parent beforeunload handler fired, and only one child beforeunload
   // handler fired.  Reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     let count = 0;
@@ -202,13 +271,19 @@ add_task(async function test() {
 
   // Prompt is not shown, don't permit unload.
   promptShown = false;
-  ok(!browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload, "permit unload should be false");
+  ok(
+    !browser.permitUnload(browser.dontPromptAndDontUnload).permitUnload,
+    "permit unload should be false"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that the parent beforeunload handler fired, and only one child beforeunload
   // handler fired.  Reset attributes.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
     content.window.document.body.removeAttribute("fired");
 
     let count = 0;
@@ -223,15 +298,24 @@ add_task(async function test() {
 
   // Prompt is not shown, permit unload.
   promptShown = false;
-  ok(browser.permitUnload(browser.dontPromptAndUnload).permitUnload, "permit unload should be true");
+  ok(
+    browser.permitUnload(browser.dontPromptAndUnload).permitUnload,
+    "permit unload should be true"
+  );
   ok(!promptShown, "prompt should not have been displayed");
 
   // Check that all beforeunload handlers fired.
   await ContentTask.spawn(browser, null, () => {
-    ok(content.window.document.body.hasAttribute("fired"), "parent document beforeunload handler should fire");
+    ok(
+      content.window.document.body.hasAttribute("fired"),
+      "parent document beforeunload handler should fire"
+    );
 
     for (let frame of Array.from(content.window.frames)) {
-      ok(frame.document.body.hasAttribute("fired"), "frame document beforeunload handler should fire");
+      ok(
+        frame.document.body.hasAttribute("fired"),
+        "frame document beforeunload handler should fire"
+      );
     }
   });
 
@@ -239,4 +323,3 @@ add_task(async function test() {
   buttonId = "button0";
   BrowserTestUtils.removeTab(tab);
 });
-

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
@@ -49,7 +53,7 @@ OptionsView.prototype = {
     // because the click handler is fired before the XUL menuitem updates its
     // checked status, which cascades incorrectly with the Preference observer.
     this.mutationObserver = new MutationObserver(this._onOptionChange);
-    const observerConfig = { attributes: true, attributeFilter: ["checked"]};
+    const observerConfig = { attributes: true, attributeFilter: ["checked"] };
 
     // Sets observers and default options for all options
     for (const $el of this.$$("menuitem", this.menupopup)) {
@@ -143,7 +147,7 @@ OptionsView.prototype = {
   _onPopupHidden: function() {
     this.button.removeAttribute("open");
     this.emit(OPTIONS_HIDDEN_EVENT);
-  }
+  },
 };
 
 /**
@@ -182,5 +186,5 @@ PrefObserver.prototype = {
   },
   observe: function(subject, topic, prefName) {
     this.emit(PREF_CHANGE_EVENT, prefName);
-  }
+  },
 };

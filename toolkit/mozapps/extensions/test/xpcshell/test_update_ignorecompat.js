@@ -2,6 +2,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
+// This test is disabled but is being kept around so it can eventualy
+// be modernized and re-enabled.  But is uses obsolete test helpers that
+// fail lint, so just skip linting it for now.
+/* eslint-disable */
+
 // This verifies that add-on update checks work correctly when compatibility
 // check is disabled.
 
@@ -34,7 +39,7 @@ add_test(async function() {
     targetApplications: [{
       id: appId,
       minVersion: "0.1",
-      maxVersion: "0.2"
+      maxVersion: "0.2",
     }],
     name: "Test Addon 9",
   }, profileDir);
@@ -49,7 +54,7 @@ add_test(async function() {
     },
     onDownloadFailed(aInstall) {
       run_next_test();
-    }
+    },
   });
 
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS,
@@ -71,7 +76,7 @@ add_test(async function() {
     targetApplications: [{
       id: appId,
       minVersion: "0.1",
-      maxVersion: "0.2"
+      maxVersion: "0.2",
     }],
     name: "Test Addon 11",
   }, profileDir);
@@ -92,6 +97,6 @@ add_test(async function() {
 
     onUpdateFinished() {
       run_next_test();
-    }
+    },
   }, AddonManager.UPDATE_WHEN_USER_REQUESTED);
 });

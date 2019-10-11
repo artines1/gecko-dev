@@ -20,7 +20,8 @@ dictionary OpenPopupOptions {
 
 typedef (DOMString or OpenPopupOptions) StringOrOpenPopupOptions;
 
-[HTMLConstructor, Func="IsChromeOrXBL"]
+[HTMLConstructor, Func="IsChromeOrXBL",
+ Exposed=Window]
 interface XULPopupElement : XULElement
 {
   /**
@@ -65,7 +66,7 @@ interface XULPopupElement : XULElement
    * @param triggerEvent the event that triggered this popup (mouse click for example)
    */
   void openPopup(optional Element? anchorElement = null,
-                 optional StringOrOpenPopupOptions options,
+                 optional StringOrOpenPopupOptions options = {},
                  optional long x = 0,
                  optional long y = 0,
                  optional boolean isContextMenu = false,

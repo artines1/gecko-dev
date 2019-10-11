@@ -8,13 +8,11 @@ locales = [
     "ach",
     "an",
     "ar",
-    "as",
     "ast",
     "az",
     "be",
     "bg",
-    "bn-BD",
-    "bn-IN",
+    "bn",
     "br",
     "bs",
     "ca",
@@ -27,7 +25,6 @@ locales = [
     "el",
     "en-CA",
     "en-GB",
-    "en-ZA",
     "eo",
     "es-AR",
     "es-CL",
@@ -67,7 +64,6 @@ locales = [
     "lt",
     "ltg",
     "lv",
-    "mai",
     "meh",
     "mix",
     "ml",
@@ -79,7 +75,6 @@ locales = [
     "nl",
     "nn-NO",
     "oc",
-    "or",
     "pa-IN",
     "pl",
     "pt-BR",
@@ -154,8 +149,16 @@ exclude-multi-locale = [
     l10n = "{l}dom/chrome/dom/dom.properties"
 
 [[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*Plugins.ftl"
+    l10n = "{l}toolkit/toolkit/about/*Plugins.ftl"
+
+[[paths]]
     reference = "dom/locales/en-US/chrome/plugins.properties"
     l10n = "{l}dom/chrome/plugins.properties"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*About.ftl"
+    l10n = "{l}toolkit/toolkit/about/*About.ftl"
 
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/aboutAbout.dtd"
@@ -168,6 +171,14 @@ exclude-multi-locale = [
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/aboutRights.dtd"
     l10n = "{l}toolkit/chrome/global/aboutRights.dtd"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*Rights.ftl"
+    l10n = "{l}toolkit/toolkit/about/*Rights.ftl"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*Compat.ftl"
+    l10n = "{l}toolkit/toolkit/about/*Compat.ftl"
 
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/charsetMenu.properties"
@@ -202,6 +213,10 @@ exclude-multi-locale = [
     l10n = "{l}toolkit/chrome/global/aboutSupport.properties"
 
 [[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*Support.ftl"
+    l10n = "{l}toolkit/toolkit/about/*Support.ftl"
+
+[[paths]]
     reference = "toolkit/locales/en-US/crashreporter/*.ftl"
     l10n = "{l}toolkit/crashreporter/*.ftl"
 
@@ -216,14 +231,6 @@ exclude-multi-locale = [
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/mozilla.dtd"
     l10n = "{l}toolkit/chrome/global/mozilla.dtd"
-
-[[paths]]
-    reference = "toolkit/locales/en-US/chrome/global/aboutTelemetry.dtd"
-    l10n = "{l}toolkit/chrome/global/aboutTelemetry.dtd"
-
-[[paths]]
-    reference = "toolkit/locales/en-US/chrome/global/aboutTelemetry.properties"
-    l10n = "{l}toolkit/chrome/global/aboutTelemetry.properties"
 
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/aboutWebrtc.properties"
@@ -245,8 +252,6 @@ exclude-multi-locale = [
 [[filters]]
     path = "{l}mobile/chrome/region.properties"
     key = [
-        "re:^browser\\.search\\.order\\.[1-9]$",
-        "re:^browser\\.search\\.[a-zA-Z]+\\.US",
         "re:^browser\\.contentHandlers\\.types\\.[0-5]\\..*$",
         "re:^gecko\\.handlerService\\.schemes\\..+$",
         "re:^gecko\\.handlerService\\.defaultHandlersVersion$",

@@ -7,13 +7,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=
   <meta charset="utf-8">
   <title>Test for Bug </title>
 
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
   <script type="application/javascript" src="inspector-helpers.js"></script>
   <script type="application/javascript">
 "use strict";
 
-const KNOWN_PSEUDOCLASSES = [":hover", ":active", ":focus"];
+const { PSEUDO_CLASSES } = require("devtools/shared/css/constants");
 
 window.onload = function() {
   SimpleTest.waitForExplicitFinish();
@@ -24,27 +24,20 @@ const InspectorUtils = require("InspectorUtils");
 
 let gInspectee = null;
 let gWalker = null;
-let gCleanupConnection = null;
 
-function setup(callback) {
+async function setup(callback) {
   const url = document.getElementById("inspectorContent").href;
-  gCleanupConnection = attachURL(url, function(err, client, tab, doc) {
-    gInspectee = doc;
-    const {InspectorFront} = require("devtools/shared/fronts/inspector");
-    const inspector = InspectorFront(client, tab);
-    promiseDone(inspector.getWalker().then(walker => {
-      gWalker = walker;
-    }).then(callback));
-  });
+  const { target, doc } = await attachURL(url);
+  gInspectee = doc;
+  const inspector = await target.getFront("inspector");
+  ok(inspector.walker, "getWalker() should return an actor.");
+  gWalker = inspector.walker;
+  runNextTest();
 }
 
 function teardown() {
   gWalker = null;
   gInspectee = null;
-  if (gCleanupConnection) {
-    gCleanupConnection();
-    gCleanupConnection = null;
-  }
 }
 
 function checkChange(change, expectation) {
@@ -72,7 +65,7 @@ function checkChange(change, expectation) {
        `Target should match pseudoclass, '${pseudo}', if enabled (with .matches())`);
   }
 
-  for (const pseudo of KNOWN_PSEUDOCLASSES) {
+  for (const pseudo of PSEUDO_CLASSES) {
     if (!expectation.pseudos.some(expected => pseudo === expected)) {
       ok(!target.hasPseudoClassLock(pseudo), "Don't expect lock: " + pseudo);
       ok(!InspectorUtils.hasPseudoClassLock(target.rawNode(), pseudo),
@@ -105,7 +98,7 @@ addTest(function testPseudoClassLock() {
       checkChange(mutations[0], {
         id: "b",
         nodeName: "DIV",
-        pseudos: [":active"]
+        pseudos: [":active"],
       });
     }).then(() => {
       // Now add :hover, this time with parents.
@@ -120,15 +113,15 @@ addTest(function testPseudoClassLock() {
       {
         id: "longlist",
         nodeName: "DIV",
-        pseudos: [":hover"]
+        pseudos: [":hover"],
       },
       {
         nodeName: "BODY",
-        pseudos: [":hover"]
+        pseudos: [":hover"],
       },
       {
         nodeName: "HTML",
-        pseudos: [":hover"]
+        pseudos: [":hover"],
       }];
       checkMutations(mutations, expectedMutations);
     }).then(() => {
@@ -140,20 +133,20 @@ addTest(function testPseudoClassLock() {
         id: "b",
         nodeName: "DIV",
         // Should still have :active on the original node.
-        pseudos: [":active"]
+        pseudos: [":active"],
       },
       {
         id: "longlist",
         nodeName: "DIV",
-        pseudos: []
+        pseudos: [],
       },
       {
         nodeName: "BODY",
-        pseudos: []
+        pseudos: [],
       },
       {
         nodeName: "HTML",
-        pseudos: []
+        pseudos: [],
       }];
       checkMutations(mutations, expectedMutations);
     }).then(() => {
@@ -166,7 +159,7 @@ addTest(function testPseudoClassLock() {
         id: "b",
         nodeName: "DIV",
         pseudos: [":hover", ":active"],
-        enabled: [false, true]
+        enabled: [false, true],
       });
     }).then(() => {
       // Now shut down the walker and make sure that clears up the remaining lock.

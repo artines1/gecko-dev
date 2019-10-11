@@ -15,10 +15,9 @@ add_task(async function() {
 
   const { document, store, windowRequire } = monitor.panelWin;
   const Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  const {
-    getDisplayedRequests,
-    getSortedRequests,
-  } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  const { getDisplayedRequests, getSortedRequests } = windowRequire(
+    "devtools/client/netmonitor/src/selectors/index"
+  );
 
   store.dispatch(Actions.batchEnable(false));
 
@@ -38,7 +37,7 @@ add_task(async function() {
   await onNetMonitor;
 
   // Reload debugee.
-  wait = waitForNetworkEvents(monitor, 1);
+  const wait = waitForNetworkEvents(monitor, 1);
   tab.linkedBrowser.reload();
   await wait;
 
@@ -68,9 +67,12 @@ add_task(async function() {
         statusText: "OK",
         type: "json",
         fullMimeType: "text/json; charset=utf-8",
-        size: L10N.getFormatStr("networkMenu.sizeKB",
-          L10N.numberWithDecimals(85975 / 1024, 2)),
-        time: true
-      });
+        size: L10N.getFormatStr(
+          "networkMenu.sizeKB",
+          L10N.numberWithDecimals(85975 / 1024, 2)
+        ),
+        time: true,
+      }
+    );
   }
 });

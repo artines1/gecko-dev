@@ -41,6 +41,7 @@ class TestTaskGraph(unittest.TestCase):
                 'attributes': {'attr': 'a-task', 'kind': 'test'},
                 'task': {'taskdef': True},
                 'dependencies': {'edgelabel': 'b'},
+                'soft_dependencies': [],
                 'optimization': None,
             },
             'b': {
@@ -49,6 +50,7 @@ class TestTaskGraph(unittest.TestCase):
                 'attributes': {'kind': 'test'},
                 'task': {'task': 'def'},
                 'dependencies': {},
+                'soft_dependencies': [],
                 'optimization': {'seta': None},
             }
         })
@@ -73,6 +75,27 @@ class TestTaskGraph(unittest.TestCase):
 
         tasks, new_graph = TaskGraph.from_json(graph.to_json())
         self.assertEqual(graph, new_graph)
+
+    simple_graph = TaskGraph(tasks={
+        'a': Task(
+            kind='fancy',
+            label='a',
+            attributes={},
+            dependencies={'prereq': 'b'},  # must match edges, below
+            optimization={'seta': None},
+            task={'task': 'def'}),
+        'b': Task(
+            kind='pre',
+            label='b',
+            attributes={},
+            dependencies={},
+            optimization={'seta': None},
+            task={'task': 'def2'}),
+    }, graph=Graph(nodes={'a', 'b'}, edges={('a', 'b', 'prereq')}))
+
+    def test_contains(self):
+        assert 'a' in self.simple_graph
+        assert 'c' not in self.simple_graph
 
 
 if __name__ == '__main__':

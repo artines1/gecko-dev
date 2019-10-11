@@ -38,14 +38,18 @@ add_task(async function() {
   ok(true, "Should have read the heap snapshot");
 
   const { report } = await client.takeCensus(snapshotFilePath, {
-    breakdown: BREAKDOWN
+    breakdown: BREAKDOWN,
   });
 
-  const { report: treeNode } = await client.takeCensus(snapshotFilePath, {
-    breakdown: BREAKDOWN
-  }, {
-    asInvertedTreeNode: true
-  });
+  const { report: treeNode } = await client.takeCensus(
+    snapshotFilePath,
+    {
+      breakdown: BREAKDOWN,
+    },
+    {
+      asInvertedTreeNode: true,
+    }
+  );
 
   compareCensusViewData(BREAKDOWN, report, treeNode, { invert: true });
 

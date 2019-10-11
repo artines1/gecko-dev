@@ -6,57 +6,16 @@
 
 .devtools-toolbar {
   display: flex;
-  line-height: 23px;
-}
-
-/* This should be global style for all panels at some point */
-.monitor-panel .devtools-button {
-  background-color: transparent;
-}
-
-/* This should be global style for all panels at some point */
-.theme-light .monitor-panel .devtools-button.checked {
-  color: var(--grey-90);
-  background-color: var(--grey-90-a10);
-}
-
-.devtools-toolbar-container {
-  height: auto;
-  flex-wrap: wrap;
-  justify-content: space-between;
-}
-
-.devtools-toolbar-group {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
   align-items: center;
 }
 
-.devtools-toolbar-group .devtools-separator {
-  height: 24px;
-}
-
-.devtools-toolbar-two-rows-1,
-.devtools-toolbar-two-rows-2,
-.devtools-toolbar-single-row {
-  flex-grow: 1;
+#netmonitor-toolbar-container > .devtools-toolbar {
+  /* @TODO: Remove this in bug 1535956 */
   min-height: var(--primary-toolbar-height);
-  background-color: var(--theme-body-background);
-}
-
-.devtools-toolbar-two-rows-1 {
-  width: -moz-available;
-}
-
-.devtools-toolbar-two-rows-2 {
-  justify-content: space-between;
-  border-top: 1px solid var(--theme-splitter-color);
 }
 
 .requests-list-filter-buttons {
-  display: flex;
-  flex-wrap: wrap;
+  white-space: nowrap;
   margin: 0 7px;
 }
 
@@ -66,50 +25,32 @@
 }
 
 .devtools-button.devtools-pause-icon::before {
-  background-image: var(--pause-icon-url);
+  background-image: url("chrome://devtools/skin/images/pause.svg");
 }
 
 .devtools-button.devtools-play-icon::before {
-  background-image: var(--play-icon-url);
+  background-image: url("chrome://devtools/content/netmonitor/src/assets/icons/play.svg");
 }
 
-.devtools-button.devtools-har-button {
-  margin: 0 0 0 2px;
-  padding: 0;
-}
-
-/* style for dropdown button */
-.devtools-drop-down-button {
-  background-image: var(--drop-down-icon-url)  !important;
-  background-repeat: no-repeat !important;
-  margin-inline-start: 6px;
-  fill: var(--theme-toolbar-photon-icon-color);
-  -moz-context-properties: fill;
-}
-
-/* style for title holder inside a dropdown button */
-.devtools-drop-down-button .title {
-  padding-top: 0.15em;
-  text-align: center;
-  overflow: hidden;
-  display: inline-block;
+/* Search button */
+.devtools-button.devtools-search-icon::before {
+  background-image: url("chrome://devtools/skin/images/search.svg");
+  background-size: 13px;
 }
 
 /* HAR button */
 
 #devtools-har-button {
-  width: 35px;
-  padding-right: 12px;
+  margin-inline-end: 10px;
+  padding-left: 2px;
+  padding-right: 10px;
   background-position: right center;
 }
 
-/* Make sure spacing between text and icon is uniform */
-#devtools-har-button .title {
-  width: 24px;
-}
+/* Throttling Button */
 
-#devtools-har-button:not(:hover) {
-  background-color: transparent;
+#network-throttling-menu {
+  margin-inline-start: 10px;
 }
 
 .devtools-checkbox {
@@ -132,52 +73,10 @@
   margin-inline-end: 7px;
 }
 
-/* Throttling Button */
-
-#global-network-throttling-selector:not(:hover) {
-  background-color: transparent;
-}
-
-#global-network-throttling-selector {
-  width: 92px;
-  background-position: right 4px center;
-  padding-left: 0;
-  overflow: hidden;
-}
-
-/* Make sure spacing between text and icon is uniform*/
-#global-network-throttling-selector .title{
-  width: 85%;
-}
-
-/* Filter input within the Toolbar */
-
-.devtools-toolbar-group .devtools-filterinput {
-  border: none;
-  box-shadow: none;
-  background-color: var(--theme-body-background);
-}
-
-.devtools-toolbar-group .devtools-searchbox {
-  height: 29px;
-  border: 1px solid transparent;
-}
-
-.devtools-toolbar-group .devtools-searchbox:focus-within {
-  border: 1px solid var(--blue-50);
-  margin-bottom: 0;
-  margin-top: 0;
-  box-shadow: none;
-}
-
-.network-monitor .devtools-toolbar-group .learn-more-link::before {
-  opacity: 0.6;
-}
-
 /* Hide filter input learn more link if there is not enough
    horizontal space. */
 @media (max-width: 590px) {
-  .network-monitor .devtools-searchbox:hover .learn-more-link {
+  .network-monitor .devtools-searchbox .learn-more-link {
     display: none;
   }
 }

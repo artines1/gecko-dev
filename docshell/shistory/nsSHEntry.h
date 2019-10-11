@@ -9,7 +9,6 @@
 
 #include "nsCOMArray.h"
 #include "nsCOMPtr.h"
-#include "nsISHContainer.h"
 #include "nsISHEntry.h"
 #include "nsString.h"
 
@@ -18,26 +17,22 @@
 class nsSHEntryShared;
 class nsIInputStream;
 class nsIURI;
+class nsIReferrerInfo;
 
-class nsSHEntry final : public nsISHEntry,
-                        public nsISHContainer,
-                        public nsISHEntryInternal
-{
-public:
+class nsSHEntry final : public nsISHEntry {
+ public:
   nsSHEntry();
   nsSHEntry(const nsSHEntry& aOther);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSISHENTRY
-  NS_DECL_NSISHENTRYINTERNAL
-  NS_DECL_NSISHCONTAINER
 
   void DropPresentationState();
 
   static nsresult Startup();
   static void Shutdown();
 
-private:
+ private:
   ~nsSHEntry();
 
   // We share the state in here with other SHEntries which correspond to the
@@ -48,8 +43,7 @@ private:
   nsCOMPtr<nsIURI> mURI;
   nsCOMPtr<nsIURI> mOriginalURI;
   nsCOMPtr<nsIURI> mResultPrincipalURI;
-  nsCOMPtr<nsIURI> mReferrerURI;
-  uint32_t mReferrerPolicy;
+  nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
   nsString mTitle;
   nsCOMPtr<nsIInputStream> mPostData;
   uint32_t mLoadType;
@@ -66,6 +60,7 @@ private:
   bool mIsSrcdocEntry;
   bool mScrollRestorationIsManual;
   bool mLoadedInThisProcess;
+  bool mPersist;
 };
 
 #endif /* nsSHEntry_h */

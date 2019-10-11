@@ -5,11 +5,16 @@
 "use strict";
 
 const EventEmitter = require("devtools/shared/event-emitter");
-const { getCurrentZoom, getWindowDimensions,
-  setIgnoreLayoutChanges } = require("devtools/shared/layout/utils");
+const {
+  getCurrentZoom,
+  getWindowDimensions,
+  setIgnoreLayoutChanges,
+} = require("devtools/shared/layout/utils");
 const {
   CanvasFrameAnonymousContentHelper,
-  createSVGNode, createNode } = require("./utils/markup");
+  createSVGNode,
+  createNode,
+} = require("./utils/markup");
 
 // Hard coded value about the size of measuring tool label, in order to
 // position and flip it when is needed.
@@ -30,12 +35,14 @@ const SIDES = ["top", "right", "bottom", "left"];
  */
 function MeasuringToolHighlighter(highlighterEnv) {
   this.env = highlighterEnv;
-  this.markup = new CanvasFrameAnonymousContentHelper(highlighterEnv,
-    this._buildMarkup.bind(this));
+  this.markup = new CanvasFrameAnonymousContentHelper(
+    highlighterEnv,
+    this._buildMarkup.bind(this)
+  );
 
   this.coords = {
     x: 0,
-    y: 0
+    y: 0,
   };
 
   const { pageListenerTarget } = highlighterEnv;
@@ -57,17 +64,17 @@ MeasuringToolHighlighter.prototype = {
     const { window } = this.env;
 
     const container = createNode(window, {
-      attributes: {"class": "highlighter-container"}
+      attributes: { class: "highlighter-container" },
     });
 
     const root = createNode(window, {
       parent: container,
       attributes: {
-        "id": "root",
-        "class": "root",
-        "hidden": "true",
+        id: "root",
+        class: "root",
+        hidden: "true",
       },
-      prefix
+      prefix,
     });
 
     const svg = createSVGNode(window, {
@@ -75,33 +82,33 @@ MeasuringToolHighlighter.prototype = {
       parent: root,
       attributes: {
         id: "elements",
-        "class": "elements",
+        class: "elements",
         width: "100%",
         height: "100%",
       },
-      prefix
+      prefix,
     });
 
     createNode(window, {
       nodeType: "label",
       attributes: {
         id: "label-size",
-        "class": "label-size",
-        "hidden": "true"
+        class: "label-size",
+        hidden: "true",
       },
       parent: root,
-      prefix
+      prefix,
     });
 
     createNode(window, {
       nodeType: "label",
       attributes: {
         id: "label-position",
-        "class": "label-position",
-        "hidden": "true"
+        class: "label-position",
+        hidden: "true",
       },
       parent: root,
-      prefix
+      prefix,
     });
 
     // Creating a <g> element in order to group all the paths below, that
@@ -113,25 +120,25 @@ MeasuringToolHighlighter.prototype = {
         id: "tool",
       },
       parent: svg,
-      prefix
+      prefix,
     });
 
     createSVGNode(window, {
       nodeType: "path",
       attributes: {
-        id: "box-path"
+        id: "box-path",
       },
       parent: g,
-      prefix
+      prefix,
     });
 
     createSVGNode(window, {
       nodeType: "path",
       attributes: {
-        id: "diagonal-path"
+        id: "diagonal-path",
       },
       parent: g,
-      prefix
+      prefix,
     });
 
     for (const side of SIDES) {
@@ -139,11 +146,11 @@ MeasuringToolHighlighter.prototype = {
         nodeType: "line",
         parent: svg,
         attributes: {
-          "class": `guide-${side}`,
+          class: `guide-${side}`,
           id: `guide-${side}`,
-          hidden: "true"
+          hidden: "true",
         },
-        prefix
+        prefix,
       });
     }
 
@@ -168,8 +175,8 @@ MeasuringToolHighlighter.prototype = {
       this.updateLabel();
     }
 
-    const isDocumentSizeChanged = width !== coords.documentWidth ||
-                                height !== coords.documentHeight;
+    const isDocumentSizeChanged =
+      width !== coords.documentWidth || height !== coords.documentHeight;
 
     if (isDocumentSizeChanged) {
       coords.documentWidth = width;
@@ -357,20 +364,25 @@ MeasuringToolHighlighter.prototype = {
       y += isExceedingBottomMargin ? -labelBoxHeight : labelMargin * scale;
     }
 
-    label.setAttribute("style", `
+    label.setAttribute(
+      "style",
+      `
       width: ${labelWidth}px;
       height: ${labelHeight}px;
       transform-origin: ${origin};
       transform: translate(${x}px,${y}px) scale(${scale})
-    `);
+    `
+    );
 
     if (!isSizeLabel) {
       const labelSize = this.getElement("label-size");
       const style = labelSize.getAttribute("style");
 
       if (style) {
-        labelSize.setAttribute("style",
-          style.replace(/scale[^)]+\)/, `scale(${scale})`));
+        labelSize.setAttribute(
+          "style",
+          style.replace(/scale[^)]+\)/, `scale(${scale})`)
+        );
       }
     }
   },
@@ -389,10 +401,12 @@ MeasuringToolHighlighter.prototype = {
     const minWidth = 1 / pixelRatio;
     const strokeWidth = minWidth / zoom;
 
-    this.getElement("root").setAttribute("style",
+    this.getElement("root").setAttribute(
+      "style",
       `stroke-width:${strokeWidth};
        width:${documentWidth}px;
-       height:${documentHeight}px;`);
+       height:${documentHeight}px;`
+    );
   },
 
   updateGuides() {
@@ -544,6 +558,6 @@ MeasuringToolHighlighter.prototype = {
         }
         break;
     }
-  }
+  },
 };
 exports.MeasuringToolHighlighter = MeasuringToolHighlighter;

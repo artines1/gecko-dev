@@ -4,9 +4,7 @@
 
 "use strict";
 
-const {
-  CHANGE_NETWORK_THROTTLING,
-} = require("./actions");
+const { CHANGE_NETWORK_THROTTLING } = require("./actions");
 
 const INITIAL_STATE = {
   enabled: false,
@@ -18,7 +16,7 @@ function throttlingReducer(state = INITIAL_STATE, action) {
     case CHANGE_NETWORK_THROTTLING: {
       return {
         enabled: action.enabled,
-        profile: action.profile
+        profile: action.profile,
       };
     }
     default:

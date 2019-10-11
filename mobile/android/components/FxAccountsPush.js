@@ -3,26 +3,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/Messaging.jsm");
-const {
-  PushCrypto,
-  getCryptoParams,
-} = ChromeUtils.import("resource://gre/modules/PushCrypto.jsm", {});
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { EventDispatcher } = ChromeUtils.import(
+  "resource://gre/modules/Messaging.jsm"
+);
+const { PushCrypto, getCryptoParams } = ChromeUtils.import(
+  "resource://gre/modules/PushCrypto.jsm",
+  null
+);
 
-XPCOMUtils.defineLazyServiceGetter(this, "PushService",
-  "@mozilla.org/push/Service;1", "nsIPushService");
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "PushService",
+  "@mozilla.org/push/Service;1",
+  "nsIPushService"
+);
 XPCOMUtils.defineLazyGetter(this, "_decoder", () => new TextDecoder());
 
 const FXA_PUSH_SCOPE = "chrome://fxa-push";
-const Log = ChromeUtils.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.bind("FxAccountsPush");
+const Log = ChromeUtils.import(
+  "resource://gre/modules/AndroidLog.jsm",
+  {}
+).AndroidLog.bind("FxAccountsPush");
 
 function FxAccountsPush() {
   Services.obs.addObserver(this, "FxAccountsPush:ReceivedPushMessageToDecode");
 
   EventDispatcher.instance.sendRequestForResult({
-    type: "FxAccountsPush:Initialized"
+    type: "FxAccountsPush:Initialized",
   });
 }
 
@@ -48,7 +59,8 @@ FxAccountsPush.prototype = {
   _subscribe() {
     Log.i("FxAccountsPush _subscribe");
     return new Promise((resolve, reject) => {
-      PushService.subscribe(FXA_PUSH_SCOPE,
+      PushService.subscribe(
+        FXA_PUSH_SCOPE,
         Services.scriptSecurityManager.getSystemPrincipal(),
         (result, subscription) => {
           if (Components.isSuccessCode(result)) {
@@ -60,31 +72,33 @@ FxAccountsPush.prototype = {
             err.result = result;
             reject(err);
           }
-        });
-    })
-    .then(subscription => {
-      EventDispatcher.instance.sendRequest({
-        type: "FxAccountsPush:Subscribe:Response",
-        subscription: {
-          pushCallback: subscription.endpoint,
-          pushPublicKey: urlsafeBase64Encode(subscription.getKey("p256dh")),
-          pushAuthKey: urlsafeBase64Encode(subscription.getKey("auth"))
         }
-      });
+      );
     })
-    .catch(err => {
-      Log.i("Error when registering FxA push endpoint " + err);
-      EventDispatcher.instance.sendRequest({
-        type: "FxAccountsPush:Subscribe:Response",
-        error: err.result.toString() // Convert to string because the GeckoBundle can't getLong();
+      .then(subscription => {
+        EventDispatcher.instance.sendRequest({
+          type: "FxAccountsPush:Subscribe:Response",
+          subscription: {
+            pushCallback: subscription.endpoint,
+            pushPublicKey: urlsafeBase64Encode(subscription.getKey("p256dh")),
+            pushAuthKey: urlsafeBase64Encode(subscription.getKey("auth")),
+          },
+        });
+      })
+      .catch(err => {
+        Log.i("Error when registering FxA push endpoint " + err);
+        EventDispatcher.instance.sendRequest({
+          type: "FxAccountsPush:Subscribe:Response",
+          error: err.result.toString(), // Convert to string because the GeckoBundle can't getLong();
+        });
       });
-    });
   },
 
   _unsubscribe() {
     Log.i("FxAccountsPush _unsubscribe");
-    return new Promise((resolve) => {
-      PushService.unsubscribe(FXA_PUSH_SCOPE,
+    return new Promise(resolve => {
+      PushService.unsubscribe(
+        FXA_PUSH_SCOPE,
         Services.scriptSecurityManager.getSystemPrincipal(),
         (result, ok) => {
           if (Components.isSuccessCode(result)) {
@@ -97,7 +111,8 @@ FxAccountsPush.prototype = {
             Log.w("FxAccountsPush failed to unsubscribe", result);
           }
           return resolve(ok);
-        });
+        }
+      );
     }).catch(err => {
       Log.e("Error during unsubscribe", err);
     });
@@ -108,30 +123,43 @@ FxAccountsPush.prototype = {
     data = JSON.parse(data);
     let { headers, message } = this._messageAndHeaders(data);
     return new Promise((resolve, reject) => {
-      PushService.getSubscription(FXA_PUSH_SCOPE,
+      PushService.getSubscription(
+        FXA_PUSH_SCOPE,
         Services.scriptSecurityManager.getSystemPrincipal(),
         (result, subscription) => {
+          if (!Components.isSuccessCode(result)) {
+            return reject(new Error(`Error getting subscription (${result})`));
+          }
           if (!subscription) {
             return reject(new Error("No subscription found"));
           }
           return resolve(subscription);
+        }
+      );
+    })
+      .then(subscription => {
+        return PushCrypto.decrypt(
+          subscription.p256dhPrivateKey,
+          new Uint8Array(subscription.getKey("p256dh")),
+          new Uint8Array(subscription.getKey("auth")),
+          headers,
+          message
+        );
+      })
+      .then(plaintext => {
+        let decryptedMessage = plaintext ? _decoder.decode(plaintext) : "";
+        EventDispatcher.instance.sendRequestForResult({
+          type: "FxAccountsPush:ReceivedPushMessageToDecode:Response",
+          message: decryptedMessage,
         });
-    }).then(subscription => {
-      return PushCrypto.decrypt(subscription.p256dhPrivateKey,
-                                new Uint8Array(subscription.getKey("p256dh")),
-                                new Uint8Array(subscription.getKey("auth")),
-                                headers, message);
-    })
-    .then(plaintext => {
-      let decryptedMessage = plaintext ? _decoder.decode(plaintext) : "";
-      EventDispatcher.instance.sendRequestForResult({
-        type: "FxAccountsPush:ReceivedPushMessageToDecode:Response",
-        message: decryptedMessage
+      })
+      .catch(err => {
+        Log.d("Error while decoding incoming message : " + err);
+        EventDispatcher.instance.sendRequestForResult({
+          type: "FxAccountsPush:ReceivedPushMessageToDecode:Response",
+          error: err.message || "",
+        });
       });
-    })
-    .catch(err => {
-      Log.d("Error while decoding incoming message : " + err);
-    });
   },
 
   // Copied from PushServiceAndroidGCM
@@ -158,12 +186,12 @@ FxAccountsPush.prototype = {
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
-  classID: Components.ID("{d1bbb0fd-1d47-4134-9c12-d7b1be20b721}")
+  classID: Components.ID("{d1bbb0fd-1d47-4134-9c12-d7b1be20b721}"),
 };
 
 function urlsafeBase64Encode(key) {
   return ChromeUtils.base64URLEncode(new Uint8Array(key), { pad: false });
 }
 
-var components = [ FxAccountsPush ];
+var components = [FxAccountsPush];
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory(components);

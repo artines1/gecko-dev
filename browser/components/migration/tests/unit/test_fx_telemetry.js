@@ -4,12 +4,14 @@
 "use strict";
 
 function readFile(file) {
-  let stream = Cc["@mozilla.org/network/file-input-stream;1"]
-               .createInstance(Ci.nsIFileInputStream);
+  let stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
+    Ci.nsIFileInputStream
+  );
   stream.init(file, -1, -1, Ci.nsIFileInputStream.CLOSE_ON_EOF);
 
-  let sis = Cc["@mozilla.org/scriptableinputstream;1"]
-            .createInstance(Ci.nsIScriptableInputStream);
+  let sis = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
+    Ci.nsIScriptableInputStream
+  );
   sis.init(stream);
   let contents = sis.read(file.fileSize);
   sis.close();
@@ -19,9 +21,7 @@ function readFile(file) {
 function checkDirectoryContains(dir, files) {
   print("checking " + dir.path + " - should contain " + Object.keys(files));
   let seen = new Set();
-  let enumerator = dir.directoryEntries;
-  while (enumerator.hasMoreElements()) {
-    let file = enumerator.getNext().QueryInterface(Ci.nsIFile);
+  for (let file of dir.directoryEntries) {
     print("found file: " + file.path);
     Assert.ok(file.leafName in files, file.leafName + " exists, but shouldn't");
 
@@ -81,9 +81,9 @@ function createSubDir(dir, subDirName) {
 }
 
 function promiseMigrator(name, srcDir, targetDir) {
-  let migrator = Cc["@mozilla.org/profile/migrator;1?app=browser&type=firefox"]
-                 .createInstance(Ci.nsISupports)
-                 .wrappedJSObject;
+  let migrator = Cc[
+    "@mozilla.org/profile/migrator;1?app=browser&type=firefox"
+  ].createInstance(Ci.nsISupports).wrappedJSObject;
   let migrators = migrator._getResourcesInternal(srcDir, targetDir);
   for (let m of migrators) {
     if (m.name == name) {
@@ -131,10 +131,13 @@ add_task(async function test_migrate_files() {
 
   // Perform migration.
   let ok = await promiseTelemetryMigrator(srcDir, targetDir);
-  Assert.ok(ok, "callback should have been true with important telemetry files copied");
+  Assert.ok(
+    ok,
+    "callback should have been true with important telemetry files copied"
+  );
 
   checkDirectoryContains(targetDir, {
-    "datareporting": {
+    datareporting: {
       "state.json": stateContent,
       "session-state.json": sessionStateContent,
     },
@@ -147,7 +150,10 @@ add_task(async function test_datareporting_not_dir() {
   writeToFile(srcDir, "datareporting", "I'm a file but should be a directory");
 
   let ok = await promiseTelemetryMigrator(srcDir, targetDir);
-  Assert.ok(ok, "callback should have been true even though the directory was a file");
+  Assert.ok(
+    ok,
+    "callback should have been true even though the directory was a file"
+  );
 
   checkDirectoryContains(targetDir, {});
 });
@@ -162,7 +168,7 @@ add_task(async function test_datareporting_empty() {
 
   // We should end up with no migrated files.
   checkDirectoryContains(targetDir, {
-    "datareporting": {},
+    datareporting: {},
   });
 });
 
@@ -193,7 +199,7 @@ add_task(async function test_datareporting_many() {
   Assert.ok(ok, "callback should have been true");
 
   checkDirectoryContains(targetDir, {
-    "datareporting": {
+    datareporting: {
       "state.json": shouldBeCopied,
       "session-state.json": shouldBeCopied,
     },
@@ -212,7 +218,7 @@ add_task(async function test_no_session_state() {
   Assert.ok(ok, "callback should have been true");
 
   checkDirectoryContains(targetDir, {
-    "datareporting": {
+    datareporting: {
       "state.json": stateContent,
     },
   });
@@ -230,7 +236,7 @@ add_task(async function test_no_state() {
   Assert.ok(ok, "callback should have been true");
 
   checkDirectoryContains(targetDir, {
-    "datareporting": {
+    datareporting: {
       "session-state.json": sessionStateContent,
     },
   });
@@ -240,7 +246,7 @@ add_task(async function test_times_migration() {
   let [srcDir, targetDir] = getTestDirs();
 
   // create a times.json in the source directory.
-  let contents = JSON.stringify({created: 1234});
+  let contents = JSON.stringify({ created: 1234 });
   writeToFile(srcDir, "times.json", contents);
 
   let earliest = Date.now();

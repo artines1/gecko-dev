@@ -5,32 +5,32 @@
 "use strict";
 
 function ResponseInfo(id, response, content) {
-  const {
-    mimeType
-  } = response;
-  const {body, base64Encoded} = content;
+  const { mimeType } = response;
+  const { body, base64Encoded } = content;
   return {
     from: id,
     content: {
       mimeType: mimeType,
       text: !body ? "" : body,
       size: !body ? 0 : body.length,
-      encoding: base64Encoded ? "base64" : undefined
-    }
+      encoding: base64Encoded ? "base64" : undefined,
+    },
   };
 }
 
 function ResponseContent(id, response, content) {
-  const {body} = content;
-  const {mimeType, encodedDataLength} = response;
+  const { body } = content;
+  const { mimeType, encodedDataLength } = response;
   const responseContent = ResponseInfo(id, response, content);
   const payload = Object.assign(
     {
       responseContent,
       contentSize: !body ? 0 : body.length,
       transferredSize: encodedDataLength, // TODO: verify
-      mimeType: mimeType
-    }, body);
+      mimeType: mimeType,
+    },
+    body
+  );
   return payload;
 }
 
@@ -54,7 +54,7 @@ function Timings(id, timing) {
     connectEnd,
     sendStart,
     sendEnd,
-    receiveHeadersEnd
+    receiveHeadersEnd,
   } = timing;
   const dns = parseInt(dnsEnd - dnsStart, 10);
   const connect = parseInt(connectEnd - connectStart, 10);
@@ -75,23 +75,18 @@ function Timings(id, timing) {
 }
 function State(response, headers) {
   const { headersSize } = headers;
-  const {
-    status,
-    statusText,
-    remoteIPAddress,
-    remotePort
-  } = response;
+  const { status, statusText, remoteIPAddress, remotePort } = response;
   return {
     remoteAddress: remoteIPAddress,
     remotePort,
     status,
     statusText,
-    headersSize
+    headersSize,
   };
 }
 module.exports = {
   State,
   Timings,
   ResponseContent,
-  SecurityDetails
+  SecurityDetails,
 };

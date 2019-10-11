@@ -1,21 +1,20 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const { StorageFront } = require("devtools/shared/fronts/storage");
 /* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js",
-  this);
+  this
+);
 
 // beforeReload references an object representing the initialized state of the
 // storage actor.
 const beforeReload = {
   cookies: {
     "http://test1.example.org": ["c1", "cs2", "c3", "uc1"],
-    "http://sectest1.example.org": ["uc1", "cs2"]
+    "http://sectest1.example.org": ["uc1", "cs2"],
   },
   indexedDB: {
     "http://test1.example.org": [
@@ -23,16 +22,16 @@ const beforeReload = {
       JSON.stringify(["idb1", "obj2"]),
       JSON.stringify(["idb2", "obj3"]),
     ],
-    "http://sectest1.example.org": []
+    "http://sectest1.example.org": [],
   },
   localStorage: {
     "http://test1.example.org": ["ls1", "ls2"],
-    "http://sectest1.example.org": ["iframe-u-ls1"]
+    "http://sectest1.example.org": ["iframe-u-ls1"],
   },
   sessionStorage: {
     "http://test1.example.org": ["ss1"],
-    "http://sectest1.example.org": ["iframe-u-ss1", "iframe-u-ss2"]
-  }
+    "http://sectest1.example.org": ["iframe-u-ss1", "iframe-u-ss2"],
+  },
 };
 
 // afterIframeAdded references the items added when an iframe containing storage
@@ -41,51 +40,55 @@ const afterIframeAdded = {
   cookies: {
     "https://sectest1.example.org": [
       getCookieId("cs2", ".example.org", "/"),
-      getCookieId("sc1", "sectest1.example.org",
-                  "/browser/devtools/server/tests/browser/")
+      getCookieId(
+        "sc1",
+        "sectest1.example.org",
+        "/browser/devtools/server/tests/browser"
+      ),
     ],
     "http://sectest1.example.org": [
-      getCookieId("sc1", "sectest1.example.org",
-                  "/browser/devtools/server/tests/browser/")
-    ]
+      getCookieId(
+        "sc1",
+        "sectest1.example.org",
+        "/browser/devtools/server/tests/browser"
+      ),
+    ],
   },
   indexedDB: {
     // empty because indexed db creation happens after the page load, so at
     // the time of window-ready, there was no indexed db present.
-    "https://sectest1.example.org": []
+    "https://sectest1.example.org": [],
   },
   localStorage: {
-    "https://sectest1.example.org": ["iframe-s-ls1"]
+    "https://sectest1.example.org": ["iframe-s-ls1"],
   },
   sessionStorage: {
-    "https://sectest1.example.org": ["iframe-s-ss1"]
-  }
+    "https://sectest1.example.org": ["iframe-s-ss1"],
+  },
 };
 
 // afterIframeRemoved references the items deleted when an iframe containing
 // storage items is removed from the page.
 const afterIframeRemoved = {
   cookies: {
-    "http://sectest1.example.org": []
+    "http://sectest1.example.org": [],
   },
   indexedDB: {
-    "http://sectest1.example.org": []
+    "http://sectest1.example.org": [],
   },
   localStorage: {
-    "http://sectest1.example.org": []
+    "http://sectest1.example.org": [],
   },
   sessionStorage: {
-    "http://sectest1.example.org": []
+    "http://sectest1.example.org": [],
   },
 };
 
 add_task(async function() {
-  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-dynamic-windows.html");
+  const { target, front } = await openTabAndSetupStorage(
+    MAIN_DOMAIN + "storage-dynamic-windows.html"
+  );
 
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = StorageFront(client, form);
   const data = await front.listStores();
 
   await testStores(data, front);
@@ -94,7 +97,7 @@ add_task(async function() {
 
   // Forcing GC/CC to get rid of docshells and windows created by this test.
   forceCollections();
-  await client.close();
+  await target.destroy();
   forceCollections();
   DebuggerServer.destroy();
   forceCollections();
@@ -110,9 +113,19 @@ async function testStores(data, front) {
 function testWindowsBeforeReload(data) {
   for (const storageType in beforeReload) {
     ok(data[storageType], `${storageType} storage actor is present`);
-    is(Object.keys(data[storageType].hosts).length,
-       Object.keys(beforeReload[storageType]).length,
-        `Number of hosts for ${storageType} match`);
+
+    // If this test is run with chrome debugging enabled we get an extra
+    // key for "chrome". We don't want the test to fail in this case, so
+    // ignore it.
+    if (storageType == "indexedDB") {
+      delete data[storageType].hosts.chrome;
+    }
+
+    is(
+      Object.keys(data[storageType].hosts).length,
+      Object.keys(beforeReload[storageType]).length,
+      `Number of hosts for ${storageType} match`
+    );
     for (const host in beforeReload[storageType]) {
       ok(data[storageType].hosts[host], `Host ${host} is present`);
     }
@@ -124,7 +137,9 @@ async function testAddIframe(front) {
 
   const update = front.once("stores-update");
 
-  await ContentTask.spawn(gBrowser.selectedBrowser, ALT_DOMAIN_SECURED,
+  await ContentTask.spawn(
+    gBrowser.selectedBrowser,
+    ALT_DOMAIN_SECURED,
     secured => {
       const doc = content.document;
 
@@ -177,14 +192,20 @@ function validateStorage(actual, expected, category = "") {
 
     const actualKeys = Object.keys(actualData);
     const expectedKeys = Object.keys(expectedData);
-    is(actualKeys.length, expectedKeys.length, `${type} data is the correct length.`);
+    is(
+      actualKeys.length,
+      expectedKeys.length,
+      `${type} data is the correct length.`
+    );
 
     for (const [key, dataValues] of Object.entries(expectedData)) {
       ok(actualData[key], `${type} data contains the key ${key}.`);
 
       for (const dataValue of dataValues) {
-        ok(actualData[key].includes(dataValue),
-          `${type}[${key}] contains "${dataValue}".`);
+        ok(
+          actualData[key].includes(dataValue),
+          `${type}[${key}] contains "${dataValue}".`
+        );
       }
     }
   }

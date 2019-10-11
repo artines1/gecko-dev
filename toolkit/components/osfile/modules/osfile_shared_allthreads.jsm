@@ -37,7 +37,8 @@ if (typeof Components != "undefined") {
   this.exports = {};
 
   ChromeUtils.import("resource://gre/modules/Services.jsm", this);
-  Meta = ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", {}).BasePromiseWorker.Meta;
+  Meta = ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", {})
+    .BasePromiseWorker.Meta;
 } else {
   importScripts("resource://gre/modules/workers/require.js");
   Meta = require("resource://gre/modules/workers/PromiseWorker.js").Meta;
@@ -60,7 +61,7 @@ var EXPORTED_SYMBOLS = [
   "isArrayBuffer",
   "isTypedArray",
   "defineLazyGetter",
-  "OS" // Warning: this exported symbol will disappear
+  "OS", // Warning: this exported symbol will disappear
 ];
 
 // //////////////////// Configuration of OS.File
@@ -76,7 +77,7 @@ var Config = {
   /**
    * TEST
    */
-  TEST: false
+  TEST: false,
 };
 exports.Config = Config;
 
@@ -86,9 +87,12 @@ if (typeof Components != "undefined") {
   // On the main thread, OS.Constants is defined by a xpcom
   // component. On other threads, it is available automatically
   /* global OS */
-  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
-  Cc["@mozilla.org/net/osfileconstantsservice;1"].
-    getService(Ci.nsIOSFileConstantsService).init();
+  var { ctypes } = ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+  Cc["@mozilla.org/net/osfileconstantsservice;1"]
+    .getService(Ci.nsIOSFileConstantsService)
+    .init();
+} else {
+  ctypes = self.ctypes;
 }
 
 exports.Constants = OS.Constants;
@@ -103,14 +107,13 @@ var defineLazyGetter = function defineLazyGetter(object, name, getter) {
       delete this[name];
       let value = getter.call(this);
       Object.defineProperty(object, name, {
-        value
+        value,
       });
       return value;
-    }
+    },
   });
 };
 exports.defineLazyGetter = defineLazyGetter;
-
 
 // /////////////////// Logging
 
@@ -154,7 +157,15 @@ var stringifyArg = function stringifyArg(arg) {
     if (argToString === "[object Object]") {
       return JSON.stringify(arg, function(key, value) {
         if (isTypedArray(value)) {
-          return "[" + value.constructor.name + " " + value.byteOffset + " " + value.byteLength + "]";
+          return (
+            "[" +
+            value.constructor.name +
+            " " +
+            value.byteOffset +
+            " " +
+            value.byteLength +
+            "]"
+          );
         }
         if (isArrayBuffer(arg)) {
           return "[" + value.constructor.name + " " + value.byteLength + "]";
@@ -162,8 +173,7 @@ var stringifyArg = function stringifyArg(arg) {
         return value;
       });
     }
-      return argToString;
-
+    return argToString;
   }
   return arg;
 };
@@ -213,7 +223,7 @@ var clone = function(object, refs = []) {
       },
       set(value) {
         object[key] = value;
-      }
+      },
     });
   };
   for (let k in object) {
@@ -245,12 +255,14 @@ exports.clone = clone;
  */
 function Type(name, implementation) {
   if (!(typeof name == "string")) {
-    throw new TypeError("Type expects as first argument a name, got: "
-                        + name);
+    throw new TypeError("Type expects as first argument a name, got: " + name);
   }
   if (!(implementation instanceof ctypes.CType)) {
-    throw new TypeError("Type expects as second argument a ctypes.CType" +
-                        ", got: " + implementation);
+    throw new TypeError(
+      "Type expects as second argument a ctypes.CType" +
+        ", got: " +
+        implementation
+    );
   }
   Object.defineProperty(this, "name", { value: name });
   Object.defineProperty(this, "implementation", { value: implementation });
@@ -293,12 +305,12 @@ Type.prototype = {
     let ptr_t = new PtrType(
       "[in] " + this.name + "*",
       this.implementation.ptr,
-      this);
-    Object.defineProperty(this, "in_ptr",
-    {
+      this
+    );
+    Object.defineProperty(this, "in_ptr", {
       get() {
         return ptr_t;
-      }
+      },
     });
     return ptr_t;
   },
@@ -311,12 +323,12 @@ Type.prototype = {
     let ptr_t = new PtrType(
       "[out] " + this.name + "*",
       this.implementation.ptr,
-      this);
-    Object.defineProperty(this, "out_ptr",
-    {
+      this
+    );
+    Object.defineProperty(this, "out_ptr", {
       get() {
         return ptr_t;
-      }
+      },
     });
     return ptr_t;
   },
@@ -333,12 +345,12 @@ Type.prototype = {
     let ptr_t = new PtrType(
       "[inout] " + this.name + "*",
       this.implementation.ptr,
-      this);
-    Object.defineProperty(this, "inout_ptr",
-    {
+      this
+    );
+    Object.defineProperty(this, "inout_ptr", {
       get() {
         return ptr_t;
-      }
+      },
     });
     return ptr_t;
   },
@@ -352,7 +364,8 @@ Type.prototype = {
     type.importFromC = function importFromC(value, operation) {
       return ctypes.CDataFinalizer(
         parent.importFromC(value, operation),
-        finalizer);
+        finalizer
+      );
     };
     return type;
   },
@@ -370,7 +383,8 @@ Type.prototype = {
     type.importFromC = function importFromC(value, operation) {
       return ctypes.CDataFinalizer(
         parent.importFromC(value, operation),
-        getFinalizer());
+        getFinalizer()
+      );
     };
     return type;
   },
@@ -379,7 +393,7 @@ Type.prototype = {
    * Return an alias to a type with a different name.
    */
   withName: function withName(name) {
-    return Object.create(this, {name: {value: name}});
+    return Object.create(this, { name: { value: name } });
   },
 
   /**
@@ -399,15 +413,14 @@ Type.prototype = {
    */
   get size() {
     return this.implementation.size;
-  }
+  },
 };
 
 /**
  * Utility function used to determine whether an object is a typed array
  */
 var isTypedArray = function isTypedArray(obj) {
-  return obj != null && typeof obj == "object"
-    && "byteOffset" in obj;
+  return obj != null && typeof obj == "object" && "byteOffset" in obj;
 };
 exports.isTypedArray = isTypedArray;
 
@@ -415,8 +428,11 @@ exports.isTypedArray = isTypedArray;
  * Utility function used to determine whether an object is an ArrayBuffer.
  */
 var isArrayBuffer = function(obj) {
-  return obj != null && typeof obj == "object" &&
-    obj.constructor.name == "ArrayBuffer";
+  return (
+    obj != null &&
+    typeof obj == "object" &&
+    obj.constructor.name == "ArrayBuffer"
+  );
 };
 exports.isArrayBuffer = isArrayBuffer;
 
@@ -436,7 +452,7 @@ function PtrType(name, implementation, targetType) {
    * The type of values targeted by this pointer type.
    */
   Object.defineProperty(this, "targetType", {
-    value: targetType
+    value: targetType,
   });
 }
 PtrType.prototype = Object.create(Type.prototype);
@@ -460,23 +476,24 @@ PtrType.prototype.toMsg = function ptr_toMsg(value) {
   }
   if (isTypedArray(value)) {
     // Automatically transfer typed arrays
-    return new Meta({data: value}, {transfers: [value.buffer]});
+    return new Meta({ data: value }, { transfers: [value.buffer] });
   }
   if (isArrayBuffer(value)) {
     // Automatically transfer array buffers
-    return new Meta({data: value}, {transfers: [value]});
+    return new Meta({ data: value }, { transfers: [value] });
   }
   let normalized;
-  if ("addressOfElement" in value) { // C array
+  if ("addressOfElement" in value) {
+    // C array
     normalized = value.addressOfElement(0);
-  } else if ("isNull" in value) { // C pointer
+  } else if ("isNull" in value) {
+    // C pointer
     normalized = value;
   } else {
-    throw new TypeError("Value " + value +
-      " cannot be converted to a pointer");
+    throw new TypeError("Value " + value + " cannot be converted to a pointer");
   }
   let cast = Type.uintptr_t.cast(normalized);
-  return {ptr: cast.value.toString()};
+  return { ptr: cast.value.toString() };
 };
 
 /**
@@ -496,12 +513,12 @@ PtrType.prototype.fromMsg = function ptr_fromMsg(msg) {
     let address = ctypes.uintptr_t(msg.ptr);
     return this.cast(address);
   }
-  throw new TypeError("Message " + msg.toSource() +
-    " does not represent a pointer");
+  throw new TypeError(
+    "Message " + msg.toSource() + " does not represent a pointer"
+  );
 };
 
 exports.Type = Type;
-
 
 /*
  * Some values are large integers on 64 bit platforms. Unfortunately,
@@ -524,15 +541,22 @@ var projectValue = function projectValue(x) {
   if (!(x instanceof ctypes.CData)) {
     return x;
   }
-  if (!("value" in x)) { // Sanity check
+  if (!("value" in x)) {
+    // Sanity check
     throw new TypeError("Number " + x.toSource() + " has no field |value|");
   }
   return x.value;
 };
 
 function projector(type, signed) {
-  LOG("Determining best projection for", type,
-    "(size: ", type.size, ")", signed ? "signed" : "unsigned");
+  LOG(
+    "Determining best projection for",
+    type,
+    "(size: ",
+    type.size,
+    ")",
+    signed ? "signed" : "unsigned"
+  );
   if (type instanceof Type) {
     type = type.implementation;
   }
@@ -540,22 +564,23 @@ function projector(type, signed) {
     throw new TypeError("Argument is not a proper C type");
   }
   // Determine if type is projected to Int64/Uint64
-  if (type.size == 8 // Usual case
-      // The following cases have special treatment in js-ctypes
-      // Regardless of their size, the value getter returns
-      // a Int64/Uint64
-      || type == ctypes.size_t // Special cases
-      || type == ctypes.ssize_t
-      || type == ctypes.intptr_t
-      || type == ctypes.uintptr_t
-      || type == ctypes.off_t) {
+  if (
+    type.size == 8 || // Usual case
+    // The following cases have special treatment in js-ctypes
+    // Regardless of their size, the value getter returns
+    // a Int64/Uint64
+    type == ctypes.size_t || // Special cases
+    type == ctypes.ssize_t ||
+    type == ctypes.intptr_t ||
+    type == ctypes.uintptr_t ||
+    type == ctypes.off_t
+  ) {
     if (signed) {
       LOG("Projected as a large signed integer");
       return projectLargeInt;
     }
-      LOG("Projected as a large unsigned integer");
-      return projectLargeUInt;
-
+    LOG("Projected as a large unsigned integer");
+    return projectLargeUInt;
   }
   LOG("Projected as a regular number");
   return projectValue;
@@ -572,12 +597,18 @@ exports.projectValue = projectValue;
  */
 Type.uintn_t = function uintn_t(size) {
   switch (size) {
-  case 1: return Type.uint8_t;
-  case 2: return Type.uint16_t;
-  case 4: return Type.uint32_t;
-  case 8: return Type.uint64_t;
-  default:
-    throw new Error("Cannot represent unsigned integers of " + size + " bytes");
+    case 1:
+      return Type.uint8_t;
+    case 2:
+      return Type.uint16_t;
+    case 4:
+      return Type.uint32_t;
+    case 8:
+      return Type.uint64_t;
+    default:
+      throw new Error(
+        "Cannot represent unsigned integers of " + size + " bytes"
+      );
   }
 };
 
@@ -591,12 +622,16 @@ Type.uintn_t = function uintn_t(size) {
  */
 Type.intn_t = function intn_t(size) {
   switch (size) {
-  case 1: return Type.int8_t;
-  case 2: return Type.int16_t;
-  case 4: return Type.int32_t;
-  case 8: return Type.int64_t;
-  default:
-    throw new Error("Cannot represent integers of " + size + " bytes");
+    case 1:
+      return Type.int8_t;
+    case 2:
+      return Type.int16_t;
+    case 4:
+      return Type.int32_t;
+    case 8:
+      return Type.int64_t;
+    default:
+      throw new Error("Cannot represent integers of " + size + " bytes");
   }
 };
 
@@ -607,25 +642,19 @@ Type.intn_t = function intn_t(size) {
 /**
  * The void value.
  */
-Type.void_t =
-  new Type("void",
-           ctypes.void_t);
+Type.void_t = new Type("void", ctypes.void_t);
 
 /**
  * Shortcut for |void*|.
  */
-Type.voidptr_t =
-  new PtrType("void*",
-              ctypes.voidptr_t,
-              Type.void_t);
+Type.voidptr_t = new PtrType("void*", ctypes.voidptr_t, Type.void_t);
 
 // void* is a special case as we can cast any pointer to/from it
 // so we have to shortcut |in_ptr|/|out_ptr|/|inout_ptr| and
 // ensure that js-ctypes' casting mechanism is invoked directly
 ["in_ptr", "out_ptr", "inout_ptr"].forEach(function(key) {
-  Object.defineProperty(Type.void_t, key,
-  {
-    value: Type.voidptr_t
+  Object.defineProperty(Type.void_t, key, {
+    value: Type.voidptr_t,
   });
 });
 
@@ -655,20 +684,16 @@ IntType.prototype.toMsg = function toMsg(value) {
 /**
  * A C char (one byte)
  */
-Type.char =
-  new Type("char",
-           ctypes.char);
+Type.char = new Type("char", ctypes.char);
 
 /**
  * A C wide char (two bytes)
  */
-Type.char16_t =
-  new Type("char16_t",
-           ctypes.char16_t);
+Type.char16_t = new Type("char16_t", ctypes.char16_t);
 
- /**
-  * Base string types.
-  */
+/**
+ * Base string types.
+ */
 Type.cstring = Type.char.in_ptr.withName("[in] C string");
 Type.wstring = Type.char16_t.in_ptr.withName("[in] wide string");
 Type.out_cstring = Type.char.out_ptr.withName("[out] C string");
@@ -677,72 +702,63 @@ Type.out_wstring = Type.char16_t.out_ptr.withName("[out] wide string");
 /**
  * A C integer (8-bits).
  */
-Type.int8_t =
-  new IntType("int8_t", ctypes.int8_t, true);
+Type.int8_t = new IntType("int8_t", ctypes.int8_t, true);
 
-Type.uint8_t =
-  new IntType("uint8_t", ctypes.uint8_t, false);
+Type.uint8_t = new IntType("uint8_t", ctypes.uint8_t, false);
 
 /**
  * A C integer (16-bits).
  *
  * Also known as WORD under Windows.
  */
-Type.int16_t =
-  new IntType("int16_t", ctypes.int16_t, true);
+Type.int16_t = new IntType("int16_t", ctypes.int16_t, true);
 
-Type.uint16_t =
-  new IntType("uint16_t", ctypes.uint16_t, false);
+Type.uint16_t = new IntType("uint16_t", ctypes.uint16_t, false);
 
 /**
  * A C integer (32-bits).
  *
  * Also known as DWORD under Windows.
  */
-Type.int32_t =
-  new IntType("int32_t", ctypes.int32_t, true);
+Type.int32_t = new IntType("int32_t", ctypes.int32_t, true);
 
-Type.uint32_t =
-  new IntType("uint32_t", ctypes.uint32_t, false);
+Type.uint32_t = new IntType("uint32_t", ctypes.uint32_t, false);
 
 /**
  * A C integer (64-bits).
  */
-Type.int64_t =
-  new IntType("int64_t", ctypes.int64_t, true);
+Type.int64_t = new IntType("int64_t", ctypes.int64_t, true);
 
-Type.uint64_t =
-  new IntType("uint64_t", ctypes.uint64_t, false);
+Type.uint64_t = new IntType("uint64_t", ctypes.uint64_t, false);
 
- /**
+/**
  * A C integer
  *
  * Size depends on the platform.
  */
-Type.int = Type.intn_t(ctypes.int.size).
-  withName("int");
+Type.int = Type.intn_t(ctypes.int.size).withName("int");
 
-Type.unsigned_int = Type.intn_t(ctypes.unsigned_int.size).
-  withName("unsigned int");
+Type.unsigned_int = Type.intn_t(ctypes.unsigned_int.size).withName(
+  "unsigned int"
+);
 
 /**
  * A C long integer.
  *
  * Size depends on the platform.
  */
-Type.long =
-  Type.intn_t(ctypes.long.size).withName("long");
+Type.long = Type.intn_t(ctypes.long.size).withName("long");
 
-Type.unsigned_long =
-  Type.intn_t(ctypes.unsigned_long.size).withName("unsigned long");
+Type.unsigned_long = Type.intn_t(ctypes.unsigned_long.size).withName(
+  "unsigned long"
+);
 
 /**
  * An unsigned integer with the same size as a pointer.
  *
  * Used to cast a pointer to an integer, whenever necessary.
  */
-Type.uintptr_t =
-  Type.uintn_t(ctypes.uintptr_t.size).withName("uintptr_t");
+Type.uintptr_t = Type.uintn_t(ctypes.uintptr_t.size).withName("uintptr_t");
 
 /**
  * A boolean.
@@ -750,7 +766,7 @@ Type.uintptr_t =
  */
 Type.bool = Type.int.withName("bool");
 Type.bool.importFromC = function projectBool(x) {
-  return !!(x.value);
+  return !!x.value;
 };
 
 /**
@@ -758,47 +774,40 @@ Type.bool.importFromC = function projectBool(x) {
  *
  * Implemented as a C integer.
  */
-Type.uid_t =
-  Type.int.withName("uid_t");
+Type.uid_t = Type.int.withName("uid_t");
 
 /**
  * A group identifier.
  *
  * Implemented as a C integer.
  */
-Type.gid_t =
-  Type.int.withName("gid_t");
+Type.gid_t = Type.int.withName("gid_t");
 
 /**
  * An offset (positive or negative).
  *
  * Implemented as a C integer.
  */
-Type.off_t =
-  new IntType("off_t", ctypes.off_t, true);
+Type.off_t = new IntType("off_t", ctypes.off_t, true);
 
 /**
  * A size (positive).
  *
  * Implemented as a C size_t.
  */
-Type.size_t =
-  new IntType("size_t", ctypes.size_t, false);
+Type.size_t = new IntType("size_t", ctypes.size_t, false);
 
 /**
  * An offset (positive or negative).
  * Implemented as a C integer.
  */
-Type.ssize_t =
-  new IntType("ssize_t", ctypes.ssize_t, true);
+Type.ssize_t = new IntType("ssize_t", ctypes.ssize_t, true);
 
 /**
  * Encoding/decoding strings
  */
-Type.uencoder =
-  new Type("uencoder", ctypes.StructType("uencoder"));
-Type.udecoder =
-  new Type("udecoder", ctypes.StructType("udecoder"));
+Type.uencoder = new Type("uencoder", ctypes.StructType("uencoder"));
+Type.udecoder = new Type("udecoder", ctypes.StructType("udecoder"));
 
 /**
  * Utility class, used to build a |struct| type
@@ -851,16 +860,26 @@ HollowStructure.prototype = {
       type = type.implementation;
     }
     if (this.offset_to_field_info[offset]) {
-      throw new Error("HollowStructure " + this.name +
-                      " already has a field at offset " + offset);
+      throw new Error(
+        "HollowStructure " +
+          this.name +
+          " already has a field at offset " +
+          offset
+      );
     }
     if (offset + type.size > this.size) {
-      throw new Error("HollowStructure " + this.name +
-                      " cannot place a value of type " + type +
-                      " at offset " + offset +
-                      " without exceeding its size of " + this.size);
+      throw new Error(
+        "HollowStructure " +
+          this.name +
+          " cannot place a value of type " +
+          type +
+          " at offset " +
+          offset +
+          " without exceeding its size of " +
+          this.size
+      );
     }
-    let field = {name, type};
+    let field = { name, type };
     this.offset_to_field_info[offset] = field;
   },
 
@@ -872,9 +891,8 @@ HollowStructure.prototype = {
    * as expected by |ctypes.StructType|.
    */
   _makePaddingField: function makePaddingField(size) {
-    let field = ({});
-    field["padding_" + this._paddings] =
-      ctypes.ArrayType(ctypes.uint8_t, size);
+    let field = {};
+    field["padding_" + this._paddings] = ctypes.ArrayType(ctypes.uint8_t, size);
     this._paddings++;
     return field;
   },
@@ -896,8 +914,10 @@ HollowStructure.prototype = {
 
         // Firstly, determine how many bytes of padding
         let padding_length = 1;
-        while (i + padding_length < this.size
-            && !this.offset_to_field_info[i + padding_length]) {
+        while (
+          i + padding_length < this.size &&
+          !this.offset_to_field_info[i + padding_length]
+        ) {
           ++padding_length;
         }
 
@@ -913,14 +933,19 @@ HollowStructure.prototype = {
         for (let j = 1; j < currentField.type.size; ++j) {
           let candidateField = this.offset_to_field_info[i + j];
           if (candidateField) {
-            throw new Error("Fields " + currentField.name +
-              " and " + candidateField.name +
-              " overlap at position " + (i + j));
+            throw new Error(
+              "Fields " +
+                currentField.name +
+                " and " +
+                candidateField.name +
+                " overlap at position " +
+                (i + j)
+            );
           }
         }
 
         // Then add the field
-        let field = ({});
+        let field = {};
         field[currentField.name] = currentField.type;
         struct.push(field);
 
@@ -930,13 +955,20 @@ HollowStructure.prototype = {
     }
     let result = new Type(this.name, ctypes.StructType(this.name, struct));
     if (result.implementation.size != this.size) {
-      throw new Error("Wrong size for type " + this.name +
-          ": expected " + this.size +
-          ", found " + result.implementation.size +
-          " (" + result.implementation.toSource() + ")");
+      throw new Error(
+        "Wrong size for type " +
+          this.name +
+          ": expected " +
+          this.size +
+          ", found " +
+          result.implementation.size +
+          " (" +
+          result.implementation.toSource() +
+          ")"
+      );
     }
     return result;
-  }
+  },
 };
 exports.HollowStructure = HollowStructure;
 
@@ -979,7 +1011,7 @@ Library.prototype = Object.freeze({
     this._candidates = null;
     if (library) {
       Object.defineProperty(this, "library", {
-        value: library
+        value: library,
       });
       Object.freeze(this);
       return library;
@@ -988,7 +1020,7 @@ Library.prototype = Object.freeze({
     Object.defineProperty(this, "library", {
       get() {
         throw error;
-      }
+      },
     });
     Object.freeze(this);
     throw error;
@@ -1012,12 +1044,12 @@ Library.prototype = Object.freeze({
         delete this[field];
         let ffi = declareFFI(lib.library, ...args);
         if (ffi) {
-          return this[field] = ffi;
+          return (this[field] = ffi);
         }
         return undefined;
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     });
   },
 
@@ -1039,12 +1071,12 @@ Library.prototype = Object.freeze({
         delete this[field];
         let ffi = lib.library.declare(...args);
         if (ffi) {
-          return this[field] = ffi;
+          return (this[field] = ffi);
         }
         return undefined;
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     });
   },
 
@@ -1070,7 +1102,7 @@ Library.prototype = Object.freeze({
         try {
           let ffi = lib.library.declare(...args);
           if (ffi) {
-            return this[field] = ffi;
+            return (this[field] = ffi);
           }
         } catch (ex) {
           // Use the fallback library and get the symbol from there.
@@ -1080,13 +1112,13 @@ Library.prototype = Object.freeze({
         return undefined;
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     });
   },
 
   toString() {
     return "[Library " + this.name + "]";
-  }
+  },
 });
 exports.Library = Library;
 
@@ -1104,8 +1136,12 @@ exports.Library = Library;
  * it does not exist), or a JavaScript wrapper performing the call to C
  * and any type conversion required.
  */
-var declareFFI = function declareFFI(lib, symbol, abi,
-                                     returnType /* , argTypes ...*/) {
+var declareFFI = function declareFFI(
+  lib,
+  symbol,
+  abi,
+  returnType /* , argTypes ...*/
+) {
   LOG("Attempting to declare FFI ", symbol);
   // We guard agressively, to avoid any late surprise
   if (typeof symbol != "string") {
@@ -1118,19 +1154,28 @@ var declareFFI = function declareFFI(lib, symbol, abi,
     throw new TypeError("declareFFI expects as second argument an abi or null");
   }
   if (!returnType.importFromC) {
-    throw new TypeError("declareFFI expects as third argument an instance of Type");
+    throw new TypeError(
+      "declareFFI expects as third argument an instance of Type"
+    );
   }
   let signature = [symbol, abi];
   for (let i = 3; i < arguments.length; ++i) {
     let current = arguments[i];
     if (!current) {
-      throw new TypeError("Missing type for argument " + ( i - 3 ) +
-                          " of symbol " + symbol);
+      throw new TypeError(
+        "Missing type for argument " + (i - 3) + " of symbol " + symbol
+      );
     }
     if (!current.implementation) {
-      throw new TypeError("Missing implementation for argument " + (i - 3)
-                          + " of symbol " + symbol
-                          + " ( " + current.name + " )" );
+      throw new TypeError(
+        "Missing implementation for argument " +
+          (i - 3) +
+          " of symbol " +
+          symbol +
+          " ( " +
+          current.name +
+          " )"
+      );
     }
     signature.push(current.implementation);
   }
@@ -1139,7 +1184,9 @@ var declareFFI = function declareFFI(lib, symbol, abi,
     let result = function ffi(...args) {
       for (let i = 0; i < args.length; i++) {
         if (typeof args[i] == "undefined") {
-          throw new TypeError("Argument " + i + " of " + symbol + " is undefined");
+          throw new TypeError(
+            "Argument " + i + " of " + symbol + " is undefined"
+          );
         }
       }
       let result = fun.apply(fun, args);
@@ -1174,12 +1221,12 @@ function declareLazyFFI(object, field, ...declareFFIArgs) {
       delete this[field];
       let ffi = declareFFI(...declareFFIArgs);
       if (ffi) {
-        return this[field] = ffi;
+        return (this[field] = ffi);
       }
       return undefined;
     },
     configurable: true,
-    enumerable: true
+    enumerable: true,
   });
 }
 exports.declareLazyFFI = declareLazyFFI;
@@ -1202,13 +1249,13 @@ function declareLazy(object, field, lib, ...declareArgs) {
       delete this[field];
       try {
         let ffi = lib.declare(...declareArgs);
-        return this[field] = ffi;
+        return (this[field] = ffi);
       } catch (ex) {
         // The symbol doesn't exist
         return undefined;
       }
     },
-    configurable: true
+    configurable: true,
   });
 }
 exports.declareLazy = declareLazy;
@@ -1232,11 +1279,13 @@ function normalizeBufferArgs(candidate, bytes) {
   if (bytes == null) {
     bytes = candidate.byteLength;
   } else if (candidate.byteLength < bytes) {
-    throw new TypeError("Buffer is too short. I need at least " +
-                       bytes +
-                       " bytes but I have only " +
-                       candidate.byteLength +
-                        "bytes");
+    throw new TypeError(
+      "Buffer is too short. I need at least " +
+        bytes +
+        " bytes but I have only " +
+        candidate.byteLength +
+        "bytes"
+    );
   }
   return bytes;
 }
@@ -1265,7 +1314,6 @@ function OSError(operation, path = "") {
 OSError.prototype = Object.create(Error.prototype);
 exports.OSError = OSError;
 
-
 // /////////////////// Temporary boilerplate
 // Boilerplate, to simplify the transition to require()
 // Do not rely upon this symbol, it will disappear with
@@ -1281,8 +1329,8 @@ exports.OS = {
     declareFFI,
     projectValue,
     isTypedArray,
-    defineLazyGetter
-  }
+    defineLazyGetter,
+  },
 };
 
 Object.defineProperty(exports.OS.Shared, "DEBUG", {
@@ -1290,18 +1338,17 @@ Object.defineProperty(exports.OS.Shared, "DEBUG", {
     return Config.DEBUG;
   },
   set(x) {
-    return Config.DEBUG = x;
-  }
+    return (Config.DEBUG = x);
+  },
 });
 Object.defineProperty(exports.OS.Shared, "TEST", {
   get() {
     return Config.TEST;
   },
   set(x) {
-    return Config.TEST = x;
-  }
+    return (Config.TEST = x);
+  },
 });
-
 
 // /////////////////// Permanent boilerplate
 if (typeof Components != "undefined") {

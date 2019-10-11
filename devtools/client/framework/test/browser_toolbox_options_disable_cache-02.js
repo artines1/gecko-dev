@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -36,7 +34,7 @@ add_task(async function() {
 
   // Close toolbox in tab 2 and ensure the cache is enabled again
   await tabs[2].toolbox.destroy();
-  tabs[2].target = TargetFactory.forTab(tabs[2].tab);
+  tabs[2].target = await TargetFactory.forTab(tabs[2].tab);
   await checkCacheEnabled(tabs[2], true);
 
   // Open toolbox in tab 2 and ensure the cache is then disabled.

@@ -10,7 +10,13 @@ Test empty selector
   Pushed via `mach try empty`
   Calculated try_task_config.json:
   {
-    "tasks":[]
+      "tasks": [],
+      "templates": {
+          "env": {
+              "TRY_SELECTOR": "empty"
+          }
+      },
+      "version": 1
   }
   
   $ ./mach try empty --no-push --closed-tree
@@ -20,7 +26,13 @@ Test empty selector
   Pushed via `mach try empty`
   Calculated try_task_config.json:
   {
-    "tasks":[]
+      "tasks": [],
+      "templates": {
+          "env": {
+              "TRY_SELECTOR": "empty"
+          }
+      },
+      "version": 1
   }
   
   $ ./mach try empty --no-push --closed-tree -m "foo {msg} bar"
@@ -30,6 +42,12 @@ Test empty selector
   Pushed via `mach try empty`
   Calculated try_task_config.json:
   {
-    "tasks":[]
+      "tasks": [],
+      "templates": {
+          "env": {
+              "TRY_SELECTOR": "empty"
+          }
+      },
+      "version": 1
   }
   

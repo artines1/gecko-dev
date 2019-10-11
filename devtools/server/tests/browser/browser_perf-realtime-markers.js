@@ -7,16 +7,10 @@
 
 "use strict";
 
-const { PerformanceFront } = require("devtools/shared/fronts/performance");
-
 add_task(async function() {
-  await addTab(MAIN_DOMAIN + "doc_perf.html");
+  const target = await addTabTarget(MAIN_DOMAIN + "doc_perf.html");
 
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = PerformanceFront(client, form);
-  await front.connect();
+  const front = await target.getFront("performance");
 
   let lastMemoryDelta = 0;
   let lastTickDelta = 0;
@@ -24,20 +18,25 @@ add_task(async function() {
   const counters = {
     markers: [],
     memory: [],
-    ticks: []
+    ticks: [],
   };
 
   const deferreds = {
     markers: defer(),
     memory: defer(),
-    ticks: defer()
+    ticks: defer(),
   };
 
   front.on("timeline-data", handler);
 
-  const rec = await front.startRecording(
-    { withMarkers: true, withMemory: true, withTicks: true });
-  await Promise.all(Object.keys(deferreds).map(type => deferreds[type].promise));
+  const rec = await front.startRecording({
+    withMarkers: true,
+    withMemory: true,
+    withTicks: true,
+  });
+  await Promise.all(
+    Object.keys(deferreds).map(type => deferreds[type].promise)
+  );
   await front.stopRecording(rec);
   front.off("timeline-data", handler);
 
@@ -45,8 +44,7 @@ add_task(async function() {
   is(counters.memory.length, 3, "three memory events fired.");
   is(counters.ticks.length, 3, "three ticks events fired.");
 
-  await front.destroy();
-  await client.close();
+  await target.destroy();
   gBrowser.removeCurrentTab();
 
   function handler(name, data) {
@@ -88,9 +86,11 @@ add_task(async function() {
       ok(false, `Received unknown event: ${name}`);
     }
 
-    if (name === "markers" && counters[name].length === 1 ||
-        name === "memory" && counters[name].length === 3 ||
-        name === "ticks" && counters[name].length === 3) {
+    if (
+      (name === "markers" && counters[name].length === 1) ||
+      (name === "memory" && counters[name].length === 3) ||
+      (name === "ticks" && counters[name].length === 3)
+    ) {
       deferreds[name].resolve();
     }
   }

@@ -2,16 +2,19 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, print_function, unicode_literals
-
+import atexit
+import copy
+import logging
 import os
 import signal
 import sys
+import time
 import traceback
-from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import _python_exit as futures_atexit
+from itertools import chain
 from math import ceil
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, get_context
 from multiprocessing.queues import Queue
 from subprocess import CalledProcessError
 
@@ -21,37 +24,57 @@ from mozversioncontrol import get_repository_object, MissingUpstreamRepo, Invali
 from .errors import LintersNotConfigured
 from .parser import Parser
 from .pathutils import findobject
+from .result import ResultSummary
 from .types import supported_types
 
 SHUTDOWN = False
 orig_sigint = signal.getsignal(signal.SIGINT)
 
+logger = logging.getLogger("mozlint")
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s.%(msecs)d %(lintname)s (%(pid)s) | %(message)s",
+                              "%H:%M:%S")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 def _run_worker(config, paths, **lintargs):
-    results = defaultdict(list)
-    failed = []
+    log = logging.LoggerAdapter(logger, {
+        "lintname": config.get("name"),
+        "pid": os.getpid()
+    })
+    lintargs['log'] = log
+    result = ResultSummary(lintargs['root'])
 
     if SHUTDOWN:
-        return results, failed
+        return result
 
     func = supported_types[config['type']]
+    start_time = time.time()
     try:
         res = func(paths, config, **lintargs) or []
     except Exception:
         traceback.print_exc()
         res = 1
     except (KeyboardInterrupt, SystemExit):
-        return results, failed
+        return result
     finally:
+        end_time = time.time()
+        log.debug("Finished in {:.2f} seconds".format(end_time - start_time))
         sys.stdout.flush()
 
     if not isinstance(res, (list, tuple)):
         if res:
-            failed.append(config['name'])
+            result.failed_run.add(config['name'])
     else:
         for r in res:
-            results[r.path].append(r)
-    return results, failed
+            if not lintargs.get('show_warnings') and r.level == 'warning':
+                result.suppressed_warnings[r.path] += 1
+                continue
+
+            result.issues[r.path].append(r)
+
+    return result
 
 
 class InterruptableQueue(Queue):
@@ -61,6 +84,9 @@ class InterruptableQueue(Queue):
     This is needed to gracefully handle KeyboardInterrupts when a worker is
     blocking on ProcessPoolExecutor's call queue.
     """
+    def __init__(self, *args, **kwargs):
+        kwargs['ctx'] = get_context()
+        super(InterruptableQueue, self).__init__(*args, **kwargs)
 
     def get(self, *args, **kwargs):
         try:
@@ -80,6 +106,24 @@ def _worker_sigint_handler(signum, frame):
     orig_sigint(signum, frame)
 
 
+def wrap_futures_atexit():
+    """Sometimes futures' atexit handler can spew tracebacks. This wrapper
+    suppresses them."""
+    try:
+        futures_atexit()
+    except Exception:
+        # Generally `atexit` handlers aren't supposed to raise exceptions, but the
+        # futures' handler can sometimes raise when the user presses `CTRL-C`. We
+        # suppress all possible exceptions here so users have a nice experience
+        # when canceling their lint run. Any exceptions raised by this function
+        # won't be useful anyway.
+        pass
+
+
+atexit.unregister(futures_atexit)
+atexit.register(wrap_futures_atexit)
+
+
 class LintRoller(object):
     """Registers and runs linters.
 
@@ -90,7 +134,7 @@ class LintRoller(object):
     """
     MAX_PATHS_PER_JOB = 50  # set a max size to prevent command lines that are too long on Windows
 
-    def __init__(self, root, **lintargs):
+    def __init__(self, root, exclude=None, **lintargs):
         self.parse = Parser(root)
         try:
             self.vcs = get_repository_object(root)
@@ -102,46 +146,53 @@ class LintRoller(object):
         self.lintargs['root'] = root
 
         # result state
-        self.failed = None
-        self.failed_setup = None
-        self.results = None
+        self.result = ResultSummary(root)
 
         self.root = root
+        self.exclude = exclude or []
+
+        if lintargs.get('show_verbose'):
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.WARNING)
 
     def read(self, paths):
         """Parse one or more linters and add them to the registry.
 
         :param paths: A path or iterable of paths to linter definitions.
         """
-        if isinstance(paths, basestring):
+        if isinstance(paths, str):
             paths = (paths,)
 
-        for path in paths:
-            self.linters.extend(self.parse(path))
+        for linter in chain(*[self.parse(p) for p in paths]):
+            # Add in our global excludes
+            linter.setdefault('exclude', []).extend(self.exclude)
+            self.linters.append(linter)
 
     def setup(self):
         """Run setup for applicable linters"""
         if not self.linters:
             raise LintersNotConfigured
 
-        self.failed_setup = set()
         for linter in self.linters:
             if 'setup' not in linter:
                 continue
 
             try:
-                res = findobject(linter['setup'])(self.root)
+                setupargs = copy.deepcopy(self.lintargs)
+                setupargs['name'] = linter['name']
+                res = findobject(linter['setup'])(**setupargs)
             except Exception:
                 traceback.print_exc()
                 res = 1
 
             if res:
-                self.failed_setup.add(linter['name'])
+                self.result.failed_setup.add(linter['name'])
 
-        if self.failed_setup:
+        if self.result.failed_setup:
             print("error: problem with lint setup, skipping {}".format(
-                    ', '.join(sorted(self.failed_setup))))
-            self.linters = [l for l in self.linters if l['name'] not in self.failed_setup]
+                    ', '.join(sorted(self.result.failed_setup))))
+            self.linters = [l for l in self.linters if l['name'] not in self.result.failed_setup]
             return 1
         return 0
 
@@ -158,6 +209,9 @@ class LintRoller(object):
 
             lpaths = list(lpaths) or [os.getcwd()]
             chunk_size = min(self.MAX_PATHS_PER_JOB, int(ceil(len(lpaths) / num_procs))) or 1
+            if linter['type'] == 'global':
+                # Global linters lint the entire tree in one job.
+                chunk_size = len(lpaths) or 1
             assert chunk_size > 0
 
             while lpaths:
@@ -168,11 +222,8 @@ class LintRoller(object):
         if future.cancelled():
             return
 
-        results, failed = future.result()
-        if failed:
-            self.failed.update(set(failed))
-        for k, v in results.iteritems():
-            self.results[k].extend(v)
+        # Merge this job's results with our global ones.
+        self.result.update(future.result())
 
     def roll(self, paths=None, outgoing=None, workdir=None, num_procs=None):
         """Run all of the registered linters against the specified file paths.
@@ -181,20 +232,17 @@ class LintRoller(object):
         :param outgoing: Lint files touched by commits that are not on the remote repository.
         :param workdir: Lint all files touched in the working directory.
         :param num_procs: The number of processes to use. Default: cpu count
-        :return: A dictionary with file names as the key, and a list of
-                 :class:`~result.ResultContainer`s as the value.
+        :return: A :class:`~result.ResultSummary` instance.
         """
         if not self.linters:
             raise LintersNotConfigured
 
-        # reset result state
-        self.results = defaultdict(list)
-        self.failed = set()
+        self.result.reset()
 
         # Need to use a set in case vcs operations specify the same file
         # more than once.
         paths = paths or set()
-        if isinstance(paths, basestring):
+        if isinstance(paths, str):
             paths = set([paths])
         elif isinstance(paths, (list, tuple)):
             paths = set(paths)
@@ -220,7 +268,7 @@ class LintRoller(object):
 
         if not (paths or vcs_paths) and (workdir or outgoing):
             print("warning: no files linted")
-            return {}
+            return self.result
 
         # Make sure all paths are absolute. Join `paths` to cwd and `vcs_paths` to root.
         paths = set(map(os.path.abspath, paths))
@@ -255,11 +303,11 @@ class LintRoller(object):
             more than a couple seconds.
             """
             [f.cancel() for f in futures]
-            executor.shutdown(wait=False)
+            executor.shutdown(wait=True)
             print("\nwarning: not all files were linted")
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         signal.signal(signal.SIGINT, _parent_sigint_handler)
         executor.shutdown()
         signal.signal(signal.SIGINT, orig_sigint)
-        return self.results
+        return self.result

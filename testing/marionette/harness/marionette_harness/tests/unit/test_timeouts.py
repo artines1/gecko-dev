@@ -12,13 +12,17 @@ from marionette_driver.errors import (
 )
 from marionette_driver.marionette import HTMLElement
 
-from marionette_harness import MarionetteTestCase, run_if_manage_instance, skip_if_mobile
+from marionette_harness import MarionetteTestCase, run_if_manage_instance
 
 
 class TestTimeouts(MarionetteTestCase):
     def tearDown(self):
         self.marionette.timeout.reset()
         MarionetteTestCase.tearDown(self)
+
+    def test_get_timeout_fraction(self):
+        self.marionette.timeout.script = 0.5
+        self.assertEqual(self.marionette.timeout.script, 0.5)
 
     def test_page_timeout_notdefinetimeout_pass(self):
         test_html = self.marionette.absolute_url("test.html")
@@ -45,7 +49,6 @@ class TestTimeouts(MarionetteTestCase):
         with self.assertRaises(NoSuchElementException):
             self.marionette.find_element(By.ID, "I'm not on the page")
 
-    @skip_if_mobile("Bug 1317121 - android emulator is too slow")
     def test_search_timeout_found_settimeout(self):
         test_html = self.marionette.absolute_url("test.html")
         self.marionette.navigate(test_html)
@@ -54,7 +57,6 @@ class TestTimeouts(MarionetteTestCase):
         self.marionette.timeout.implicit = 8
         self.assertEqual(HTMLElement, type(self.marionette.find_element(By.ID, "newDiv")))
 
-    @skip_if_mobile("Bug 1306848 - android emulator is too slow")
     def test_search_timeout_found(self):
         test_html = self.marionette.absolute_url("test.html")
         self.marionette.navigate(test_html)
@@ -63,7 +65,6 @@ class TestTimeouts(MarionetteTestCase):
         self.assertRaises(NoSuchElementException, self.marionette.find_element, By.ID, "newDiv")
 
     @run_if_manage_instance("Only runnable if Marionette manages the instance")
-    @skip_if_mobile("Bug 1322993 - Missing temporary folder")
     def test_reset_timeout(self):
         timeouts = [getattr(self.marionette.timeout, f) for f in (
             'implicit', 'page_load', 'script',)]

@@ -7,7 +7,6 @@
 #include "nsHTMLParts.h"
 #include "nsStyleConsts.h"
 #include "nsGkAtoms.h"
-#include "nsIPresShell.h"
 #include "nsBoxFrame.h"
 #include "nsDisplayList.h"
 #include "nsStackLayout.h"
@@ -15,6 +14,7 @@
 #include "nsIContent.h"
 #include "nsFrameManager.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/PresShell.h"
 
 using namespace mozilla;
 
@@ -23,13 +23,11 @@ using namespace mozilla;
 //#define DEBUG_REFLOW
 
 // static
-nsIPopupContainer*
-nsIPopupContainer::GetPopupContainer(nsIPresShell* aShell)
-{
-  if (!aShell) {
+nsIPopupContainer* nsIPopupContainer::GetPopupContainer(PresShell* aPresShell) {
+  if (!aPresShell) {
     return nullptr;
   }
-  nsIFrame* rootFrame = aShell->GetRootFrame();
+  nsIFrame* rootFrame = aPresShell->GetRootFrame();
   if (!rootFrame) {
     return nullptr;
   }
@@ -51,13 +49,12 @@ nsIPopupContainer::GetPopupContainer(nsIPresShell* aShell)
   return rootBox;
 }
 
-class nsRootBoxFrame final : public nsBoxFrame, public nsIPopupContainer
-{
-public:
+class nsRootBoxFrame final : public nsBoxFrame, public nsIPopupContainer {
+ public:
+  friend nsIFrame* NS_NewBoxFrame(mozilla::PresShell* aPresShell,
+                                  ComputedStyle* aStyle);
 
-  friend nsIFrame* NS_NewBoxFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
-
-  explicit nsRootBoxFrame(ComputedStyle* aStyle);
+  explicit nsRootBoxFrame(ComputedStyle* aStyle, nsPresContext* aPresContext);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsRootBoxFrame)
@@ -67,27 +64,24 @@ public:
   virtual Element* GetDefaultTooltip() override;
   virtual void SetDefaultTooltip(Element* aTooltip) override;
 
-  virtual void AppendFrames(ChildListID     aListID,
-                            nsFrameList&    aFrameList) override;
-  virtual void InsertFrames(ChildListID     aListID,
-                            nsIFrame*       aPrevFrame,
-                            nsFrameList&    aFrameList) override;
-  virtual void RemoveFrame(ChildListID     aListID,
-                           nsIFrame*       aOldFrame) override;
+  virtual void AppendFrames(ChildListID aListID,
+                            nsFrameList& aFrameList) override;
+  virtual void InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
+                            const nsLineList::iterator* aPrevFrameLine,
+                            nsFrameList& aFrameList) override;
+  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) override;
 
-  virtual void Reflow(nsPresContext*          aPresContext,
-                          ReflowOutput&     aDesiredSize,
-                          const ReflowInput& aReflowInput,
-                          nsReflowStatus&          aStatus) override;
+  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+                      const ReflowInput& aReflowInput,
+                      nsReflowStatus& aStatus) override;
   virtual nsresult HandleEvent(nsPresContext* aPresContext,
                                WidgetGUIEvent* aEvent,
                                nsEventStatus* aEventStatus) override;
 
-  virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
+  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists) override;
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override
-  {
+  virtual bool IsFrameOfType(uint32_t aFlags) const override {
     // Override bogus IsFrameOfType in nsBoxFrame.
     if (aFlags & (nsIFrame::eReplacedContainsBlock | nsIFrame::eReplaced))
       return false;
@@ -100,54 +94,46 @@ public:
 
   nsPopupSetFrame* mPopupSetFrame;
 
-protected:
+ protected:
   Element* mDefaultTooltip;
 };
 
 //----------------------------------------------------------------------
 
-nsContainerFrame*
-NS_NewRootBoxFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
-{
-  return new (aPresShell) nsRootBoxFrame(aStyle);
+nsContainerFrame* NS_NewRootBoxFrame(PresShell* aPresShell,
+                                     ComputedStyle* aStyle) {
+  return new (aPresShell) nsRootBoxFrame(aStyle, aPresShell->GetPresContext());
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsRootBoxFrame)
 
-nsRootBoxFrame::nsRootBoxFrame(ComputedStyle* aStyle)
-  : nsBoxFrame(aStyle, kClassID, true)
-  , mPopupSetFrame(nullptr)
-  , mDefaultTooltip(nullptr)
-{
+nsRootBoxFrame::nsRootBoxFrame(ComputedStyle* aStyle,
+                               nsPresContext* aPresContext)
+    : nsBoxFrame(aStyle, aPresContext, kClassID, true),
+      mPopupSetFrame(nullptr),
+      mDefaultTooltip(nullptr) {
   nsCOMPtr<nsBoxLayout> layout;
   NS_NewStackLayout(layout);
   SetXULLayoutManager(layout);
 }
 
-void
-nsRootBoxFrame::AppendFrames(ChildListID     aListID,
-                             nsFrameList&    aFrameList)
-{
+void nsRootBoxFrame::AppendFrames(ChildListID aListID,
+                                  nsFrameList& aFrameList) {
   MOZ_ASSERT(aListID == kPrincipalList, "unexpected child list ID");
   MOZ_ASSERT(mFrames.IsEmpty(), "already have a child frame");
   nsBoxFrame::AppendFrames(aListID, aFrameList);
 }
 
-void
-nsRootBoxFrame::InsertFrames(ChildListID     aListID,
-                             nsIFrame*       aPrevFrame,
-                             nsFrameList&    aFrameList)
-{
+void nsRootBoxFrame::InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
+                                  const nsLineList::iterator* aPrevFrameLine,
+                                  nsFrameList& aFrameList) {
   // Because we only support a single child frame inserting is the same
   // as appending.
   MOZ_ASSERT(!aPrevFrame, "unexpected previous sibling frame");
   AppendFrames(aListID, aFrameList);
 }
 
-void
-nsRootBoxFrame::RemoveFrame(ChildListID     aListID,
-                            nsIFrame*       aOldFrame)
-{
+void nsRootBoxFrame::RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) {
   NS_ASSERTION(aListID == kPrincipalList, "unexpected child list ID");
   if (aOldFrame == mFrames.FirstChild()) {
     nsBoxFrame::RemoveFrame(aListID, aOldFrame);
@@ -160,12 +146,10 @@ nsRootBoxFrame::RemoveFrame(ChildListID     aListID,
 int32_t gReflows = 0;
 #endif
 
-void
-nsRootBoxFrame::Reflow(nsPresContext*           aPresContext,
-                       ReflowOutput&     aDesiredSize,
-                       const ReflowInput& aReflowInput,
-                       nsReflowStatus&          aStatus)
-{
+void nsRootBoxFrame::Reflow(nsPresContext* aPresContext,
+                            ReflowOutput& aDesiredSize,
+                            const ReflowInput& aReflowInput,
+                            nsReflowStatus& aStatus) {
   DO_GLOBAL_REFLOW_COUNT("nsRootBoxFrame");
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
@@ -176,16 +160,14 @@ nsRootBoxFrame::Reflow(nsPresContext*           aPresContext,
   return nsBoxFrame::Reflow(aPresContext, aDesiredSize, aReflowInput, aStatus);
 }
 
-void
-nsRootBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                 const nsDisplayListSet& aLists)
-{
+void nsRootBoxFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                                      const nsDisplayListSet& aLists) {
   if (mContent && mContent->GetProperty(nsGkAtoms::DisplayPortMargins)) {
     // The XUL document's root element may have displayport margins set in
     // ChromeProcessController::InitializeRoot, and we should to supply the
     // base rect.
     nsRect displayPortBase =
-      aBuilder->GetVisibleRect().Intersect(nsRect(nsPoint(0, 0), GetSize()));
+        aBuilder->GetVisibleRect().Intersect(nsRect(nsPoint(0, 0), GetSize()));
     nsLayoutUtils::SetDisplayPortBase(mContent, displayPortBase);
   }
 
@@ -197,11 +179,9 @@ nsRootBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   BuildDisplayListForChildren(aBuilder, aLists);
 }
 
-nsresult
-nsRootBoxFrame::HandleEvent(nsPresContext* aPresContext,
-                            WidgetGUIEvent* aEvent,
-                            nsEventStatus* aEventStatus)
-{
+nsresult nsRootBoxFrame::HandleEvent(nsPresContext* aPresContext,
+                                     WidgetGUIEvent* aEvent,
+                                     nsEventStatus* aEventStatus) {
   NS_ENSURE_ARG_POINTER(aEventStatus);
   if (nsEventStatus_eConsumeNoDefault == *aEventStatus) {
     return NS_OK;
@@ -214,15 +194,9 @@ nsRootBoxFrame::HandleEvent(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-nsPopupSetFrame*
-nsRootBoxFrame::GetPopupSetFrame()
-{
-  return mPopupSetFrame;
-}
+nsPopupSetFrame* nsRootBoxFrame::GetPopupSetFrame() { return mPopupSetFrame; }
 
-void
-nsRootBoxFrame::SetPopupSetFrame(nsPopupSetFrame* aPopupSet)
-{
+void nsRootBoxFrame::SetPopupSetFrame(nsPopupSetFrame* aPopupSet) {
   // Under normal conditions this should only be called once.  However,
   // if something triggers ReconstructDocElementHierarchy, we will
   // destroy this frame's child (the nsDocElementBoxFrame), but not this
@@ -236,15 +210,9 @@ nsRootBoxFrame::SetPopupSetFrame(nsPopupSetFrame* aPopupSet)
   mPopupSetFrame = aPopupSet;
 }
 
-Element*
-nsRootBoxFrame::GetDefaultTooltip()
-{
-  return mDefaultTooltip;
-}
+Element* nsRootBoxFrame::GetDefaultTooltip() { return mDefaultTooltip; }
 
-void
-nsRootBoxFrame::SetDefaultTooltip(Element* aTooltip)
-{
+void nsRootBoxFrame::SetDefaultTooltip(Element* aTooltip) {
   mDefaultTooltip = aTooltip;
 }
 
@@ -253,9 +221,7 @@ NS_QUERYFRAME_HEAD(nsRootBoxFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
 #ifdef DEBUG_FRAME_DUMP
-nsresult
-nsRootBoxFrame::GetFrameName(nsAString& aResult) const
-{
+nsresult nsRootBoxFrame::GetFrameName(nsAString& aResult) const {
   return MakeFrameName(NS_LITERAL_STRING("RootBox"), aResult);
 }
 #endif

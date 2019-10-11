@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
+---
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
@@ -10,9 +10,12 @@ kind-dependencies:
 transforms:
     - taskgraph.transforms.build_attrs:transforms
     - taskgraph.transforms.build_lints:transforms
-    - taskgraph.transforms.use_toolchains:transforms
     - taskgraph.transforms.job:transforms
     - taskgraph.transforms.task:transforms
+
+job-defaults:
+    attributes:
+        retrigger: true
 
 jobs:
     linux64-valgrind/opt:
@@ -25,7 +28,7 @@ jobs:
             symbol: V
             kind: build
             tier: 1
-        worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+        worker-type: b-linux
         worker:
             docker-image: {in-tree: valgrind-build}
             max-run-time: 72000
@@ -33,7 +36,7 @@ jobs:
                 PERFHERDER_EXTRA_OPTIONS: valgrind
         run:
             using: mozharness
-            actions: [get-secrets build valgrind-test]
+            actions: [get-secrets, build, valgrind-test]
             custom-build-variant-cfg: valgrind
             config:
                 - builds/releng_base_firefox.py
@@ -42,9 +45,12 @@ jobs:
             secrets: true
             tooltool-downloads: public
             need-xvfb: true
-        toolchains:
-            - linux64-clang
-            - linux64-gcc
-            - linux64-rust
-            - linux64-sccache
-            - linux64-node
+        fetches:
+            toolchain:
+                - linux64-binutils
+                - linux64-clang
+                - linux64-rust
+                - linux64-cbindgen
+                - linux64-sccache
+                - linux64-nasm
+                - linux64-node

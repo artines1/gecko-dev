@@ -51,11 +51,8 @@ cd /build
 # shellcheck disable=SC1091
 . install-node.sh
 
-###
-# jsdoc Setup
-###
-
 npm install -g jsdoc@3.5.5
+npm install -g yarn@1.9.4
 
 /build/tooltool.py fetch -m /tmp/eslint.tt
 mv /build/node_modules /build/node_modules_eslint
@@ -85,7 +82,7 @@ mv fzf /usr/local/bin
 
 cd /setup
 
-pip install --require-hashes -r /tmp/flake8_requirements.txt
+pip3 install --require-hashes -r /tmp/flake8_requirements.txt
 
 ###
 # codespell Setup
@@ -93,7 +90,7 @@ pip install --require-hashes -r /tmp/flake8_requirements.txt
 
 cd /setup
 
-pip install --require-hashes -r /tmp/codespell_requirements.txt
+pip3 install --require-hashes -r /tmp/codespell_requirements.txt
 
 ###
 # tox Setup
@@ -101,7 +98,19 @@ pip install --require-hashes -r /tmp/codespell_requirements.txt
 
 cd /setup
 
-pip install --require-hashes -r /tmp/tox_requirements.txt
+pip3 install --require-hashes -r /tmp/tox_requirements.txt
+
+###
+# rustfmt
+###
+
+cd /setup
+export RUSTUP_HOME=/build/rust
+export CARGO_HOME="$RUSTUP_HOME"
+mkdir -p "$CARGO_HOME"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+"$RUSTUP_HOME"/bin/rustup component add rustfmt
+"$RUSTUP_HOME"/bin/rustfmt --version
 
 cd /
 rm -rf /setup

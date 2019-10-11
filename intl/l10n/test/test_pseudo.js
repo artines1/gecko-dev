@@ -1,15 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { Localization } = ChromeUtils.import("resource://gre/modules/Localization.jsm", {});
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { Localization } = ChromeUtils.import("resource://gre/modules/Localization.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { L10nRegistry, FileSource } =
-  ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm", {});
+  ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
 
 const originalValues = {};
 
 function addMockFileSource() {
-
   const fs = {
     "/localization/de/browser/menu.ftl": `
 key = This is a single message
@@ -17,7 +16,7 @@ key = This is a single message
     .accesskey = f`,
   };
   originalValues.load = L10nRegistry.load;
-  originalValues.requested = Services.locale.getRequestedLocales();
+  originalValues.requested = Services.locale.requestedLocales;
 
   L10nRegistry.load = async function(url) {
     return fs[url];
@@ -27,7 +26,7 @@ key = This is a single message
   L10nRegistry.registerSource(source);
 
   return async function* generateMessages(resIds) {
-    yield * await L10nRegistry.generateContexts(["de"], resIds);
+    yield * await L10nRegistry.generateBundles(["de"], resIds);
   };
 }
 
@@ -46,8 +45,8 @@ add_task(async function test_accented_works() {
   let generateMessages = addMockFileSource();
 
   const l10n = new Localization([
-    "/browser/menu.ftl"
-  ], generateMessages);
+    "/browser/menu.ftl",
+  ], false, generateMessages);
   l10n.registerObservers();
 
   {
@@ -95,7 +94,7 @@ add_task(async function test_accented_works() {
 
   L10nRegistry.sources.clear();
   L10nRegistry.load = originalValues.load;
-  Services.locale.setRequestedLocales(originalValues.requested);
+  Services.locale.requestedLocales = originalValues.requested;
 });
 
 /**
@@ -108,8 +107,8 @@ add_task(async function test_unavailable_strategy_works() {
   let generateMessages = addMockFileSource();
 
   const l10n = new Localization([
-    "/browser/menu.ftl"
-  ], generateMessages);
+    "/browser/menu.ftl",
+  ], false, generateMessages);
   l10n.registerObservers();
 
   {
@@ -126,5 +125,5 @@ add_task(async function test_unavailable_strategy_works() {
   Services.prefs.setStringPref("intl.l10n.pseudo", "");
   L10nRegistry.sources.clear();
   L10nRegistry.load = originalValues.load;
-  Services.locale.setRequestedLocales(originalValues.requested);
+  Services.locale.requestedLocales = originalValues.requested;
 });

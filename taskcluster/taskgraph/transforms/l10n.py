@@ -11,14 +11,14 @@ import copy
 import json
 
 from mozbuild.chunkify import chunkify
+from taskgraph.loader.multi_dep import schema
 from taskgraph.transforms.base import (
     TransformSequence,
 )
 from taskgraph.util.schema import (
-    validate_schema,
     optionally_keyed_by,
     resolve_keyed_by,
-    Schema,
+    taskref_or_string,
 )
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.taskcluster import get_artifact_prefix
@@ -36,17 +36,7 @@ def _by_platform(arg):
     return optionally_keyed_by('build-platform', arg)
 
 
-# shortcut for a string where task references are allowed
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
-
-# Voluptuous uses marker objects as dictionary *keys*, but they are not
-# comparable, so we cast all of the keys back to regular strings
-job_description_schema = {str(k): v for k, v in job_description_schema.schema.iteritems()}
-task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
-
-l10n_description_schema = Schema({
+l10n_description_schema = schema.extend({
     # Name for this job, inferred from the dependent job before validation
     Required('name'): basestring,
 
@@ -72,7 +62,7 @@ l10n_description_schema = Schema({
         Optional('config-paths'): [basestring],
 
         # Options to pass to the mozharness script
-        Required('options'): _by_platform([basestring]),
+        Optional('options'): _by_platform([basestring]),
 
         # Action commands to provide to mozharness script
         Required('actions'): _by_platform([basestring]),
@@ -90,15 +80,12 @@ l10n_description_schema = Schema({
         Required('job-name'): _by_platform(basestring),
 
         # Type of index
-        Optional('type'): basestring,
+        Optional('type'): _by_platform(basestring),
     },
     # Description of the localized task
     Required('description'): _by_platform(basestring),
 
     Optional('run-on-projects'): job_description_schema['run-on-projects'],
-
-    # dictionary of dependent task objects, keyed by kind.
-    Required('dependent-tasks'): {basestring: object},
 
     # worker-type to utilize
     Required('worker-type'): _by_platform(basestring),
@@ -111,13 +98,15 @@ l10n_description_schema = Schema({
 
     # Docker image required for task.  We accept only in-tree images
     # -- generally desktop-build or android-build -- for now.
-    Required('docker-image'): _by_platform(Any(
+    Required('docker-image', default=None): _by_platform(Any(
         # an in-tree generated docker image (from `taskcluster/docker/<name>`)
         {'in-tree': basestring},
         None,
     )),
 
-    Optional('toolchains'): _by_platform([basestring]),
+    Optional('fetches'): {
+        basestring: _by_platform([basestring]),
+    },
 
     # The set of secret names to which the task has access; these are prefixed
     # with `project/releng/gecko/{treeherder.kind}/level-{level}/`.  Setting
@@ -144,7 +133,7 @@ l10n_description_schema = Schema({
     # Max number locales per chunk
     Optional('locales-per-chunk'): _by_platform(int),
 
-    # Task deps to chain this task with, added in transforms from dependent-task
+    # Task deps to chain this task with, added in transforms from primary-dependency
     # if this is a nightly
     Optional('dependencies'): {basestring: basestring},
 
@@ -197,18 +186,17 @@ def _remove_locales(locales, to_remove=None):
 @transforms.add
 def setup_name(config, jobs):
     for job in jobs:
-        dep = job['dependent-tasks']['build']
+        dep = job['primary-dependency']
         # Set the name to the same as the dep task, without kind name.
         # Label will get set automatically with this kinds name.
-        job['name'] = job.get('name',
-                              dep.task['metadata']['name'][len(dep.kind) + 1:])
+        job['name'] = job.get('name', dep.name)
         yield job
 
 
 @transforms.add
 def copy_in_useful_magic(config, jobs):
     for job in jobs:
-        dep = job['dependent-tasks']['build']
+        dep = job['primary-dependency']
         attributes = copy_attributes_from_dependent_job(dep)
         attributes.update(job.get('attributes', {}))
         # build-platform is needed on `job` for by-build-platform
@@ -217,12 +205,7 @@ def copy_in_useful_magic(config, jobs):
         yield job
 
 
-@transforms.add
-def validate_early(config, jobs):
-    for job in jobs:
-        validate_schema(l10n_description_schema, job,
-                        "In job {!r}:".format(job.get('name', 'unknown')))
-        yield job
+transforms.add_validate(l10n_description_schema)
 
 
 @transforms.add
@@ -239,10 +222,6 @@ def setup_nightly_dependency(config, jobs):
             job['dependencies'].update({
                 'repackage': job['dependent-tasks']['repackage'].label
             })
-        if job['attributes']['build_platform'].startswith('win'):
-            job['dependencies'].update({
-                'repackage-signing': job['dependent-tasks']['repackage-signing'].label
-            })
         yield job
 
 
@@ -257,7 +236,7 @@ def handle_keyed_by(config, jobs):
         "run-time",
         "docker-image",
         "secrets",
-        "toolchains",
+        "fetches.toolchain",
         "tooltool",
         "env",
         "ignore-locales",
@@ -267,6 +246,7 @@ def handle_keyed_by(config, jobs):
         "mozharness.script",
         "treeherder.tier",
         "treeherder.platform",
+        "index.type",
         "index.product",
         "index.job-name",
         "when.files-changed",
@@ -299,7 +279,9 @@ def handle_artifact_prefix(config, jobs):
 @transforms.add
 def all_locales_attribute(config, jobs):
     for job in jobs:
-        locales_platform = job['attributes']['build_platform'].replace("-nightly", "")
+        locales_platform = job['attributes']['build_platform'].replace("-shippable", "")
+        locales_platform = locales_platform.replace("-nightly", "")
+        locales_platform = locales_platform.replace("-pgo", "")
         locales_with_changesets = parse_locales_file(job["locales-file"],
                                                      platform=locales_platform)
         locales_with_changesets = _remove_locales(locales_with_changesets,
@@ -354,36 +336,7 @@ def chunk_locales(config, jobs):
             yield job
 
 
-@transforms.add
-def mh_config_replace_project(config, jobs):
-    """ Replaces {project} in mh config entries with the current project """
-    # XXXCallek This is a bad pattern but exists to satisfy ease-of-porting for buildbot
-    for job in jobs:
-        job['mozharness']['config'] = map(
-            lambda x: x.format(project=config.params['project']),
-            job['mozharness']['config']
-            )
-        yield job
-
-
-@transforms.add
-def mh_options_replace_project(config, jobs):
-    """ Replaces {project} in mh option entries with the current project """
-    # XXXCallek This is a bad pattern but exists to satisfy ease-of-porting for buildbot
-    for job in jobs:
-        job['mozharness']['options'] = map(
-            lambda x: x.format(project=config.params['project']),
-            job['mozharness']['options']
-            )
-        yield job
-
-
-@transforms.add
-def validate_again(config, jobs):
-    for job in jobs:
-        validate_schema(l10n_description_schema, job,
-                        "In job {!r}:".format(job.get('name', 'unknown')))
-        yield job
+transforms.add_validate(l10n_description_schema)
 
 
 @transforms.add
@@ -393,6 +346,17 @@ def stub_installer(config, jobs):
         job.setdefault('env', {})
         if job["attributes"].get('stub-installer'):
             job['env'].update({"USE_STUB_INSTALLER": "1"})
+        yield job
+
+
+@transforms.add
+def set_extra_config(config, jobs):
+    for job in jobs:
+        job['mozharness'].setdefault('extra-config', {})['branch'] = config.params['project']
+        if 'update-channel' in job['attributes']:
+            job['mozharness']['extra-config']['update_channel'] = (
+                job['attributes']['update-channel']
+            )
         yield job
 
 
@@ -421,7 +385,7 @@ def make_job_description(config, jobs):
         if job.get('extra'):
             job_description['extra'] = job['extra']
 
-        if job['worker-type'].endswith("-b-win2012"):
+        if job['worker-type'] == "b-win2012":
             job_description['worker'] = {
                 'os': 'windows',
                 'max-run-time': 7200,
@@ -440,8 +404,8 @@ def make_job_description(config, jobs):
         if job.get('docker-image'):
             job_description['worker']['docker-image'] = job['docker-image']
 
-        if job.get('toolchains'):
-            job_description['toolchains'] = job['toolchains']
+        if job.get('fetches'):
+            job_description['fetches'] = job['fetches']
 
         if job.get('index'):
             job_description['index'] = {

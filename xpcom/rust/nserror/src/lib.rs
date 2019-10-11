@@ -1,48 +1,37 @@
 extern crate nsstring;
 
-use nsstring::{nsCString, nsACString};
+use nsstring::{nsACString, nsCString};
+use std::error::Error;
+use std::fmt;
 
-/// The type of errors in gecko. This type is currently a type alias, rather
-/// than a newtype, in order to conform to the C ABI. In future versions of rust
-/// which support RFC #1758 or similar we may be able to use
-/// `#[repr(transparent)]` to get a better API for using nsresult.
-///
-/// The most unfortunate thing about this current implementation is that `u32`
-/// and `nsresult` unify.
+/// The type of errors in gecko.  Uses a newtype to provide additional type
+/// safety in Rust and #[repr(transparent)] to ensure the same representation
+/// as the C++ equivalent.
+#[repr(transparent)]
 #[allow(non_camel_case_types)]
-pub type nsresult = u32;
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct nsresult(pub u32);
 
-/// An extension trait which is intended to add methods to `nsresult` types.
-/// Unfortunately, due to ABI issues, this trait is implemented on all u32
-/// types. These methods are meaningless on non-nsresult values.
-pub trait NsresultExt {
-    fn failed(self) -> bool;
-    fn succeeded(self) -> bool;
-    fn to_result(self) -> Result<nsresult, nsresult>;
-
-    /// Get a printable name for the nsresult error code. This function returns
-    /// a nsCString<'static>, which implements `Display`.
-    fn error_name(self) -> nsCString;
-}
-
-impl NsresultExt for nsresult {
-    fn failed(self) -> bool {
-        (self >> 31) != 0
+impl nsresult {
+    pub fn failed(self) -> bool {
+        (self.0 >> 31) != 0
     }
 
-    fn succeeded(self) -> bool {
+    pub fn succeeded(self) -> bool {
         !self.failed()
     }
 
-    fn to_result(self) -> Result<nsresult, nsresult> {
+    pub fn to_result(self) -> Result<(), nsresult> {
         if self.failed() {
             Err(self)
         } else {
-            Ok(self)
+            Ok(())
         }
     }
 
-    fn error_name(self) -> nsCString {
+    /// Get a printable name for the nsresult error code. This function returns
+    /// a nsCString<'static>, which implements `Display`.
+    pub fn error_name(self) -> nsCString {
         let mut cstr = nsCString::new();
         unsafe {
             Gecko_GetErrorName(self, &mut *cstr);
@@ -50,6 +39,32 @@ impl NsresultExt for nsresult {
         cstr
     }
 }
+
+impl fmt::Display for nsresult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.error_name())
+    }
+}
+
+impl fmt::Debug for nsresult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.error_name())
+    }
+}
+
+impl<T, E> From<Result<T, E>> for nsresult
+where
+    E: Into<nsresult>,
+{
+    fn from(result: Result<T, E>) -> nsresult {
+        match result {
+            Ok(_) => NS_OK,
+            Err(e) => e.into(),
+        }
+    }
+}
+
+impl Error for nsresult {}
 
 extern "C" {
     fn Gecko_GetErrorName(rv: nsresult, cstr: *mut nsACString);

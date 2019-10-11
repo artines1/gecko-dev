@@ -11,6 +11,7 @@
 
 class nsIFrame;
 class nsIContent;
+class nsCSSPropertyIDSet;
 class nsDisplayListBuilder;
 class nsDOMCSSDeclaration;
 
@@ -23,14 +24,16 @@ namespace mozilla {
  * heuristics.
  */
 class ActiveLayerTracker {
-public:
+ public:
   static void Shutdown();
 
   /*
    * We track style changes to selected styles:
-   *   eCSSProperty_transform
+   *   eCSSProperty_transform, eCSSProperty_translate,
+   *   eCSSProperty_rotate, eCSSProperty_scale
    *   eCSSProperty_opacity
-   *   eCSSProperty_left, eCSSProperty_top, eCSSProperty_right, eCSSProperty_bottom
+   *   eCSSProperty_left, eCSSProperty_top,
+   *   eCSSProperty_right, eCSSProperty_bottom
    * and use that information to guess whether style changes are animated.
    */
 
@@ -60,7 +63,8 @@ public:
    * Notify aFrame as being known to have an animation of aProperty through an
    * inline style modification during aScrollFrame's scroll event handler.
    */
-  static void NotifyAnimatedFromScrollHandler(nsIFrame* aFrame, nsCSSPropertyID aProperty,
+  static void NotifyAnimatedFromScrollHandler(nsIFrame* aFrame,
+                                              nsCSSPropertyID aProperty,
                                               nsIFrame* aScrollFrame);
   /**
    * Notify that a property in the inline style rule of aFrame's element
@@ -70,7 +74,8 @@ public:
    * aNewValue and aDOMCSSDecl are used to determine whether the property's
    * value has changed.
    */
-  static void NotifyInlineStyleRuleModified(nsIFrame* aFrame, nsCSSPropertyID aProperty,
+  static void NotifyInlineStyleRuleModified(nsIFrame* aFrame,
+                                            nsCSSPropertyID aProperty,
                                             const nsAString& aNewValue,
                                             nsDOMCSSDeclaration* aDOMCSSDecl);
   /**
@@ -81,16 +86,11 @@ public:
    */
   static void NotifyNeedsRepaint(nsIFrame* aFrame);
   /**
-   * Return true if aFrame's aProperty style should be considered as being animated
-   * for pre-rendering.
-   */
-  static bool IsStyleMaybeAnimated(nsIFrame* aFrame, nsCSSPropertyID aProperty);
-  /**
-   * Return true if aFrame's aProperty style should be considered as being animated
-   * for constructing active layers.
+   * Return true if aFrame's property style in |aPropertySet| should be
+   * considered as being animated for constructing active layers.
    */
   static bool IsStyleAnimated(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                              nsCSSPropertyID aProperty);
+                              const nsCSSPropertyIDSet& aPropertySet);
   /**
    * Return true if any of aFrame's offset property styles should be considered
    * as being animated for constructing active layers.
@@ -102,6 +102,17 @@ public:
    */
   static bool IsBackgroundPositionAnimated(nsDisplayListBuilder* aBuilder,
                                            nsIFrame* aFrame);
+  /**
+   * Return true if aFrame's transform-like property,
+   * i.e. transform/translate/rotate/scale, is animated.
+   */
+  static bool IsTransformAnimated(nsDisplayListBuilder* aBuilder,
+                                  nsIFrame* aFrame);
+  /**
+   * Return true if aFrame's transform style should be considered as being
+   * animated for pre-rendering.
+   */
+  static bool IsTransformMaybeAnimated(nsIFrame* aFrame);
   /**
    * Return true if aFrame either has an animated scale now, or is likely to
    * have one in the future because it has a CSS animation or transition
@@ -123,8 +134,8 @@ public:
   static void TransferActivityToFrame(nsIContent* aContent, nsIFrame* aFrame);
 
   /*
-   * We track modifications to the content of certain frames (i.e. canvas frames)
-   * and use that to make layering decisions.
+   * We track modifications to the content of certain frames (i.e. canvas
+   * frames) and use that to make layering decisions.
    */
 
   /**
@@ -145,6 +156,6 @@ public:
   static void SetCurrentScrollHandlerFrame(nsIFrame* aFrame);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #endif /* ACTIVELAYERTRACKER_H_ */

@@ -2,11 +2,11 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width; initial-scale=1.0">
+  <meta name="viewport" content="width=device-width; initial-scale=1.0,minimum-scale=1.0">
   <title>Ensure layout viewport responds to panning while pinched</title>
   <script type="application/javascript" src="apz_test_utils.js"></script>
   <script type="application/javascript" src="apz_test_native_event_utils.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/paint_listener.js"></script>
+  <script src="/tests/SimpleTest/paint_listener.js"></script>
   <style>
     body {
       margin: 0;
@@ -30,12 +30,13 @@
       // Compute the distance from the right/bottom edge of the visual
       // viewport to the same edge of the layout viewport and add the desired
       // offset to that.
-      const layout = visual * RESOLUTION;
-      return layout - visual + OFFSET_SCREEN_PX;
+      // We can ignore scrollbar width here since the scrollbar is layouted at
+      // the right/bottom edge of this content, not of this window in the case
+      // of containerful scrolling.
+      return visual - (visual / RESOLUTION) + OFFSET_CSS_PX;
     }
 
     function* test(testDriver) {
-      const target = document.getElementById("content");
       const cases = [
         {
           x: 0,
@@ -48,7 +49,7 @@
           },
         },
         {
-          x: OFFSET_SCREEN_PX,
+          x: OFFSET_CSS_PX,
           y: 0,
           dx: (width) => 0,
           dy: (height) => -computeDelta(height),
@@ -60,7 +61,7 @@
       ];
 
       for (let c of cases) {
-        yield synthesizeNativeTouchDrag(target,
+        yield synthesizeNativeTouchDrag(window,
                                         c.x,
                                         c.y,
                                         c.dx(document.documentElement.clientWidth),

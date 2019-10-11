@@ -12,18 +12,20 @@
 #ifndef nsFrameLoader_h_
 #define nsFrameLoader_h_
 
-#include "nsIDocShell.h"
+#include "nsDocShell.h"
 #include "nsStringFwd.h"
-#include "nsIFrameLoaderOwner.h"
 #include "nsPoint.h"
 #include "nsSize.h"
 #include "nsWrapperCache.h"
 #include "nsIURI.h"
 #include "nsFrameMessageManager.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ParentSHistory.h"
+#include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/layers/LayersTypes.h"
 #include "nsStubMutationObserver.h"
 #include "Units.h"
 #include "nsIFrame.h"
@@ -32,10 +34,10 @@
 class nsIURI;
 class nsSubDocumentFrame;
 class nsView;
-class nsInProcessTabChildGlobal;
 class AutoResetInShow;
 class AutoResetInFrameSwap;
-class nsITabParent;
+class nsFrameLoaderOwner;
+class nsIRemoteTab;
 class nsIDocShellTreeItem;
 class nsIDocShellTreeOwner;
 class nsILoadContext;
@@ -51,48 +53,64 @@ class OriginAttributes;
 namespace dom {
 class ChromeMessageSender;
 class ContentParent;
+class TabListener;
+class InProcessBrowserChildMessageManager;
 class MessageSender;
 class PBrowserParent;
 class ProcessMessageManager;
 class Promise;
-class TabParent;
+class BrowserParent;
 class MutableTabContext;
+class BrowserBridgeChild;
+class RemoteFrameChild;
+struct RemotenessOptions;
 
 namespace ipc {
 class StructuredCloneData;
-} // namespace ipc
+}  // namespace ipc
 
-} // namespace dom
+}  // namespace dom
 
-namespace layout {
-class RenderFrameParent;
-} // namespace layout
-} // namespace mozilla
+namespace ipc {
+class MessageChannel;
+}  // namespace ipc
+}  // namespace mozilla
 
 #if defined(MOZ_WIDGET_GTK)
 typedef struct _GtkWidget GtkWidget;
 #endif
 
 // IID for nsFrameLoader, because some places want to QI to it.
-#define NS_FRAMELOADER_IID                                      \
-  { 0x297fd0ea, 0x1b4a, 0x4c9a,                                 \
-      { 0xa4, 0x04, 0xe5, 0x8b, 0xe8, 0x95, 0x10, 0x50 } }
+#define NS_FRAMELOADER_IID                           \
+  {                                                  \
+    0x297fd0ea, 0x1b4a, 0x4c9a, {                    \
+      0xa4, 0x04, 0xe5, 0x8b, 0xe8, 0x95, 0x10, 0x50 \
+    }                                                \
+  }
 
 class nsFrameLoader final : public nsStubMutationObserver,
                             public mozilla::dom::ipc::MessageManagerCallback,
-                            public nsWrapperCache
-{
+                            public nsWrapperCache {
   friend class AutoResetInShow;
   friend class AutoResetInFrameSwap;
-  typedef mozilla::dom::PBrowserParent PBrowserParent;
-  typedef mozilla::dom::TabParent TabParent;
-  typedef mozilla::layout::RenderFrameParent RenderFrameParent;
+  typedef mozilla::dom::Document Document;
+  typedef mozilla::dom::Element Element;
+  typedef mozilla::dom::BrowserParent BrowserParent;
+  typedef mozilla::dom::BrowserBridgeChild BrowserBridgeChild;
+  typedef mozilla::dom::BrowsingContext BrowsingContext;
 
-public:
-  static nsFrameLoader* Create(mozilla::dom::Element* aOwner,
-                               nsPIDOMWindowOuter* aOpener,
-                               bool aNetworkCreated,
-                               int32_t aJSPluginID = nsFakePluginTag::NOT_JSPLUGIN);
+ public:
+  // Called by Frame Elements to create a new FrameLoader.
+  static already_AddRefed<nsFrameLoader> Create(Element* aOwner,
+                                                BrowsingContext* aOpener,
+                                                bool aNetworkCreated);
+
+  // Called by nsFrameLoaderOwner::ChangeRemoteness when switching out
+  // FrameLoaders.
+  static already_AddRefed<nsFrameLoader> Recreate(Element* aOwner,
+                                                  BrowsingContext* aContext,
+                                                  const nsAString& aRemoteType,
+                                                  bool aNetworkCreated);
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_FRAMELOADER_IID)
 
@@ -105,21 +123,37 @@ public:
   void StartDestroy();
   void DestroyDocShell();
   void DestroyComplete();
-  nsIDocShell* GetExistingDocShell() { return mDocShell; }
-  nsInProcessTabChildGlobal* GetTabChildGlobal() const
-  {
+  nsIDocShell* GetExistingDocShell() const {
+    return mBrowsingContext ? mBrowsingContext->GetDocShell() : nullptr;
+  }
+  mozilla::dom::InProcessBrowserChildMessageManager*
+  GetBrowserChildMessageManager() const {
     return mChildMessageManager;
   }
+  nsresult UpdatePositionAndSize(nsSubDocumentFrame* aIFrame);
+  void SendIsUnderHiddenEmbedderElement(bool aIsUnderHiddenEmbedderElement);
+
+  // When creating a nsFrameLoader which is a static clone, two methods are
+  // called at different stages. The `CreateStaticClone` method is first called
+  // on the source nsFrameLoader, passing in the destination frameLoader as the
+  // `aDest` argument. This is done during the static clone operation on the
+  // original document.
+  //
+  // After the original document's clone is complete, the `FinishStaticClone`
+  // method is called on the target nsFrameLoader, which clones the inner
+  // document of the source nsFrameLoader.
   nsresult CreateStaticClone(nsFrameLoader* aDest);
-  nsresult UpdatePositionAndSize(nsSubDocumentFrame *aIFrame);
+  nsresult FinishStaticClone();
 
   // WebIDL methods
 
-  nsIDocShell* GetDocShell(mozilla::ErrorResult& aRv);
+  nsDocShell* GetDocShell(mozilla::ErrorResult& aRv);
 
-  already_AddRefed<nsITabParent> GetTabParent();
+  already_AddRefed<nsIRemoteTab> GetRemoteTab();
 
   already_AddRefed<nsILoadContext> LoadContext();
+
+  already_AddRefed<mozilla::dom::BrowsingContext> GetBrowsingContext();
 
   /**
    * Start loading the frame. This method figures out what to load
@@ -130,10 +164,26 @@ public:
   /**
    * Loads the specified URI in this frame. Behaves identically to loadFrame,
    * except that this method allows specifying the URI to load.
+   *
+   * @param aURI The URI to load.
+   * @param aTriggeringPrincipal The triggering principal for the load. May be
+   *        null, in which case the node principal of the owner content will be
+   *        used.
+   * @param aCsp The CSP to be used for the load. That is not the CSP to be
+   *        applied to subresources within the frame, but to the iframe load
+   *        itself. E.g. if the CSP holds upgrade-insecure-requests the the
+   *        frame load is upgraded from http to https.
    */
-  nsresult LoadURI(nsIURI* aURI, bool aOriginalSrc);
+  nsresult LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
+                   nsIContentSecurityPolicy* aCsp, bool aOriginalSrc);
 
-  void AddProcessChangeBlockingPromise(mozilla::dom::Promise& aPromise, mozilla::ErrorResult& aRv);
+  /**
+   * Resume a redirected load within this frame.
+   *
+   * @param aPendingSwitchID ID of a process-switching load to be reusmed
+   *        within this frame.
+   */
+  void ResumeLoad(uint64_t aPendingSwitchID);
 
   /**
    * Destroy the frame loader and everything inside it. This will
@@ -145,27 +195,24 @@ public:
 
   void DeactivateRemoteFrame(mozilla::ErrorResult& aRv);
 
-  void SendCrossProcessMouseEvent(const nsAString& aType,
-                                  float aX,
-                                  float aY,
-                                  int32_t aButton,
-                                  int32_t aClickCount,
+  void SendCrossProcessMouseEvent(const nsAString& aType, float aX, float aY,
+                                  int32_t aButton, int32_t aClickCount,
                                   int32_t aModifiers,
                                   bool aIgnoreRootScrollFrame,
                                   mozilla::ErrorResult& aRv);
 
-  void ActivateFrameEvent(const nsAString& aType,
-                          bool aCapture,
+  void ActivateFrameEvent(const nsAString& aType, bool aCapture,
                           mozilla::ErrorResult& aRv);
 
   void RequestNotifyAfterRemotePaint();
 
-  void RequestFrameLoaderClose(mozilla::ErrorResult& aRv);
-
   void RequestUpdatePosition(mozilla::ErrorResult& aRv);
 
-  void Print(uint64_t aOuterWindowID,
-             nsIPrintSettings* aPrintSettings,
+  bool RequestTabStateFlush(uint32_t aFlushId, bool aIsFinal = false);
+
+  void RequestEpochUpdate(uint32_t aEpoch);
+
+  void Print(uint64_t aOuterWindowID, nsIPrintSettings* aPrintSettings,
              nsIWebProgressListener* aProgressListener,
              mozilla::ErrorResult& aRv);
 
@@ -185,15 +232,11 @@ public:
 
   uint64_t ChildID() const { return mChildID; }
 
-  bool ClampScrollPosition() const { return mClampScrollPosition; }
-  void SetClampScrollPosition(bool aClamp);
-
-  bool ClipSubdocument() const { return mClipSubdocument; }
-  void SetClipSubdocument(bool aClip);
-
   bool DepthTooGreat() const { return mDepthTooGreat; }
 
   bool IsDead() const { return mDestroyCalled; }
+
+  bool IsNetworkCreated() const { return mNetworkCreated; }
 
   /**
    * Is this a frame loader for a bona fide <iframe mozbrowser>?
@@ -203,25 +246,25 @@ public:
 
   nsIContent* GetParentObject() const { return mOwnerContent; }
 
-
   /**
    * MessageManagerCallback methods that we override.
    */
   virtual bool DoLoadMessageManagerScript(const nsAString& aURL,
                                           bool aRunInGlobalScope) override;
-  virtual nsresult DoSendAsyncMessage(JSContext* aCx,
-                                      const nsAString& aMessage,
-                                      mozilla::dom::ipc::StructuredCloneData& aData,
-                                      JS::Handle<JSObject *> aCpows,
-                                      nsIPrincipal* aPrincipal) override;
+  virtual nsresult DoSendAsyncMessage(
+      JSContext* aCx, const nsAString& aMessage,
+      mozilla::dom::ipc::StructuredCloneData& aData,
+      JS::Handle<JSObject*> aCpows, nsIPrincipal* aPrincipal) override;
 
   /**
    * Called from the layout frame associated with this frame loader;
    * this notifies us to hook up with the widget and view.
    */
-  bool Show(int32_t marginWidth, int32_t marginHeight,
-              int32_t scrollbarPrefX, int32_t scrollbarPrefY,
-              nsSubDocumentFrame* frame);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY bool Show(int32_t marginWidth,
+                                        int32_t marginHeight,
+                                        int32_t scrollbarPrefX,
+                                        int32_t scrollbarPrefY,
+                                        nsSubDocumentFrame* frame);
 
   void MaybeShowFrame();
 
@@ -240,25 +283,24 @@ public:
   // Used when content is causing a FrameLoader to be created, and
   // needs to try forcing layout to flush in order to get accurate
   // dimensions for the content area.
-  void ForceLayoutIfNecessary();
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void ForceLayoutIfNecessary();
 
-  // The guts of an nsIFrameLoaderOwner::SwapFrameLoader implementation.  A
+  // The guts of an nsFrameLoaderOwner::SwapFrameLoader implementation.  A
   // frame loader owner needs to call this, and pass in the two references to
   // nsRefPtrs for frame loaders that need to be swapped.
   nsresult SwapWithOtherLoader(nsFrameLoader* aOther,
-                               nsIFrameLoaderOwner* aThisOwner,
-                               nsIFrameLoaderOwner* aOtherOwner);
+                               nsFrameLoaderOwner* aThisOwner,
+                               nsFrameLoaderOwner* aOtherOwner);
 
   nsresult SwapWithOtherRemoteLoader(nsFrameLoader* aOther,
-                                     nsIFrameLoaderOwner* aThisOwner,
-                                     nsIFrameLoaderOwner* aOtherOwner);
+                                     nsFrameLoaderOwner* aThisOwner,
+                                     nsFrameLoaderOwner* aOtherOwner);
 
   /**
    * Return the primary frame for our owning content, or null if it
    * can't be found.
    */
-  nsIFrame* GetPrimaryFrameOfOwningContent() const
-  {
+  nsIFrame* GetPrimaryFrameOfOwningContent() const {
     return mOwnerContent ? mOwnerContent->GetPrimaryFrame() : nullptr;
   }
 
@@ -266,45 +308,56 @@ public:
    * Return the document that owns this, or null if we don't have
    * an owner.
    */
-  nsIDocument* GetOwnerDoc() const
-  { return mOwnerContent ? mOwnerContent->OwnerDoc() : nullptr; }
-
-  PBrowserParent* GetRemoteBrowser() const;
+  Document* GetOwnerDoc() const {
+    return mOwnerContent ? mOwnerContent->OwnerDoc() : nullptr;
+  }
 
   /**
-   * The "current" render frame is the one on which the most recent
-   * remote layer-tree transaction was executed.  If no content has
-   * been drawn yet, or the remote browser doesn't have any drawn
-   * content for whatever reason, return nullptr.  The returned render
-   * frame has an associated shadow layer tree.
+   * Returns whether this frame is a remote frame.
    *
-   * Note that the returned render frame might not be a frame
-   * constructed for this->GetURL().  This can happen, e.g., if the
-   * <browser> was just navigated to a new URL, but hasn't painted the
-   * new page yet.  A render frame for the previous page may be
-   * returned.  (In-process <browser> behaves similarly, and this
-   * behavior seems desirable.)
+   * This is true for either a top-level remote browser in the parent process,
+   * or a remote subframe in the child process.
    */
-  RenderFrameParent* GetCurrentRenderFrame() const;
+  bool IsRemoteFrame();
 
-  mozilla::dom::ChromeMessageSender* GetFrameMessageManager() { return mMessageManager; }
+  mozilla::dom::RemoteBrowser* GetRemoteBrowser() const;
+
+  /**
+   * Returns the IPDL actor used if this is a top-level remote browser, or null
+   * otherwise.
+   */
+  BrowserParent* GetBrowserParent() const;
+
+  /**
+   * Returns the IPDL actor used if this is an out-of-process iframe, or null
+   * otherwise.
+   */
+  BrowserBridgeChild* GetBrowserBridgeChild() const;
+
+  /**
+   * Returns the layers ID that this remote frame is using to render.
+   *
+   * This must only be called if this is a remote frame.
+   */
+  mozilla::layers::LayersId GetLayersId() const;
+
+  mozilla::dom::ChromeMessageSender* GetFrameMessageManager() {
+    return mMessageManager;
+  }
 
   mozilla::dom::Element* GetOwnerContent() { return mOwnerContent; }
-  bool ShouldClipSubdocument() { return mClipSubdocument; }
-
-  bool ShouldClampScrollPosition() { return mClampScrollPosition; }
 
   mozilla::dom::ParentSHistory* GetParentSHistory() { return mParentSHistory; }
 
   /**
    * Tell this FrameLoader to use a particular remote browser.
    *
-   * This will assert if mRemoteBrowser is non-null.  In practice,
+   * This will assert if mBrowserParent is non-null.  In practice,
    * this means you can't have successfully run TryRemoteBrowser() on
    * this object, which means you can't have called ShowRemoteFrame()
    * or ReallyStartLoading().
    */
-  void SetRemoteBrowser(nsITabParent* aTabParent);
+  void InitializeFromBrowserParent(BrowserParent* aBrowserParent);
 
   /**
    * Stashes a detached nsIFrame on the frame loader. We do this when we're
@@ -317,13 +370,13 @@ public:
    * in that case.
    */
   void SetDetachedSubdocFrame(nsIFrame* aDetachedFrame,
-                              nsIDocument* aContainerDoc);
+                              Document* aContainerDoc);
 
   /**
    * Retrieves the detached nsIFrame and the document containing the nsIFrame,
    * as set by SetDetachedSubdocFrame().
    */
-  nsIFrame* GetDetachedSubdocFrame(nsIDocument** aContainerDoc) const;
+  nsIFrame* GetDetachedSubdocFrame(Document** aContainerDoc) const;
 
   /**
    * Applies a new set of sandbox flags. These are merged with the sandbox
@@ -332,48 +385,35 @@ public:
    */
   void ApplySandboxFlags(uint32_t sandboxFlags);
 
-  void GetURL(nsString& aURL, nsIPrincipal** aTriggeringPrincipal);
+  void GetURL(nsString& aURL, nsIPrincipal** aTriggeringPrincipal,
+              nsIContentSecurityPolicy** aCsp);
 
   // Properly retrieves documentSize of any subdocument type.
   nsresult GetWindowDimensions(nsIntRect& aRect);
 
-  virtual mozilla::dom::ProcessMessageManager* GetProcessMessageManager() const override;
+  virtual mozilla::dom::ProcessMessageManager* GetProcessMessageManager()
+      const override;
 
   // public because a callback needs these.
   RefPtr<mozilla::dom::ChromeMessageSender> mMessageManager;
-  RefPtr<nsInProcessTabChildGlobal> mChildMessageManager;
+  RefPtr<mozilla::dom::InProcessBrowserChildMessageManager>
+      mChildMessageManager;
 
-  virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapObject(JSContext* cx,
+                               JS::Handle<JSObject*> aGivenProto) override;
 
-private:
+  void SkipBrowsingContextDetach();
+
+  void MaybeNotifyCrashed(mozilla::dom::BrowsingContext* aBrowsingContext,
+                          mozilla::ipc::MessageChannel* aChannel);
+
+ private:
   nsFrameLoader(mozilla::dom::Element* aOwner,
-                nsPIDOMWindowOuter* aOpener,
-                bool aNetworkCreated,
-                int32_t aJSPluginID);
+                mozilla::dom::BrowsingContext* aBrowsingContext,
+                const nsAString& aRemoteType, bool aNetworkCreated);
   ~nsFrameLoader();
 
   void SetOwnerContent(mozilla::dom::Element* aContent);
-
-  bool ShouldUseRemoteProcess();
-
-  /**
-   * Return true if the frame is a remote frame. Return false otherwise
-   */
-  bool IsRemoteFrame();
-
-  bool IsForJSPlugin()
-  {
-    return mJSPluginID != nsFakePluginTag::NOT_JSPLUGIN;
-  }
-
-  /**
-   * Is this a frame loader for an isolated <iframe mozbrowser>?
-   *
-   * By default, mozbrowser frames are isolated.  Isolation can be disabled by
-   * setting the frame's noisolation attribute.  Disabling isolation is
-   * only allowed if the containing document is chrome.
-   */
-  bool OwnerIsIsolatedMozBrowserFrame();
 
   /**
    * Get our owning element's app manifest URL, or return the empty string if
@@ -388,10 +428,14 @@ private:
   nsresult MaybeCreateDocShell();
   nsresult EnsureMessageManager();
   nsresult ReallyLoadFrameScripts();
+  nsDocShell* GetDocShell() const {
+    return mBrowsingContext ? nsDocShell::Cast(mBrowsingContext->GetDocShell())
+                            : nullptr;
+  }
 
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.
-  void UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame);
+  void UpdateBaseWindowPositionAndSize(nsSubDocumentFrame* aIFrame);
 
   /**
    * Checks whether a load of the given URI should be allowed, and returns an
@@ -405,22 +449,20 @@ private:
   void FireErrorEvent();
   nsresult ReallyStartLoadingInternal();
 
+  // Returns true if we have a remote browser or else attempts to create a
+  // remote browser and returns true if successful.
+  bool EnsureRemoteBrowser();
+
   // Return true if remote browser created; nothing else to do
   bool TryRemoteBrowser();
+  bool TryRemoteBrowserInternal();
 
   // Tell the remote browser that it's now "virtually visible"
   bool ShowRemoteFrame(const mozilla::ScreenIntSize& size,
-                       nsSubDocumentFrame *aFrame = nullptr);
+                       nsSubDocumentFrame* aFrame = nullptr);
 
-  bool AddTreeItemToTreeOwner(nsIDocShellTreeItem* aItem,
-                              nsIDocShellTreeOwner* aOwner,
-                              int32_t aParentType,
-                              nsIDocShell* aParentNode);
-
-  nsAtom* TypeAttrName() const {
-    return mOwnerContent->IsXULElement()
-             ? nsGkAtoms::type : nsGkAtoms::mozframetype;
-  }
+  void AddTreeItemToTreeOwner(nsIDocShellTreeItem* aItem,
+                              nsIDocShellTreeOwner* aOwner);
 
   void InitializeBrowserAPI();
   void DestroyBrowserFrameScripts();
@@ -428,38 +470,16 @@ private:
   nsresult GetNewTabContext(mozilla::dom::MutableTabContext* aTabContext,
                             nsIURI* aURI = nullptr);
 
-  enum TabParentChange {
-    eTabParentRemoved,
-    eTabParentChanged
-  };
-  void MaybeUpdatePrimaryTabParent(TabParentChange aChange);
+  enum BrowserParentChange { eBrowserParentRemoved, eBrowserParentChanged };
+  void MaybeUpdatePrimaryBrowserParent(BrowserParentChange aChange);
 
-  nsresult
-  PopulateUserContextIdFromAttribute(mozilla::OriginAttributes& aAttr);
+  nsresult PopulateUserContextIdFromAttribute(mozilla::OriginAttributes& aAttr);
 
-  // Swap ourselves with the frameloader aOther, and notify chrome code with
-  // a BrowserChangedProcess event.
-  bool SwapBrowsersAndNotify(nsFrameLoader* aOther);
-
-  // Returns a promise which will be resolved once all of the blockers have
-  // resolved which were added during the BrowserWillChangeProcess event.
-  already_AddRefed<mozilla::dom::Promise> FireWillChangeProcessEvent();
-
-  /**
-   * Triggers a load of the given URI.
-   *
-   * @param aURI The URI to load.
-   * @param aTriggeringPrincipal The triggering principal for the load. May be
-   *        null, in which case the node principal of the owner content will be
-   *        used.
-   */
-  nsresult LoadURI(nsIURI* aURI, nsIPrincipal* aTriggeringPrincipal,
-                   bool aOriginalSrc);
-
-  nsCOMPtr<nsIDocShell> mDocShell;
+  RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
   nsCOMPtr<nsIURI> mURIToLoad;
   nsCOMPtr<nsIPrincipal> mTriggeringPrincipal;
-  mozilla::dom::Element* mOwnerContent; // WEAK
+  nsCOMPtr<nsIContentSecurityPolicy> mCsp;
+  mozilla::dom::Element* mOwnerContent;  // WEAK
 
   // After the frameloader has been removed from the DOM but before all of the
   // messages from the frame have been received, we keep a strong reference to
@@ -474,24 +494,28 @@ private:
   // presentation is detached and stored in mDetachedSubdocFrame. This
   // enables us to detect whether the frame has moved documents during
   // a reframe, so that we know not to restore the presentation.
-  nsCOMPtr<nsIDocument> mContainerDocWhileDetached;
+  RefPtr<Document> mContainerDocWhileDetached;
 
-  // An opener window which should be used when the docshell is created.
-  nsCOMPtr<nsPIDOMWindowOuter> mOpener;
+  // When performing a static clone, this holds the other nsFrameLoader which
+  // this object is a static clone of.
+  RefPtr<nsFrameLoader> mStaticCloneOf;
 
-  TabParent* mRemoteBrowser;
+  // When performing a process switch, this value is used rather than mURIToLoad
+  // to identify the process-switching load which should be resumed in the
+  // target process.
+  uint64_t mPendingSwitchID;
+
   uint64_t mChildID;
-
-  int32_t mJSPluginID;
+  RefPtr<mozilla::dom::RemoteBrowser> mRemoteBrowser;
 
   // Holds the last known size of the frame.
   mozilla::ScreenIntSize mLazySize;
 
-  // A stack-maintained reference to an array of promises which are blocking
-  // grouped history navigation
-  nsTArray<RefPtr<mozilla::dom::Promise>>* mBrowserChangingProcessBlockers;
-
   RefPtr<mozilla::dom::ParentSHistory> mParentSHistory;
+
+  RefPtr<mozilla::dom::TabListener> mSessionStoreListener;
+
+  nsString mRemoteType;
 
   bool mDepthTooGreat : 1;
   bool mIsTopLevelContent : 1;
@@ -510,17 +534,17 @@ private:
   bool mLoadingOriginalSrc : 1;
 
   bool mRemoteBrowserShown : 1;
-  bool mRemoteFrame : 1;
-  bool mClipSubdocument : 1;
-  bool mClampScrollPosition : 1;
+  bool mIsRemoteFrame : 1;
   bool mObservingOwnerContent : 1;
+
+  // When an out-of-process nsFrameLoader crashes, an event is fired on the
+  // frame. To ensure this is only fired once, this bit is checked.
+  bool mTabProcessCrashFired : 1;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsFrameLoader, NS_FRAMELOADER_IID)
 
-inline nsISupports*
-ToSupports(nsFrameLoader* aFrameLoader)
-{
+inline nsISupports* ToSupports(nsFrameLoader* aFrameLoader) {
   return aFrameLoader;
 }
 

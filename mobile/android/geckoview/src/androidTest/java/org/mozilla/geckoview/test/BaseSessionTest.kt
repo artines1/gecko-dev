@@ -7,12 +7,13 @@ package org.mozilla.geckoview.test
 
 import android.os.Parcel
 import android.support.test.InstrumentationRegistry
+import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
-import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule
 
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers
+import org.json.JSONArray
 import org.junit.Assume.assumeThat
 import org.junit.Rule
 import org.junit.rules.ErrorCollector
@@ -28,16 +29,41 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
         const val CLICK_TO_RELOAD_HTML_PATH = "/assets/www/clickToReload.html"
         const val CONTENT_CRASH_URL = "about:crashcontent"
         const val DOWNLOAD_HTML_PATH = "/assets/www/download.html"
+        const val FORMS_HTML_PATH = "/assets/www/forms.html"
+        const val FORMS2_HTML_PATH = "/assets/www/forms2.html"
         const val HELLO_HTML_PATH = "/assets/www/hello.html"
         const val HELLO2_HTML_PATH = "/assets/www/hello2.html"
+        const val HELLO_IFRAME_HTML_PATH = "/assets/www/iframe_hello.html"
         const val INPUTS_PATH = "/assets/www/inputs.html"
-        const val INVALID_URI = "http://www.test.invalid/"
+        const val INVALID_URI = "not a valid uri"
+        const val LINKS_HTML_PATH = "/assets/www/links.html"
         const val LOREM_IPSUM_HTML_PATH = "/assets/www/loremIpsum.html"
-        const val NEW_SESSION_HTML_PATH = "/assets/www/newSession.html"
         const val NEW_SESSION_CHILD_HTML_PATH = "/assets/www/newSession_child.html"
+        const val NEW_SESSION_HTML_PATH = "/assets/www/newSession.html"
+        const val POPUP_HTML_PATH = "/assets/www/popup.html"
+        const val PROMPT_HTML_PATH = "/assets/www/prompts.html"
         const val SAVE_STATE_PATH = "/assets/www/saveState.html"
         const val TITLE_CHANGE_HTML_PATH = "/assets/www/titleChange.html"
         const val TRACKERS_PATH = "/assets/www/trackers.html"
+        const val VIDEO_OGG_PATH = "/assets/www/ogg.html"
+        const val VIDEO_MP4_PATH = "/assets/www/mp4.html"
+        const val VIDEO_WEBM_PATH = "/assets/www/webm.html"
+        const val VIDEO_BAD_PATH = "/assets/www/badVideoPath.html"
+        const val UNKNOWN_HOST_URI = "http://www.test.invalid/"
+        const val UNKNOWN_PROTOCOL_URI = "htt://invalid"
+        const val FULLSCREEN_PATH = "/assets/www/fullscreen.html"
+        const val VIEWPORT_PATH = "/assets/www/viewport.html"
+        const val IFRAME_REDIRECT_LOCAL = "/assets/www/iframe_redirect_local.html"
+        const val IFRAME_REDIRECT_AUTOMATION = "/assets/www/iframe_redirect_automation.html"
+        const val AUTOPLAY_PATH = "/assets/www/autoplay.html"
+        const val SCROLL_TEST_PATH = "/assets/www/scroll.html"
+        const val COLORS_HTML_PATH = "/assets/www/colors.html"
+        const val FIXED_BOTTOM = "/assets/www/fixedbottom.html"
+        const val STORAGE_TITLE_HTML_PATH = "/assets/www/reflect_local_storage_into_title.html"
+        const val HUNG_SCRIPT = "/assets/www/hungScript.html"
+        const val PUSH_HTML_PATH = "/assets/www/push/push.html"
+        const val OPEN_WINDOW_PATH = "/assets/www/worker/open_window.html"
+        const val OPEN_WINDOW_TARGET_PATH = "/assets/www/worker/open_window_target.html"
     }
 
     @get:Rule val sessionRule = GeckoSessionTestRule()
@@ -64,10 +90,9 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
                     .open(path.removePrefix("/assets/")).readBytes()
 
     val GeckoSession.isRemote
-        get() = this.settings.getBoolean(GeckoSessionSettings.USE_MULTIPROCESS)
+        get() = this.settings.getUseMultiprocess()
 
-    fun createTestUrl(path: String) =
-            GeckoSessionTestRule.APK_URI_PREFIX + path.removePrefix("/")
+    fun createTestUrl(path: String) = GeckoSessionTestRule.TEST_ENDPOINT + path
 
     fun GeckoSession.loadTestPath(path: String) =
             this.loadUri(createTestUrl(path))
@@ -89,6 +114,22 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
         }
     }
 
+    inline fun GeckoRuntimeSettings.toParcel(lambda: (Parcel) -> Unit) {
+        val parcel = Parcel.obtain()
+        try {
+            this.writeToParcel(parcel, 0)
+
+            val pos = parcel.dataPosition()
+            parcel.setDataPosition(0)
+
+            lambda(parcel)
+
+            assertThat("Read parcel matches written parcel",
+                       parcel.dataPosition(), Matchers.equalTo(pos))
+        } finally {
+            parcel.recycle()
+        }
+    }
 
     fun GeckoSession.open() =
             sessionRule.openSession(this)
@@ -120,18 +161,24 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
     fun GeckoSession.evaluateJS(js: String): Any? =
             sessionRule.evaluateJS(this, js)
 
+    fun GeckoSession.evaluatePromiseJS(js: String): GeckoSessionTestRule.ExtensionPromise =
+            sessionRule.evaluatePromiseJS(this, js)
+
     fun GeckoSession.waitForJS(js: String): Any? =
             sessionRule.waitForJS(this, js)
 
-    infix fun Any?.dot(prop: Any): Any? =
-            if (prop is Int) this.asJSList<Any>()[prop] else this.asJSMap<Any>()[prop]
+    @Suppress("UNCHECKED_CAST")
+    fun Any?.asJsonArray(): JSONArray = this as JSONArray
 
     @Suppress("UNCHECKED_CAST")
-    fun <T> Any?.asJSMap(): Map<String, T> = this as Map<String, T>
+    fun<T> Any?.asJSList(): List<T> {
+        val array = this.asJsonArray()
+        val result = ArrayList<T>()
 
-    @Suppress("UNCHECKED_CAST")
-    fun <T> Any?.asJSList(): List<T> = this as List<T>
+        for (i in 0 until array.length()) {
+            result.add(array[i] as T)
+        }
 
-    fun Any?.asJSPromise(): GeckoSessionTestRule.PromiseWrapper =
-            this as GeckoSessionTestRule.PromiseWrapper
+        return result
+    }
 }

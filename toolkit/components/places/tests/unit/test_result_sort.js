@@ -17,7 +17,7 @@ function promiseOnItemVisited() {
         PlacesUtils.bookmarks.removeObserver(this);
         // Enqueue to be sure that all onItemVisited notifications ran.
         executeSoon(resolve);
-      }
+      },
     };
     PlacesUtils.bookmarks.addObserver(bookmarksObserver);
   });
@@ -29,21 +29,27 @@ add_task(async function test() {
 
   let bookmarks = await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.menuGuid,
-    children: [{
-      title: "Result-sort functionality tests root",
-      type: PlacesUtils.bookmarks.TYPE_FOLDER,
-      children: [{
-        title: "b",
-        url: uri1,
-      }, {
-        title: "a",
-        url: uri2,
-      }, {
-        // url of the first child, title of second
-        title: "a",
-        url: uri1,
-      }, ]
-    }]
+    children: [
+      {
+        title: "Result-sort functionality tests root",
+        type: PlacesUtils.bookmarks.TYPE_FOLDER,
+        children: [
+          {
+            title: "b",
+            url: uri1,
+          },
+          {
+            title: "a",
+            url: uri2,
+          },
+          {
+            // url of the first child, title of second
+            title: "a",
+            url: uri1,
+          },
+        ],
+      },
+    ],
   });
 
   let guid1 = bookmarks[1].guid;

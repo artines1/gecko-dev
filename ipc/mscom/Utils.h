@@ -8,8 +8,8 @@
 #define mozilla_mscom_Utils_h
 
 #if defined(MOZILLA_INTERNAL_API)
-#include "nsString.h"
-#endif // defined(MOZILLA_INTERNAL_API)
+#  include "nsString.h"
+#endif  // defined(MOZILLA_INTERNAL_API)
 
 #include "mozilla/Attributes.h"
 #include <guiddef.h>
@@ -20,7 +20,10 @@ struct IUnknown;
 namespace mozilla {
 namespace mscom {
 
+bool IsCOMInitializedOnCurrentThread();
 bool IsCurrentThreadMTA();
+bool IsCurrentThreadExplicitMTA();
+bool IsCurrentThreadImplicitMTA();
 bool IsProxy(IUnknown* aUnknown);
 bool IsValidGUID(REFGUID aCheckGuid);
 uintptr_t GetContainingModuleHandle();
@@ -48,21 +51,44 @@ uint32_t CreateStream(const uint8_t* aBuf, const uint32_t aBufLen,
 uint32_t CopySerializedProxy(IStream* aInStream, IStream** aOutStream);
 
 #if defined(MOZILLA_INTERNAL_API)
+/**
+ * Checks the registry to see if |aClsid| is a thread-aware in-process server.
+ *
+ * In DCOM, an in-process server is a server that is implemented inside a DLL
+ * that is loaded into the client's process for execution. If |aClsid| declares
+ * itself to be a local server (that is, a server that resides in another
+ * process), this function returns false.
+ *
+ * For the server to be thread-aware, its registry entry must declare a
+ * ThreadingModel that is one of "Free", "Both", or "Neutral". If the threading
+ * model is "Apartment" or some other, invalid value, the class is treated as
+ * being single-threaded.
+ *
+ * NB: This function cannot check CLSIDs that were registered via manifests,
+ * as unfortunately there is not a documented API available to query for those.
+ * This should not be an issue for most CLSIDs that Gecko is interested in, as
+ * we typically instantiate system CLSIDs which are available in the registry.
+ *
+ * @param aClsid The CLSID of the COM class to be checked.
+ * @return true if the class meets the above criteria, otherwise false.
+ */
+bool IsClassThreadAwareInprocServer(REFCLSID aClsid);
+
 void GUIDToString(REFGUID aGuid, nsAString& aOutString);
-#endif // defined(MOZILLA_INTERNAL_API)
+#endif  // defined(MOZILLA_INTERNAL_API)
 
 #if defined(ACCESSIBILITY)
 bool IsVtableIndexFromParentInterface(REFIID aInterface,
                                       unsigned long aVtableIndex);
 
-#if defined(MOZILLA_INTERNAL_API)
+#  if defined(MOZILLA_INTERNAL_API)
 bool IsCallerExternalProcess();
 
 bool IsInterfaceEqualToOrInheritedFrom(REFIID aInterface, REFIID aFrom,
                                        unsigned long aVtableIndexHint);
-#endif // defined(MOZILLA_INTERNAL_API)
+#  endif  // defined(MOZILLA_INTERNAL_API)
 
-#endif // defined(ACCESSIBILITY)
+#endif  // defined(ACCESSIBILITY)
 
 /**
  * Execute cleanup code when going out of scope if a condition is met.
@@ -72,17 +98,12 @@ bool IsInterfaceEqualToOrInheritedFrom(REFIID aInterface, REFIID aFrom,
  * lambdas).
  */
 template <typename CondFnT, typename ExeFnT>
-class MOZ_RAII ExecuteWhen final
-{
-public:
+class MOZ_RAII ExecuteWhen final {
+ public:
   ExecuteWhen(CondFnT& aCondFn, ExeFnT& aExeFn)
-    : mCondFn(aCondFn)
-    , mExeFn(aExeFn)
-  {
-  }
+      : mCondFn(aCondFn), mExeFn(aExeFn) {}
 
-  ~ExecuteWhen()
-  {
+  ~ExecuteWhen() {
     if (mCondFn()) {
       mExeFn();
     }
@@ -93,13 +114,12 @@ public:
   ExecuteWhen& operator=(const ExecuteWhen&) = delete;
   ExecuteWhen& operator=(ExecuteWhen&&) = delete;
 
-private:
-  CondFnT&  mCondFn;
-  ExeFnT&   mExeFn;
+ private:
+  CondFnT& mCondFn;
+  ExeFnT& mExeFn;
 };
 
-} // namespace mscom
-} // namespace mozilla
+}  // namespace mscom
+}  // namespace mozilla
 
-#endif // mozilla_mscom_Utils_h
-
+#endif  // mozilla_mscom_Utils_h

@@ -1,12 +1,9 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const { DebuggerServer } = require("devtools/server/main");
-const { DebuggerClient } = require("devtools/shared/client/debugger-client");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 
 // Bug 1277805: Too slow for debug runs
 requestLongerTimeout(2);
@@ -31,17 +28,18 @@ requestLongerTimeout(2);
  * client is destroyed when the toolbox is closed, which removes the client
  * actor pools, and avoids this issue.
  *
- * In WebIDE, we do not destroy the DebuggerClient on toolbox close because it
- * is still used for other purposes like managing apps, etc. that aren't part of
- * a toolbox.  Thus, the same client gets reused across multiple toolboxes,
+ * In remote debugging, we do not destroy the DebuggerClient on toolbox close
+ * because it can still used for other targets.
+ * Thus, the same client gets reused across multiple toolboxes,
  * which leads to the tools failing if they don't destroy their fronts.
  */
 
 function runTools(target) {
   return (async function() {
-    const toolIds = gDevTools.getToolDefinitionArray()
-                           .filter(def => def.isTargetSupported(target))
-                           .map(def => def.id);
+    const toolIds = gDevTools
+      .getToolDefinitionArray()
+      .filter(def => def.isTargetSupported(target))
+      .map(def => def.id);
 
     let toolbox;
     for (let index = 0; index < toolIds.length; index++) {
@@ -60,37 +58,16 @@ function runTools(target) {
   })();
 }
 
-function getClient() {
-  DebuggerServer.init();
-  DebuggerServer.registerAllActors();
-
-  const transport = DebuggerServer.connectPipe();
-  const client = new DebuggerClient(transport);
-
-  return client.connect().then(() => client);
-}
-
-function getTarget(client) {
-  return new Promise(resolve => {
-    client.listTabs().then(tabList => {
-      const target = TargetFactory.forRemoteTab({
-        client: client,
-        form: tabList.tabs[tabList.selected],
-        chrome: false
-      });
-      resolve(target);
-    });
-  });
-}
-
 function test() {
   (async function() {
     toggleAllTools(true);
-    await addTab("about:blank");
+    const tab = await addTab("about:blank");
 
-    const client = await getClient();
-    const target = await getTarget(client);
+    const target = await TargetFactory.forTab(tab);
+    const { client } = target;
     await runTools(target);
+
+    const rootFronts = [...client.mainRoot.fronts.values()];
 
     // Actor fronts should be destroyed now that the toolbox has closed, but
     // look for any that remain.
@@ -98,16 +75,23 @@ function test() {
       if (!pool.__poolMap) {
         continue;
       }
+
+      // Ignore the root fronts, which are top-level pools and aren't released
+      // on toolbox destroy, but on client close.
+      if (rootFronts.includes(pool)) {
+        continue;
+      }
+
       for (const actor of pool.__poolMap.keys()) {
+        // Ignore the root front as it is only release on client close
+        if (actor == "root") {
+          continue;
+        }
         // Bug 1056342: Profiler fails today because of framerate actor, but
         // this appears more complex to rework, so leave it for that bug to
         // resolve.
         if (actor.includes("framerateActor")) {
           todo(false, "Front for " + actor + " still held in pool!");
-          continue;
-        }
-        // gcliActor is for the commandline which is separate to the toolbox
-        if (actor.includes("gcliActor")) {
           continue;
         }
         ok(false, "Front for " + actor + " still held in pool!");

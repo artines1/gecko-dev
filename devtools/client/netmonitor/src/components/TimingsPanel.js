@@ -10,6 +10,7 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { L10N } = require("../utils/l10n");
 const { getNetMonitorTimingsURL } = require("../utils/mdn-utils");
 const { fetchNetworkUpdatePacket } = require("../utils/request-utils");
+const { getFormattedTime } = require("../utils/format-utils");
 const { TIMING_KEYS } = require("../constants");
 
 // Components
@@ -41,11 +42,59 @@ class TimingsPanel extends Component {
     fetchNetworkUpdatePacket(connector.requestData, request, ["eventTimings"]);
   }
 
+  renderServerTimings() {
+    const { serverTimings, totalTime } = this.props.request.eventTimings;
+
+    if (!serverTimings.length) {
+      return null;
+    }
+
+    return div(
+      {},
+      div(
+        { className: "label-separator" },
+        L10N.getStr("netmonitor.timings.serverTiming")
+      ),
+      ...serverTimings.map(({ name, duration, description }, index) => {
+        const color = name === "total" ? "total" : (index % 3) + 1;
+
+        return div(
+          {
+            key: index,
+            className: "tabpanel-summary-container timings-container server",
+          },
+          span(
+            { className: "tabpanel-summary-label timings-label" },
+            description || name
+          ),
+          div(
+            { className: "requests-list-timings-container" },
+            span({
+              className: "requests-list-timings-offset",
+              style: {
+                width: `calc(${(totalTime - duration) /
+                  totalTime} * (100% - ${TIMINGS_END_PADDING})`,
+              },
+            }),
+            span({
+              className: `requests-list-timings-box server-timings-color-${color}`,
+              style: {
+                width: `calc(${duration /
+                  totalTime} * (100% - ${TIMINGS_END_PADDING}))`,
+              },
+            }),
+            span(
+              { className: "requests-list-timings-total" },
+              getFormattedTime(duration)
+            )
+          )
+        );
+      })
+    );
+  }
+
   render() {
-    const {
-      eventTimings,
-      totalTime,
-    } = this.props.request;
+    const { eventTimings, totalTime } = this.props.request;
 
     if (!eventTimings) {
       return null;
@@ -57,21 +106,28 @@ class TimingsPanel extends Component {
       // offset of third timings box will be 0 + blocked offset + dns offset
       // If offsets sent from the backend aren't available calculate it
       // from the timing info.
-      const offset = offsets ? offsets[type] : TIMING_KEYS.slice(0, idx)
-        .reduce((acc, cur) => (acc + timings[cur] || 0), 0);
+      const offset = offsets
+        ? offsets[type]
+        : TIMING_KEYS.slice(0, idx).reduce(
+            (acc, cur) => acc + timings[cur] || 0,
+            0
+          );
 
       const offsetScale = offset / totalTime || 0;
       const timelineScale = timings[type] / totalTime || 0;
 
-      return div({
-        key: type,
-        id: `timings-summary-${type}`,
-        className: "tabpanel-summary-container timings-container",
-      },
-        span({ className: "tabpanel-summary-label timings-label" },
+      return div(
+        {
+          key: type,
+          id: `timings-summary-${type}`,
+          className: "tabpanel-summary-container timings-container request",
+        },
+        span(
+          { className: "tabpanel-summary-label timings-label" },
           L10N.getStr(`netmonitor.timings.${type}`)
         ),
-        div({ className: "requests-list-timings-container" },
+        div(
+          { className: "requests-list-timings-container" },
           span({
             className: "requests-list-timings-offset",
             style: {
@@ -84,20 +140,26 @@ class TimingsPanel extends Component {
               width: `calc(${timelineScale} * (100% - ${TIMINGS_END_PADDING}))`,
             },
           }),
-          span({ className: "requests-list-timings-total" },
-            L10N.getFormatStr("networkMenu.totalMS", timings[type])
+          span(
+            { className: "requests-list-timings-total" },
+            getFormattedTime(timings[type])
           )
-        ),
+        )
       );
     });
 
-    return (
-      div({ className: "panel-container" },
-        timelines,
-        MDNLink({
-          url: getNetMonitorTimingsURL(),
-        }),
-      )
+    return div(
+      { className: "panel-container" },
+      div(
+        { className: "label-separator" },
+        L10N.getStr("netmonitor.timings.requestTiming")
+      ),
+      timelines,
+      this.renderServerTimings(),
+      MDNLink({
+        url: getNetMonitorTimingsURL(),
+        title: L10N.getStr("netmonitor.timings.learnMore"),
+      })
     );
   }
 }

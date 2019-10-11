@@ -10,6 +10,7 @@
 author: Jordan Lund
 """
 
+import json
 import os
 import re
 import sys
@@ -17,17 +18,19 @@ import copy
 import shutil
 import glob
 import imp
+import platform
 
 from datetime import datetime, timedelta
 
 # load modules from parent dir
-sys.path.insert(1, os.path.dirname(sys.path[0]))
+here = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(1, os.path.dirname(here))
 
 from mozharness.base.errors import BaseErrorList
-from mozharness.base.log import INFO
+from mozharness.base.log import INFO, WARNING
 from mozharness.base.script import PreScriptAction
 from mozharness.base.vcs.vcsbase import MercurialScript
-from mozharness.mozilla.automation import TBPL_EXCEPTION
+from mozharness.mozilla.automation import TBPL_EXCEPTION, TBPL_RETRY
 from mozharness.mozilla.mozbase import MozbaseMixin
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.mozilla.testing.errors import HarnessErrorList
@@ -42,6 +45,7 @@ SUITE_CATEGORIES = ['gtest', 'cppunittest', 'jittest', 'mochitest', 'reftest', '
                     'mozmill']
 SUITE_DEFAULT_E10S = ['mochitest', 'reftest']
 SUITE_NO_E10S = ['xpcshell']
+SUITE_REPEATABLE = ['mochitest', 'reftest']
 
 
 # DesktopUnittest {{{1
@@ -112,11 +116,11 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     "in the config file. You do not need to specify "
                     "any other suites.\nBeware, this may take a while ;)"}
          ],
-        [['--e10s', ], {
-            "action": "store_true",
+        [['--disable-e10s', ], {
+            "action": "store_false",
             "dest": "e10s",
-            "default": False,
-            "help": "Run tests with multiple processes."}
+            "default": True,
+            "help": "Run tests without multiple processes (e10s)."}
          ],
         [['--headless', ], {
             "action": "store_true",
@@ -157,13 +161,28 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
             "action": "store_true",
             "dest": "enable_webrender",
             "default": False,
-            "help": "Tries to enable the WebRender compositor."}
+            "help": "Enable the WebRender compositor in Gecko."}
          ],
         [["--gpu-required"], {
             "action": "store_true",
             "dest": "gpu_required",
             "default": False,
             "help": "Run additional verification on modified tests using gpu instances."}
+         ],
+        [["--setpref"], {
+            "action": "append",
+            "metavar": "PREF=VALUE",
+            "dest": "extra_prefs",
+            "default": [],
+            "help": "Defines an extra user preference."}
+         ],
+        [['--repeat', ], {
+            "action": "store",
+            "type": "int",
+            "dest": "repeat",
+            "default": 0,
+            "help": "Repeat the tests the given number of times. Supported "
+                    "by mochitest, reftest, crashtest, ignored otherwise."}
          ],
     ] + copy.deepcopy(testing_config_options) + \
         copy.deepcopy(code_coverage_config_options)
@@ -351,6 +370,27 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
         self.symbols_url = symbols_url
         return self.symbols_url
 
+    def _get_mozharness_test_paths(self, suite_category, suite):
+        test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
+
+        if '-chunked' in suite:
+            suite = suite[:suite.index('-chunked')]
+
+        if '-coverage' in suite:
+            suite = suite[:suite.index('-coverage')]
+
+        if not test_paths or suite not in test_paths:
+            return None
+
+        suite_test_paths = test_paths[suite]
+
+        if suite_category == 'reftest':
+            dirs = self.query_abs_dirs()
+            suite_test_paths = [os.path.join(dirs['abs_reftest_dir'], 'tests', p)
+                                for p in suite_test_paths]
+
+        return suite_test_paths
+
     def _query_abs_base_cmd(self, suite_category, suite):
         if self.binary_path:
             c = self.config
@@ -388,11 +428,17 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     base_cmd.append('--disable-e10s')
                 elif suite_category not in SUITE_DEFAULT_E10S and c['e10s']:
                     base_cmd.append('--e10s')
+            if c.get('repeat'):
+                if suite_category in SUITE_REPEATABLE:
+                    base_cmd.extend(["--repeat=%s" % c.get('repeat')])
+                else:
+                    self.log("--repeat not supported in {}".format(suite_category), level=WARNING)
 
             # Ignore chunking if we have user specified test paths
             if not (self.verify_enabled or self.per_test_coverage):
-                if os.environ.get('MOZHARNESS_TEST_PATHS'):
-                    base_cmd.extend(os.environ['MOZHARNESS_TEST_PATHS'].split(':'))
+                test_paths = self._get_mozharness_test_paths(suite_category, suite)
+                if test_paths:
+                    base_cmd.extend(test_paths)
                 elif c.get('total_chunks') and c.get('this_chunk'):
                     base_cmd.extend(['--total-chunks', c['total_chunks'],
                                      '--this-chunk', c['this_chunk']])
@@ -406,6 +452,12 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
             if c['headless']:
                 base_cmd.append('--headless')
+
+            if c['enable_webrender']:
+                base_cmd.append('--enable-webrender')
+
+            if c['extra_prefs']:
+                base_cmd.extend(['--setpref={}'.format(p) for p in c['extra_prefs']])
 
             # set pluginsPath
             abs_res_plugins_dir = os.path.join(abs_res_dir, 'plugins')
@@ -785,7 +837,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                 }
                 if isinstance(suites[suite], dict):
                     options_list = suites[suite].get('options', [])
-                    if self.verify_enabled or self.per_test_coverage:
+                    if (self.verify_enabled or self.per_test_coverage or
+                        self._get_mozharness_test_paths(suite_category, suite)):
+                        # Ignore tests list in modes where we are running specific tests.
                         tests_list = []
                     else:
                         tests_list = suites[suite].get('tests', [])
@@ -822,8 +876,8 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
                 if self.query_minidump_stackwalk():
                     env['MINIDUMP_STACKWALK'] = self.minidump_stackwalk_path
-                if self.query_nodejs():
-                    env['MOZ_NODE_PATH'] = self.nodejs_path
+                if self.config['nodejs_path']:
+                    env['MOZ_NODE_PATH'] = self.config['nodejs_path']
                 env['MOZ_UPLOAD_DIR'] = self.query_abs_dirs()['abs_blob_upload_dir']
                 env['MINIDUMP_SAVE_PATH'] = self.query_abs_dirs()['abs_blob_upload_dir']
                 env['RUST_BACKTRACE'] = 'full'
@@ -832,9 +886,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
                 if self.config['allow_software_gl_layers']:
                     env['MOZ_LAYERS_ALLOW_SOFTWARE_GL'] = '1'
-                if self.config['enable_webrender']:
-                    env['MOZ_WEBRENDER'] = '1'
-                    env['MOZ_ACCELERATED'] = '1'
 
                 if self.config['single_stylo_traversal']:
                     env['STYLO_THREADS'] = '1'
@@ -902,9 +953,11 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     # 3) checking to see if the return code is in success_codes
 
                     success_codes = None
-                    if self._is_windows() and suite_category != 'gtest':
-                        # bug 1120644
-                        success_codes = [0, 1]
+                    if (suite_category == 'reftest'
+                            and '32bit' in platform.architecture()
+                            and platform.system() == "Windows"):
+                        # see bug 1120644, 1526777, 1531499
+                        success_codes = [1]
 
                     tbpl_status, log_level, summary = parser.evaluate_parser(return_code,
                                                                              success_codes,
@@ -914,6 +967,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     self.record_status(tbpl_status, level=log_level)
                     if len(per_test_args) > 0:
                         self.log_per_test_status(per_test_args[-1], tbpl_status, log_level)
+                        if tbpl_status == TBPL_RETRY:
+                            self.info("Per-test run abandoned due to RETRY status")
+                            return False
                     else:
                         self.log("The %s suite: %s ran with return status: %s" %
                                  (suite_category, suite, tbpl_status), level=log_level)

@@ -1,25 +1,23 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Per-node data used in style calculation.
 
-use context::{SharedStyleContext, StackLimitChecker};
-use dom::TElement;
-use invalidation::element::invalidator::InvalidationResult;
-use invalidation::element::restyle_hints::RestyleHint;
+use crate::context::{SharedStyleContext, StackLimitChecker};
+use crate::dom::TElement;
+use crate::invalidation::element::invalidator::InvalidationResult;
+use crate::invalidation::element::restyle_hints::RestyleHint;
+use crate::properties::ComputedValues;
+use crate::selector_parser::{PseudoElement, RestyleDamage, EAGER_PSEUDO_COUNT};
+use crate::style_resolver::{PrimaryStyle, ResolvedElementStyles, ResolvedStyle};
 #[cfg(feature = "gecko")]
 use malloc_size_of::MallocSizeOfOps;
-use properties::ComputedValues;
-use rule_tree::StrongRuleNode;
-use selector_parser::{PseudoElement, RestyleDamage, EAGER_PSEUDO_COUNT};
 use selectors::NthIndexCache;
 use servo_arc::Arc;
-use shared_lock::StylesheetGuards;
 use std::fmt;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use style_resolver::{PrimaryStyle, ResolvedElementStyles, ResolvedStyle};
 
 bitflags! {
     /// Various flags stored on ElementData.
@@ -255,8 +253,8 @@ impl ElementData {
             return InvalidationResult::empty();
         }
 
-        use invalidation::element::invalidator::TreeStyleInvalidator;
-        use invalidation::element::state_and_attributes::StateAndAttrInvalidationProcessor;
+        use crate::invalidation::element::invalidator::TreeStyleInvalidator;
+        use crate::invalidation::element::state_and_attributes::StateAndAttrInvalidationProcessor;
 
         debug!(
             "invalidate_style_if_needed: {:?}, flags: {:?}, has_snapshot: {}, \
@@ -272,12 +270,8 @@ impl ElementData {
             return InvalidationResult::empty();
         }
 
-        let mut processor = StateAndAttrInvalidationProcessor::new(
-            shared_context,
-            element,
-            self,
-            nth_index_cache,
-        );
+        let mut processor =
+            StateAndAttrInvalidationProcessor::new(shared_context, element, self, nth_index_cache);
 
         let invalidator = TreeStyleInvalidator::new(element, stack_limit_checker, &mut processor);
 
@@ -305,7 +299,8 @@ impl ElementData {
 
     /// Returns this element's primary style as a resolved style to use for sharing.
     pub fn share_primary_style(&self) -> PrimaryStyle {
-        let reused_via_rule_node = self.flags
+        let reused_via_rule_node = self
+            .flags
             .contains(ElementDataFlags::PRIMARY_STYLE_REUSED_VIA_RULE_NODE);
 
         PrimaryStyle {
@@ -376,28 +371,6 @@ impl ElementData {
         return RestyleKind::CascadeOnly;
     }
 
-    /// Return true if important rules are different.
-    /// We use this to make sure the cascade of off-main thread animations is correct.
-    /// Note: Ignore custom properties for now because we only support opacity and transform
-    ///       properties for animations running on compositor. Actually, we only care about opacity
-    ///       and transform for now, but it's fine to compare all properties and let the user
-    ///       the check which properties do they want.
-    ///       If it costs too much, get_properties_overriding_animations() should return a set
-    ///       containing only opacity and transform properties.
-    pub fn important_rules_are_different(
-        &self,
-        rules: &StrongRuleNode,
-        guards: &StylesheetGuards,
-    ) -> bool {
-        debug_assert!(self.has_styles());
-        let (important_rules, _custom) = self.styles
-            .primary()
-            .rules()
-            .get_properties_overriding_animations(&guards);
-        let (other_important_rules, _custom) = rules.get_properties_overriding_animations(&guards);
-        important_rules != other_important_rules
-    }
-
     /// Drops any restyle state from the element.
     ///
     /// FIXME(bholley): The only caller of this should probably just assert that
@@ -413,11 +386,6 @@ impl ElementData {
     pub fn clear_restyle_flags_and_damage(&mut self) {
         self.damage = RestyleDamage::empty();
         self.flags.remove(ElementDataFlags::WAS_RESTYLED);
-    }
-
-    /// Returns whether this element is going to be reconstructed.
-    pub fn reconstructed_self(&self) -> bool {
-        self.damage.contains(RestyleDamage::reconstruct())
     }
 
     /// Mark this element as restyled, which is useful to know whether we need
@@ -438,13 +406,6 @@ impl ElementData {
     pub fn set_traversed_without_styling(&mut self) {
         self.flags
             .insert(ElementDataFlags::TRAVERSED_WITHOUT_STYLING);
-    }
-
-    /// Returns whether the element was traversed without computing any style for
-    /// it.
-    pub fn traversed_without_styling(&self) -> bool {
-        self.flags
-            .contains(ElementDataFlags::TRAVERSED_WITHOUT_STYLING)
     }
 
     /// Returns whether this element has been part of a restyle.

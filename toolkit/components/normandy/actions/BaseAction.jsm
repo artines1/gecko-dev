@@ -2,9 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.defineModuleGetter(this, "LogManager", "resource://normandy/lib/LogManager.jsm");
-ChromeUtils.defineModuleGetter(this, "Uptake", "resource://normandy/lib/Uptake.jsm");
-ChromeUtils.defineModuleGetter(this, "JsonSchemaValidator", "resource://gre/modules/components-utils/JsonSchemaValidator.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "LogManager",
+  "resource://normandy/lib/LogManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Uptake",
+  "resource://normandy/lib/Uptake.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "JsonSchemaValidator",
+  "resource://gre/modules/components-utils/JsonSchemaValidator.jsm"
+);
 
 var EXPORTED_SYMBOLS = ["BaseAction"];
 
@@ -20,17 +32,41 @@ var EXPORTED_SYMBOLS = ["BaseAction"];
  */
 class BaseAction {
   constructor() {
-    this.finalized = false;
-    this.failed = false;
+    this.state = BaseAction.STATE_PREPARING;
     this.log = LogManager.getLogger(`action.${this.name}`);
+    this.lastError = null;
+  }
+
+  /**
+   * Be sure to run the _preExecution() hook once during its
+   * lifecycle.
+   *
+   * This is not intended for overriding by subclasses.
+   */
+  _ensurePreExecution() {
+    if (this.state !== BaseAction.STATE_PREPARING) {
+      return;
+    }
 
     try {
       this._preExecution();
+      // if _preExecution changed the state, don't overwrite it
+      if (this.state === BaseAction.STATE_PREPARING) {
+        this.state = BaseAction.STATE_READY;
+      }
     } catch (err) {
-      this.failed = true;
-      err.message = `Could not initialize action ${this.name}: ${err.message}`;
-      Cu.reportError(err);
-      Uptake.reportAction(this.name, Uptake.ACTION_PRE_EXECUTION_ERROR);
+      // Sometimes err.message is editable. If it is, add helpful details.
+      // Otherwise log the helpful details and move on.
+      try {
+        err.message = `Could not initialize action ${this.name}: ${
+          err.message
+        }`;
+      } catch (_e) {
+        this.log.error(
+          `Could not initialize action ${this.name}, error follows.`
+        );
+      }
+      this.fail(err);
     }
   }
 
@@ -39,6 +75,31 @@ class BaseAction {
       type: "object",
       properties: {},
     };
+  }
+
+  /**
+   * Disable the action for a non-error reason, such as the user opting out of
+   * this type of action.
+   */
+  disable() {
+    this.state = BaseAction.STATE_DISABLED;
+  }
+
+  fail(err) {
+    switch (this.state) {
+      case BaseAction.STATE_PREPARING: {
+        Uptake.reportAction(this.name, Uptake.ACTION_PRE_EXECUTION_ERROR);
+        break;
+      }
+      default: {
+        Cu.reportError(
+          new Error("BaseAction.fail() called at unexpected time")
+        );
+      }
+    }
+    this.state = BaseAction.STATE_FAILED;
+    this.lastError = err;
+    Cu.reportError(err);
   }
 
   // Gets the name of the action. Does not necessarily match the
@@ -55,6 +116,20 @@ class BaseAction {
     // Does nothing, may be overridden
   }
 
+  validateArguments(args, schema = this.schema) {
+    let [valid, validated] = JsonSchemaValidator.validateAndParseParameters(
+      args,
+      schema
+    );
+    if (!valid) {
+      throw new Error(
+        `Arguments do not match schema. arguments:\n${JSON.stringify(args)}\n` +
+          `schema:\n${JSON.stringify(schema)}`
+      );
+    }
+    return validated;
+  }
+
   /**
    * Execute the per-recipe behavior of this action for a given
    * recipe.  Reports Uptake telemetry for the execution of the recipe.
@@ -63,24 +138,29 @@ class BaseAction {
    * @throws If this action has already been finalized.
    */
   async runRecipe(recipe) {
-    if (this.finalized) {
+    this._ensurePreExecution();
+
+    if (this.state === BaseAction.STATE_FINALIZED) {
       throw new Error("Action has already been finalized");
     }
 
-    if (this.failed) {
-      Uptake.reportRecipe(recipe.id, Uptake.RECIPE_ACTION_DISABLED);
-      this.log.warn(`Skipping recipe ${recipe.name} because ${this.name} failed during preExecution.`);
+    if (this.state !== BaseAction.STATE_READY) {
+      Uptake.reportRecipe(recipe, Uptake.RECIPE_ACTION_DISABLED);
+      this.log.warn(
+        `Skipping recipe ${recipe.name} because ${
+          this.name
+        } was disabled during preExecution.`
+      );
       return;
     }
 
-    let [valid, validatedArguments] = JsonSchemaValidator.validateAndParseParameters(recipe.arguments, this.schema);
-    if (!valid) {
-      Cu.reportError(new Error(`Arguments do not match schema. arguments: ${JSON.stringify(recipe.arguments)}. schema: ${JSON.stringify(this.schema)}`));
-      Uptake.reportRecipe(recipe.id, Uptake.RECIPE_EXECUTION_ERROR);
+    try {
+      recipe.arguments = this.validateArguments(recipe.arguments);
+    } catch (error) {
+      Cu.reportError(error);
+      Uptake.reportRecipe(recipe, Uptake.RECIPE_EXECUTION_ERROR);
       return;
     }
-
-    recipe.arguments = validatedArguments;
 
     let status = Uptake.RECIPE_SUCCESS;
     try {
@@ -89,7 +169,7 @@ class BaseAction {
       Cu.reportError(err);
       status = Uptake.RECIPE_EXECUTION_ERROR;
     }
-    Uptake.reportRecipe(recipe.id, status);
+    Uptake.reportRecipe(recipe, status);
   }
 
   /**
@@ -107,24 +187,62 @@ class BaseAction {
    * recipes will be assumed to have been seen.
    */
   async finalize() {
-    if (this.finalized) {
-      throw new Error("Action has already been finalized");
+    // It's possible that no recipes matched us, so runRecipe() was
+    // never called. In that case, we should ensure that we call
+    // _preExecute() here.
+    this._ensurePreExecution();
+
+    let status;
+    switch (this.state) {
+      case BaseAction.STATE_FINALIZED: {
+        throw new Error("Action has already been finalized");
+      }
+      case BaseAction.STATE_READY: {
+        try {
+          await this._finalize();
+          status = Uptake.ACTION_SUCCESS;
+        } catch (err) {
+          status = Uptake.ACTION_POST_EXECUTION_ERROR;
+          // Sometimes Error.message can be updated in place. This gives better messages when debugging errors.
+          try {
+            err.message = `Could not run postExecution hook for ${this.name}: ${
+              err.message
+            }`;
+          } catch (err) {
+            // Sometimes Error.message cannot be updated. Log a warning, and move on.
+            this.log.debug(`Could not run postExecution hook for ${this.name}`);
+          }
+
+          this.lastError = err;
+          Cu.reportError(err);
+        }
+        break;
+      }
+      case BaseAction.STATE_DISABLED: {
+        this.log.debug(
+          `Skipping post-execution hook for ${
+            this.name
+          } because it is disabled.`
+        );
+        status = Uptake.ACTION_SUCCESS;
+        break;
+      }
+      case BaseAction.STATE_FAILED: {
+        this.log.debug(
+          `Skipping post-execution hook for ${
+            this.name
+          } because it failed during pre-execution.`
+        );
+        // Don't report a status. A status should have already been reported by this.fail().
+        break;
+      }
+      default: {
+        throw new Error(`Unexpected state during finalize: ${this.state}`);
+      }
     }
 
-    if (this.failed) {
-      this.log.info(`Skipping post-execution hook for ${this.name} due to earlier failure.`);
-      return;
-    }
-
-    let status = Uptake.ACTION_SUCCESS;
-    try {
-      await this._finalize();
-    } catch (err) {
-      status = Uptake.ACTION_POST_EXECUTION_ERROR;
-      err.message = `Could not run postExecution hook for ${this.name}: ${err.message}`;
-      Cu.reportError(err);
-    } finally {
-      this.finalized = true;
+    this.state = BaseAction.STATE_FINALIZED;
+    if (status) {
       Uptake.reportAction(this.name, status);
     }
   }
@@ -138,3 +256,9 @@ class BaseAction {
     // Does nothing, may be overridden
   }
 }
+
+BaseAction.STATE_PREPARING = "ACTION_PREPARING";
+BaseAction.STATE_READY = "ACTION_READY";
+BaseAction.STATE_DISABLED = "ACTION_DISABLED";
+BaseAction.STATE_FAILED = "ACTION_FAILED";
+BaseAction.STATE_FINALIZED = "ACTION_FINALIZED";

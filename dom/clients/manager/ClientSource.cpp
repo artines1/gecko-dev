@@ -12,6 +12,7 @@
 #include "ClientSourceChild.h"
 #include "ClientState.h"
 #include "ClientValidation.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMMozPromiseRequestHolder.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
@@ -20,23 +21,29 @@
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
+#include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/ServiceWorker.h"
 #include "mozilla/dom/ServiceWorkerContainer.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
+#include "mozilla/StorageAccess.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsContentUtils.h"
+#include "nsFocusManager.h"
 #include "nsIDocShell.h"
 #include "nsPIDOMWindow.h"
+
+#include "mozilla/ipc/BackgroundUtils.h"
 
 namespace mozilla {
 namespace dom {
 
 using mozilla::dom::ipc::StructuredCloneData;
+using mozilla::ipc::CSPInfo;
+using mozilla::ipc::CSPToCSPInfo;
 using mozilla::ipc::PrincipalInfo;
 using mozilla::ipc::PrincipalInfoToPrincipal;
 
-void
-ClientSource::Shutdown()
-{
+void ClientSource::Shutdown() {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   if (IsShutdown()) {
     return;
@@ -47,9 +54,7 @@ ClientSource::Shutdown()
   mManager = nullptr;
 }
 
-void
-ClientSource::ExecutionReady(const ClientSourceExecutionReadyArgs& aArgs)
-{
+void ClientSource::ExecutionReady(const ClientSourceExecutionReadyArgs& aArgs) {
   // Fast fail if we don't understand this particular principal/URL combination.
   // This can happen since we use MozURL for validation which does not handle
   // some of the more obscure internal principal/url combinations.  Normal
@@ -67,22 +72,18 @@ ClientSource::ExecutionReady(const ClientSourceExecutionReadyArgs& aArgs)
   });
 }
 
-nsresult
-ClientSource::SnapshotWindowState(ClientState* aStateOut)
-{
+nsresult ClientSource::SnapshotWindowState(ClientState* aStateOut) {
   MOZ_ASSERT(NS_IsMainThread());
 
   nsPIDOMWindowInner* window = GetInnerWindow();
   if (!window || !window->IsCurrentInnerWindow() ||
       !window->HasActiveDocument()) {
-    *aStateOut = ClientState(ClientWindowState(VisibilityState::Hidden,
-                                               TimeStamp(),
-                                               nsContentUtils::StorageAccess::eDeny,
-                                               false));
+    *aStateOut = ClientState(ClientWindowState(
+        VisibilityState::Hidden, TimeStamp(), StorageAccess::eDeny, false));
     return NS_OK;
   }
 
-  nsIDocument* doc = window->GetExtantDoc();
+  Document* doc = window->GetExtantDoc();
   if (NS_WARN_IF(!doc)) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -94,19 +95,15 @@ ClientSource::SnapshotWindowState(ClientState* aStateOut)
     return rv.StealNSResult();
   }
 
-  nsContentUtils::StorageAccess storage =
-    nsContentUtils::StorageAllowedForDocument(doc);
+  StorageAccess storage = StorageAllowedForDocument(doc);
 
-  *aStateOut = ClientState(ClientWindowState(doc->VisibilityState(),
-                                             doc->LastFocusTime(), storage,
-                                             focused));
+  *aStateOut = ClientState(ClientWindowState(
+      doc->VisibilityState(), doc->LastFocusTime(), storage, focused));
 
   return NS_OK;
 }
 
-WorkerPrivate*
-ClientSource::GetWorkerPrivate() const
-{
+WorkerPrivate* ClientSource::GetWorkerPrivate() const {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   if (!mOwner.is<WorkerPrivate*>()) {
     return nullptr;
@@ -114,9 +111,7 @@ ClientSource::GetWorkerPrivate() const
   return mOwner.as<WorkerPrivate*>();
 }
 
-nsIDocShell*
-ClientSource::GetDocShell() const
-{
+nsIDocShell* ClientSource::GetDocShell() const {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   if (!mOwner.is<nsCOMPtr<nsIDocShell>>()) {
     return nullptr;
@@ -124,9 +119,7 @@ ClientSource::GetDocShell() const
   return mOwner.as<nsCOMPtr<nsIDocShell>>();
 }
 
-nsIGlobalObject*
-ClientSource::GetGlobal() const
-{
+nsIGlobalObject* ClientSource::GetGlobal() const {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   nsPIDOMWindowInner* win = GetInnerWindow();
   if (win) {
@@ -146,9 +139,7 @@ ClientSource::GetGlobal() const
   return nullptr;
 }
 
-void
-ClientSource::MaybeCreateInitialDocument()
-{
+void ClientSource::MaybeCreateInitialDocument() {
   nsIDocShell* docshell = GetDocShell();
   if (docshell) {
     // Force the create of the initial document if it does not exist yet.
@@ -161,18 +152,16 @@ ClientSource::MaybeCreateInitialDocument()
 ClientSource::ClientSource(ClientManager* aManager,
                            nsISerialEventTarget* aEventTarget,
                            const ClientSourceConstructorArgs& aArgs)
-  : mManager(aManager)
-  , mEventTarget(aEventTarget)
-  , mOwner(AsVariant(Nothing()))
-  , mClientInfo(aArgs.id(), aArgs.type(), aArgs.principalInfo(), aArgs.creationTime())
-{
+    : mManager(aManager),
+      mEventTarget(aEventTarget),
+      mOwner(AsVariant(Nothing())),
+      mClientInfo(aArgs.id(), aArgs.type(), aArgs.principalInfo(),
+                  aArgs.creationTime()) {
   MOZ_ASSERT(mManager);
   MOZ_ASSERT(mEventTarget);
 }
 
-void
-ClientSource::Activate(PClientManagerChild* aActor)
-{
+void ClientSource::Activate(PClientManagerChild* aActor) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   MOZ_ASSERT(!GetActor());
 
@@ -201,14 +190,9 @@ ClientSource::Activate(PClientManagerChild* aActor)
   ActivateThing(static_cast<ClientSourceChild*>(actor));
 }
 
-ClientSource::~ClientSource()
-{
-  Shutdown();
-}
+ClientSource::~ClientSource() { Shutdown(); }
 
-nsPIDOMWindowInner*
-ClientSource::GetInnerWindow() const
-{
+nsPIDOMWindowInner* ClientSource::GetInnerWindow() const {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   if (!mOwner.is<RefPtr<nsPIDOMWindowInner>>()) {
     return nullptr;
@@ -216,9 +200,7 @@ ClientSource::GetInnerWindow() const
   return mOwner.as<RefPtr<nsPIDOMWindowInner>>();
 }
 
-void
-ClientSource::WorkerExecutionReady(WorkerPrivate* aWorkerPrivate)
-{
+void ClientSource::WorkerExecutionReady(WorkerPrivate* aWorkerPrivate) {
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate);
   aWorkerPrivate->AssertIsOnWorkerThread();
 
@@ -231,7 +213,8 @@ ClientSource::WorkerExecutionReady(WorkerPrivate* aWorkerPrivate)
   // execution ready.  We can't reliably determine what our storage policy
   // is before execution ready, unfortunately.
   if (mController.isSome()) {
-    MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate->IsStorageAllowed() ||
+    MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate->StorageAccess() >
+                              StorageAccess::ePrivateBrowsing ||
                           StringBeginsWith(aWorkerPrivate->ScriptURL(),
                                            NS_LITERAL_STRING("blob:")));
   }
@@ -241,16 +224,13 @@ ClientSource::WorkerExecutionReady(WorkerPrivate* aWorkerPrivate)
   MOZ_DIAGNOSTIC_ASSERT(mOwner.is<Nothing>());
   mOwner = AsVariant(aWorkerPrivate);
 
-  ClientSourceExecutionReadyArgs args(
-    aWorkerPrivate->GetLocationInfo().mHref,
-    FrameType::None);
+  ClientSourceExecutionReadyArgs args(aWorkerPrivate->GetLocationInfo().mHref,
+                                      FrameType::None);
 
   ExecutionReady(args);
 }
 
-nsresult
-ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow)
-{
+nsresult ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aInnerWindow);
   MOZ_DIAGNOSTIC_ASSERT(aInnerWindow->IsCurrentInnerWindow());
@@ -260,7 +240,7 @@ ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow)
     return NS_OK;
   }
 
-  nsIDocument* doc = aInnerWindow->GetExtantDoc();
+  Document* doc = aInnerWindow->GetExtantDoc();
   NS_ENSURE_TRUE(doc, NS_ERROR_UNEXPECTED);
 
   nsIURI* uri = doc->GetOriginalURI();
@@ -285,8 +265,8 @@ ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow)
   if (mController.isSome()) {
     MOZ_DIAGNOSTIC_ASSERT(spec.LowerCaseEqualsLiteral("about:blank") ||
                           StringBeginsWith(spec, NS_LITERAL_CSTRING("blob:")) ||
-                          nsContentUtils::StorageAllowedForWindow(aInnerWindow) ==
-                          nsContentUtils::StorageAccess::eAllow);
+                          StorageAllowedForWindow(aInnerWindow) ==
+                              StorageAccess::eAllow);
   }
 
   nsPIDOMWindowOuter* outer = aInnerWindow->GetOuterWindow();
@@ -295,7 +275,7 @@ ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow)
   FrameType frameType = FrameType::Top_level;
   if (!outer->IsTopLevelWindow()) {
     frameType = FrameType::Nested;
-  } else if(outer->HadOriginalOpener()) {
+  } else if (outer->HadOriginalOpener()) {
     frameType = FrameType::Auxiliary;
   }
 
@@ -316,9 +296,7 @@ ClientSource::WindowExecutionReady(nsPIDOMWindowInner* aInnerWindow)
   return NS_OK;
 }
 
-nsresult
-ClientSource::DocShellExecutionReady(nsIDocShell* aDocShell)
-{
+nsresult ClientSource::DocShellExecutionReady(nsIDocShell* aDocShell) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aDocShell);
 
@@ -339,7 +317,7 @@ ClientSource::DocShellExecutionReady(nsIDocShell* aDocShell)
   FrameType frameType = FrameType::Top_level;
   if (!outer->IsTopLevelWindow()) {
     frameType = FrameType::Nested;
-  } else if(outer->HadOriginalOpener()) {
+  } else if (outer->HadOriginalOpener()) {
     frameType = FrameType::Auxiliary;
   }
 
@@ -356,31 +334,17 @@ ClientSource::DocShellExecutionReady(nsIDocShell* aDocShell)
   return NS_OK;
 }
 
-void
-ClientSource::Freeze()
-{
-  MaybeExecute([](PClientSourceChild* aActor) {
-    aActor->SendFreeze();
-  });
+void ClientSource::Freeze() {
+  MaybeExecute([](PClientSourceChild* aActor) { aActor->SendFreeze(); });
 }
 
-void
-ClientSource::Thaw()
-{
-  MaybeExecute([](PClientSourceChild* aActor) {
-    aActor->SendThaw();
-  });
+void ClientSource::Thaw() {
+  MaybeExecute([](PClientSourceChild* aActor) { aActor->SendThaw(); });
 }
 
-const ClientInfo&
-ClientSource::Info() const
-{
-  return mClientInfo;
-}
+const ClientInfo& ClientSource::Info() const { return mClientInfo; }
 
-void
-ClientSource::WorkerSyncPing(WorkerPrivate* aWorkerPrivate)
-{
+void ClientSource::WorkerSyncPing(WorkerPrivate* aWorkerPrivate) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate);
 
@@ -395,9 +359,8 @@ ClientSource::WorkerSyncPing(WorkerPrivate* aWorkerPrivate)
   GetActor()->SendWorkerSyncPing();
 }
 
-void
-ClientSource::SetController(const ServiceWorkerDescriptor& aServiceWorker)
-{
+void ClientSource::SetController(
+    const ServiceWorkerDescriptor& aServiceWorker) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
 
   // We should never have a cross-origin controller.  Since this would be
@@ -418,12 +381,13 @@ ClientSource::SetController(const ServiceWorkerDescriptor& aServiceWorker)
   // service workers from their parent.  This basically means blob: URLs
   // and about:blank windows.
   if (GetInnerWindow()) {
-    MOZ_DIAGNOSTIC_ASSERT(Info().URL().LowerCaseEqualsLiteral("about:blank") ||
-                          StringBeginsWith(Info().URL(), NS_LITERAL_CSTRING("blob:")) ||
-                          nsContentUtils::StorageAllowedForWindow(GetInnerWindow()) ==
-                          nsContentUtils::StorageAccess::eAllow);
+    MOZ_DIAGNOSTIC_ASSERT(
+        Info().URL().LowerCaseEqualsLiteral("about:blank") ||
+        StringBeginsWith(Info().URL(), NS_LITERAL_CSTRING("blob:")) ||
+        StorageAllowedForWindow(GetInnerWindow()) == StorageAccess::eAllow);
   } else if (GetWorkerPrivate()) {
-    MOZ_DIAGNOSTIC_ASSERT(GetWorkerPrivate()->IsStorageAllowed() ||
+    MOZ_DIAGNOSTIC_ASSERT(GetWorkerPrivate()->StorageAccess() >
+                              StorageAccess::ePrivateBrowsing ||
                           StringBeginsWith(GetWorkerPrivate()->ScriptURL(),
                                            NS_LITERAL_STRING("blob:")));
   }
@@ -448,15 +412,15 @@ ClientSource::SetController(const ServiceWorkerDescriptor& aServiceWorker)
   }
 }
 
-RefPtr<ClientOpPromise>
-ClientSource::Control(const ClientControlledArgs& aArgs)
-{
+RefPtr<ClientOpPromise> ClientSource::Control(
+    const ClientControlledArgs& aArgs) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
 
   // Determine if the client is allowed to be controlled.  Currently we
   // prevent service workers from controlling clients that cannot access
-  // storage.  We exempt this restriction for local URL clients, like about:blank
-  // and blob:, since access to service workers is dictated by their parent.
+  // storage.  We exempt this restriction for local URL clients, like
+  // about:blank and blob:, since access to service workers is dictated by their
+  // parent.
   //
   // Note, we default to allowing the client to be controlled in the case
   // where we are not execution ready yet.  This can only happen if the
@@ -470,50 +434,69 @@ ClientSource::Control(const ClientControlledArgs& aArgs)
   // about:blank.
   bool controlAllowed = true;
   if (GetInnerWindow()) {
-
     // Local URL windows and windows with access to storage can be controlled.
-    controlAllowed = Info().URL().LowerCaseEqualsLiteral("about:blank") ||
-                     StringBeginsWith(Info().URL(), NS_LITERAL_CSTRING("blob:")) ||
-                     nsContentUtils::StorageAllowedForWindow(GetInnerWindow()) ==
-                      nsContentUtils::StorageAccess::eAllow;
+    controlAllowed =
+        Info().URL().LowerCaseEqualsLiteral("about:blank") ||
+        StringBeginsWith(Info().URL(), NS_LITERAL_CSTRING("blob:")) ||
+        StorageAllowedForWindow(GetInnerWindow()) == StorageAccess::eAllow;
   } else if (GetWorkerPrivate()) {
     // Local URL workers and workers with access to storage cna be controlled.
-    controlAllowed = GetWorkerPrivate()->IsStorageAllowed() ||
-                     StringBeginsWith(GetWorkerPrivate()->ScriptURL(),
-                                      NS_LITERAL_STRING("blob:"));
+    controlAllowed =
+        GetWorkerPrivate()->StorageAccess() > StorageAccess::ePrivateBrowsing ||
+        StringBeginsWith(GetWorkerPrivate()->ScriptURL(),
+                         NS_LITERAL_STRING("blob:"));
   }
 
-  RefPtr<ClientOpPromise> ref;
-
   if (NS_WARN_IF(!controlAllowed)) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
-                                           __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
+                                            __func__);
   }
 
   SetController(ServiceWorkerDescriptor(aArgs.serviceWorker()));
 
-  ref = ClientOpPromise::CreateAndResolve(NS_OK, __func__);
-  return ref.forget();
+  return ClientOpPromise::CreateAndResolve(NS_OK, __func__);
 }
 
-void
-ClientSource::InheritController(const ServiceWorkerDescriptor& aServiceWorker)
-{
+void ClientSource::InheritController(
+    const ServiceWorkerDescriptor& aServiceWorker) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
 
   // If we are in legacy child-side intercept mode then we must tell the current
   // process SWM that this client inherited a controller.  This will only update
   // the local SWM data and not send any messages to the ClientManagerService.
-  //
-  // Note, we only do this when inheriting the controller for main thread
-  // windows.  The legacy mode never proprly marked inherited blob URL workers
-  // controlled in the SWM.
-  if (!ServiceWorkerParentInterceptEnabled() && GetDocShell()) {
-    AssertIsOnMainThread();
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (swm) {
-      swm->NoteInheritedController(mClientInfo, aServiceWorker);
+  if (!ServiceWorkerParentInterceptEnabled()) {
+    if (GetDocShell()) {
+      AssertIsOnMainThread();
+
+      RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+      if (swm) {
+        swm->NoteInheritedController(mClientInfo, aServiceWorker);
+      }
+    } else {
+      WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+      MOZ_ASSERT(workerPrivate);
+
+      RefPtr<StrongWorkerRef> strongWorkerRef = StrongWorkerRef::Create(
+          workerPrivate,
+          NS_ConvertUTF16toUTF8(workerPrivate->WorkerName()).get());
+      auto threadSafeWorkerRef =
+          MakeRefPtr<ThreadSafeWorkerRef>(strongWorkerRef);
+
+      nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+          __func__, [workerRef = threadSafeWorkerRef, clientInfo = mClientInfo,
+                     serviceWorker = aServiceWorker]() {
+            MOZ_ASSERT(IsBlobURI(workerRef->Private()->GetBaseURI()));
+
+            RefPtr<ServiceWorkerManager> swm =
+                ServiceWorkerManager::GetInstance();
+
+            if (swm) {
+              swm->NoteInheritedController(clientInfo, serviceWorker);
+            }
+          });
+
+      Unused << NS_WARN_IF(
+          NS_FAILED(workerPrivate->DispatchToMainThread(r.forget())));
     }
   }
 
@@ -530,15 +513,11 @@ ClientSource::InheritController(const ServiceWorkerDescriptor& aServiceWorker)
   SetController(aServiceWorker);
 }
 
-const Maybe<ServiceWorkerDescriptor>&
-ClientSource::GetController() const
-{
+const Maybe<ServiceWorkerDescriptor>& ClientSource::GetController() const {
   return mController;
 }
 
-void
-ClientSource::NoteDOMContentLoaded()
-{
+void ClientSource::NoteDOMContentLoaded() {
   if (mController.isSome() && !ServiceWorkerParentInterceptEnabled()) {
     AssertIsOnMainThread();
     RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
@@ -547,22 +526,16 @@ ClientSource::NoteDOMContentLoaded()
     }
   }
 
-  MaybeExecute([] (PClientSourceChild* aActor) {
-    aActor->SendNoteDOMContentLoaded();
-  });
+  MaybeExecute(
+      [](PClientSourceChild* aActor) { aActor->SendNoteDOMContentLoaded(); });
 }
 
-RefPtr<ClientOpPromise>
-ClientSource::Focus(const ClientFocusArgs& aArgs)
-{
+RefPtr<ClientOpPromise> ClientSource::Focus(const ClientFocusArgs& aArgs) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
 
-  RefPtr<ClientOpPromise> ref;
-
   if (mClientInfo.Type() != ClientType::Window) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
-                                           __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+                                            __func__);
   }
   nsPIDOMWindowOuter* outer = nullptr;
 
@@ -577,170 +550,49 @@ ClientSource::Focus(const ClientFocusArgs& aArgs)
   }
 
   if (!outer) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
-                                           __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
+                                            __func__);
   }
 
   MOZ_ASSERT(NS_IsMainThread());
-
-  nsresult rv = nsContentUtils::DispatchFocusChromeEvent(outer);
-  if (NS_FAILED(rv)) {
-    ref = ClientOpPromise::CreateAndReject(rv, __func__);
-    return ref.forget();
-  }
+  nsFocusManager::FocusWindow(outer);
 
   ClientState state;
-  rv = SnapshotState(&state);
+  nsresult rv = SnapshotState(&state);
   if (NS_FAILED(rv)) {
-    ref = ClientOpPromise::CreateAndReject(rv, __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(rv, __func__);
   }
 
-  ref = ClientOpPromise::CreateAndResolve(state.ToIPC(), __func__);
-  return ref.forget();
+  return ClientOpPromise::CreateAndResolve(state.ToIPC(), __func__);
 }
 
-RefPtr<ClientOpPromise>
-ClientSource::PostMessage(const ClientPostMessageArgs& aArgs)
-{
+RefPtr<ClientOpPromise> ClientSource::PostMessage(
+    const ClientPostMessageArgs& aArgs) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
-  RefPtr<ClientOpPromise> ref;
 
-  ServiceWorkerDescriptor source(aArgs.serviceWorker());
-  const PrincipalInfo& principalInfo = source.PrincipalInfo();
-
-  StructuredCloneData clonedData;
-  clonedData.BorrowFromClonedMessageDataForBackgroundChild(aArgs.clonedData());
-
-  // Currently we only support firing these messages on window Clients.
-  // Once we expose ServiceWorkerContainer and the ServiceWorker on Worker
-  // threads then this will need to change.  See bug 1113522.
-  if (mClientInfo.Type() != ClientType::Window) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_NOT_IMPLEMENTED, __func__);
-    return ref.forget();
+  // TODO: Currently this function only supports clients whose global
+  // object is a Window; it should also support those whose global
+  // object is a WorkerGlobalScope.
+  if (nsPIDOMWindowInner* const window = GetInnerWindow()) {
+    const RefPtr<ServiceWorkerContainer> container =
+        window->Navigator()->ServiceWorker();
+    container->ReceiveMessage(aArgs);
+    return ClientOpPromise::CreateAndResolve(NS_OK, __func__);
   }
 
-  MOZ_ASSERT(NS_IsMainThread());
-
-  RefPtr<ServiceWorkerContainer> target;
-  nsCOMPtr<nsIGlobalObject> globalObject;
-
-  // We don't need to force the creation of the about:blank document
-  // here because there is no postMessage listener.  If a listener
-  // was registered then the document will already be created.
-  nsPIDOMWindowInner* window = GetInnerWindow();
-  if (window) {
-    globalObject = do_QueryInterface(window);
-    target = window->Navigator()->ServiceWorker();
-  }
-
-  if (NS_WARN_IF(!target)) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
-                                           __func__);
-    return ref.forget();
-  }
-
-  // If AutoJSAPI::Init() fails then either global is nullptr or not
-  // in a usable state.
-  AutoJSAPI jsapi;
-  if (!jsapi.Init(globalObject)) {
-    ref = ClientOpPromise::CreateAndResolve(NS_OK, __func__);
-    return ref.forget();
-  }
-
-  JSContext* cx = jsapi.cx();
-
-  ErrorResult result;
-  JS::Rooted<JS::Value> messageData(cx);
-  clonedData.Read(cx, &messageData, result);
-  if (result.MaybeSetPendingException(cx)) {
-    // We reported the error in the current window context.  Resolve
-    // promise instead of rejecting.
-    ref = ClientOpPromise::CreateAndResolve(NS_OK, __func__);
-    return ref.forget();
-  }
-
-  RootedDictionary<MessageEventInit> init(cx);
-
-  init.mData = messageData;
-  if (!clonedData.TakeTransferredPortsAsSequence(init.mPorts)) {
-    // Report the error in the current window context and resolve the
-    // promise instead of rejecting.
-    xpc::Throw(cx, NS_ERROR_OUT_OF_MEMORY);
-    ref = ClientOpPromise::CreateAndResolve(NS_OK, __func__);
-    return ref.forget();
-  }
-
-  nsresult rv = NS_OK;
-  nsCOMPtr<nsIPrincipal> principal =
-    PrincipalInfoToPrincipal(principalInfo, &rv);
-  if (NS_FAILED(rv) || !principal) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
-    return ref.forget();
-  }
-
-  nsAutoCString origin;
-  rv = principal->GetOriginNoSuffix(origin);
-  if (NS_SUCCEEDED(rv)) {
-    CopyUTF8toUTF16(origin, init.mOrigin);
-  }
-
-  RefPtr<ServiceWorker> instance;
-
-  if (ServiceWorkerParentInterceptEnabled()) {
-    instance = globalObject->GetOrCreateServiceWorker(source);
-  } else {
-    // If we are in legacy child-side intercept mode then we need to verify
-    // this registration exists in the current process.
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    if (!swm) {
-      // Shutting down. Just don't deliver this message.
-      ref = ClientOpPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
-      return ref.forget();
-    }
-
-    RefPtr<ServiceWorkerRegistrationInfo> reg =
-      swm->GetRegistration(principal, source.Scope());
-    if (reg) {
-      instance = globalObject->GetOrCreateServiceWorker(source);
-    }
-  }
-
-  if (instance) {
-    init.mSource.SetValue().SetAsServiceWorker() = instance;
-  }
-
-  RefPtr<MessageEvent> event =
-    MessageEvent::Constructor(target, NS_LITERAL_STRING("message"), init);
-  event->SetTrusted(true);
-
-  target->DispatchEvent(*event, result);
-  if (result.Failed()) {
-    result.SuppressException();
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
-    return ref.forget();
-  }
-
-  ref = ClientOpPromise::CreateAndResolve(NS_OK, __func__);
-  return ref.forget();
+  return ClientOpPromise::CreateAndReject(NS_ERROR_NOT_IMPLEMENTED, __func__);
 }
 
-RefPtr<ClientOpPromise>
-ClientSource::Claim(const ClientClaimArgs& aArgs)
-{
+RefPtr<ClientOpPromise> ClientSource::Claim(const ClientClaimArgs& aArgs) {
   // The ClientSource::Claim method is only needed in the legacy
   // mode where the ServiceWorkerManager is run in each child-process.
   // In parent-process mode this method should not be called.
   MOZ_DIAGNOSTIC_ASSERT(!ServiceWorkerParentInterceptEnabled());
 
-  RefPtr<ClientOpPromise> ref;
-
   nsIGlobalObject* global = GetGlobal();
   if (NS_WARN_IF(!global)) {
-    ref = ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
-                                           __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(NS_ERROR_DOM_INVALID_STATE_ERR,
+                                            __func__);
   }
 
   // Note, we cannot just mark the ClientSource controlled.  We must go through
@@ -750,21 +602,21 @@ ClientSource::Claim(const ClientClaimArgs& aArgs)
   // parent-process in ClientManagerService::Claim().
 
   RefPtr<GenericPromise::Private> innerPromise =
-    new GenericPromise::Private(__func__);
+      new GenericPromise::Private(__func__);
   ServiceWorkerDescriptor swd(aArgs.serviceWorker());
 
   nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-    "ClientSource::Claim",
-    [innerPromise, clientInfo = mClientInfo, swd] () mutable {
-      RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-      if (NS_WARN_IF(!swm)) {
-        innerPromise->Reject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
-        return;
-      }
+      "ClientSource::Claim",
+      [innerPromise, clientInfo = mClientInfo, swd]() mutable {
+        RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+        if (NS_WARN_IF(!swm)) {
+          innerPromise->Reject(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
+          return;
+        }
 
-      RefPtr<GenericPromise> p = swm->MaybeClaimClient(clientInfo, swd);
-      p->ChainTo(innerPromise.forget(), __func__);
-    });
+        RefPtr<GenericPromise> p = swm->MaybeClaimClient(clientInfo, swd);
+        p->ChainTo(innerPromise.forget(), __func__);
+      });
 
   if (NS_IsMainThread()) {
     r->Run();
@@ -773,43 +625,39 @@ ClientSource::Claim(const ClientClaimArgs& aArgs)
   }
 
   RefPtr<ClientOpPromise::Private> outerPromise =
-    new ClientOpPromise::Private(__func__);
+      new ClientOpPromise::Private(__func__);
 
   auto holder = MakeRefPtr<DOMMozPromiseRequestHolder<GenericPromise>>(global);
 
-  innerPromise->Then(mEventTarget, __func__,
-    [outerPromise, holder] (bool aResult) {
-      holder->Complete();
-      outerPromise->Resolve(NS_OK, __func__);
-    }, [outerPromise, holder] (nsresult aResult) {
-      holder->Complete();
-      outerPromise->Reject(aResult, __func__);
-    })->Track(*holder);
+  innerPromise
+      ->Then(
+          mEventTarget, __func__,
+          [outerPromise, holder](bool aResult) {
+            holder->Complete();
+            outerPromise->Resolve(NS_OK, __func__);
+          },
+          [outerPromise, holder](nsresult aResult) {
+            holder->Complete();
+            outerPromise->Reject(aResult, __func__);
+          })
+      ->Track(*holder);
 
-  ref = outerPromise;
-  return ref.forget();
+  return outerPromise.forget();
 }
 
-RefPtr<ClientOpPromise>
-ClientSource::GetInfoAndState(const ClientGetInfoAndStateArgs& aArgs)
-{
-  RefPtr<ClientOpPromise> ref;
-
+RefPtr<ClientOpPromise> ClientSource::GetInfoAndState(
+    const ClientGetInfoAndStateArgs& aArgs) {
   ClientState state;
   nsresult rv = SnapshotState(&state);
   if (NS_FAILED(rv)) {
-    ref = ClientOpPromise::CreateAndReject(rv, __func__);
-    return ref.forget();
+    return ClientOpPromise::CreateAndReject(rv, __func__);
   }
 
-  ref = ClientOpPromise::CreateAndResolve(ClientInfoAndState(mClientInfo.ToIPC(),
-                                                             state.ToIPC()), __func__);
-  return ref.forget();
+  return ClientOpPromise::CreateAndResolve(
+      ClientInfoAndState(mClientInfo.ToIPC(), state.ToIPC()), __func__);
 }
 
-nsresult
-ClientSource::SnapshotState(ClientState* aStateOut)
-{
+nsresult ClientSource::SnapshotState(ClientState* aStateOut) {
   NS_ASSERT_OWNINGTHREAD(ClientSource);
   MOZ_DIAGNOSTIC_ASSERT(aStateOut);
 
@@ -827,52 +675,73 @@ ClientSource::SnapshotState(ClientState* aStateOut)
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
 
-  // Workers only keep a boolean for storage access at the moment.
-  // Map this back to eAllow or eDeny for now.
-  nsContentUtils::StorageAccess storage =
-    workerPrivate->IsStorageAllowed() ? nsContentUtils::StorageAccess::eAllow
-                                      : nsContentUtils::StorageAccess::eDeny;
-
-  *aStateOut = ClientState(ClientWorkerState(storage));
+  *aStateOut = ClientState(ClientWorkerState(workerPrivate->StorageAccess()));
   return NS_OK;
 }
 
-nsISerialEventTarget*
-ClientSource::EventTarget() const
-{
-  return mEventTarget;
+nsISerialEventTarget* ClientSource::EventTarget() const { return mEventTarget; }
+
+void ClientSource::SetCsp(nsIContentSecurityPolicy* aCsp) {
+  NS_ASSERT_OWNINGTHREAD(ClientSource);
+  if (!aCsp) {
+    return;
+  }
+
+  CSPInfo cspInfo;
+  nsresult rv = CSPToCSPInfo(aCsp, &cspInfo);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+  mClientInfo.SetCspInfo(cspInfo);
 }
 
-void
-ClientSource::Traverse(nsCycleCollectionTraversalCallback& aCallback,
-                       const char* aName,
-                       uint32_t aFlags)
-{
+void ClientSource::SetPreloadCsp(nsIContentSecurityPolicy* aPreloadCsp) {
+  NS_ASSERT_OWNINGTHREAD(ClientSource);
+  if (!aPreloadCsp) {
+    return;
+  }
+
+  CSPInfo cspPreloadInfo;
+  nsresult rv = CSPToCSPInfo(aPreloadCsp, &cspPreloadInfo);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+  mClientInfo.SetPreloadCspInfo(cspPreloadInfo);
+}
+
+void ClientSource::SetCspInfo(const CSPInfo& aCSPInfo) {
+  NS_ASSERT_OWNINGTHREAD(ClientSource);
+  mClientInfo.SetCspInfo(aCSPInfo);
+}
+
+const Maybe<mozilla::ipc::CSPInfo>& ClientSource::GetCspInfo() {
+  NS_ASSERT_OWNINGTHREAD(ClientSource);
+  return mClientInfo.GetCspInfo();
+}
+
+void ClientSource::Traverse(nsCycleCollectionTraversalCallback& aCallback,
+                            const char* aName, uint32_t aFlags) {
   if (mOwner.is<RefPtr<nsPIDOMWindowInner>>()) {
-    ImplCycleCollectionTraverse(aCallback,
-                                mOwner.as<RefPtr<nsPIDOMWindowInner>>(),
-                                aName, aFlags);
+    ImplCycleCollectionTraverse(
+        aCallback, mOwner.as<RefPtr<nsPIDOMWindowInner>>(), aName, aFlags);
   } else if (mOwner.is<nsCOMPtr<nsIDocShell>>()) {
-    ImplCycleCollectionTraverse(aCallback,
-                                mOwner.as<nsCOMPtr<nsIDocShell>>(),
+    ImplCycleCollectionTraverse(aCallback, mOwner.as<nsCOMPtr<nsIDocShell>>(),
                                 aName, aFlags);
   }
 }
 
-void
-ClientSource::NoteCalledRegisterForServiceWorkerScope(const nsACString& aScope)
-{
+void ClientSource::NoteCalledRegisterForServiceWorkerScope(
+    const nsACString& aScope) {
   if (mRegisteringScopeList.Contains(aScope)) {
     return;
   }
   mRegisteringScopeList.AppendElement(aScope);
 }
 
-bool
-ClientSource::CalledRegisterForServiceWorkerScope(const nsACString& aScope)
-{
+bool ClientSource::CalledRegisterForServiceWorkerScope(
+    const nsACString& aScope) {
   return mRegisteringScopeList.Contains(aScope);
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

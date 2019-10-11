@@ -1,11 +1,12 @@
 // Copyright (C) 2015 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
-es6id: 9.5.14
+esid: sec-proxy-object-internal-methods-and-internal-slots-construct-argumentslist-newtarget
 description: >
     [[Construct]] ( argumentsList, newTarget)
 
     2. If handler is null, throw a TypeError exception.
+features: [Proxy]
 ---*/
 
 

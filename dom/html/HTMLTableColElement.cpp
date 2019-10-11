@@ -19,37 +19,32 @@ namespace dom {
 // http://lxr.mozilla.org/classic/source/lib/layout/laytable.c#46
 #define MAX_COLSPAN 1000
 
-HTMLTableColElement::~HTMLTableColElement()
-{
-}
+HTMLTableColElement::~HTMLTableColElement() {}
 
-JSObject*
-HTMLTableColElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
-{
+JSObject* HTMLTableColElement::WrapNode(JSContext* aCx,
+                                        JS::Handle<JSObject*> aGivenProto) {
   return HTMLTableColElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_ELEMENT_CLONE(HTMLTableColElement)
 
-bool
-HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
-                                    nsAtom* aAttribute,
-                                    const nsAString& aValue,
-                                    nsIPrincipal* aMaybeScriptedPrincipal,
-                                    nsAttrValue& aResult)
-{
+bool HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
+                                         nsAtom* aAttribute,
+                                         const nsAString& aValue,
+                                         nsIPrincipal* aMaybeScriptedPrincipal,
+                                         nsAttrValue& aResult) {
   if (aNamespaceID == kNameSpaceID_None) {
     /* ignore these attributes, stored simply as strings ch */
-    if (aAttribute == nsGkAtoms::charoff) {
-      return aResult.ParseSpecialIntValue(aValue);
-    }
     if (aAttribute == nsGkAtoms::span) {
       /* protection from unrealistic large colspan values */
       aResult.ParseClampedNonNegativeInt(aValue, 1, 1, MAX_COLSPAN);
       return true;
     }
     if (aAttribute == nsGkAtoms::width) {
-      return aResult.ParseSpecialIntValue(aValue);
+      // Spec says to use ParseNonzeroHTMLDimension, but Chrome and Safari both
+      // allow 0, and we did all along too, so keep that behavior.  See
+      // https://github.com/whatwg/html/issues/4717
+      return aResult.ParseHTMLDimension(aValue);
     }
     if (aAttribute == nsGkAtoms::align) {
       return ParseTableCellHAlignValue(aValue, aResult);
@@ -63,10 +58,8 @@ HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
                                               aMaybeScriptedPrincipal, aResult);
 }
 
-void
-HTMLTableColElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                           MappedDeclarations& aDecls)
-{
+void HTMLTableColElement::MapAttributesIntoRule(
+    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
   if (!aDecls.PropertyIsSet(eCSSProperty__x_span)) {
     // span: int
     const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::span);
@@ -88,30 +81,25 @@ HTMLTableColElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes
 }
 
 NS_IMETHODIMP_(bool)
-HTMLTableColElement::IsAttributeMapped(const nsAtom* aAttribute) const
-{
-  static const MappedAttributeEntry attributes[] = {
-    { &nsGkAtoms::width },
-    { &nsGkAtoms::align },
-    { &nsGkAtoms::valign },
-    { &nsGkAtoms::span },
-    { nullptr }
-  };
+HTMLTableColElement::IsAttributeMapped(const nsAtom* aAttribute) const {
+  static const MappedAttributeEntry attributes[] = {{nsGkAtoms::width},
+                                                    {nsGkAtoms::align},
+                                                    {nsGkAtoms::valign},
+                                                    {nsGkAtoms::span},
+                                                    {nullptr}};
 
   static const MappedAttributeEntry* const map[] = {
-    attributes,
-    sCommonAttributeMap,
+      attributes,
+      sCommonAttributeMap,
   };
 
   return FindAttributeDependence(aAttribute, map);
 }
 
-
-nsMapRuleToAttributesFunc
-HTMLTableColElement::GetAttributeMappingFunction() const
-{
+nsMapRuleToAttributesFunc HTMLTableColElement::GetAttributeMappingFunction()
+    const {
   return &MapAttributesIntoRule;
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

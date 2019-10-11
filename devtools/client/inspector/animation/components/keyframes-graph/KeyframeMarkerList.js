@@ -4,7 +4,10 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
@@ -22,7 +25,7 @@ class KeyframeMarkerList extends PureComponent {
 
     return dom.ul(
       {
-        className: "keyframe-marker-list"
+        className: "keyframe-marker-list",
       },
       keyframes.map(keyframe => KeyframeMarkerItem({ keyframe }))
     );

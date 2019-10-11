@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -27,18 +26,20 @@ add_task(async function() {
   await checkGridHighlighter();
 
   info("Close the toolbox before reloading the tab");
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
 
   await refreshTab();
 
-  info("Check that the grid highlighter can be displayed after reloading the page");
+  info(
+    "Check that the grid highlighter can be displayed after reloading the page"
+  );
   await checkGridHighlighter();
 });
 
 async function checkGridHighlighter() {
-  const {inspector, view} = await openRuleView();
-  const {highlighters} = view;
+  const { inspector, view } = await openRuleView();
+  const { highlighters } = view;
 
   await selectNode("#grid", inspector);
   const container = getRuleViewProperty(view, "#grid", "display").valueSpan;
@@ -49,5 +50,5 @@ async function checkGridHighlighter() {
   gridToggle.click();
   await onHighlighterShown;
 
-  ok(highlighters.gridHighlighterShown, "CSS grid highlighter is shown.");
+  is(highlighters.gridHighlighters.size, 1, "CSS grid highlighter is shown.");
 }

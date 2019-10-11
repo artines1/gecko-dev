@@ -12,6 +12,12 @@ with Files('Block*'):
     # Parts of these files are really Layout: Floats
     BUG_COMPONENT = ('Core', 'Layout: Block and Inline')
 
+with Files('nsColumn*'):
+    BUG_COMPONENT = ('Core', 'Layout: Columns')
+
+with Files('Column*'):
+    BUG_COMPONENT = ('Core', 'Layout: Columns')
+
 with Files('nsLine*'):
     # Parts of these files are really Layout: Floats
     BUG_COMPONENT = ('Core', 'Layout: Block and Inline')
@@ -32,16 +38,19 @@ with Files('MathML*'):
     BUG_COMPONENT = ('Core', 'MathML')
 
 with Files('Text*'):
-    BUG_COMPONENT = ('Core', 'Layout: Text')
+    BUG_COMPONENT = ('Core', 'Layout: Text and Fonts')
 
 with Files('nsText*'):
-    BUG_COMPONENT = ('Core', 'Layout: Text')
+    BUG_COMPONENT = ('Core', 'Layout: Text and Fonts')
 
 with Files('nsFrameSetFrame*'):
-    BUG_COMPONENT = ('Core', 'Layout: HTML Frames')
+    BUG_COMPONENT = ('Core', 'Layout: Images, Video, and HTML Frames')
 
 with Files('nsSubDocumentFrame*'):
-    BUG_COMPONENT = ('Core', 'Layout: HTML Frames')
+    BUG_COMPONENT = ('Core', 'Layout: Images, Video, and HTML Frames')
+
+with Files('nsFlex*'):
+    BUG_COMPONENT = ('Core', 'Layout: Flexbox')
 
 with Files('nsFloatManager.*'):
     BUG_COMPONENT = ('Core', 'Layout: Floats')
@@ -49,17 +58,32 @@ with Files('nsFloatManager.*'):
 with Files('nsIntervalSet.*'):
     BUG_COMPONENT = ('Core', 'Layout: Floats')
 
+with Files('nsGrid*'):
+    BUG_COMPONENT = ('Core', 'Layout: Grid')
+
 with Files('nsHTMLCanvasFrame.*'):
-    BUG_COMPONENT = ('Core', 'Layout: Images')
+    BUG_COMPONENT = ('Core', 'Layout: Images, Video, and HTML Frames')
 
 with Files('nsImage*'):
-    BUG_COMPONENT = ('Core', 'Layout: Images')
+    BUG_COMPONENT = ('Core', 'Layout: Images, Video, and HTML Frames')
 
 with Files('nsAbsoluteContainingBlock.*'):
-    BUG_COMPONENT = ('Core', 'Layout: R & A Pos')
+    BUG_COMPONENT = ('Core', 'Layout: Positioned')
 
 with Files('Sticky*'):
-    BUG_COMPONENT = ('Core', 'Layout: R & A Pos')
+    BUG_COMPONENT = ('Core', 'Layout: Positioned')
+
+with Files('nsRuby*'):
+    BUG_COMPONENT = ('Core', 'Layout: Ruby')
+
+with Files('Ruby*'):
+    BUG_COMPONENT = ('Core', 'Layout: Ruby')
+
+with Files('*Scroll*'):
+    BUG_COMPONENT = ('Core', 'Layout: Scrolling and Overflow')
+
+with Files('nsFont*'):
+    BUG_COMPONENT = ('Core', 'Layout: Text and Fonts')
 
 with Files('nsPluginFrame.*'):
     BUG_COMPONENT = ('Core', 'Plug-ins')
@@ -68,11 +92,11 @@ with Files('nsVideoFrame.*'):
     BUG_COMPONENT = ('Core', 'Audio/Video')
 
 EXPORTS += [
+    'nsAtomicContainerFrame.h',
     'nsCanvasFrame.h',
     'nsContainerFrame.h',
     'nsDirection.h',
     'nsFrame.h',
-    'nsFrameIdList.h',
     'nsFrameList.h',
     'nsFrameSelection.h',
     'nsFrameState.h',
@@ -83,10 +107,11 @@ EXPORTS += [
     'nsIFrameInlines.h',
     'nsILineIterator.h',
     'nsIObjectFrame.h',
-    'nsIPageSequenceFrame.h',
     'nsIScrollableFrame.h',
     'nsIScrollPositionListener.h',
     'nsIStatefulFrame.h',
+    'nsLineBox.h',
+    'nsPageSequenceFrame.h',
     'nsPluginFrame.h',
     'nsQueryFrame.h',
     'nsRubyBaseContainerFrame.h',
@@ -109,9 +134,14 @@ EXPORTS += [
 ]
 
 EXPORTS.mozilla += [
+    '!FrameIdList.h',
+    '!FrameTypeList.h',
+    'AnonymousContentKey.h',
+    'AspectRatio.h',
+    'AutoCopyListener.h',
+    'ColumnUtils.h',
     'CSSAlignUtils.h',
     'CSSOrderAwareFrameIterator.h',
-    'FrameTypeList.h',
     'ReflowInput.h',
     'ReflowOutput.h',
     'ViewportFrame.h',
@@ -120,11 +150,14 @@ EXPORTS.mozilla += [
 
 EXPORTS.mozilla.layout += [
     'FrameChildList.h',
+    'ScrollAnchorContainer.h',
 ]
 
 UNIFIED_SOURCES += [
     'BlockReflowInput.cpp',
     'BRFrame.cpp',
+    'ColumnSetWrapperFrame.cpp',
+    'ColumnUtils.cpp',
     'CSSAlignUtils.cpp',
     'CSSOrderAwareFrameIterator.cpp',
     'DetailsFrame.cpp',
@@ -159,6 +192,7 @@ UNIFIED_SOURCES += [
     'nsLineLayout.cpp',
     'nsPageContentFrame.cpp',
     'nsPageFrame.cpp',
+    'nsPageSequenceFrame.cpp',
     'nsPlaceholderFrame.cpp',
     'nsRubyBaseContainerFrame.cpp',
     'nsRubyBaseFrame.cpp',
@@ -166,7 +200,6 @@ UNIFIED_SOURCES += [
     'nsRubyFrame.cpp',
     'nsRubyTextContainerFrame.cpp',
     'nsRubyTextFrame.cpp',
-    'nsSimplePageSequenceFrame.cpp',
     'nsSplittableFrame.cpp',
     'nsSubDocumentFrame.cpp',
     'nsTextFrame.cpp',
@@ -176,6 +209,7 @@ UNIFIED_SOURCES += [
     'ReflowInput.cpp',
     'ReflowOutput.cpp',
     'RubyUtils.cpp',
+    'ScrollAnchorContainer.cpp',
     'ScrollAnimationBezierPhysics.cpp',
     'ScrollAnimationMSDPhysics.cpp',
     'ScrollbarActivity.cpp',
@@ -190,6 +224,13 @@ UNIFIED_SOURCES += [
 SOURCES += [
     'nsPluginFrame.cpp',
 ]
+
+GeneratedFile('FrameIdList.h',
+              script='GenerateFrameLists.py',
+              entry_point='generate_frame_id_list_h')
+GeneratedFile('FrameTypeList.h',
+              script='GenerateFrameLists.py',
+              entry_point='generate_frame_type_list_h')
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -221,7 +262,7 @@ MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
 
 CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 
-if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
     CXXFLAGS += CONFIG['TK_CFLAGS']
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):

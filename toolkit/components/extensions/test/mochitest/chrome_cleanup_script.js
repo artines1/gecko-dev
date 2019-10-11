@@ -2,8 +2,10 @@
 
 /* global addMessageListener, sendAsyncMessage */
 
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 let listener = msg => {
   void (msg instanceof Ci.nsIConsoleMessage);
@@ -22,9 +24,7 @@ if (AppConstants.MOZ_BUILD_APP === "mobile/android") {
 }
 
 function* iterBrowserWindows() {
-  let enm = Services.wm.getEnumerator("navigator:browser");
-  while (enm.hasMoreElements()) {
-    let win = enm.getNext();
+  for (let win of Services.wm.getEnumerator("navigator:browser")) {
     if (!win.closed && getBrowserApp(win)) {
       yield win;
     }
@@ -55,8 +55,8 @@ addMessageListener("check-cleanup", extensionId => {
       }
     } else {
       results.extraWindows.push(
-        Array.from(win.gBrowser.tabs,
-                   tab => getTabBrowser(tab).currentURI.spec));
+        Array.from(win.gBrowser.tabs, tab => getTabBrowser(tab).currentURI.spec)
+      );
     }
   }
 

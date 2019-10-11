@@ -5,13 +5,11 @@
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
 //! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
 
-use core::fmt;
-use core::mem;
+use core::mem::{self, ManuallyDrop};
 use core::ptr;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use crossbeam_utils::cache_padded::CachePadded;
-use nodrop::NoDrop;
+use crossbeam_utils::CachePadded;
 
 use {unprotected, Atomic, Guard, Owned, Shared};
 
@@ -24,22 +22,17 @@ pub struct Queue<T> {
     tail: CachePadded<Atomic<Node<T>>>,
 }
 
+#[derive(Debug)]
 struct Node<T> {
     /// The slot in which a value of type `T` can be stored.
     ///
-    /// The type of `data` is `NoDrop<T>` because a `Node<T>` doesn't always contain a `T`. For
-    /// example, the sentinel node in a queue never contains a value: its slot is always empty.
+    /// The type of `data` is `ManuallyDrop<T>` because a `Node<T>` doesn't always contain a `T`.
+    /// For example, the sentinel node in a queue never contains a value: its slot is always empty.
     /// Other nodes start their life with a push operation and contain a value until it gets popped
     /// out. After that such empty nodes get added to the collector for destruction.
-    data: NoDrop<T>,
+    data: ManuallyDrop<T>,
 
     next: Atomic<Node<T>>,
-}
-
-impl<T> fmt::Debug for Node<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "node {{ ... }}")
-    }
 }
 
 // Any particular `T` should never be accessed concurrently, so no need for `Sync`.
@@ -79,7 +72,8 @@ impl<T> Queue<T> {
             false
         } else {
             // looks like the actual tail; attempt to link in `n`
-            let result = o.next
+            let result = o
+                .next
                 .compare_and_set(Shared::null(), new, Release, guard)
                 .is_ok();
             if result {
@@ -93,7 +87,7 @@ impl<T> Queue<T> {
     /// Adds `t` to the back of the queue, possibly waking up threads blocked on `pop`.
     pub fn push(&self, t: T, guard: &Guard) {
         let new = Owned::new(Node {
-            data: NoDrop::new(t),
+            data: ManuallyDrop::new(t),
             next: Atomic::null(),
         });
         let new = Owned::into_shared(new, guard);
@@ -120,8 +114,8 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
-                        guard.defer(move || drop(head.into_owned()));
-                        Some(NoDrop::into_inner(ptr::read(&n.data)))
+                        guard.defer_destroy(head);
+                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -145,8 +139,8 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
-                        guard.defer(move || drop(head.into_owned()));
-                        Some(NoDrop::into_inner(ptr::read(&n.data)))
+                        guard.defer_destroy(head);
+                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -196,13 +190,11 @@ impl<T> Drop for Queue<T> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use {pin};
-
-    use core::sync::atomic::Ordering;
-    use crossbeam_utils::scoped;
+    use super::*;
+    use crossbeam_utils::thread;
+    use pin;
 
     struct Queue<T> {
         queue: super::Queue<T>,
@@ -210,7 +202,9 @@ mod test {
 
     impl<T> Queue<T> {
         pub fn new() -> Queue<T> {
-            Queue { queue: super::Queue::new() }
+            Queue {
+                queue: super::Queue::new(),
+            }
         }
 
         pub fn push(&self, t: T) {
@@ -220,9 +214,9 @@ mod test {
 
         pub fn is_empty(&self) -> bool {
             let guard = &pin();
-            let head = self.queue.head.load(Ordering::Acquire, guard);
+            let head = self.queue.head.load(Acquire, guard);
             let h = unsafe { head.deref() };
-            h.next.load(Ordering::Acquire, guard).is_null()
+            h.next.load(Acquire, guard).is_null()
         }
 
         pub fn try_pop(&self) -> Option<T> {
@@ -316,8 +310,8 @@ mod test {
         let q: Queue<i64> = Queue::new();
         assert!(q.is_empty());
 
-        scoped::scope(|scope| {
-            scope.spawn(|| {
+        thread::scope(|scope| {
+            scope.spawn(|_| {
                 let mut next = 0;
 
                 while next < CONC_COUNT {
@@ -331,7 +325,8 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        });
+        })
+        .unwrap();
     }
 
     #[test]
@@ -352,16 +347,19 @@ mod test {
 
         let q: Queue<i64> = Queue::new();
         assert!(q.is_empty());
-        let qr = &q;
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             for i in 0..3 {
-                scope.spawn(move || recv(i, qr));
+                let q = &q;
+                scope.spawn(move |_| recv(i, q));
             }
 
-            scope.spawn(|| for i in 0..CONC_COUNT {
-                q.push(i);
-            })
-        });
+            scope.spawn(|_| {
+                for i in 0..CONC_COUNT {
+                    q.push(i);
+                }
+            });
+        })
+        .unwrap();
     }
 
     #[test]
@@ -374,41 +372,48 @@ mod test {
         let q: Queue<LR> = Queue::new();
         assert!(q.is_empty());
 
-        scoped::scope(|scope| for _t in 0..2 {
-            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.push(LR::Left(i))
-            });
-            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.push(LR::Right(i))
-            });
-            scope.spawn(|| {
-                let mut vl = vec![];
-                let mut vr = vec![];
-                for _i in 0..CONC_COUNT {
-                    match q.try_pop() {
-                        Some(LR::Left(x)) => vl.push(x),
-                        Some(LR::Right(x)) => vr.push(x),
-                        _ => {}
+        thread::scope(|scope| {
+            for _t in 0..2 {
+                scope.spawn(|_| {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
+                        q.push(LR::Left(i))
                     }
-                }
+                });
+                scope.spawn(|_| {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
+                        q.push(LR::Right(i))
+                    }
+                });
+                scope.spawn(|_| {
+                    let mut vl = vec![];
+                    let mut vr = vec![];
+                    for _i in 0..CONC_COUNT {
+                        match q.try_pop() {
+                            Some(LR::Left(x)) => vl.push(x),
+                            Some(LR::Right(x)) => vr.push(x),
+                            _ => {}
+                        }
+                    }
 
-                let mut vl2 = vl.clone();
-                let mut vr2 = vr.clone();
-                vl2.sort();
-                vr2.sort();
+                    let mut vl2 = vl.clone();
+                    let mut vr2 = vr.clone();
+                    vl2.sort();
+                    vr2.sort();
 
-                assert_eq!(vl, vl2);
-                assert_eq!(vr, vr2);
-            });
-        });
+                    assert_eq!(vl, vl2);
+                    assert_eq!(vr, vr2);
+                });
+            }
+        })
+        .unwrap();
     }
 
     #[test]
     fn push_pop_many_spsc() {
         let q: Queue<i64> = Queue::new();
 
-        scoped::scope(|scope| {
-            scope.spawn(|| {
+        thread::scope(|scope| {
+            scope.spawn(|_| {
                 let mut next = 0;
                 while next < CONC_COUNT {
                     assert_eq!(q.pop(), next);
@@ -419,7 +424,8 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        });
+        })
+        .unwrap();
         assert!(q.is_empty());
     }
 

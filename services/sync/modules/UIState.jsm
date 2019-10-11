@@ -4,7 +4,7 @@
 
 "use strict";
 
- /**
+/**
  * @typedef {Object} UIState
  * @property {string} status The Sync/FxA status, see STATUS_* constants.
  * @property {string} [email] The FxA email configured to log-in with Sync.
@@ -16,11 +16,15 @@
 
 var EXPORTED_SYMBOLS = ["UIState"];
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "Weave",
-                               "resource://services-sync/main.js");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "Weave",
+  "resource://services-sync/main.js"
+);
 
 const TOPICS = [
+  "weave:connected",
   "weave:service:login:change",
   "weave:service:login:error",
   "weave:service:ready",
@@ -43,7 +47,7 @@ const STATUS_NOT_VERIFIED = "not_verified";
 const STATUS_SIGNED_IN = "signed_in";
 
 const DEFAULT_STATE = {
-  status: STATUS_NOT_CONFIGURED
+  status: STATUS_NOT_CONFIGURED,
 };
 
 const UIStateInternal = {
@@ -71,13 +75,14 @@ const UIStateInternal = {
 
   init() {
     this._initialized = true;
-    if (!Services.prefs.prefHasUserValue("services.sync.username")) {
-      return;
-    }
-    // Refresh the state in the background.
-    this.refreshState().catch(e => {
-      Cu.reportError(e);
-    });
+    // Because the FxA toolbar is usually visible, this module gets loaded at
+    // browser startup, and we want to avoid pulling in all of FxA or Sync at
+    // that time, so we refresh the state after the browser has settled.
+    Services.tm.idleDispatchToMainThread(() => {
+      this.refreshState().catch(e => {
+        Cu.reportError(e);
+      });
+    }, 2000);
   },
 
   // Used for testing.
@@ -108,7 +113,15 @@ const UIStateInternal = {
   async refreshState() {
     const newState = {};
     await this._refreshFxAState(newState);
-    this._setLastSyncTime(newState); // We want this in case we change accounts.
+    // Optimize the "not signed in" case to avoid refreshing twice just after
+    // startup - if there's currently no _state, and we still aren't configured,
+    // just early exit.
+    if (this._state == null && newState.status == DEFAULT_STATE.status) {
+      return this.state;
+    }
+    if (newState.syncEnabled) {
+      this._setLastSyncTime(newState); // We want this in case we change accounts.
+    }
     this._state = newState;
 
     this.notifyStateUpdated();
@@ -142,11 +155,14 @@ const UIStateInternal = {
 
   async _populateWithUserData(state, userData) {
     let status;
+    let syncUserName = Services.prefs.getStringPref(
+      "services.sync.username",
+      ""
+    );
     if (!userData) {
       // If Sync thinks it is configured but there's no FxA user, then we
       // want to enter the "login failed" state so the user can get
       // reconfigured.
-      let syncUserName = Services.prefs.getStringPref("services.sync.username", "");
       if (syncUserName) {
         state.email = syncUserName;
         status = STATUS_LOGIN_FAILED;
@@ -163,7 +179,9 @@ const UIStateInternal = {
       } else {
         status = STATUS_SIGNED_IN;
       }
+      state.uid = userData.uid;
       state.email = userData.email;
+      state.syncEnabled = !!syncUserName;
     }
     state.status = status;
   },
@@ -171,6 +189,7 @@ const UIStateInternal = {
   _populateWithProfile(state, profile) {
     state.displayName = profile.displayName;
     state.avatarURL = profile.avatar;
+    state.avatarIsDefault = profile.avatarDefault;
   },
 
   async _getUserData() {
@@ -197,7 +216,10 @@ const UIStateInternal = {
 
   _setLastSyncTime(state) {
     if (state.status == UIState.STATUS_SIGNED_IN) {
-      const lastSync = Services.prefs.getCharPref("services.sync.lastSync", null);
+      const lastSync = Services.prefs.getCharPref(
+        "services.sync.lastSync",
+        null
+      );
       state.lastSync = lastSync ? new Date(lastSync) : null;
     }
   },
@@ -214,9 +236,8 @@ const UIStateInternal = {
 
     // Referencing Weave.Service will implicitly initialize sync, and we don't
     // want to force that - so first check if it is ready.
-    let service = Cc["@mozilla.org/weave/service;1"]
-                  .getService(Ci.nsISupports)
-                  .wrappedJSObject;
+    let service = Cc["@mozilla.org/weave/service;1"].getService(Ci.nsISupports)
+      .wrappedJSObject;
     if (!service.ready) {
       return false;
     }
@@ -229,11 +250,14 @@ const UIStateInternal = {
   set fxAccounts(mockFxAccounts) {
     delete this.fxAccounts;
     this.fxAccounts = mockFxAccounts;
-  }
+  },
 };
 
-ChromeUtils.defineModuleGetter(UIStateInternal, "fxAccounts",
-                               "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(
+  UIStateInternal,
+  "fxAccounts",
+  "resource://gre/modules/FxAccounts.jsm"
+);
 
 for (let topic of TOPICS) {
   Services.obs.addObserver(UIStateInternal, topic);
@@ -280,5 +304,5 @@ var UIState = {
    */
   reset() {
     this._internal.reset();
-  }
+  },
 };

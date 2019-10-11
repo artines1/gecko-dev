@@ -35,13 +35,18 @@
     }
   });
 
-  runNetworkTest(function() {
+  runNetworkTest(async () => {
+    // [TODO] re-enable HW decoder after bug 1526207 is fixed.
+    if (navigator.userAgent.includes("Android")) {
+      await pushPrefs(["media.navigator.mediadatadecoder_vpx_enabled", false]);
+    }
+
     v2 = createMediaElement('video', 'v2');
     is(v2.currentTime, 0, "v2.currentTime is zero at outset");
 
     const emitter = new VideoFrameEmitter(CaptureStreamTestHelper.prototype.blue,
                                           CaptureStreamTestHelper.prototype.green,
-                                          10);
+                                          10, 10);
     emitter.start();
     emitter.stream().getTracks().forEach(t => pc1.addTrack(t, emitter.stream()));
     let h = emitter.helper();

@@ -18,8 +18,9 @@ class GLContext;
 }
 
 namespace layers {
+class NativeLayer;
 class SyncObjectHost;
-}
+}  // namespace layers
 
 namespace widget {
 class CompositorWidget;
@@ -27,24 +28,31 @@ class CompositorWidget;
 
 namespace wr {
 
-class RenderCompositor
-{
-public:
-  static UniquePtr<RenderCompositor> Create(RefPtr<widget::CompositorWidget>&& aWidget);
+class RenderCompositor {
+ public:
+  static UniquePtr<RenderCompositor> Create(
+      RefPtr<widget::CompositorWidget>&& aWidget);
 
   RenderCompositor(RefPtr<widget::CompositorWidget>&& aWidget);
   virtual ~RenderCompositor();
 
-  virtual bool BeginFrame() = 0;
+  virtual bool BeginFrame(layers::NativeLayer* aNativeLayer) = 0;
   virtual void EndFrame() = 0;
+  // Returns false when waiting gpu tasks is failed.
+  // It might happen when rendering context is lost.
+  virtual bool WaitForGPU() { return true; }
   virtual void Pause() = 0;
   virtual bool Resume() = 0;
 
   virtual gl::GLContext* gl() const { return nullptr; }
 
+  virtual bool MakeCurrent();
+
   virtual bool UseANGLE() const { return false; }
 
   virtual bool UseDComp() const { return false; }
+
+  virtual bool UseTripleBuffering() const { return false; }
 
   virtual LayoutDeviceIntSize GetBufferSize() = 0;
 
@@ -52,12 +60,14 @@ public:
 
   layers::SyncObjectHost* GetSyncObject() const { return mSyncObject.get(); }
 
-protected:
+  virtual bool IsContextLost();
+
+ protected:
   RefPtr<widget::CompositorWidget> mWidget;
   RefPtr<layers::SyncObjectHost> mSyncObject;
 };
 
-} // namespace wr
-} // namespace mozilla
+}  // namespace wr
+}  // namespace mozilla
 
 #endif

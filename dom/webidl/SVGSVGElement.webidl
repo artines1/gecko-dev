@@ -12,6 +12,7 @@
 
 interface SVGViewSpec;
 
+[Exposed=Window]
 interface SVGSVGElement : SVGGraphicsElement {
 
   [Constant]
@@ -40,6 +41,7 @@ interface SVGSVGElement : SVGGraphicsElement {
   void pauseAnimations();
   void unpauseAnimations();
   boolean animationsPaused();
+  [BinaryName="getCurrentTimeAsFloat"]
   float getCurrentTime();
   void setCurrentTime(float seconds);
   // NodeList getIntersectionList(SVGRect rect, SVGElement referenceElement);
@@ -67,6 +69,6 @@ interface SVGSVGElement : SVGGraphicsElement {
   Element? getElementById(DOMString elementId);
 };
 
-SVGSVGElement implements SVGFitToViewBox;
-SVGSVGElement implements SVGZoomAndPanValues;
+SVGSVGElement includes SVGFitToViewBox;
+SVGSVGElement includes SVGZoomAndPan;
 

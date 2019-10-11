@@ -8,65 +8,41 @@
  * Check that setting a breakpoint in a line in a child script works.
  */
 
-var gDebuggee;
-var gClient;
-var gThreadClient;
-var gCallback;
+add_task(
+  threadFrontTest(async ({ threadFront, client, debuggee }) => {
+    const packet = await executeOnNextTickAndWaitForPause(
+      () => evaluateTestCode(debuggee),
+      threadFront
+    );
+    const source = await getSourceById(threadFront, packet.frame.where.actor);
+    const location = { sourceUrl: source.url, line: debuggee.line0 + 3 };
 
-function run_test() {
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-  do_test_pending();
-}
+    //Pause at debugger statement.
+    Assert.equal(packet.frame.where.line, debuggee.line0 + 5);
+    Assert.equal(packet.why.type, "debuggerStatement");
 
-function run_test_with_server(server, callback) {
-  gCallback = callback;
-  initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-stack", server);
-  gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-stack",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_child_breakpoint();
-                           });
-  });
-}
+    threadFront.setBreakpoint(location, {});
+    await client.waitForRequestsToSettle();
+    await resume(threadFront);
 
-function test_child_breakpoint() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    const source = gThreadClient.source(packet.frame.where.source);
-    const location = { line: gDebuggee.line0 + 3 };
+    const packet2 = await waitForPause(threadFront);
+    // Check the return value.
+    Assert.equal(packet2.frame.where.actor, source.actor);
+    Assert.equal(packet2.frame.where.line, location.line);
+    Assert.equal(packet2.why.type, "breakpoint");
+    // Check that the breakpoint worked.
+    Assert.equal(debuggee.a, 1);
+    Assert.equal(debuggee.b, undefined);
 
-    source.setBreakpoint(location).then(function([response, bpClient]) {
-      // actualLocation is not returned when breakpoints don't skip forward.
-      Assert.equal(response.actualLocation, undefined);
+    // Remove the breakpoint.
+    threadFront.removeBreakpoint(location);
+    await client.waitForRequestsToSettle();
 
-      gThreadClient.addOneTimeListener("paused", function(event, packet) {
-        // Check the return value.
-        Assert.equal(packet.type, "paused");
-        Assert.equal(packet.frame.where.source.actor, source.actor);
-        Assert.equal(packet.frame.where.line, location.line);
-        Assert.equal(packet.why.type, "breakpoint");
-        Assert.equal(packet.why.actors[0], bpClient.actor);
-        // Check that the breakpoint worked.
-        Assert.equal(gDebuggee.a, 1);
-        Assert.equal(gDebuggee.b, undefined);
+    await resume(threadFront);
+  })
+);
 
-        // Remove the breakpoint.
-        bpClient.remove(function(response) {
-          gThreadClient.resume(function() {
-            gClient.close().then(gCallback);
-          });
-        });
-      });
-
-      // Continue until the breakpoint is hit.
-      gThreadClient.resume();
-    });
-  });
-
+function evaluateTestCode(debuggee) {
   /* eslint-disable */
   Cu.evalInSandbox(
     "var line0 = Error().lineNumber;\n" +
@@ -76,7 +52,7 @@ function test_child_breakpoint() {
     "}\n" +                // line0 + 4
     "debugger;\n" +        // line0 + 5
     "foo();\n",            // line0 + 6
-    gDebuggee
+    debuggee
   );
-  /* eslint-enable */
+  /* eslint-disable */
 }

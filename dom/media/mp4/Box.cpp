@@ -18,9 +18,7 @@ const uint64_t Box::kMAX_BOX_READ = 32 * 1024 * 1024;
 
 // Returns the offset from the start of the body of a box of type |aType|
 // to the start of its first child.
-static uint32_t
-BoxOffset(AtomType aType)
-{
+static uint32_t BoxOffset(AtomType aType) {
   const uint32_t FULLBOX_OFFSET = 4;
 
   if (aType == AtomType("mp4a") || aType == AtomType("enca")) {
@@ -40,8 +38,7 @@ BoxOffset(AtomType aType)
 }
 
 Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
-  : mContext(aContext), mParent(aParent)
-{
+    : mContext(aContext), mParent(aParent) {
   uint8_t header[8];
 
   if (aOffset > INT64_MAX - sizeof(header)) {
@@ -54,7 +51,7 @@ Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
   }
 
   const MediaByteRange* byteRange;
-  for (int i = 0; ; i++) {
+  for (int i = 0;; i++) {
     if (i == mContext->mByteRanges.Length()) {
       return;
     }
@@ -71,7 +68,6 @@ Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
       bytes != sizeof(header)) {
     return;
   }
-  mHeader.AppendElements(header, sizeof(header));
 
   uint64_t size = BigEndian::readUint32(header);
   if (size == 1) {
@@ -90,7 +86,6 @@ Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
     }
     size = BigEndian::readUint64(bigLength);
     mBodyOffset = bigLengthRange.mEnd;
-    mHeader.AppendElements(bigLength, sizeof(bigLength));
   } else if (size == 0) {
     // box extends to end of file.
     size = mContext->mByteRanges.LastInterval().mEnd - aOffset;
@@ -122,22 +117,14 @@ Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
 }
 
 Box::Box()
-  : mContext(nullptr)
-  , mBodyOffset(0)
-  , mChildOffset(0)
-  , mParent(nullptr)
-{}
+    : mContext(nullptr), mBodyOffset(0), mChildOffset(0), mParent(nullptr) {}
 
-Box
-Box::Next() const
-{
+Box Box::Next() const {
   MOZ_ASSERT(IsAvailable());
   return Box(mContext, mRange.mEnd, mParent);
 }
 
-Box
-Box::FirstChild() const
-{
+Box Box::FirstChild() const {
   MOZ_ASSERT(IsAvailable());
   if (mChildOffset == mRange.mEnd) {
     return Box();
@@ -145,17 +132,28 @@ Box::FirstChild() const
   return Box(mContext, mChildOffset, this);
 }
 
-nsTArray<uint8_t>
-Box::Read() const
-{
+nsTArray<uint8_t> Box::ReadCompleteBox() const {
+  const size_t length = mRange.mEnd - mRange.mStart;
+  nsTArray<uint8_t> out(length);
+  out.SetLength(length);
+  size_t bytesRead = 0;
+  if (!mContext->mSource->CachedReadAt(mRange.mStart, out.Elements(), length,
+                                       &bytesRead) ||
+      bytesRead != length) {
+    // Byte ranges are being reported incorrectly
+    NS_WARNING("Read failed in mozilla::Box::ReadCompleteBox()");
+    return nsTArray<uint8_t>(0);
+  }
+  return out;
+}
+
+nsTArray<uint8_t> Box::Read() const {
   nsTArray<uint8_t> out;
   Unused << Read(&out, mRange);
   return out;
 }
 
-bool
-Box::Read(nsTArray<uint8_t>* aDest, const MediaByteRange& aRange) const
-{
+bool Box::Read(nsTArray<uint8_t>* aDest, const MediaByteRange& aRange) const {
   int64_t length;
   if (!mContext->mSource->Length(&length)) {
     // The HTTP server didn't give us a length to work with.
@@ -176,4 +174,56 @@ Box::Read(nsTArray<uint8_t>* aDest, const MediaByteRange& aRange) const
   }
   return true;
 }
+
+ByteSlice Box::ReadAsSlice() {
+  if (!mContext) {
+    return ByteSlice{nullptr, 0};
+  }
+  int64_t length;
+  if (!mContext->mSource->Length(&length)) {
+    // The HTTP server didn't give us a length to work with.
+    // Limit the read to kMAX_BOX_READ max.
+    length = std::min(mRange.mEnd - mChildOffset, kMAX_BOX_READ);
+  } else {
+    length = mRange.mEnd - mChildOffset;
+  }
+
+  const uint8_t* data =
+      mContext->mSource->GetContiguousAccess(mChildOffset, length);
+  if (data) {
+    // We can direct access the underlying storage of the ByteStream.
+    return ByteSlice{data, size_t(length)};
+  }
+
+  uint8_t* p = mContext->mAllocator.Allocate(size_t(length));
+  size_t bytes;
+  if (!mContext->mSource->CachedReadAt(mChildOffset, p, length, &bytes) ||
+      bytes != length) {
+    // Byte ranges are being reported incorrectly
+    NS_WARNING("Read failed in mozilla::Box::ReadAsSlice()");
+    return ByteSlice{nullptr, 0};
+  }
+  return ByteSlice{p, size_t(length)};
 }
+
+const size_t BLOCK_CAPACITY = 16 * 1024;
+
+uint8_t* BumpAllocator::Allocate(size_t aNumBytes) {
+  if (aNumBytes > BLOCK_CAPACITY) {
+    mBuffers.AppendElement(nsTArray<uint8_t>(aNumBytes));
+    mBuffers.LastElement().SetLength(aNumBytes);
+    return mBuffers.LastElement().Elements();
+  }
+  for (nsTArray<uint8_t>& buffer : mBuffers) {
+    if (buffer.Length() + aNumBytes < BLOCK_CAPACITY) {
+      size_t offset = buffer.Length();
+      buffer.SetLength(buffer.Length() + aNumBytes);
+      return buffer.Elements() + offset;
+    }
+  }
+  mBuffers.AppendElement(nsTArray<uint8_t>(BLOCK_CAPACITY));
+  mBuffers.LastElement().SetLength(aNumBytes);
+  return mBuffers.LastElement().Elements();
+}
+
+}  // namespace mozilla

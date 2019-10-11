@@ -6,16 +6,17 @@
 #include "base/basictypes.h"
 
 #include "CoalescedMouseData.h"
-#include "TabChild.h"
+#include "BrowserChild.h"
+
+#include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_dom.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
 
-void
-CoalescedMouseData::Coalesce(const WidgetMouseEvent& aEvent,
-                             const ScrollableLayerGuid& aGuid,
-                             const uint64_t& aInputBlockId)
-{
+void CoalescedMouseData::Coalesce(const WidgetMouseEvent& aEvent,
+                                  const ScrollableLayerGuid& aGuid,
+                                  const uint64_t& aInputBlockId) {
   if (IsEmpty()) {
     mCoalescedInputEvent = MakeUnique<WidgetMouseEvent>(aEvent);
     mGuid = aGuid;
@@ -26,87 +27,75 @@ CoalescedMouseData::Coalesce(const WidgetMouseEvent& aEvent,
     MOZ_ASSERT(mInputBlockId == aInputBlockId);
     MOZ_ASSERT(mCoalescedInputEvent->mModifiers == aEvent.mModifiers);
     MOZ_ASSERT(mCoalescedInputEvent->mReason == aEvent.mReason);
-    MOZ_ASSERT(mCoalescedInputEvent->inputSource == aEvent.inputSource);
-    MOZ_ASSERT(mCoalescedInputEvent->button == aEvent.button);
-    MOZ_ASSERT(mCoalescedInputEvent->buttons == aEvent.buttons);
+    MOZ_ASSERT(mCoalescedInputEvent->mInputSource == aEvent.mInputSource);
+    MOZ_ASSERT(mCoalescedInputEvent->mButton == aEvent.mButton);
+    MOZ_ASSERT(mCoalescedInputEvent->mButtons == aEvent.mButtons);
     mCoalescedInputEvent->mTimeStamp = aEvent.mTimeStamp;
     mCoalescedInputEvent->mRefPoint = aEvent.mRefPoint;
-    mCoalescedInputEvent->pressure = aEvent.pressure;
+    mCoalescedInputEvent->mPressure = aEvent.mPressure;
     mCoalescedInputEvent->AssignPointerHelperData(aEvent);
   }
 
   if (aEvent.mMessage == eMouseMove &&
-      PointerEventHandler::IsPointerEventEnabled()) {
+      StaticPrefs::dom_w3c_pointer_events_enabled()) {
     // PointerEvent::getCoalescedEvents is only applied to pointermove events.
     if (!mCoalescedInputEvent->mCoalescedWidgetEvents) {
       mCoalescedInputEvent->mCoalescedWidgetEvents =
-        new WidgetPointerEventHolder();
+          new WidgetPointerEventHolder();
     }
     // Append current event in mCoalescedWidgetEvents. We use them to generate
     // DOM events when content calls PointerEvent::getCoalescedEvents.
-    WidgetPointerEvent* event = mCoalescedInputEvent->mCoalescedWidgetEvents
-                                  ->mEvents.AppendElement(aEvent);
+    WidgetPointerEvent* event =
+        mCoalescedInputEvent->mCoalescedWidgetEvents->mEvents.AppendElement(
+            aEvent);
 
     event->mFlags.mBubbles = false;
     event->mFlags.mCancelable = false;
   }
 }
 
-bool
-CoalescedMouseData::CanCoalesce(const WidgetMouseEvent& aEvent,
-                             const ScrollableLayerGuid& aGuid,
-                             const uint64_t& aInputBlockId)
-{
+bool CoalescedMouseData::CanCoalesce(const WidgetMouseEvent& aEvent,
+                                     const ScrollableLayerGuid& aGuid,
+                                     const uint64_t& aInputBlockId) {
   MOZ_ASSERT(aEvent.mMessage == eMouseMove);
   return !mCoalescedInputEvent ||
          (mCoalescedInputEvent->mModifiers == aEvent.mModifiers &&
-          mCoalescedInputEvent->inputSource == aEvent.inputSource &&
+          mCoalescedInputEvent->mInputSource == aEvent.mInputSource &&
           mCoalescedInputEvent->pointerId == aEvent.pointerId &&
-          mCoalescedInputEvent->button == aEvent.button &&
-          mCoalescedInputEvent->buttons == aEvent.buttons &&
-          mGuid == aGuid &&
+          mCoalescedInputEvent->mButton == aEvent.mButton &&
+          mCoalescedInputEvent->mButtons == aEvent.mButtons && mGuid == aGuid &&
           mInputBlockId == aInputBlockId);
 }
 
-
-void
-CoalescedMouseMoveFlusher::WillRefresh(mozilla::TimeStamp aTime)
-{
+void CoalescedMouseMoveFlusher::WillRefresh(mozilla::TimeStamp aTime) {
   MOZ_ASSERT(mRefreshDriver);
-  mTabChild->FlushAllCoalescedMouseData();
-  mTabChild->ProcessPendingCoalescedMouseDataAndDispatchEvents();
+  mBrowserChild->FlushAllCoalescedMouseData();
+  mBrowserChild->ProcessPendingCoalescedMouseDataAndDispatchEvents();
 }
 
-void
-CoalescedMouseMoveFlusher::StartObserver()
-{
+void CoalescedMouseMoveFlusher::StartObserver() {
   nsRefreshDriver* refreshDriver = GetRefreshDriver();
   if (mRefreshDriver && mRefreshDriver == refreshDriver) {
-    // Nothing to do if we already added an observer and it's same refresh driver.
+    // Nothing to do if we already added an observer and it's same refresh
+    // driver.
     return;
   }
   RemoveObserver();
   if (refreshDriver) {
     mRefreshDriver = refreshDriver;
-    DebugOnly<bool> success =
-      mRefreshDriver->AddRefreshObserver(this, FlushType::Event);
-    MOZ_ASSERT(success);
+    mRefreshDriver->AddRefreshObserver(this, FlushType::Event);
   }
 }
 
-void
-CoalescedMouseMoveFlusher::RemoveObserver()
-{
+void CoalescedMouseMoveFlusher::RemoveObserver() {
   if (mRefreshDriver) {
     mRefreshDriver->RemoveRefreshObserver(this, FlushType::Event);
     mRefreshDriver = nullptr;
   }
 }
 
-nsRefreshDriver*
-CoalescedMouseMoveFlusher::GetRefreshDriver()
-{
-  nsCOMPtr<nsIPresShell> presShell = mTabChild->GetPresShell();
+nsRefreshDriver* CoalescedMouseMoveFlusher::GetRefreshDriver() {
+  PresShell* presShell = mBrowserChild->GetTopLevelPresShell();
   if (!presShell || !presShell->GetPresContext() ||
       !presShell->GetPresContext()->RefreshDriver()) {
     return nullptr;

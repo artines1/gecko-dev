@@ -19,7 +19,21 @@ with Files('CSSRuleList.*'):
 with Files('nsDOM*'):
     BUG_COMPONENT = ('Core', 'DOM: CSS Object Model')
 
-DIRS += ['xbl-marquee']
+with Files('AnimationCollection.*'):
+    BUG_COMPONENT = ('Core', 'CSS Transitions and Animations')
+
+with Files('AnimationCommon.*'):
+    BUG_COMPONENT = ('Core', 'CSS Transitions and Animations')
+
+with Files('nsAnimationManager.*'):
+    BUG_COMPONENT = ('Core', 'CSS Transitions and Animations')
+
+with Files('nsTransitionManager.*'):
+    BUG_COMPONENT = ('Core', 'CSS Transitions and Animations')
+
+with Files('StyleAnimationValue.*'):
+    BUG_COMPONENT = ('Core', 'CSS Transitions and Animations')
+
 TEST_DIRS += ['test']
 
 EXPORTS += [
@@ -40,14 +54,12 @@ EXPORTS += [
     'nsCSSValue.h',
     'nsDOMCSSAttrDeclaration.h',
     'nsDOMCSSDeclaration.h',
-    'nsDOMCSSRGBColor.h',
     'nsICSSDeclaration.h',
     'nsICSSLoaderObserver.h',
     'nsLayoutStylesheetCache.h',
     'nsMediaFeatures.h',
     'nsStyleAutoArray.h',
     'nsStyleConsts.h',
-    'nsStyleCoord.h',
     'nsStyleStruct.h',
     'nsStyleStructFwd.h',
     'nsStyleStructInlines.h',
@@ -68,34 +80,41 @@ EXPORTS.mozilla += [
     'CSSPropFlags.h',
     'DeclarationBlock.h',
     'DocumentStyleRootIterator.h',
+    'GeckoBindings.h',
+    'ImportScanner.h',
     'LayerAnimationInfo.h',
     'MappedDeclarations.h',
     'MediaFeatureChange.h',
     'PostTraversalTask.h',
+    'PreferenceSheet.h',
     'PreloadedStyleSheet.h',
+    'PseudoStyleType.h',
+    'RustCell.h',
     'ServoArcTypeList.h',
-    'ServoBindingList.h',
     'ServoBindings.h',
     'ServoBindingTypes.h',
+    'ServoBoxedTypeList.h',
     'ServoComputedData.h',
     'ServoComputedDataInlines.h',
     'ServoCSSParser.h',
     'ServoCSSRuleList.h',
     'ServoElementSnapshot.h',
     'ServoElementSnapshotTable.h',
-    'ServoStyleConsts.h',
+    'ServoStyleConstsForwards.h',
+    'ServoStyleConstsInlines.h',
     'ServoStyleSet.h',
     'ServoStyleSetInlines.h',
     'ServoTraversalStatistics.h',
     'ServoTypes.h',
     'ServoUtils.h',
-    'SheetType.h',
     'StyleAnimationValue.h',
-    'StyleComplexColor.h',
+    'StyleColorInlines.h',
     'StyleSheet.h',
     'StyleSheetInfo.h',
     'StyleSheetInlines.h',
     'URLExtraData.h',
+    'UserAgentStyleSheetID.h',
+    'UserAgentStyleSheetList.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -119,6 +138,7 @@ EXPORTS.mozilla.dom += [
     'FontFaceSetIterator.h',
     'MediaList.h',
     'MediaQueryList.h',
+    'PaintWorkletGlobalScope.h',
 ]
 
 EXPORTS.mozilla.css += [
@@ -159,8 +179,10 @@ UNIFIED_SOURCES += [
     'FontFace.cpp',
     'FontFaceSet.cpp',
     'FontFaceSetIterator.cpp',
+    'GeckoBindings.cpp',
     'GroupRule.cpp',
     'ImageLoader.cpp',
+    'ImportScanner.cpp',
     'LayerAnimationInfo.cpp',
     'Loader.cpp',
     'MappedDeclarations.cpp',
@@ -168,53 +190,43 @@ UNIFIED_SOURCES += [
     'MediaQueryList.cpp',
     'nsAnimationManager.cpp',
     'nsComputedDOMStyle.cpp',
+    'nsCSSAnonBoxes.cpp',
     'nsCSSKeywords.cpp',
     'nsCSSProps.cpp',
+    'nsCSSPseudoElements.cpp',
     'nsCSSValue.cpp',
     'nsDOMCSSAttrDeclaration.cpp',
     'nsDOMCSSDeclaration.cpp',
-    'nsDOMCSSRect.cpp',
-    'nsDOMCSSRGBColor.cpp',
     'nsDOMCSSValueList.cpp',
     'nsFontFaceLoader.cpp',
     'nsFontFaceUtils.cpp',
     'nsHTMLCSSStyleSheet.cpp',
     'nsHTMLStyleSheet.cpp',
     'nsICSSDeclaration.cpp',
+    'nsLayoutStylesheetCache.cpp',
     'nsMediaFeatures.cpp',
     'nsROCSSPrimitiveValue.cpp',
-    'nsStyleCoord.cpp',
     'nsStyleStruct.cpp',
     'nsStyleTransformMatrix.cpp',
     'nsStyleUtil.cpp',
     'nsTransitionManager.cpp',
+    'PaintWorkletGlobalScope.cpp',
+    'PaintWorkletImpl.cpp',
     'PostTraversalTask.cpp',
+    'PreferenceSheet.cpp',
     'PreloadedStyleSheet.cpp',
+    'PseudoStyleType.cpp',
     'Rule.cpp',
-    'ServoBindings.cpp',
     'ServoCSSParser.cpp',
     'ServoCSSRuleList.cpp',
     'ServoElementSnapshot.cpp',
     'ServoStyleSet.cpp',
     'StreamLoader.cpp',
     'StyleAnimationValue.cpp',
-    'StyleComplexColor.cpp',
+    'StyleColor.cpp',
     'StyleSheet.cpp',
     'URLExtraData.cpp',
 ]
-
-SOURCES += [
-    'nsCSSAnonBoxes.cpp',
-    'nsCSSPseudoElements.cpp',
-    # nsLayoutStylesheetCache.cpp uses nsExceptionHandler.h, which includes
-    # windows.h.
-    'nsLayoutStylesheetCache.cpp',
-]
-if CONFIG['CC_TYPE'] == 'msvc':
-    # Needed for gCSSAnonBoxAtoms.
-    SOURCES['nsCSSAnonBoxes.cpp'].flags += ['-Zc:externConstexpr']
-    # Needed for gCSSPseudoElementAtoms.
-    SOURCES['nsCSSPseudoElements.cpp'].flags += ['-Zc:externConstexpr']
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -227,10 +239,12 @@ LOCAL_INCLUDES += [
     '../xul',
     '/dom/base',
     '/dom/html',
-    '/dom/xbl',
     '/dom/xul',
     '/image',
 ]
+
+if CONFIG['MOZ_XBL']:
+    LOCAL_INCLUDES += ['/dom/xbl']
 
 JAR_MANIFESTS += ['jar.mn']
 
@@ -247,48 +261,47 @@ CONTENT_ACCESSIBLE_FILES += [
     'TopLevelVideoDocument.css',
 ]
 
-GENERATED_FILES += [
-    'nsCSSPropertyID.h',
-    'ServoCSSPropList.h',
-    'ServoCSSPropList.py',
-]
 
-prop_id = GENERATED_FILES['nsCSSPropertyID.h']
-prop_id.script = 'GenerateCSSPropertyID.py:generate'
-prop_id.inputs = [
-    'nsCSSPropertyID.h.in',
-    '!ServoCSSPropList.py',
-]
-
-servo_props = GENERATED_FILES['ServoCSSPropList.h']
-servo_props.script = 'GenerateServoCSSPropList.py:generate_header'
-servo_props.inputs = [
-    '!ServoCSSPropList.py',
-]
-
-servo_props = GENERATED_FILES['ServoCSSPropList.py']
-servo_props.script = 'GenerateServoCSSPropList.py:generate_data'
-servo_props.inputs = [
-    'ServoCSSPropList.mako.py',
-]
+GeneratedFile('nsCSSPropertyID.h', script='GenerateCSSPropertyID.py',
+              entry_point='generate',
+              inputs=['nsCSSPropertyID.h.in', '!ServoCSSPropList.py'])
+GeneratedFile('ServoCSSPropList.h',
+              script='GenerateServoCSSPropList.py',
+              entry_point='generate_header',
+              inputs=['!ServoCSSPropList.py'])
+GeneratedFile('ServoCSSPropList.py',
+              script='GenerateServoCSSPropList.py', entry_point='generate_data',
+              inputs=['ServoCSSPropList.mako.py'])
 
 if CONFIG['COMPILE_ENVIRONMENT']:
-    GENERATED_FILES += [
-        'nsComputedDOMStyleGenerated.cpp',
-        'nsCSSPropsGenerated.inc',
+    EXPORTS.mozilla += [
+        '!CompositorAnimatableProperties.h',
+        '!CountedUnknownProperties.h',
+        '!ServoStyleConsts.h',
     ]
 
-    computed = GENERATED_FILES['nsComputedDOMStyleGenerated.cpp']
-    computed.script = 'GenerateComputedDOMStyleGenerated.py:generate'
-    computed.inputs = [
-        '!ServoCSSPropList.py',
-    ]
-
-    css_props = GENERATED_FILES['nsCSSPropsGenerated.inc']
-    css_props.script = 'GenerateCSSPropsGenerated.py:generate'
-    css_props.inputs = [
-        '!ServoCSSPropList.py',
-    ]
+    GeneratedFile('CompositorAnimatableProperties.h',
+                  script='GenerateCompositorAnimatableProperties.py',
+                  entry_point='generate',
+                  inputs=['!ServoCSSPropList.py'])
+    GeneratedFile(
+        'CountedUnknownProperties.h',
+        script='GenerateCountedUnknownProperties.py',
+        entry_point='generate',
+        inputs=[
+            '/servo/components/style/properties/counted_unknown_properties.py',
+        ])
+    GeneratedFile('nsComputedDOMStyleGenerated.inc',
+                  script='GenerateComputedDOMStyleGenerated.py',
+                  entry_point='generate',
+                  inputs=['!ServoCSSPropList.py'])
+    GeneratedFile('nsCSSPropsGenerated.inc',
+                  script='GenerateCSSPropsGenerated.py',
+                  entry_point='generate',
+                  inputs=['!ServoCSSPropList.py'])
+    GeneratedFile('ServoStyleConsts.h', script='RunCbindgen.py',
+                  entry_point='generate',
+                  inputs = ['/servo/ports/geckolib', '/servo/components/style'])
 
     CONFIGURE_SUBST_FILES += [
         'bindgen.toml',

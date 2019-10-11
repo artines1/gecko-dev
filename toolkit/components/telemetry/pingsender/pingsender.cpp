@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -25,25 +26,40 @@ const char* kContentEncodingHeader = "Content-Encoding: gzip";
 // to the server.
 const uint32_t kConnectionTimeoutMs = 30 * 1000;
 
+// Operate in std::string because nul bytes will be preserved
+bool IsValidDestination(std::string aHost) {
+  static const std::string kValidDestinations[] = {
+      "localhost",
+      "incoming.telemetry.mozilla.org",
+  };
+  for (auto destination : kValidDestinations) {
+    if (aHost == destination) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsValidDestination(char* aHost) {
+  return IsValidDestination(std::string(aHost));
+}
+
 /**
  * This shared function returns a Date header string for use in HTTP requests.
  * See "RFC 7231, section 7.1.1.2: Date" for its specifications.
  */
-std::string
-GenerateDateHeader()
-{
+std::string GenerateDateHeader() {
   char buffer[128];
   std::time_t t = std::time(nullptr);
-  strftime(buffer, sizeof(buffer), "Date: %a, %d %b %Y %H:%M:%S GMT", std::gmtime(&t));
+  strftime(buffer, sizeof(buffer), "Date: %a, %d %b %Y %H:%M:%S GMT",
+           std::gmtime(&t));
   return string(buffer);
 }
 
 /**
  * Read the ping contents from the specified file
  */
-static std::string
-ReadPing(const string& aPingPath)
-{
+static std::string ReadPing(const string& aPingPath) {
   string ping;
   ifstream file;
 
@@ -70,9 +86,7 @@ ReadPing(const string& aPingPath)
   return ping;
 }
 
-std::string
-GzipCompress(const std::string& rawData)
-{
+std::string GzipCompress(const std::string& rawData) {
   z_stream deflater = {};
 
   // Use the maximum window size when compressing: this also tells zlib to
@@ -93,7 +107,8 @@ GzipCompress(const std::string& rawData)
 
   // Let zlib know about the input data.
   deflater.avail_in = rawData.size();
-  deflater.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(rawData.c_str()));
+  deflater.next_in =
+      reinterpret_cast<Bytef*>(const_cast<char*>(rawData.c_str()));
 
   // Compress and append chunk by chunk.
   std::string gzipData;
@@ -138,12 +153,11 @@ GzipCompress(const std::string& rawData)
   return gzipData;
 }
 
-} // namespace PingSender
+}  // namespace PingSender
 
 using namespace PingSender;
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   string url;
   string pingPath;
 
@@ -151,10 +165,11 @@ int main(int argc, char* argv[])
     url = argv[1];
     pingPath = argv[2];
   } else {
-    PINGSENDER_LOG("Usage: pingsender URL PATH\n"
-                   "Send the payload stored in PATH to the specified URL using "
-                   "an HTTP POST message\n"
-                   "then delete the file after a successful send.\n");
+    PINGSENDER_LOG(
+        "Usage: pingsender URL PATH\n"
+        "Send the payload stored in PATH to the specified URL using "
+        "an HTTP POST message\n"
+        "then delete the file after a successful send.\n");
     return EXIT_FAILURE;
   }
 

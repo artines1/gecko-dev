@@ -3,7 +3,7 @@
 <head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8">
   <title>Test of @font-face parser</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -312,11 +312,13 @@ function runTest() {
         sheet.deleteRule(0);
       sheet.insertRule(testset[curTest].rule, 0);
     } catch (e) {
-      ok(e.name == "SyntaxError"
-         && e instanceof DOMException
-         && e.code == DOMException.SYNTAX_ERR
-         && !('d' in testset[curTest]),
-         testset[curTest].rule + " syntax error thrown", e);
+      ok(
+        e.name == "SyntaxError"
+          && e instanceof DOMException
+          && e.code == DOMException.SYNTAX_ERR
+          && !('d' in testset[curTest]),
+        testset[curTest].rule + " syntax error thrown - " + e
+      );
     }
 
     try {
@@ -330,6 +332,8 @@ function runTest() {
         var s = sheet.cssRules[0].style;
         var n = 0;
 
+        is(s.getPropertyValue("pointless"), "", "Unknown descriptors don't assert");
+
         // everything is set that should be
         for (var name in d) {
           is(s.getPropertyValue(name), d[name],
@@ -339,8 +343,11 @@ function runTest() {
         // nothing else is set
         is(s.length, n, testset[curTest].rule + "prop count");
         for (var i = 0; i < s.length; i++) {
-          ok(s[i] in d, testset[curTest].rule,
-             "Unexpected item #" + i + ": " + s[i]);
+          ok(
+            s[i] in d,
+            testset[curTest].rule +
+            " - Unexpected item #" + i + ": " + s[i]
+          );
         }
 
         // round-tripping of cssText
@@ -363,7 +370,7 @@ function runTest() {
         }
       }
     } catch (e) {
-      ok(false, testset[curTest].rule, "During test: " + e);
+      ok(false, testset[curTest].rule + " - During test: " + e);
     }
   }
   SimpleTest.finish();

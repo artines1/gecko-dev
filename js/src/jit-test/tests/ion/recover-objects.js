@@ -22,6 +22,9 @@ setJitCompilerOption("ion.warmup.trigger", getJitCompilerOptions()["ion.warmup.t
 if (getJitCompilerOptions()["ion.forceinlineCaches"])
     setJitCompilerOption("ion.forceinlineCaches", 0);
 
+// Prevent the GC from cancelling Ion compilations, when we expect them to succeed
+gczeal(0);
+
 function resumeHere() {}
 var uceFault = function (i) {
     if (i > max - 2)
@@ -160,7 +163,7 @@ function dynamicSlots(i) {
     // beginning of the function.
     resumeHere(); bailout();
     assertEq(obj.p0 + obj.p10 + obj.p20 + obj.p30 + obj.p40, 5 * i + 100);
-    assertRecoveredOnBailout(obj, false);
+    assertRecoveredOnBailout(obj, true);
 }
 
 // Check that we can correctly recover allocations of new objects.

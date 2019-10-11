@@ -15,21 +15,22 @@ MOZ_MTLOG_MODULE("mtransport")
 namespace {
 
 class LocalAddress {
-public:
+ public:
   LocalAddress()
-    : ifname_(),
-      addr_(),
-      key_(),
-      is_vpn_(-1),
-      estimated_speed_(-1),
-      type_preference_(-1),
-      ip_version_(-1) {}
+      : ifname_(),
+        addr_(),
+        key_(),
+        is_vpn_(-1),
+        estimated_speed_(-1),
+        type_preference_(-1),
+        ip_version_(-1) {}
 
   bool Init(const nr_local_addr& local_addr) {
     ifname_ = local_addr.addr.ifname;
 
     char buf[MAXIFNAME + 47];
-    int r = nr_transport_addr_fmt_ifname_addr_string(&local_addr.addr, buf, sizeof(buf));
+    int r = nr_transport_addr_fmt_ifname_addr_string(&local_addr.addr, buf,
+                                                     sizeof(buf));
     if (r) {
       MOZ_MTLOG(ML_ERROR, "Error formatting interface key.");
       return false;
@@ -72,11 +73,9 @@ public:
 
     // See if our hard-coded pref list helps us.
     auto thisindex = std::find(interface_preference_list().begin(),
-                               interface_preference_list().end(),
-                               ifname_);
+                               interface_preference_list().end(), ifname_);
     auto rhsindex = std::find(interface_preference_list().begin(),
-                              interface_preference_list().end(),
-                              rhs.ifname_);
+                              interface_preference_list().end(), rhs.ifname_);
     if (thisindex != rhsindex) {
       return thisindex < rhsindex;
     }
@@ -94,11 +93,9 @@ public:
     return addr_ < rhs.addr_;
   }
 
-  const std::string& GetKey() const {
-    return key_;
-  }
+  const std::string& GetKey() const { return key_; }
 
-private:
+ private:
   // Getting the preference corresponding to a type. Getting lower number here
   // means the type of network is preferred.
   static inline int GetNetworkTypePreference(int type) {
@@ -120,14 +117,12 @@ private:
 
   // TODO(bug 895790): Once we can get useful interface properties on Darwin,
   // we should remove this stuff.
-  static const std::vector<std::string>& interface_preference_list()
-  {
+  static const std::vector<std::string>& interface_preference_list() {
     static std::vector<std::string> list(build_interface_preference_list());
     return list;
   }
 
-  static std::vector<std::string> build_interface_preference_list()
-  {
+  static std::vector<std::string> build_interface_preference_list() {
     std::vector<std::string> result;
     result.push_back("rl0");
     result.push_back("wi0");
@@ -168,21 +163,18 @@ private:
 };
 
 class InterfacePrioritizer {
-public:
-  InterfacePrioritizer()
-    : local_addrs_(),
-      preference_map_(),
-      sorted_(false) {}
+ public:
+  InterfacePrioritizer() : local_addrs_(), preference_map_(), sorted_(false) {}
 
-  int add(const nr_local_addr *iface) {
+  int add(const nr_local_addr* iface) {
     LocalAddress addr;
     if (!addr.Init(*iface)) {
       return R_FAILED;
     }
     std::pair<std::set<LocalAddress>::iterator, bool> r =
-      local_addrs_.insert(addr);
+        local_addrs_.insert(addr);
     if (!r.second) {
-      return R_ALREADY; // This address is already in the set.
+      return R_ALREADY;  // This address is already in the set.
     }
     sorted_ = false;
     return 0;
@@ -201,7 +193,7 @@ public:
     return 0;
   }
 
-  int getPreference(const char *key, UCHAR *pref) {
+  int getPreference(const char* key, UCHAR* pref) {
     if (!sorted_) {
       return R_FAILED;
     }
@@ -213,35 +205,35 @@ public:
     return 0;
   }
 
-private:
+ private:
   std::set<LocalAddress> local_addrs_;
   std::map<std::string, UCHAR> preference_map_;
   bool sorted_;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
-static int add_interface(void *obj, nr_local_addr *iface) {
-  InterfacePrioritizer *ip = static_cast<InterfacePrioritizer*>(obj);
+static int add_interface(void* obj, nr_local_addr* iface) {
+  InterfacePrioritizer* ip = static_cast<InterfacePrioritizer*>(obj);
   return ip->add(iface);
 }
 
-static int get_priority(void *obj, const char *key, UCHAR *pref) {
-  InterfacePrioritizer *ip = static_cast<InterfacePrioritizer*>(obj);
+static int get_priority(void* obj, const char* key, UCHAR* pref) {
+  InterfacePrioritizer* ip = static_cast<InterfacePrioritizer*>(obj);
   return ip->getPreference(key, pref);
 }
 
-static int sort_preference(void *obj) {
-  InterfacePrioritizer *ip = static_cast<InterfacePrioritizer*>(obj);
+static int sort_preference(void* obj) {
+  InterfacePrioritizer* ip = static_cast<InterfacePrioritizer*>(obj);
   return ip->sort();
 }
 
-static int destroy(void **objp) {
+static int destroy(void** objp) {
   if (!objp || !*objp) {
     return 0;
   }
 
-  InterfacePrioritizer *ip = static_cast<InterfacePrioritizer*>(*objp);
+  InterfacePrioritizer* ip = static_cast<InterfacePrioritizer*>(*objp);
   *objp = nullptr;
   delete ip;
 
@@ -249,23 +241,18 @@ static int destroy(void **objp) {
 }
 
 static nr_interface_prioritizer_vtbl priorizer_vtbl = {
-  add_interface,
-  get_priority,
-  sort_preference,
-  destroy
-};
+    add_interface, get_priority, sort_preference, destroy};
 
 namespace mozilla {
 
 nr_interface_prioritizer* CreateInterfacePrioritizer() {
-  nr_interface_prioritizer *ip;
+  nr_interface_prioritizer* ip;
   int r = nr_interface_prioritizer_create_int(new InterfacePrioritizer(),
-                                              &priorizer_vtbl,
-                                              &ip);
+                                              &priorizer_vtbl, &ip);
   if (r != 0) {
     return nullptr;
   }
   return ip;
 }
 
-} // namespace mozilla
+}  // namespace mozilla

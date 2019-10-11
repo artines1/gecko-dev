@@ -8,24 +8,30 @@
 #define mozilla_WinDllServices_h
 
 #include "mozilla/glue/WindowsDllServices.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/UntrustedModulesProcessor.h"
 
 namespace mozilla {
 
-class DllServices : public mozilla::glue::DllServices
-{
-public:
+class DllServices : public glue::DllServices {
+ public:
   static DllServices* Get();
 
   static const char* kTopicDllLoadedMainThread;
   static const char* kTopicDllLoadedNonMainThread;
 
-private:
+  RefPtr<UntrustedModulesPromise> GetUntrustedModulesData();
+
+ private:
   DllServices();
   ~DllServices() = default;
 
-  void NotifyDllLoad(const bool aIsMainThread, const nsString& aDllName) override;
+  void NotifyDllLoad(glue::EnhancedModuleLoadInfo&& aModLoadInfo) override;
+  void NotifyModuleLoadBacklog(ModuleLoadInfoVec&& aEvents) override;
+
+  RefPtr<UntrustedModulesProcessor> mUntrustedModulesProcessor;
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_WinDllServices_h
+#endif  // mozilla_WinDllServices_h

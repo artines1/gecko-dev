@@ -3,27 +3,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-/* global EVENTS, gToolbox */
+/* global EVENTS */
 
 const nodeConstants = require("devtools/shared/dom-node-constants");
 
 // React & Redux
-const { createFactory, createElement } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  createElement,
+} = require("devtools/client/shared/vendor/react");
 const ReactDOM = require("devtools/client/shared/vendor/react-dom");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
-const { combineReducers } = require("devtools/client/shared/vendor/redux");
 
 // Accessibility Panel
 const MainFrame = createFactory(require("./components/MainFrame"));
-const OldVersionDescription =
-  createFactory(require("./components/Description").OldVersionDescription);
+const OldVersionDescription = createFactory(
+  require("./components/Description").OldVersionDescription
+);
 
 // Store
-const createStore = require("devtools/client/shared/redux/create-store")();
+const createStore = require("devtools/client/shared/redux/create-store");
 
 // Reducers
 const { reducers } = require("./reducers/index");
-const store = createStore(combineReducers(reducers));
+const store = createStore(reducers);
 
 // Actions
 const { reset } = require("./actions/ui");
@@ -44,21 +47,41 @@ AccessibilityView.prototype = {
    * Initialize accessibility view, create its top level component and set the
    * data store.
    *
-   * @param {Object} accessibility  front that can initialize accessibility
+   * @param {Object}
+   *        Object that contains the following properties:
+   *        - front                 {Object}
+   *                                front that can initialize accessibility
    *                                walker and enable/disable accessibility
    *                                services.
+   *        - walker                {Object}
+   *                                front for accessibility walker actor responsible for
+   *                                managing accessible objects actors/fronts.
+   *        - supports              {JSON}
+   *                                a collection of flags indicating which accessibility
+   *                                panel features are supported by the current serverside
+   *                                version.
+   *        - fluentBundles         {Array}
+   *                                array of FluentBundles elements for localization
+   *        - simulator             {Object}
+   *                                front for simulator actor responsible for setting
+   *                                color matrices in docShell
    */
-  async initialize(accessibility, walker, supportsLatestAccessibility) {
+  async initialize({ front, walker, supports, fluentBundles, simulator }) {
     // Make sure state is reset every time accessibility panel is initialized.
-    await this.store.dispatch(reset(accessibility));
+    await this.store.dispatch(reset(front, supports));
     const container = document.getElementById("content");
 
-    if (!supportsLatestAccessibility) {
+    if (!supports.enableDisable) {
       ReactDOM.render(OldVersionDescription(), container);
       return;
     }
 
-    const mainFrame = MainFrame({ accessibility, walker });
+    const mainFrame = MainFrame({
+      accessibility: front,
+      accessibilityWalker: walker,
+      fluentBundles,
+      simulator,
+    });
     // Render top level component
     const provider = createElement(Provider, { store: this.store }, mainFrame);
     this.mainFrame = ReactDOM.render(provider, container);
@@ -74,18 +97,28 @@ AccessibilityView.prototype = {
     window.emit(EVENTS.NEW_ACCESSIBLE_FRONT_HIGHLIGHTED);
   },
 
-  async selectNodeAccessible(walker, node) {
+  async selectNodeAccessible(walker, node, supports) {
     let accessible = await walker.getAccessibleFor(node);
+    if (accessible && supports.hydration) {
+      await accessible.hydrate();
+    }
+
     // If node does not have an accessible object, try to find node's child text node and
     // try to retrieve an accessible object for that child instead. This is the best
     // effort approach until there's accessibility API to retrieve accessible object at
     // point.
     if (!accessible || accessible.indexInParent < 0) {
-      const { nodes: children } = await gToolbox.walker.children(node);
+      const { nodes: children } = await node.walkerFront.children(node);
       for (const child of children) {
         if (child.nodeType === nodeConstants.TEXT_NODE) {
           accessible = await walker.getAccessibleFor(child);
-          if (accessible && accessible.indexInParent >= 0) {
+          // indexInParent property is only available with additional request
+          // for data (hydration) about the accessible object.
+          if (accessible && supports.hydration) {
+            await accessible.hydrate();
+          }
+
+          if (accessible.indexInParent >= 0) {
             break;
           }
         }

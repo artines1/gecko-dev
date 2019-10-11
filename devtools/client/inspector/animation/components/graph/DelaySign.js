@@ -17,38 +17,23 @@ class DelaySign extends PureComponent {
   }
 
   render() {
-    const {
-      animation,
-      timeScale,
-    } = this.props;
-    const {
-      createdTime,
-      delay,
-      fill,
-      playbackRate,
-    } = animation.state;
+    const { animation, timeScale } = this.props;
+    const { delay, isDelayFilled, startTime } = animation.state.absoluteValues;
 
-    const toRate = v => v / playbackRate;
-    // If createdTime is not defined (which happens when connected to server older
-    // than FF62), use previousStartTime instead. See bug 1454392
-    const baseTime = typeof createdTime === "undefined"
-                       ? (animation.state.previousStartTime || 0)
-                       : createdTime;
-    const startTime = baseTime + toRate(Math.min(delay, 0)) - timeScale.minStartTime;
-    const offset = startTime / timeScale.getDuration() * 100;
-    const width = Math.abs(toRate(delay)) / timeScale.getDuration() * 100;
+    const toPercentage = v => (v / timeScale.getDuration()) * 100;
+    const offset = toPercentage(startTime - timeScale.minStartTime);
+    const width = toPercentage(Math.abs(delay));
 
-    return dom.div(
-      {
-        className: "animation-delay-sign" +
-                   (delay < 0 ? " negative" : "") +
-                   (fill === "both" || fill === "backwards" ? " fill" : ""),
-        style: {
-          width: `${ width }%`,
-          marginInlineStart: `${ offset }%`,
-        },
-      }
-    );
+    return dom.div({
+      className:
+        "animation-delay-sign" +
+        (delay < 0 ? " negative" : "") +
+        (isDelayFilled ? " fill" : ""),
+      style: {
+        width: `${width}%`,
+        marginInlineStart: `${offset}%`,
+      },
+    });
   }
 }
 

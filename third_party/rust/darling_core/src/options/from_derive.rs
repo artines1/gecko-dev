@@ -1,8 +1,10 @@
+use proc_macro2::TokenStream;
+use quote::ToTokens;
 use syn::{self, Ident};
 
-use {FromMetaItem, Result};
-use codegen;
-use options::{ParseAttribute, ParseData, OuterFrom, Shape};
+use codegen::FromDeriveInputImpl;
+use options::{OuterFrom, ParseAttribute, ParseData, Shape};
+use {FromMeta, Result};
 
 #[derive(Debug)]
 pub struct FdiOptions {
@@ -27,15 +29,19 @@ impl FdiOptions {
             generics: Default::default(),
             data: Default::default(),
             supports: Default::default(),
-        }).parse_attributes(&di.attrs)?.parse_body(&di.data)
+        })
+        .parse_attributes(&di.attrs)?
+        .parse_body(&di.data)
     }
 }
 
 impl ParseAttribute for FdiOptions {
     fn parse_nested(&mut self, mi: &syn::Meta) -> Result<()> {
-        match mi.name().as_ref() {
-            "supports" => { self.supports = FromMetaItem::from_meta_item(mi)?; Ok(()) },
-            _ => self.base.parse_nested(mi)
+        if mi.path().is_ident("supports") {
+            self.supports = FromMeta::from_meta(mi)?;
+            Ok(())
+        } else {
+            self.base.parse_nested(mi)
         }
     }
 }
@@ -46,21 +52,36 @@ impl ParseData for FdiOptions {
     }
 
     fn parse_field(&mut self, field: &syn::Field) -> Result<()> {
-        match field.ident.as_ref().map(|v| v.as_ref()) {
-            Some("vis") => { self.vis = field.ident.clone(); Ok(()) }
-            Some("data") => { self.data = field.ident.clone(); Ok(()) }
-            Some("generics") => { self.generics = field.ident.clone(); Ok(()) }
-            _ => self.base.parse_field(field)
+        match field
+            .ident
+            .as_ref()
+            .map(|v| v.to_string())
+            .as_ref()
+            .map(|v| v.as_str())
+        {
+            Some("vis") => {
+                self.vis = field.ident.clone();
+                Ok(())
+            }
+            Some("data") => {
+                self.data = field.ident.clone();
+                Ok(())
+            }
+            Some("generics") => {
+                self.generics = field.ident.clone();
+                Ok(())
+            }
+            _ => self.base.parse_field(field),
         }
     }
 }
 
-impl<'a> From<&'a FdiOptions> for codegen::FromDeriveInputImpl<'a> {
+impl<'a> From<&'a FdiOptions> for FromDeriveInputImpl<'a> {
     fn from(v: &'a FdiOptions) -> Self {
-        codegen::FromDeriveInputImpl {
+        FromDeriveInputImpl {
             base: (&v.base.container).into(),
-            attr_names: v.base.attr_names.as_strs(),
-            from_ident: Some(v.base.from_ident),
+            attr_names: &v.base.attr_names,
+            from_ident: v.base.from_ident,
             ident: v.base.ident.as_ref(),
             vis: v.vis.as_ref(),
             data: v.data.as_ref(),
@@ -69,5 +90,11 @@ impl<'a> From<&'a FdiOptions> for codegen::FromDeriveInputImpl<'a> {
             forward_attrs: v.base.forward_attrs.as_ref(),
             supports: v.supports.as_ref(),
         }
+    }
+}
+
+impl ToTokens for FdiOptions {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        FromDeriveInputImpl::from(self).to_tokens(tokens)
     }
 }

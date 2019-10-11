@@ -6,8 +6,10 @@
 
 #include "SessionStorageManager.h"
 
+#include "mozilla/dom/ContentChild.h"
 #include "SessionStorage.h"
 #include "SessionStorageCache.h"
+#include "SessionStorageObserver.h"
 #include "StorageUtils.h"
 
 namespace mozilla {
@@ -17,18 +19,42 @@ using namespace StorageUtils;
 
 NS_IMPL_ISUPPORTS(SessionStorageManager, nsIDOMStorageManager)
 
-SessionStorageManager::SessionStorageManager()
-{
+SessionStorageManager::SessionStorageManager() {
   StorageObserver* observer = StorageObserver::Self();
-  NS_ASSERTION(observer, "No StorageObserver, cannot observe private data delete notifications!");
+  NS_ASSERTION(
+      observer,
+      "No StorageObserver, cannot observe private data delete notifications!");
 
   if (observer) {
     observer->AddSink(this);
   }
+
+  if (!XRE_IsParentProcess() && NextGenLocalStorageEnabled()) {
+    // When LSNG is enabled the thread IPC bridge doesn't exist, so we have to
+    // create own protocol to distribute chrome observer notifications to
+    // content processes.
+    mObserver = SessionStorageObserver::Get();
+
+    if (!mObserver) {
+      ContentChild* contentActor = ContentChild::GetSingleton();
+      MOZ_ASSERT(contentActor);
+
+      RefPtr<SessionStorageObserver> observer = new SessionStorageObserver();
+
+      SessionStorageObserverChild* actor =
+          new SessionStorageObserverChild(observer);
+
+      MOZ_ALWAYS_TRUE(
+          contentActor->SendPSessionStorageObserverConstructor(actor));
+
+      observer->SetActor(actor);
+
+      mObserver = std::move(observer);
+    }
+  }
 }
 
-SessionStorageManager::~SessionStorageManager()
-{
+SessionStorageManager::~SessionStorageManager() {
   StorageObserver* observer = StorageObserver::Self();
   if (observer) {
     observer->RemoveSink(this);
@@ -37,8 +63,8 @@ SessionStorageManager::~SessionStorageManager()
 
 NS_IMETHODIMP
 SessionStorageManager::PrecacheStorage(nsIPrincipal* aPrincipal,
-                                       nsIDOMStorage** aRetval)
-{
+                                       nsIPrincipal* aStoragePrincipal,
+                                       Storage** aRetval) {
   // Nothing to preload.
   return NS_OK;
 }
@@ -46,10 +72,9 @@ SessionStorageManager::PrecacheStorage(nsIPrincipal* aPrincipal,
 NS_IMETHODIMP
 SessionStorageManager::CreateStorage(mozIDOMWindow* aWindow,
                                      nsIPrincipal* aPrincipal,
+                                     nsIPrincipal* aStoragePrincipal,
                                      const nsAString& aDocumentURI,
-                                     bool aPrivate,
-                                     nsIDOMStorage** aRetval)
-{
+                                     bool aPrivate, Storage** aRetval) {
   nsAutoCString originKey;
   nsAutoCString originAttributes;
   nsresult rv = GenerateOriginKey(aPrincipal, originAttributes, originKey);
@@ -71,8 +96,9 @@ SessionStorageManager::CreateStorage(mozIDOMWindow* aWindow,
 
   nsCOMPtr<nsPIDOMWindowInner> inner = nsPIDOMWindowInner::From(aWindow);
 
-  RefPtr<SessionStorage> storage =
-    new SessionStorage(inner, aPrincipal, cache, this, aDocumentURI, aPrivate);
+  // No StoragePrincipal for sessionStorage.
+  RefPtr<SessionStorage> storage = new SessionStorage(
+      inner, aPrincipal, cache, this, aDocumentURI, aPrivate);
 
   storage.forget(aRetval);
   return NS_OK;
@@ -81,9 +107,8 @@ SessionStorageManager::CreateStorage(mozIDOMWindow* aWindow,
 NS_IMETHODIMP
 SessionStorageManager::GetStorage(mozIDOMWindow* aWindow,
                                   nsIPrincipal* aPrincipal,
-                                  bool aPrivate,
-                                  nsIDOMStorage** aRetval)
-{
+                                  nsIPrincipal* aStoragePrincipal,
+                                  bool aPrivate, Storage** aRetval) {
   *aRetval = nullptr;
 
   nsAutoCString originKey;
@@ -105,29 +130,27 @@ SessionStorageManager::GetStorage(mozIDOMWindow* aWindow,
 
   nsCOMPtr<nsPIDOMWindowInner> inner = nsPIDOMWindowInner::From(aWindow);
 
-  RefPtr<SessionStorage> storage =
-    new SessionStorage(inner, aPrincipal, cache, this, EmptyString(), aPrivate);
+  RefPtr<SessionStorage> storage = new SessionStorage(
+      inner, aPrincipal, cache, this, EmptyString(), aPrivate);
 
   storage.forget(aRetval);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-SessionStorageManager::CloneStorage(nsIDOMStorage* aStorage)
-{
+SessionStorageManager::CloneStorage(Storage* aStorage) {
   if (NS_WARN_IF(!aStorage)) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  RefPtr<Storage> storage = static_cast<Storage*>(aStorage);
-  if (storage->Type() != Storage::eSessionStorage) {
+  if (aStorage->Type() != Storage::eSessionStorage) {
     return NS_ERROR_UNEXPECTED;
   }
 
   nsAutoCString originKey;
   nsAutoCString originAttributes;
-  nsresult rv = GenerateOriginKey(storage->Principal(), originAttributes,
-                                  originKey);
+  nsresult rv =
+      GenerateOriginKey(aStorage->Principal(), originAttributes, originKey);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -152,10 +175,8 @@ SessionStorageManager::CloneStorage(nsIDOMStorage* aStorage)
 }
 
 NS_IMETHODIMP
-SessionStorageManager::CheckStorage(nsIPrincipal* aPrincipal,
-                                    nsIDOMStorage* aStorage,
-                                    bool* aRetval)
-{
+SessionStorageManager::CheckStorage(nsIPrincipal* aPrincipal, Storage* aStorage,
+                                    bool* aRetval) {
   if (NS_WARN_IF(!aStorage)) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -183,18 +204,17 @@ SessionStorageManager::CheckStorage(nsIPrincipal* aPrincipal,
     return NS_OK;
   }
 
-  RefPtr<Storage> storage = static_cast<Storage*>(aStorage);
-  if (storage->Type() != Storage::eSessionStorage) {
+  if (aStorage->Type() != Storage::eSessionStorage) {
     return NS_OK;
   }
 
   RefPtr<SessionStorage> sessionStorage =
-    static_cast<SessionStorage*>(aStorage);
+      static_cast<SessionStorage*>(aStorage);
   if (sessionStorage->Cache() != cache) {
     return NS_OK;
   }
 
-  if (!StorageUtils::PrincipalsEqual(storage->Principal(), aPrincipal)) {
+  if (!StorageUtils::PrincipalsEqual(aStorage->Principal(), aPrincipal)) {
     return NS_OK;
   }
 
@@ -202,11 +222,9 @@ SessionStorageManager::CheckStorage(nsIPrincipal* aPrincipal,
   return NS_OK;
 }
 
-void
-SessionStorageManager::ClearStorages(ClearStorageType aType,
-                                     const OriginAttributesPattern& aPattern,
-                                     const nsACString& aOriginScope)
-{
+void SessionStorageManager::ClearStorages(
+    ClearStorageType aType, const OriginAttributesPattern& aPattern,
+    const nsACString& aOriginScope) {
   for (auto iter1 = mOATable.Iter(); !iter1.Done(); iter1.Next()) {
     OriginAttributes oa;
     DebugOnly<bool> ok = oa.PopulateFromSuffix(iter1.Key());
@@ -232,11 +250,9 @@ SessionStorageManager::ClearStorages(ClearStorageType aType,
   }
 }
 
-nsresult
-SessionStorageManager::Observe(const char* aTopic,
-                               const nsAString& aOriginAttributesPattern,
-                               const nsACString& aOriginScope)
-{
+nsresult SessionStorageManager::Observe(
+    const char* aTopic, const nsAString& aOriginAttributesPattern,
+    const nsACString& aOriginScope) {
   OriginAttributesPattern pattern;
   if (!pattern.Init(aOriginAttributesPattern)) {
     NS_ERROR("Cannot parse origin attributes pattern");
@@ -257,8 +273,8 @@ SessionStorageManager::Observe(const char* aTopic,
   }
 
   // Clear everything (including so and pb data) from caches and database
-  // for the gived domain and subdomains.
-  if (!strcmp(aTopic, "domain-data-cleared")) {
+  // for the given domain and subdomains.
+  if (!strcmp(aTopic, "browser:purge-sessionStorage")) {
     ClearStorages(eAll, pattern, aOriginScope);
     return NS_OK;
   }
@@ -273,5 +289,5 @@ SessionStorageManager::Observe(const char* aTopic,
   return NS_OK;
 }
 
-} // dom namespace
-} // mozilla namespace
+}  // namespace dom
+}  // namespace mozilla

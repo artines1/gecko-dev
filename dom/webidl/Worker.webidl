@@ -12,19 +12,23 @@
  * this document.
  */
 
-[Constructor(USVString scriptURL, optional WorkerOptions options),
- Exposed=(Window,DedicatedWorker,SharedWorker,System)]
+[Exposed=(Window,DedicatedWorker,SharedWorker)]
 interface Worker : EventTarget {
+  [Throws]
+  constructor(USVString scriptURL, optional WorkerOptions options = {});
+
   void terminate();
 
   [Throws]
-  void postMessage(any message, optional sequence<object> transfer = []);
+  void postMessage(any message, sequence<object> transfer);
+  [Throws]
+  void postMessage(any message, optional PostMessageOptions aOptions = {});
 
   attribute EventHandler onmessage;
   attribute EventHandler onmessageerror;
 };
 
-Worker implements AbstractWorker;
+Worker includes AbstractWorker;
 
 dictionary WorkerOptions {
   // WorkerType type = "classic"; TODO: Bug 1247687
@@ -32,8 +36,9 @@ dictionary WorkerOptions {
   DOMString name = "";
 };
 
-[Constructor(USVString scriptURL),
- Func="mozilla::dom::ChromeWorker::WorkerAvailable",
- Exposed=(Window,DedicatedWorker,SharedWorker,System)]
+[Func="mozilla::dom::ChromeWorker::WorkerAvailable",
+ Exposed=(Window,DedicatedWorker,SharedWorker)]
 interface ChromeWorker : Worker {
+  [Throws]
+  constructor(USVString scriptURL);
 };

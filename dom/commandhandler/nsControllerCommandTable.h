@@ -13,17 +13,23 @@
 
 class nsIControllerCommand;
 
-class nsControllerCommandTable final
-  : public nsIControllerCommandTable
-  , public nsSupportsWeakReference
-{
-public:
+class nsControllerCommandTable final : public nsIControllerCommandTable,
+                                       public nsSupportsWeakReference {
+ public:
   nsControllerCommandTable();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSICONTROLLERCOMMANDTABLE
 
-protected:
+  static already_AddRefed<nsControllerCommandTable> CreateEditorCommandTable();
+  static already_AddRefed<nsControllerCommandTable> CreateEditingCommandTable();
+  static already_AddRefed<nsControllerCommandTable>
+  CreateHTMLEditorCommandTable();
+  static already_AddRefed<nsControllerCommandTable>
+  CreateHTMLEditorDocStateCommandTable();
+  static already_AddRefed<nsControllerCommandTable> CreateWindowCommandTable();
+
+ protected:
   virtual ~nsControllerCommandTable();
 
   // Hash table of nsIControllerCommands, keyed by command name.
@@ -33,4 +39,14 @@ protected:
   bool mMutable;
 };
 
-#endif // nsControllerCommandTable_h_
+nsControllerCommandTable*
+nsIControllerCommandTable::AsControllerCommandTable() {
+  return static_cast<nsControllerCommandTable*>(this);
+}
+
+const nsControllerCommandTable*
+nsIControllerCommandTable::AsControllerCommandTable() const {
+  return static_cast<const nsControllerCommandTable*>(this);
+}
+
+#endif  // nsControllerCommandTable_h_

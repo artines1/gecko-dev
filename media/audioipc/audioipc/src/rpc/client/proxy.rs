@@ -43,8 +43,8 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-use futures::{Async, Future, Poll};
 use futures::sync::{mpsc, oneshot};
+use futures::{Async, Future, Poll};
 use std::fmt;
 use std::io;
 
@@ -104,7 +104,7 @@ where
     R: fmt::Debug,
     Q: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ClientProxy {{ ... }}")
     }
 }
@@ -130,7 +130,7 @@ impl<Q> fmt::Debug for Response<Q>
 where
     Q: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Response {{ ... }}")
     }
 }

@@ -14,46 +14,44 @@ class MacIOSurface;
 namespace mozilla {
 namespace layers {
 
-class MacIOSurfaceTextureData : public TextureData
-{
-public:
+class MacIOSurfaceTextureData : public TextureData {
+ public:
   static MacIOSurfaceTextureData* Create(MacIOSurface* aSurface,
                                          gfx::BackendType aBackend);
 
-  static MacIOSurfaceTextureData*
-  Create(const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat,
-         gfx::BackendType aBackend);
+  static MacIOSurfaceTextureData* Create(const gfx::IntSize& aSize,
+                                         gfx::SurfaceFormat aFormat,
+                                         gfx::BackendType aBackend);
 
   ~MacIOSurfaceTextureData();
 
-  virtual void FillInfo(TextureData::Info& aInfo) const override;
+  void FillInfo(TextureData::Info& aInfo) const override;
 
-  virtual bool Lock(OpenMode) override;
+  bool Lock(OpenMode) override;
 
-  virtual void Unlock() override;
+  void Unlock() override;
 
-  virtual already_AddRefed<gfx::DrawTarget> BorrowDrawTarget() override;
+  already_AddRefed<gfx::DrawTarget> BorrowDrawTarget() override;
 
-  virtual bool Serialize(SurfaceDescriptor& aOutDescriptor) override;
+  bool Serialize(SurfaceDescriptor& aOutDescriptor) override;
 
-  virtual void Deallocate(LayersIPCChannel*) override;
+  void Deallocate(LayersIPCChannel*) override;
 
-  virtual void Forget(LayersIPCChannel*) override;
+  void Forget(LayersIPCChannel*) override;
 
-  virtual bool UpdateFromSurface(gfx::SourceSurface* aSurface) override;
+  bool UpdateFromSurface(gfx::SourceSurface* aSurface) override;
 
   // For debugging purposes only.
   already_AddRefed<gfx::DataSourceSurface> GetAsSurface();
 
-protected:
-  MacIOSurfaceTextureData(MacIOSurface* aSurface,
-                          gfx::BackendType aBackend);
+ protected:
+  MacIOSurfaceTextureData(MacIOSurface* aSurface, gfx::BackendType aBackend);
 
   RefPtr<MacIOSurface> mSurface;
   gfx::BackendType mBackend;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // MOZILLA_GFX_MACIOSURFACETEXTURECLIENTOGL_H
+#endif  // MOZILLA_GFX_MACIOSURFACETEXTURECLIENTOGL_H

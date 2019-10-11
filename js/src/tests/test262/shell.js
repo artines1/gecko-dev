@@ -1,3 +1,4 @@
+// GENERATED, DO NOT EDIT
 // file: assert.js
 // Copyright (C) 2017 Ecma International.  All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
@@ -28,7 +29,12 @@ assert._isSameValue = function (a, b) {
 };
 
 assert.sameValue = function (actual, expected, message) {
-  if (assert._isSameValue(actual, expected)) {
+  try {
+    if (assert._isSameValue(actual, expected)) {
+      return;
+    }
+  } catch (error) {
+    $ERROR(message + ' (_isSameValue operation threw) ' + error);
     return;
   }
 
@@ -86,13 +92,6 @@ assert.throws = function (expectedErrorConstructor, func, message) {
 
   message += 'Expected a ' + expectedErrorConstructor.name + ' to be thrown but no exception was thrown at all';
   $ERROR(message);
-};
-
-assert.throws.early = function(err, code) {
-  var wrappedCode = 'function wrapperFn() { ' + code + ' }';
-  var ieval = eval;
-
-  assert.throws(err, function() { Function(wrappedCode); }, 'Function: ' + code);
 };
 
 // file: compareArray.js
@@ -171,7 +170,7 @@ function verifyProperty(obj, name, desc, options) {
   var failures = [];
 
   if (Object.prototype.hasOwnProperty.call(desc, 'value')) {
-    if (desc.value !== originalDesc.value) {
+    if (!isSameValue(desc.value, originalDesc.value)) {
       failures.push("descriptor value should be " + desc.value);
     }
   }
@@ -237,10 +236,11 @@ function isEnumerable(obj, name) {
     Object.prototype.propertyIsEnumerable.call(obj, name);
 }
 
-function isEqualTo(obj, name, expectedValue) {
-  var actualValue = obj[name];
+function isSameValue(a, b) {
+  if (a === 0 && b === 0) return 1 / a === 1 / b;
+  if (a !== a && b !== b) return true;
 
-  return assert._isSameValue(actualValue, expectedValue);
+  return a === b;
 }
 
 function isWritable(obj, name, verifyProp, value) {
@@ -257,7 +257,7 @@ function isWritable(obj, name, verifyProp, value) {
     }
   }
 
-  writeSucceeded = isEqualTo(obj, verifyProp || name, newValue);
+  writeSucceeded = isSameValue(obj[verifyProp || name], newValue);
 
   // Revert the change only if it was successful (in other cases, reverting
   // is unnecessary and may trigger exceptions for certain property
@@ -274,7 +274,7 @@ function isWritable(obj, name, verifyProp, value) {
 }
 
 function verifyEqualTo(obj, name, value) {
-  if (!isEqualTo(obj, name, value)) {
+  if (!isSameValue(obj[name], value)) {
     $ERROR("Expected obj[" + String(name) + "] to equal " + value +
            ", actually " + obj[name]);
   }
@@ -357,6 +357,10 @@ $ERROR = function $ERROR(message) {
   throw new Test262Error(message);
 };
 
+function $DONOTEVALUATE() {
+  throw "Test262: This statement should not be evaluated.";
+}
+
 // file: test262-host.js
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -380,6 +384,7 @@ $ERROR = function $ERROR(message) {
     var getSharedArrayBuffer = global.getSharedArrayBuffer;
     var evalInWorker = global.evalInWorker;
     var monotonicNow = global.monotonicNow;
+    var gc = global.gc;
 
     var hasCreateIsHTMLDDA = "createIsHTMLDDA" in global;
     var hasThreads = ("helperThreadCount" in global ? global.helperThreadCount() > 0 : true);
@@ -411,6 +416,9 @@ $ERROR = function $ERROR(message) {
         evalScript: global.evaluateScript || global.evaluate,
         global,
         IsHTMLDDA,
+        gc() {
+            gc();
+        },
         agent: (function () {
 
             // SpiderMonkey complication: With run-time argument --no-threads
@@ -587,4 +595,14 @@ function $DONE(failure) {
         reportFailure(failure);
     else
         reportCompare(0, 0);
+
+    if (typeof jsTestDriverEnd === "function") {
+        gDelayTestDriverEnd = false;
+        jsTestDriverEnd();
+    }
+}
+
+// Some tests in test262 leave promise rejections unhandled.
+if ("ignoreUnhandledRejections" in this) {
+  ignoreUnhandledRejections();
 }

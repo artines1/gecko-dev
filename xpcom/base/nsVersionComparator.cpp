@@ -9,46 +9,66 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <errno.h>
+#include "mozilla/CheckedInt.h"
 #if defined(XP_WIN) && !defined(UPDATER_NO_STRING_GLUE_STL)
-#include <wchar.h>
-#include "nsString.h"
+#  include <wchar.h>
+#  include "nsString.h"
 #endif
 
-struct VersionPart
-{
-  int32_t     numA;
+struct VersionPart {
+  int32_t numA;
 
-  const char* strB;    // NOT null-terminated, can be a null pointer
-  uint32_t    strBlen;
+  const char* strB;  // NOT null-terminated, can be a null pointer
+  uint32_t strBlen;
 
-  int32_t     numC;
+  int32_t numC;
 
-  char*       extraD;  // null-terminated
+  char* extraD;  // null-terminated
 };
 
 #ifdef XP_WIN
-struct VersionPartW
-{
-  int32_t     numA;
+struct VersionPartW {
+  int32_t numA;
 
-  wchar_t*    strB;    // NOT null-terminated, can be a null pointer
-  uint32_t    strBlen;
+  wchar_t* strB;  // NOT null-terminated, can be a null pointer
+  uint32_t strBlen;
 
-  int32_t     numC;
+  int32_t numC;
 
-  wchar_t*    extraD;  // null-terminated
-
+  wchar_t* extraD;  // null-terminated
 };
 #endif
+
+static int32_t ns_strtol(const char* aPart, char** aNext) {
+  errno = 0;
+  long result_long = strtol(aPart, aNext, 10);
+
+  // Different platforms seem to disagree on what to return when the value
+  // is out of range so we ensure that it is always what we want it to be.
+  // We choose 0 firstly because that is the default when the number doesn't
+  // exist at all and also because it would be easier to recover from should
+  // you somehow end up in a situation where an old version is invalid. It is
+  // much easier to create a version either larger or smaller than 0, much
+  // harder to do the same with INT_MAX.
+  if (errno != 0) {
+    return 0;
+  }
+
+  mozilla::CheckedInt<int32_t> result = result_long;
+  if (!result.isValid()) {
+    return 0;
+  }
+
+  return result.value();
+}
 
 /**
  * Parse a version part into a number and "extra text".
  *
  * @returns A pointer to the next versionpart, or null if none.
  */
-static char*
-ParseVP(char* aPart, VersionPart& aResult)
-{
+static char* ParseVP(char* aPart, VersionPart& aResult) {
   char* dot;
 
   aResult.numA = 0;
@@ -70,7 +90,7 @@ ParseVP(char* aPart, VersionPart& aResult)
     aResult.numA = INT32_MAX;
     aResult.strB = "";
   } else {
-    aResult.numA = strtol(aPart, const_cast<char**>(&aResult.strB), 10);
+    aResult.numA = ns_strtol(aPart, const_cast<char**>(&aResult.strB));
   }
 
   if (!*aResult.strB) {
@@ -89,8 +109,8 @@ ParseVP(char* aPart, VersionPart& aResult)
         aResult.strBlen = strlen(aResult.strB);
       } else {
         aResult.strBlen = numstart - aResult.strB;
+        aResult.numC = ns_strtol(numstart, const_cast<char**>(&aResult.extraD));
 
-        aResult.numC = strtol(numstart, &aResult.extraD, 10);
         if (!*aResult.extraD) {
           aResult.extraD = nullptr;
         }
@@ -109,17 +129,31 @@ ParseVP(char* aPart, VersionPart& aResult)
   return dot;
 }
 
-
 /**
  * Parse a version part into a number and "extra text".
  *
  * @returns A pointer to the next versionpart, or null if none.
  */
 #ifdef XP_WIN
-static wchar_t*
-ParseVP(wchar_t* aPart, VersionPartW& aResult)
-{
 
+static int32_t ns_wcstol(const wchar_t* aPart, wchar_t** aNext) {
+  errno = 0;
+  long result_long = wcstol(aPart, aNext, 10);
+
+  // See above for the rationale for using 0 here.
+  if (errno != 0) {
+    return 0;
+  }
+
+  mozilla::CheckedInt<int32_t> result = result_long;
+  if (!result.isValid()) {
+    return 0;
+  }
+
+  return result.value();
+}
+
+static wchar_t* ParseVP(wchar_t* aPart, VersionPartW& aResult) {
   wchar_t* dot;
 
   aResult.numA = 0;
@@ -143,7 +177,7 @@ ParseVP(wchar_t* aPart, VersionPartW& aResult)
     aResult.numA = INT32_MAX;
     aResult.strB = kEmpty;
   } else {
-    aResult.numA = wcstol(aPart, const_cast<wchar_t**>(&aResult.strB), 10);
+    aResult.numA = ns_wcstol(aPart, const_cast<wchar_t**>(&aResult.strB));
   }
 
   if (!*aResult.strB) {
@@ -162,8 +196,9 @@ ParseVP(wchar_t* aPart, VersionPartW& aResult)
         aResult.strBlen = wcslen(aResult.strB);
       } else {
         aResult.strBlen = numstart - aResult.strB;
+        aResult.numC =
+            ns_wcstol(numstart, const_cast<wchar_t**>(&aResult.extraD));
 
-        aResult.numC = wcstol(numstart, &aResult.extraD, 10);
         if (!*aResult.extraD) {
           aResult.extraD = nullptr;
         }
@@ -184,9 +219,7 @@ ParseVP(wchar_t* aPart, VersionPartW& aResult)
 #endif
 
 // compare two null-terminated strings, which may be null pointers
-static int32_t
-ns_strcmp(const char* aStr1, const char* aStr2)
-{
+static int32_t ns_strcmp(const char* aStr1, const char* aStr2) {
   // any string is *before* no string
   if (!aStr1) {
     return aStr2 != 0;
@@ -200,10 +233,8 @@ ns_strcmp(const char* aStr1, const char* aStr2)
 }
 
 // compare two length-specified string, which may be null pointers
-static int32_t
-ns_strnncmp(const char* aStr1, uint32_t aLen1,
-            const char* aStr2, uint32_t aLen2)
-{
+static int32_t ns_strnncmp(const char* aStr1, uint32_t aLen1, const char* aStr2,
+                           uint32_t aLen2) {
   // any string is *before* no string
   if (!aStr1) {
     return aStr2 != 0;
@@ -231,9 +262,7 @@ ns_strnncmp(const char* aStr1, uint32_t aLen1,
 }
 
 // compare two int32_t
-static int32_t
-ns_cmp(int32_t aNum1, int32_t aNum2)
-{
+static int32_t ns_cmp(int32_t aNum1, int32_t aNum2) {
   if (aNum1 < aNum2) {
     return -1;
   }
@@ -244,9 +273,7 @@ ns_cmp(int32_t aNum1, int32_t aNum2)
 /**
  * Compares two VersionParts
  */
-static int32_t
-CompareVP(VersionPart& aVer1, VersionPart& aVer2)
-{
+static int32_t CompareVP(VersionPart& aVer1, VersionPart& aVer2) {
   int32_t r = ns_cmp(aVer1.numA, aVer2.numA);
   if (r) {
     return r;
@@ -269,9 +296,7 @@ CompareVP(VersionPart& aVer1, VersionPart& aVer2)
  * Compares two VersionParts
  */
 #ifdef XP_WIN
-static int32_t
-CompareVP(VersionPartW& aVer1, VersionPartW& aVer2)
-{
+static int32_t CompareVP(VersionPartW& aVer1, VersionPartW& aVer2) {
   int32_t r = ns_cmp(aVer1.numA, aVer2.numA);
   if (r) {
     return r;
@@ -302,9 +327,7 @@ CompareVP(VersionPartW& aVer1, VersionPartW& aVer2)
 namespace mozilla {
 
 #ifdef XP_WIN
-int32_t
-CompareVersions(const char16_t* aStrA, const char16_t* aStrB)
-{
+int32_t CompareVersions(const char16_t* aStrA, const char16_t* aStrB) {
   wchar_t* A2 = wcsdup(char16ptr_t(aStrA));
   if (!A2) {
     return 1;
@@ -340,9 +363,7 @@ CompareVersions(const char16_t* aStrA, const char16_t* aStrB)
 }
 #endif
 
-int32_t
-CompareVersions(const char* aStrA, const char* aStrB)
-{
+int32_t CompareVersions(const char* aStrA, const char* aStrB) {
   char* A2 = strdup(aStrA);
   if (!A2) {
     return 1;
@@ -377,5 +398,4 @@ CompareVersions(const char* aStrA, const char* aStrB)
   return result;
 }
 
-} // namespace mozilla
-
+}  // namespace mozilla

@@ -11,18 +11,17 @@
 
 #include "nsIDOMEventListener.h"
 
-class nsIDocument;
-
 namespace mozilla {
+
+class PresShell;
+
 namespace a11y {
 
-class RootAccessible : public DocAccessibleWrap,
-                       public nsIDOMEventListener
-{
+class RootAccessible : public DocAccessibleWrap, public nsIDOMEventListener {
   NS_DECL_ISUPPORTS_INHERITED
 
-public:
-  RootAccessible(nsIDocument* aDocument, nsIPresShell* aPresShell);
+ public:
+  RootAccessible(dom::Document* aDocument, PresShell* aPresShell);
 
   // nsIDOMEventListener
   NS_DECL_NSIDOMEVENTLISTENER
@@ -46,7 +45,7 @@ public:
    */
   ProxyAccessible* GetPrimaryRemoteTopLevelContentDoc() const;
 
-protected:
+ protected:
   virtual ~RootAccessible();
 
   /**
@@ -58,7 +57,7 @@ protected:
   /**
    * Process the DOM event.
    */
-  void ProcessDOMEvent(dom::Event* aEvent);
+  void ProcessDOMEvent(dom::Event* aDOMEvent, nsINode* aTarget);
 
   /**
    * Process "popupshown" event. Used by HandleEvent().
@@ -76,17 +75,15 @@ protected:
   void HandleTreeInvalidatedEvent(dom::Event* aEvent,
                                   XULTreeAccessible* aAccessible);
 
-    uint32_t GetChromeFlags() const;
+  uint32_t GetChromeFlags() const;
 #endif
 };
 
-inline RootAccessible*
-Accessible::AsRoot()
-{
+inline RootAccessible* Accessible::AsRoot() {
   return IsRoot() ? static_cast<mozilla::a11y::RootAccessible*>(this) : nullptr;
 }
 
-} // namespace a11y
-} // namespace mozilla
+}  // namespace a11y
+}  // namespace mozilla
 
 #endif

@@ -10,8 +10,9 @@ var FontBuilder = {
   _enumerator: null,
   get enumerator() {
     if (!this._enumerator) {
-      this._enumerator = Cc["@mozilla.org/gfx/fontenumerator;1"]
-                           .createInstance(Ci.nsIFontEnumerator);
+      this._enumerator = Cc["@mozilla.org/gfx/fontenumerator;1"].createInstance(
+        Ci.nsIFontEnumerator
+      );
     }
     return this._enumerator;
   },
@@ -19,32 +20,35 @@ var FontBuilder = {
   _allFonts: null,
   _langGroupSupported: false,
   async buildFontList(aLanguage, aFontType, aMenuList) {
-    // Reset the list
-    while (aMenuList.hasChildNodes())
-      aMenuList.firstChild.remove();
+    // Remove the original <menupopup>
+    if (aMenuList.menupopup) {
+      aMenuList.menupopup.remove();
+    }
 
     let defaultFont = null;
     // Load Font Lists
     let fonts = await this.enumerator.EnumerateFontsAsync(aLanguage, aFontType);
-    if (fonts.length > 0)
+    if (fonts.length) {
       defaultFont = this.enumerator.getDefaultFont(aLanguage, aFontType);
-    else {
+    } else {
       fonts = await this.enumerator.EnumerateFontsAsync(aLanguage, "");
-      if (fonts.length > 0)
+      if (fonts.length) {
         defaultFont = this.enumerator.getDefaultFont(aLanguage, "");
+      }
     }
 
-    if (!this._allFonts)
+    if (!this._allFonts) {
       this._allFonts = await this.enumerator.EnumerateAllFontsAsync({});
+    }
 
     // Build the UI for the Default Font and Fonts for this CSS type.
-    const popup = document.createElement("menupopup");
+    const popup = document.createXULElement("menupopup");
     let separator;
-    if (fonts.length > 0) {
-      let menuitem = document.createElement("menuitem");
+    if (fonts.length) {
+      let menuitem = document.createXULElement("menuitem");
       if (defaultFont) {
         document.l10n.setAttributes(menuitem, "fonts-label-default", {
-          name: defaultFont
+          name: defaultFont,
         });
       } else {
         document.l10n.setAttributes(menuitem, "fonts-label-default-unnamed");
@@ -52,11 +56,11 @@ var FontBuilder = {
       menuitem.setAttribute("value", ""); // Default Font has a blank value
       popup.appendChild(menuitem);
 
-      separator = document.createElement("menuseparator");
+      separator = document.createXULElement("menuseparator");
       popup.appendChild(separator);
 
       for (let font of fonts) {
-        menuitem = document.createElement("menuitem");
+        menuitem = document.createXULElement("menuitem");
         menuitem.setAttribute("value", font);
         menuitem.setAttribute("label", font);
         popup.appendChild(menuitem);
@@ -72,12 +76,12 @@ var FontBuilder = {
       let builtItem = separator ? separator.nextSibling : popup.firstChild;
       let builtItemValue = builtItem ? builtItem.getAttribute("value") : null;
 
-      separator = document.createElement("menuseparator");
+      separator = document.createXULElement("menuseparator");
       popup.appendChild(separator);
 
       for (let font of this._allFonts) {
         if (font != builtItemValue) {
-          const menuitem = document.createElement("menuitem");
+          const menuitem = document.createXULElement("menuitem");
           menuitem.setAttribute("value", font);
           menuitem.setAttribute("label", font);
           popup.appendChild(menuitem);
@@ -97,16 +101,20 @@ var FontBuilder = {
     //   fonts folder)
     const preference = Preferences.get(aElement.getAttribute("preference"));
     if (preference.value) {
-      const fontItems = aElement.getElementsByAttribute("value", preference.value);
+      const fontItems = aElement.getElementsByAttribute(
+        "value",
+        preference.value
+      );
 
       // There is a setting that actually is in the list. Respect it.
-      if (fontItems.length)
+      if (fontItems.length) {
         return undefined;
+      }
     }
 
     // Otherwise, use "default" font of current system which is computed
     // with "font.name-list.*".  If "font.name.*" is empty string, it means
     // "default".  So, return empty string in this case.
     return "";
-  }
+  },
 };

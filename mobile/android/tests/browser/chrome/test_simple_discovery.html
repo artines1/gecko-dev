@@ -16,8 +16,8 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
 
   /* globals SimpleServiceDiscovery */
 
-  ChromeUtils.import("resource://gre/modules/Services.jsm");
-  ChromeUtils.import("resource://gre/modules/SimpleServiceDiscovery.jsm");
+  const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+  const {SimpleServiceDiscovery} = ChromeUtils.import("resource://gre/modules/SimpleServiceDiscovery.jsm");
 
   function discovery_observer(subject, topic, data) {
     dump("Observer: " + data);
@@ -39,7 +39,7 @@ var testDevice = {
     target: "test:service",
     factory: function(service) { },
     types: ["video/mp4"],
-    extensions: ["mp4"]
+    extensions: ["mp4"],
   };
 
   function test_default() {
@@ -56,7 +56,7 @@ var testDevice = {
     // Create a pretend service
     let service = {
       location: "http://mochi.test:8888/chrome/mobile/android/tests/browser/chrome/simpleservice.xml",
-      target: "test:service"
+      target: "test:service",
     };
 
     dump("Force a detailed ping from a pretend service");

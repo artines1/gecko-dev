@@ -16,60 +16,60 @@ GfxDeviceFamily* const GfxDriverInfo::allDevices = nullptr;
 
 GfxDeviceFamily* GfxDriverInfo::sDeviceFamilies[DeviceFamilyMax];
 nsAString* GfxDriverInfo::sDeviceVendors[DeviceVendorMax];
+nsAString* GfxDriverInfo::sDriverVendors[DriverVendorMax];
 
 GfxDriverInfo::GfxDriverInfo()
-  : mOperatingSystem(OperatingSystem::Unknown),
-    mOperatingSystemVersion(0),
-    mAdapterVendor(GfxDriverInfo::GetDeviceVendor(VendorAll)),
-    mDevices(allDevices),
-    mDeleteDevices(false),
-    mFeature(allFeatures),
-    mFeatureStatus(nsIGfxInfo::FEATURE_STATUS_OK),
-    mComparisonOp(DRIVER_COMPARISON_IGNORED),
-    mDriverVersion(0),
-    mDriverVersionMax(0),
-    mSuggestedVersion(nullptr),
-    mRuleId(nullptr),
-    mGpu2(false)
-{}
+    : mOperatingSystem(OperatingSystem::Unknown),
+      mOperatingSystemVersion(0),
+      mAdapterVendor(GfxDriverInfo::GetDeviceVendor(VendorAll)),
+      mDriverVendor(GfxDriverInfo::GetDriverVendor(DriverVendorAll)),
+      mDevices(allDevices),
+      mDeleteDevices(false),
+      mFeature(allFeatures),
+      mFeatureStatus(nsIGfxInfo::FEATURE_STATUS_OK),
+      mComparisonOp(DRIVER_COMPARISON_IGNORED),
+      mDriverVersion(0),
+      mDriverVersionMax(0),
+      mSuggestedVersion(nullptr),
+      mRuleId(nullptr),
+      mGpu2(false) {}
 
-GfxDriverInfo::GfxDriverInfo(OperatingSystem os, nsAString& vendor,
-                             GfxDeviceFamily* devices,
-                             int32_t feature, int32_t featureStatus,
-                             VersionComparisonOp op,
-                             uint64_t driverVersion,
-                             const char *ruleId,
-                             const char *suggestedVersion /* = nullptr */,
+GfxDriverInfo::GfxDriverInfo(OperatingSystem os, const nsAString& vendor,
+                             const nsAString& driverVendor,
+                             GfxDeviceFamily* devices, int32_t feature,
+                             int32_t featureStatus, VersionComparisonOp op,
+                             uint64_t driverVersion, const char* ruleId,
+                             const char* suggestedVersion /* = nullptr */,
                              bool ownDevices /* = false */,
                              bool gpu2 /* = false */)
-  : mOperatingSystem(os),
-    mOperatingSystemVersion(0),
-    mAdapterVendor(vendor),
-    mDevices(devices),
-    mDeleteDevices(ownDevices),
-    mFeature(feature),
-    mFeatureStatus(featureStatus),
-    mComparisonOp(op),
-    mDriverVersion(driverVersion),
-    mDriverVersionMax(0),
-    mSuggestedVersion(suggestedVersion),
-    mRuleId(ruleId),
-    mGpu2(gpu2)
-{}
+    : mOperatingSystem(os),
+      mOperatingSystemVersion(0),
+      mAdapterVendor(vendor),
+      mDriverVendor(driverVendor),
+      mDevices(devices),
+      mDeleteDevices(ownDevices),
+      mFeature(feature),
+      mFeatureStatus(featureStatus),
+      mComparisonOp(op),
+      mDriverVersion(driverVersion),
+      mDriverVersionMax(0),
+      mSuggestedVersion(suggestedVersion),
+      mRuleId(ruleId),
+      mGpu2(gpu2) {}
 
 GfxDriverInfo::GfxDriverInfo(const GfxDriverInfo& aOrig)
-  : mOperatingSystem(aOrig.mOperatingSystem),
-    mOperatingSystemVersion(aOrig.mOperatingSystemVersion),
-    mAdapterVendor(aOrig.mAdapterVendor),
-    mFeature(aOrig.mFeature),
-    mFeatureStatus(aOrig.mFeatureStatus),
-    mComparisonOp(aOrig.mComparisonOp),
-    mDriverVersion(aOrig.mDriverVersion),
-    mDriverVersionMax(aOrig.mDriverVersionMax),
-    mSuggestedVersion(aOrig.mSuggestedVersion),
-    mRuleId(aOrig.mRuleId),
-    mGpu2(aOrig.mGpu2)
-{
+    : mOperatingSystem(aOrig.mOperatingSystem),
+      mOperatingSystemVersion(aOrig.mOperatingSystemVersion),
+      mAdapterVendor(aOrig.mAdapterVendor),
+      mDriverVendor(aOrig.mDriverVendor),
+      mFeature(aOrig.mFeature),
+      mFeatureStatus(aOrig.mFeatureStatus),
+      mComparisonOp(aOrig.mComparisonOp),
+      mDriverVersion(aOrig.mDriverVersion),
+      mDriverVersionMax(aOrig.mDriverVersionMax),
+      mSuggestedVersion(aOrig.mSuggestedVersion),
+      mRuleId(aOrig.mRuleId),
+      mGpu2(aOrig.mGpu2) {
   // If we're managing the lifetime of the device family, we have to make a
   // copy of the original's device family.
   if (aOrig.mDeleteDevices && aOrig.mDevices) {
@@ -82,25 +82,23 @@ GfxDriverInfo::GfxDriverInfo(const GfxDriverInfo& aOrig)
   mDeleteDevices = aOrig.mDeleteDevices;
 }
 
-GfxDriverInfo::~GfxDriverInfo()
-{
-  if (mDeleteDevices)
-    delete mDevices;
+GfxDriverInfo::~GfxDriverInfo() {
+  if (mDeleteDevices) delete mDevices;
 }
 
 // Macros for appending a device to the DeviceFamily.
 #define APPEND_DEVICE(device) APPEND_DEVICE2(#device)
-#define APPEND_DEVICE2(device) deviceFamily->AppendElement(NS_LITERAL_STRING(device))
+#define APPEND_DEVICE2(device) \
+  deviceFamily->AppendElement(NS_LITERAL_STRING(device))
 
-const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id)
-{
+const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id) {
   // The code here is too sensitive to fall through to the default case if the
   // code is invalid.
-  NS_ASSERTION(id >= 0 && id < DeviceFamilyMax, "DeviceFamily id is out of range");
+  NS_ASSERTION(id >= 0 && id < DeviceFamilyMax,
+               "DeviceFamily id is out of range");
 
   // If it already exists, we must have processed it once, so return it now.
-  if (sDeviceFamilies[id])
-    return sDeviceFamilies[id];
+  if (sDeviceFamilies[id]) return sDeviceFamilies[id];
 
   sDeviceFamilies[id] = new GfxDeviceFamily;
   GfxDeviceFamily* deviceFamily = sDeviceFamilies[id];
@@ -214,6 +212,15 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id)
     case IntelHD3000:
       APPEND_DEVICE(0x0126);
       break;
+    case IntelHDGraphicsIvyBridge:
+      APPEND_DEVICE(0x015A); /* IntelIvyBridge_GT1_1 (HD Graphics) */
+      // clang-format off
+      APPEND_DEVICE(0x0152); /* IntelIvyBridge_GT1_2 (HD Graphics 2500, desktop) */
+      APPEND_DEVICE(0x0162); /* IntelIvyBridge_GT2_1 (HD Graphics 4000, desktop) */
+      APPEND_DEVICE(0x0166); /* IntelIvyBridge_GT2_2 (HD Graphics 4000, mobile) */
+      APPEND_DEVICE(0x016A); /* IntelIvyBridge_GT2_3 (HD Graphics P4000, workstation) */
+      // clang-format on
+      break;
     case IntelMobileHDGraphics:
       APPEND_DEVICE(0x0046); /* IntelMobileHDGraphics */
       break;
@@ -320,6 +327,40 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id)
       APPEND_DEVICE(0xa011);
       APPEND_DEVICE(0xa012);
       break;
+    case NvidiaBlockWebRender:
+      /* GT218 */
+      APPEND_DEVICE(0x0a60);
+      APPEND_DEVICE(0x0a62);
+      APPEND_DEVICE(0x0a63);
+      APPEND_DEVICE(0x0a64);
+      APPEND_DEVICE(0x0a65);
+      APPEND_DEVICE(0x0a66);
+      APPEND_DEVICE(0x0a67);
+      APPEND_DEVICE(0x0a7b);
+      APPEND_DEVICE(0x10c0);
+      APPEND_DEVICE(0x10c3);
+      APPEND_DEVICE(0x10c5);
+      APPEND_DEVICE(0x10d8);
+      /* GT218M */
+      APPEND_DEVICE(0x0a68);
+      APPEND_DEVICE(0x0a69);
+      APPEND_DEVICE(0x0a6a);
+      APPEND_DEVICE(0x0a6c);
+      APPEND_DEVICE(0x0a6e);
+      APPEND_DEVICE(0x0a6f);
+      APPEND_DEVICE(0x0a70);
+      APPEND_DEVICE(0x0a71);
+      APPEND_DEVICE(0x0a72);
+      APPEND_DEVICE(0x0a73);
+      APPEND_DEVICE(0x0a74);
+      APPEND_DEVICE(0x0a75);
+      APPEND_DEVICE(0x0a76);
+      APPEND_DEVICE(0x0a7a);
+      /* GT218GL */
+      APPEND_DEVICE(0x0a78);
+      /* GT218GLM */
+      APPEND_DEVICE(0x0a7c);
+      break;
     // This should never happen, but we get a warning if we don't handle this.
     case DeviceFamilyMax:
       NS_WARNING("Invalid DeviceFamily id");
@@ -330,17 +371,16 @@ const GfxDeviceFamily* GfxDriverInfo::GetDeviceFamily(DeviceFamily id)
 }
 
 // Macro for assigning a device vendor id to a string.
-#define DECLARE_VENDOR_ID(name, deviceId) \
-  case name: \
+#define DECLARE_VENDOR_ID(name, deviceId)        \
+  case name:                                     \
     sDeviceVendors[id]->AssignLiteral(deviceId); \
     break;
 
-const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceVendor id)
-{
-  NS_ASSERTION(id >= 0 && id < DeviceVendorMax, "DeviceVendor id is out of range");
+const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceVendor id) {
+  NS_ASSERTION(id >= 0 && id < DeviceVendorMax,
+               "DeviceVendor id is out of range");
 
-  if (sDeviceVendors[id])
-    return *sDeviceVendors[id];
+  if (sDeviceVendors[id]) return *sDeviceVendors[id];
 
   sDeviceVendors[id] = new nsString();
 
@@ -360,4 +400,33 @@ const nsAString& GfxDriverInfo::GetDeviceVendor(DeviceVendor id)
   }
 
   return *sDeviceVendors[id];
+}
+
+// Macro for assigning a driver vendor id to a string.
+#define DECLARE_DRIVER_VENDOR_ID(name, driverVendorId) \
+  case name:                                           \
+    sDriverVendors[id]->AssignLiteral(driverVendorId); \
+    break;
+
+const nsAString& GfxDriverInfo::GetDriverVendor(DriverVendor id) {
+  NS_ASSERTION(id >= 0 && id < DriverVendorMax,
+               "DriverVendor id is out of range");
+
+  if (sDriverVendors[id]) return *sDriverVendors[id];
+
+  sDriverVendors[id] = new nsString();
+
+  switch (id) {
+    DECLARE_DRIVER_VENDOR_ID(DriverVendorAll, "");
+    DECLARE_DRIVER_VENDOR_ID(DriverMesaAll, "mesa/all");
+    DECLARE_DRIVER_VENDOR_ID(DriverMesaLLVMPipe, "mesa/llvmpipe");
+    DECLARE_DRIVER_VENDOR_ID(DriverMesaSoftPipe, "mesa/softpipe");
+    DECLARE_DRIVER_VENDOR_ID(DriverMesaSWRast, "mesa/swrast");
+    DECLARE_DRIVER_VENDOR_ID(DriverMesaUnknown, "mesa/unknown");
+    DECLARE_DRIVER_VENDOR_ID(DriverNonMesaAll, "non-mesa/all");
+    // Suppress a warning.
+    DECLARE_DRIVER_VENDOR_ID(DriverVendorMax, "");
+  }
+
+  return *sDriverVendors[id];
 }

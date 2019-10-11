@@ -6,23 +6,44 @@
 
 const Services = require("Services");
 const TextEditor = require("devtools/client/inspector/markup/views/text-editor");
+const { truncateString } = require("devtools/shared/inspector/utils");
 const {
-  getAutocompleteMaxWidth,
-  flashElementOn,
-  flashElementOff,
-  parseAttributeValues,
-  truncateString,
-} = require("devtools/client/inspector/markup/utils");
-const {editableField, InplaceEditor} =
-      require("devtools/client/shared/inplace-editor");
-const {parseAttribute} =
-      require("devtools/client/shared/node-attribute-parser");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
+  editableField,
+  InplaceEditor,
+} = require("devtools/client/shared/inplace-editor");
+const {
+  parseAttribute,
+} = require("devtools/client/shared/node-attribute-parser");
 
-// Global tooltip inspector
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const INSPECTOR_L10N =
-  new LocalizationHelper("devtools/client/locales/inspector.properties");
+loader.lazyRequireGetter(
+  this,
+  "flashElementOn",
+  "devtools/client/inspector/markup/utils",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "flashElementOff",
+  "devtools/client/inspector/markup/utils",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "getAutocompleteMaxWidth",
+  "devtools/client/inspector/markup/utils",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "parseAttributeValues",
+  "devtools/client/inspector/markup/utils",
+  true
+);
+
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const INSPECTOR_L10N = new LocalizationHelper(
+  "devtools/client/locales/inspector.properties"
+);
 
 // Page size for pageup/pagedown
 const COLLAPSE_DATA_URL_REGEX = /^data.+base64/;
@@ -30,21 +51,38 @@ const COLLAPSE_DATA_URL_LENGTH = 60;
 
 // Contains only void (without end tag) HTML elements
 const HTML_VOID_ELEMENTS = [
-  "area", "base", "br", "col", "command", "embed",
-  "hr", "img", "input", "keygen", "link", "meta", "param", "source",
-  "track", "wbr"
+  "area",
+  "base",
+  "br",
+  "col",
+  "command",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ];
 
 // Contains only valid computed display property types of the node to display in the
 // element markup and their respective title tooltip text.
 const DISPLAY_TYPES = {
-  "flex": INSPECTOR_L10N.getStr("markupView.display.flex.tooltiptext"),
-  "inline-flex": INSPECTOR_L10N.getStr("markupView.display.flex.tooltiptext"),
-  "grid": INSPECTOR_L10N.getStr("markupView.display.grid.tooltiptext"),
-  "inline-grid": INSPECTOR_L10N.getStr("markupView.display.inlineGrid.tooltiptext"),
-  "subgrid": INSPECTOR_L10N.getStr("markupView.display.subgrid.tooltiptiptext"),
+  flex: INSPECTOR_L10N.getStr("markupView.display.flex.tooltiptext2"),
+  "inline-flex": INSPECTOR_L10N.getStr(
+    "markupView.display.inlineFlex.tooltiptext2"
+  ),
+  grid: INSPECTOR_L10N.getStr("markupView.display.grid.tooltiptext2"),
+  "inline-grid": INSPECTOR_L10N.getStr(
+    "markupView.display.inlineGrid.tooltiptext2"
+  ),
+  subgrid: INSPECTOR_L10N.getStr("markupView.display.subgrid.tooltiptiptext"),
   "flow-root": INSPECTOR_L10N.getStr("markupView.display.flowRoot.tooltiptext"),
-  "contents": INSPECTOR_L10N.getStr("markupView.display.contents.tooltiptext2"),
+  contents: INSPECTOR_L10N.getStr("markupView.display.contents.tooltiptext2"),
 };
 
 /**
@@ -52,8 +90,8 @@ const DISPLAY_TYPES = {
  *
  * @param  {MarkupContainer} container
  *         The container owning this editor.
- * @param  {Element} node
- *         The node being edited.
+ * @param  {NodeFront} node
+ *         The NodeFront being edited.
  */
 function ElementEditor(container, node) {
   this.container = container;
@@ -62,7 +100,7 @@ function ElementEditor(container, node) {
   this.doc = this.markup.doc;
   this.inspector = this.markup.inspector;
   this.highlighters = this.markup.highlighters;
-  this._cssProperties = getCssProperties(this.markup.toolbox);
+  this._cssProperties = this.inspector.cssProperties;
 
   this.attrElements = new Map();
   this.animationTimers = {};
@@ -74,8 +112,11 @@ function ElementEditor(container, node) {
   this.newAttr = null;
   this.closeElt = null;
 
-  this.onDisplayBadgeClick = this.onDisplayBadgeClick.bind(this);
   this.onCustomBadgeClick = this.onCustomBadgeClick.bind(this);
+  this.onDisplayBadgeClick = this.onDisplayBadgeClick.bind(this);
+  this.onExpandBadgeClick = this.onExpandBadgeClick.bind(this);
+  this.onFlexboxHighlighterChange = this.onFlexboxHighlighterChange.bind(this);
+  this.onGridHighlighterChange = this.onGridHighlighterChange.bind(this);
   this.onTagEdit = this.onTagEdit.bind(this);
 
   // Create the main editor
@@ -93,7 +134,7 @@ function ElementEditor(container, node) {
       trigger: "dblclick",
       stopOnReturn: true,
       done: this.onTagEdit,
-      cssProperties: this._cssProperties
+      cssProperties: this._cssProperties,
     });
   }
 
@@ -114,13 +155,16 @@ function ElementEditor(container, node) {
       const doMods = this._startModifyingAttributes();
       const undoMods = this._startModifyingAttributes();
       this._applyAttributes(val, null, doMods, undoMods);
-      this.container.undo.do(() => {
-        doMods.apply();
-      }, function() {
-        undoMods.apply();
-      });
+      this.container.undo.do(
+        () => {
+          doMods.apply();
+        },
+        function() {
+          undoMods.apply();
+        }
+      );
     },
-    cssProperties: this._cssProperties
+    cssProperties: this._cssProperties,
   });
 
   const displayName = this.node.displayName;
@@ -157,14 +201,21 @@ ElementEditor.prototype = {
     this.newAttr = this.doc.createElement("span");
     this.newAttr.classList.add("newattr");
     this.newAttr.setAttribute("tabindex", "-1");
-    this.newAttr.setAttribute("aria-label",
-      INSPECTOR_L10N.getStr("markupView.newAttribute.label"));
+    this.newAttr.setAttribute(
+      "aria-label",
+      INSPECTOR_L10N.getStr("markupView.newAttribute.label")
+    );
     open.appendChild(this.newAttr);
 
     const closingBracket = this.doc.createElement("span");
     closingBracket.classList.add("closing-bracket");
     closingBracket.textContent = ">";
     open.appendChild(closingBracket);
+
+    this.expandBadge = this.doc.createElement("span");
+    this.expandBadge.classList.add("markup-expand-badge");
+    this.expandBadge.addEventListener("click", this.onExpandBadgeClick);
+    this.elt.appendChild(this.expandBadge);
 
     const close = this.doc.createElement("span");
     close.classList.add("close");
@@ -189,10 +240,14 @@ ElementEditor.prototype = {
       clearTimeout(this.animationTimers[attrName]);
     }
 
-    flashElementOn(this.getAttributeElement(attrName));
+    flashElementOn(this.getAttributeElement(attrName), {
+      backgroundClass: "theme-bg-contrast",
+    });
 
     this.animationTimers[attrName] = setTimeout(() => {
-      flashElementOff(this.getAttributeElement(attrName));
+      flashElementOff(this.getAttributeElement(attrName), {
+        backgroundClass: "theme-bg-contrast",
+      });
     }, this.markup.CONTAINER_FLASHING_DURATION);
   },
 
@@ -221,7 +276,7 @@ ElementEditor.prototype = {
       value = attribute.dataset.value;
     }
 
-    return {type, name, value, el: node};
+    return { type, name, value, el: node };
   },
 
   /**
@@ -242,8 +297,7 @@ ElementEditor.prototype = {
     // attributes have already been removed at this point.
     for (const attr of nodeAttributes) {
       const el = this.attrElements.get(attr.name);
-      const valueChanged = el &&
-        el.dataset.value !== attr.value;
+      const valueChanged = el && el.dataset.value !== attr.value;
       const isEditing = el && el.querySelector(".editable").inplaceEditor;
       const canSimplyShowEditor = el && (!valueChanged || isEditing);
 
@@ -269,6 +323,7 @@ ElementEditor.prototype = {
     this.updateEventBadge();
     this.updateDisplayBadge();
     this.updateCustomBadge();
+    this.updateScrollableBadge();
     this.updateTextEditor();
   },
 
@@ -276,6 +331,7 @@ ElementEditor.prototype = {
     const showEventBadge = this.node.hasEventListeners;
     if (this._eventBadge && !showEventBadge) {
       this._eventBadge.remove();
+      this._eventBadge = null;
     } else if (showEventBadge && !this._eventBadge) {
       this._createEventBadge();
     }
@@ -283,47 +339,99 @@ ElementEditor.prototype = {
 
   _createEventBadge: function() {
     this._eventBadge = this.doc.createElement("div");
-    this._eventBadge.classList.add("markup-badge");
+    this._eventBadge.className = "inspector-badge interactive";
     this._eventBadge.dataset.event = "true";
     this._eventBadge.textContent = "event";
-    this._eventBadge.title = INSPECTOR_L10N.getStr("markupView.event.tooltiptext");
+    this._eventBadge.title = INSPECTOR_L10N.getStr(
+      "markupView.event.tooltiptext"
+    );
     // Badges order is [event][display][custom], insert event badge before others.
-    this.elt.insertBefore(this._eventBadge, this._displayBadge || this._customBadge);
+    this.elt.insertBefore(
+      this._eventBadge,
+      this._displayBadge || this._customBadge
+    );
+    this.markup.emit("badge-added-event");
+  },
+
+  updateScrollableBadge: function() {
+    if (this.node.isScrollable && !this._scrollableBadge) {
+      this._createScrollableBadge();
+    } else if (this._scrollableBadge && !this.node.isScrollable) {
+      this._scrollableBadge.remove();
+      this._scrollableBadge = null;
+    }
+  },
+
+  _createScrollableBadge: function() {
+    this._scrollableBadge = this.doc.createElement("div");
+    this._scrollableBadge.className = "inspector-badge scrollable-badge";
+    this._scrollableBadge.textContent = INSPECTOR_L10N.getStr(
+      "markupView.scrollableBadge.label"
+    );
+    this._scrollableBadge.title = INSPECTOR_L10N.getStr(
+      "markupView.scrollableBadge.tooltip"
+    );
+    this.elt.insertBefore(this._scrollableBadge, this._customBadge);
   },
 
   /**
    * Update the markup display badge.
    */
   updateDisplayBadge: function() {
-    const showDisplayBadge = this.node.displayType in DISPLAY_TYPES;
+    const displayType = this.node.displayType;
+    const showDisplayBadge = displayType in DISPLAY_TYPES;
+
     if (this._displayBadge && !showDisplayBadge) {
+      this.stopTrackingFlexboxHighlighterEvents();
+      this.stopTrackingGridHighlighterEvents();
+
       this._displayBadge.remove();
+      this._displayBadge = null;
     } else if (showDisplayBadge) {
       if (!this._displayBadge) {
         this._createDisplayBadge();
       }
+
       this._updateDisplayBadgeContent();
     }
   },
 
   _createDisplayBadge: function() {
     this._displayBadge = this.doc.createElement("div");
-    this._displayBadge.classList.add("markup-badge");
+    this._displayBadge.className = "inspector-badge";
     this._displayBadge.addEventListener("click", this.onDisplayBadgeClick);
     // Badges order is [event][display][custom], insert display badge before custom.
     this.elt.insertBefore(this._displayBadge, this._customBadge);
+
+    this.startTrackingFlexboxHighlighterEvents();
+    this.startTrackingGridHighlighterEvents();
   },
 
   _updateDisplayBadgeContent: function() {
-    this._displayBadge.textContent = this.node.displayType;
-    this._displayBadge.dataset.display = this.node.displayType;
-    this._displayBadge.title = DISPLAY_TYPES[this.node.displayType];
-    this._displayBadge.classList.toggle("active",
+    const displayType = this.node.displayType;
+    this._displayBadge.textContent = displayType;
+    this._displayBadge.dataset.display = displayType;
+    this._displayBadge.title = DISPLAY_TYPES[displayType];
+    this._displayBadge.classList.toggle(
+      "active",
       this.highlighters.flexboxHighlighterShown === this.node ||
-      this.highlighters.gridHighlighterShown === this.node);
-    this._displayBadge.classList.toggle("interactive",
-      Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
-      (this.node.displayType === "flex" || this.node.displayType === "inline-flex"));
+        this.highlighters.gridHighlighters.has(this.node)
+    );
+
+    if (displayType === "flex" || displayType === "inline-flex") {
+      this._displayBadge.classList.toggle("interactive", true);
+    } else if (
+      displayType === "grid" ||
+      displayType === "inline-grid" ||
+      displayType === "subgrid"
+    ) {
+      this._displayBadge.classList.toggle(
+        "interactive",
+        this.highlighters.canGridHighlighterToggle(this.node)
+      );
+    } else {
+      this._displayBadge.classList.remove("interactive");
+    }
   },
 
   /**
@@ -333,6 +441,7 @@ ElementEditor.prototype = {
     const showCustomBadge = !!this.node.customElementLocation;
     if (this._customBadge && !showCustomBadge) {
       this._customBadge.remove();
+      this._customBadge = null;
     } else if (!this._customBadge && showCustomBadge) {
       this._createCustomBadge();
     }
@@ -340,10 +449,12 @@ ElementEditor.prototype = {
 
   _createCustomBadge: function() {
     this._customBadge = this.doc.createElement("div");
-    this._customBadge.classList.add("markup-badge");
+    this._customBadge.className = "inspector-badge interactive";
     this._customBadge.dataset.custom = "true";
     this._customBadge.textContent = "custom…";
-    this._customBadge.title = INSPECTOR_L10N.getStr("markupView.custom.tooltiptext");
+    this._customBadge.title = INSPECTOR_L10N.getStr(
+      "markupView.custom.tooltiptext"
+    );
     this._customBadge.addEventListener("click", this.onCustomBadgeClick);
     // Badges order is [event][display][custom], insert custom badge at the end.
     this.elt.appendChild(this._customBadge);
@@ -357,6 +468,7 @@ ElementEditor.prototype = {
 
     if (this.textEditor && this.textEditor.node != node) {
       this.elt.removeChild(this.textEditor.elt);
+      this.textEditor.destroy();
       this.textEditor = null;
     }
 
@@ -365,7 +477,10 @@ ElementEditor.prototype = {
       // This editor won't receive an update automatically, so we rely on
       // child text editors to let us know that we need updating.
       this.textEditor = new TextEditor(this.container, node, "text");
-      this.elt.insertBefore(this.textEditor.elt, this.elt.querySelector(".close"));
+      this.elt.insertBefore(
+        this.textEditor.elt,
+        this.elt.querySelector(".close")
+      );
     }
 
     if (this.textEditor) {
@@ -386,7 +501,8 @@ ElementEditor.prototype = {
    */
   getAttributeElement: function(attrName) {
     return this.attrList.querySelector(
-      ".attreditor[data-attr=" + CSS.escape(attrName) + "] .attr-value");
+      ".attreditor[data-attr=" + CSS.escape(attrName) + "] .attr-value"
+    );
   },
 
   /**
@@ -419,14 +535,14 @@ ElementEditor.prototype = {
 
     const name = this.doc.createElement("span");
     name.classList.add("attr-name");
-    name.classList.add("theme-fg-color2");
+    name.classList.add("theme-fg-color1");
     inner.appendChild(name);
 
     inner.appendChild(this.doc.createTextNode('="'));
 
     const val = this.doc.createElement("span");
     val.classList.add("attr-value");
-    val.classList.add("theme-fg-color4");
+    val.classList.add("theme-fg-color2");
     inner.appendChild(val);
 
     inner.appendChild(this.doc.createTextNode('"'));
@@ -490,13 +606,16 @@ ElementEditor.prototype = {
         this._saveAttribute(attribute.name, undoMods);
         doMods.removeAttribute(attribute.name);
         this._applyAttributes(newValue, attr, doMods, undoMods);
-        this.container.undo.do(() => {
-          doMods.apply();
-        }, () => {
-          undoMods.apply();
-        });
+        this.container.undo.do(
+          () => {
+            doMods.apply();
+          },
+          () => {
+            undoMods.apply();
+          }
+        );
       },
-      cssProperties: this._cssProperties
+      cssProperties: this._cssProperties,
     });
 
     // Figure out where we should place the attribute.
@@ -515,12 +634,18 @@ ElementEditor.prototype = {
     // it (make sure to pass a complete list of existing attributes to the
     // parseAttribute function, by concatenating attribute, because this could
     // be a newly added attribute not yet on this.node).
-    const attributes = this.node.attributes.filter(existingAttribute => {
-      return existingAttribute.name !== attribute.name;
-    });
+    const attributes = this.node.attributes.filter(
+      existingAttribute => existingAttribute.name !== attribute.name
+    );
+
     attributes.push(attribute);
-    const parsedLinksData = parseAttribute(this.node.namespaceURI,
-      this.node.tagName, attributes, attribute.name);
+    const parsedLinksData = parseAttribute(
+      this.node.namespaceURI,
+      this.node.tagName,
+      attributes,
+      attribute.name,
+      attribute.value
+    );
 
     // Create links in the attribute value, and collapse long attributes if
     // needed.
@@ -596,7 +721,10 @@ ElementEditor.prototype = {
     // Only allow one refocus on attribute change at a time, so when there's
     // more than 1 request in parallel, the last one wins.
     if (this._editedAttributeObserver) {
-      this.markup.inspector.off("markupmutation", this._editedAttributeObserver);
+      this.markup.inspector.off(
+        "markupmutation",
+        this._editedAttributeObserver
+      );
       this._editedAttributeObserver = null;
     }
 
@@ -609,11 +737,12 @@ ElementEditor.prototype = {
 
     const container = this.markup.getContainer(this.node);
 
-    const activeAttrs = [...this.attrList.childNodes]
-      .filter(el => el.style.display != "none");
+    const activeAttrs = [...this.attrList.childNodes].filter(
+      el => el.style.display != "none"
+    );
     const attributeIndex = activeAttrs.indexOf(attrNode);
 
-    const onMutations = this._editedAttributeObserver = mutations => {
+    const onMutations = (this._editedAttributeObserver = mutations => {
       let isDeletedAttribute = false;
       let isNewAttribute = false;
 
@@ -626,8 +755,9 @@ ElementEditor.prototype = {
 
         const isOriginalAttribute = mutation.attributeName === attrName;
 
-        isDeletedAttribute = isDeletedAttribute || isOriginalAttribute &&
-                             mutation.newValue === null;
+        isDeletedAttribute =
+          isDeletedAttribute ||
+          (isOriginalAttribute && mutation.newValue === null);
         isNewAttribute = isNewAttribute || mutation.attributeName !== attrName;
       }
 
@@ -635,8 +765,9 @@ ElementEditor.prototype = {
       this._editedAttributeObserver = null;
 
       // "Deleted" attributes are merely hidden, so filter them out.
-      const visibleAttrs = [...this.attrList.childNodes]
-        .filter(el => el.style.display != "none");
+      const visibleAttrs = [...this.attrList.childNodes].filter(
+        el => el.style.display != "none"
+      );
       let activeEditor;
       if (visibleAttrs.length > 0) {
         if (!direction) {
@@ -658,8 +789,10 @@ ElementEditor.prototype = {
 
           // The number of attributes changed (deleted), or we moved through
           // the array so check we're still within bounds.
-          if (newAttributeIndex >= 0 &&
-              newAttributeIndex <= visibleAttrs.length - 1) {
+          if (
+            newAttributeIndex >= 0 &&
+            newAttributeIndex <= visibleAttrs.length - 1
+          ) {
             activeEditor = visibleAttrs[newAttributeIndex];
           }
         }
@@ -678,59 +811,173 @@ ElementEditor.prototype = {
       } else {
         // Refocus was triggered by enter.
         // Exit edit mode (but restore focus).
-        const editable = activeEditor === this.newAttr ?
-          activeEditor : activeEditor.querySelector(".editable");
+        const editable =
+          activeEditor === this.newAttr
+            ? activeEditor
+            : activeEditor.querySelector(".editable");
         editable.focus();
       }
 
       this.markup.emit("refocusedonedit");
-    };
+    });
 
     // Start listening for mutations until we find an attributes change
     // that modifies this attribute.
     this.markup.inspector.once("markupmutation", onMutations);
   },
 
+  startTrackingFlexboxHighlighterEvents() {
+    this.highlighters.on(
+      "flexbox-highlighter-hidden",
+      this.onFlexboxHighlighterChange
+    );
+    this.highlighters.on(
+      "flexbox-highlighter-shown",
+      this.onFlexboxHighlighterChange
+    );
+  },
+
+  startTrackingGridHighlighterEvents() {
+    this.highlighters.on(
+      "grid-highlighter-hidden",
+      this.onGridHighlighterChange
+    );
+    this.highlighters.on(
+      "grid-highlighter-shown",
+      this.onGridHighlighterChange
+    );
+  },
+
+  stopTrackingFlexboxHighlighterEvents() {
+    this.highlighters.off(
+      "flexbox-highlighter-hidden",
+      this.onFlexboxHighlighterChange
+    );
+    this.highlighters.off(
+      "flexbox-highlighter-shown",
+      this.onFlexboxHighlighterChange
+    );
+  },
+
+  stopTrackingGridHighlighterEvents() {
+    this.highlighters.off(
+      "grid-highlighter-hidden",
+      this.onGridHighlighterChange
+    );
+    this.highlighters.off(
+      "grid-highlighter-shown",
+      this.onGridHighlighterChange
+    );
+  },
+
   /**
-   * Called when the display badge is clicked. Toggles on the grid highlighter for the
-   * selected node if it is a grid container.
+   * Called when the display badge is clicked. Toggles on the flex/grid highlighter for
+   * the selected node if it is a grid container.
    */
-  onDisplayBadgeClick: function(event) {
+  onDisplayBadgeClick: async function(event) {
     event.stopPropagation();
 
     const target = event.target;
 
-    if (Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
-        (target.dataset.display === "flex" || target.dataset.display === "inline-flex")) {
-      this.highlighters.toggleFlexboxHighlighter(this.inspector.selection.nodeFront,
-        "markup");
+    if (
+      target.dataset.display === "flex" ||
+      target.dataset.display === "inline-flex"
+    ) {
+      // Stop tracking highlighter events to avoid flickering of the active class.
+      this.stopTrackingFlexboxHighlighterEvents();
+
+      this._displayBadge.classList.toggle("active");
+      await this.highlighters.toggleFlexboxHighlighter(this.node, "markup");
+
+      this.startTrackingFlexboxHighlighterEvents();
     }
 
-    if (target.dataset.display === "grid" || target.dataset.display === "inline-grid") {
-      this.highlighters.toggleGridHighlighter(this.inspector.selection.nodeFront,
-        "markup");
+    if (
+      target.dataset.display === "grid" ||
+      target.dataset.display === "inline-grid" ||
+      target.dataset.display === "subgrid"
+    ) {
+      // Don't toggle the grid highlighter if the max number of new grid highlighters
+      // allowed has been reached.
+      if (!this.highlighters.canGridHighlighterToggle(this.node)) {
+        return;
+      }
+
+      // Stop tracking highlighter events to avoid flickering of the active class.
+      this.stopTrackingGridHighlighterEvents();
+
+      this._displayBadge.classList.toggle("active");
+      await this.highlighters.toggleGridHighlighter(this.node, "markup");
+
+      this.startTrackingGridHighlighterEvents();
     }
   },
 
   onCustomBadgeClick: function() {
-    const { url, line } = this.node.customElementLocation;
-    this.markup.toolbox.viewSourceInDebugger(url, line, "show_custom_element");
+    const { url, line, column } = this.node.customElementLocation;
+    this.markup.toolbox.viewSourceInDebugger(
+      url,
+      line,
+      column,
+      null,
+      "show_custom_element"
+    );
+  },
+
+  onExpandBadgeClick: function() {
+    this.container.expandContainer();
+  },
+
+  /**
+   * Handler for "flexbox-highlighter-hidden" and "flexbox-highlighter-shown" event
+   * emitted from the HighlightersOverlay. Toggles the active state of the display badge
+   * if it matches the highlighted flex container node.
+   */
+  onFlexboxHighlighterChange: function() {
+    if (!this._displayBadge) {
+      return;
+    }
+
+    this._displayBadge.classList.toggle(
+      "active",
+      this.highlighters.flexboxHighlighterShown === this.node
+    );
+  },
+
+  /**
+   * Handler for "grid-highlighter-hidden" and "grid-highlighter-shown" event emitted from
+   * the HighlightersOverlay. Toggles the active state of the display badge if it matches
+   * the highlighted grid node.
+   */
+  onGridHighlighterChange: function() {
+    if (!this._displayBadge) {
+      return;
+    }
+
+    this._displayBadge.classList.toggle(
+      "active",
+      this.highlighters.gridHighlighters.has(this.node)
+    );
+
+    this._updateDisplayBadgeContent();
   },
 
   /**
    * Called when the tag name editor has is done editing.
    */
   onTagEdit: function(newTagName, isCommit) {
-    if (!isCommit ||
-        newTagName.toLowerCase() === this.node.tagName.toLowerCase() ||
-        !("editTagName" in this.markup.walker)) {
+    if (
+      !isCommit ||
+      newTagName.toLowerCase() === this.node.tagName.toLowerCase() ||
+      !("editTagName" in this.markup.walker)
+    ) {
       return;
     }
 
     // Changing the tagName removes the node. Make sure the replacing node gets
     // selected afterwards.
     this.markup.reselectOnRemoved(this.node, "edittagname");
-    this.markup.walker.editTagName(this.node, newTagName).catch(() => {
+    this.node.walkerFront.editTagName(this.node, newTagName).catch(() => {
       // Failed to edit the tag name, cancel the reselection.
       this.markup.cancelReselectOnRemoved();
     });
@@ -739,16 +986,21 @@ ElementEditor.prototype = {
   destroy: function() {
     if (this._displayBadge) {
       this._displayBadge.removeEventListener("click", this.onDisplayBadgeClick);
+      this.stopTrackingFlexboxHighlighterEvents();
+      this.stopTrackingGridHighlighterEvents();
     }
+
     if (this._customBadge) {
       this._customBadge.removeEventListener("click", this.onCustomBadgeClick);
     }
+
+    this.expandBadge.removeEventListener("click", this.onExpandBadgeClick);
 
     for (const key in this.animationTimers) {
       clearTimeout(this.animationTimers[key]);
     }
     this.animationTimers = null;
-  }
+  },
 };
 
 module.exports = ElementEditor;

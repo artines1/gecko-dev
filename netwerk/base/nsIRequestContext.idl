@@ -26,7 +26,7 @@ interface nsIStreamListener;
  * If the request is tail-blocked, it will be held in its request
  * context queue until unblocked.
  */
-[scriptable, uuid(7EB361D4-37A5-42C9-AFAE-F6C88FE7C394)]
+[uuid(7EB361D4-37A5-42C9-AFAE-F6C88FE7C394)]
 interface nsIRequestTailUnblockCallback : nsISupports
 {
   /**
@@ -48,13 +48,13 @@ interface nsIRequestTailUnblockCallback : nsISupports
  *
  * This used to be known as nsILoadGroupConnectionInfo and nsISchedulingContext.
  */
-[scriptable, uuid(658e3e6e-8633-4b1a-8d66-fa9f72293e63)]
+[uuid(658e3e6e-8633-4b1a-8d66-fa9f72293e63)]
 interface nsIRequestContext : nsISupports
 {
   /**
    * A unique identifier for this request context
    */
-  [noscript] readonly attribute unsigned long long ID;
+  [notxpcom, nostdcall] readonly attribute unsigned long long ID;
 
   /**
    * Called by the associated document when its load starts.  This resets
@@ -91,12 +91,7 @@ interface nsIRequestContext : nsISupports
    * and will destroy it when overwritten or when the context
    * ends.
    */
-  [noscript] attribute SpdyPushCachePtr spdyPushCache;
-
-  /**
-   * This holds a cached value of the user agent override.
-   */
-  [noscript] attribute ACString userAgentOverride;
+  [notxpcom,nostdcall] attribute SpdyPushCachePtr spdyPushCache;
 
   /**
    * Increases/decrease the number of non-tailed requests in this context.

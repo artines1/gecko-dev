@@ -1,3 +1,4 @@
+// META: timeout=long
 // META: script=/resources/WebIDLParser.js
 // META: script=/resources/idlharness.js
 // META: script=/webusb/resources/fake-devices.js
@@ -41,6 +42,5 @@ idl_test(
       self.usbConnectionEvent =
           new USBConnectionEvent('connect', { device: usbDevice });
     }, 'USB device setup');
-  },
-  'WebUSB IDL test'
+  }
 );

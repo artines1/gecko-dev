@@ -6,7 +6,7 @@ Test to verify the delete button calls the onDelete handler for an item
 <head>
     <meta charset="utf-8">
     <title>Tree component test</title>
-    <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+    <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
     <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
@@ -24,7 +24,7 @@ Test to verify the delete button calls the onDelete handler for an item
 
               const snapshots = [ TEST_SNAPSHOT, TEST_SNAPSHOT, TEST_SNAPSHOT ]
                 .map((snapshot, index) => immutableUpdate(snapshot, {
-                  index: snapshot.index + index
+                  index: snapshot.index + index,
                 }));
 
               await renderComponent(
@@ -32,7 +32,7 @@ Test to verify the delete button calls the onDelete handler for an item
                   itemComponent: SnapshotListItem,
                   onClick: noop,
                   onDelete: (item) => deletedSnapshots.push(item),
-                  items: snapshots
+                  items: snapshots,
                 }),
                 container
               );

@@ -18,7 +18,7 @@ class RecordingListItem extends Component {
       onSave: PropTypes.func.isRequired,
       isLoading: PropTypes.bool,
       isSelected: PropTypes.bool,
-      isRecording: PropTypes.bool
+      isRecording: PropTypes.bool,
     };
   }
 
@@ -30,7 +30,7 @@ class RecordingListItem extends Component {
       onSave,
       isLoading,
       isSelected,
-      isRecording
+      isRecording,
     } = this.props;
 
     const className = `recording-list-item ${isSelected ? "selected" : ""}`;
@@ -41,19 +41,21 @@ class RecordingListItem extends Component {
     } else if (isRecording) {
       durationText = L10N.getStr("recordingsList.recordingLabel");
     } else {
-      durationText = L10N.getFormatStr("recordingsList.durationLabel", duration);
+      durationText = L10N.getFormatStr(
+        "recordingsList.durationLabel",
+        duration
+      );
     }
 
-    return (
-      li({ className, onClick: onSelect },
-        div({ className: "recording-list-item-label" },
-          label
-        ),
-        div({ className: "recording-list-item-footer" },
-          span({ className: "recording-list-item-duration" }, durationText),
-          button({ className: "recording-list-item-save", onClick: onSave },
-            L10N.getStr("recordingsList.saveLabel")
-          )
+    return li(
+      { className, onClick: onSelect },
+      div({ className: "recording-list-item-label" }, label),
+      div(
+        { className: "recording-list-item-footer" },
+        span({ className: "recording-list-item-duration" }, durationText),
+        button(
+          { className: "recording-list-item-save", onClick: onSave },
+          L10N.getStr("recordingsList.saveLabel")
         )
       )
     );

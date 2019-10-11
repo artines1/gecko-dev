@@ -21,7 +21,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=618176
 
     function recvTest(m) {
       var a = m.json;
-      opener.wrappedJSObject.is(a.length, 3, "array was serialized and deserialized");
+      window.arguments[0].is(a.length, 3, "array was serialized and deserialized");
 
       messageManager.removeMessageListener("test", recvTest);
       finish();
@@ -30,11 +30,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=618176
     function start() {
       messageManager.addMessageListener("test", recvTest);
       messageManager.loadFrameScript(FRAME_SCRIPT, true);
-      setTimeout(function () { document.getElementById("browser").loadURI(TEST_PAGE); }, 0);
+      const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+      let triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
+      setTimeout(function () {
+        document.getElementById("browser").loadURI(TEST_PAGE, {triggeringPrincipal});
+      }, 0);
     }
 
     function finish() {
-      opener.setTimeout("done()", 0);
+      window.arguments[0].setTimeout(function() { this.done(); }, 0);
       window.close();
     }
 

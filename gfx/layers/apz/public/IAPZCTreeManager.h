@@ -7,13 +7,15 @@
 #ifndef mozilla_layers_IAPZCTreeManager_h
 #define mozilla_layers_IAPZCTreeManager_h
 
-#include <stdint.h>                     // for uint64_t, uint32_t
+#include <stdint.h>  // for uint64_t, uint32_t
 
-#include "FrameMetrics.h"               // for FrameMetrics, etc
-#include "mozilla/layers/LayersTypes.h" // for TouchBehaviorFlags
-#include "nsTArrayForwardDeclare.h"     // for nsTArray, nsTArray_Impl, etc
-#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
-#include "Units.h"                      // for CSSRect, etc
+#include "mozilla/layers/APZTypes.h"
+#include "mozilla/layers/LayersTypes.h"          // for TouchBehaviorFlags
+#include "mozilla/layers/ScrollableLayerGuid.h"  // for ScrollableLayerGuid, etc
+#include "mozilla/layers/ZoomConstraints.h"      // for ZoomConstraints
+#include "nsTArrayForwardDeclare.h"  // for nsTArray, nsTArray_Impl, etc
+#include "nsISupportsImpl.h"         // for MOZ_COUNT_CTOR, etc
+#include "Units.h"                   // for CSSRect, etc
 
 namespace mozilla {
 namespace layers {
@@ -22,19 +24,19 @@ class APZInputBridge;
 class KeyboardMap;
 
 enum AllowedTouchBehavior {
-  NONE =               0,
-  VERTICAL_PAN =       1 << 0,
-  HORIZONTAL_PAN =     1 << 1,
-  PINCH_ZOOM =         1 << 2,
-  DOUBLE_TAP_ZOOM =    1 << 3,
-  UNKNOWN =            1 << 4
+  NONE = 0,
+  VERTICAL_PAN = 1 << 0,
+  HORIZONTAL_PAN = 1 << 1,
+  PINCH_ZOOM = 1 << 2,
+  DOUBLE_TAP_ZOOM = 1 << 3,
+  UNKNOWN = 1 << 4
 };
 
 enum ZoomToRectBehavior : uint32_t {
-  DEFAULT_BEHAVIOR =   0,
-  DISABLE_ZOOM_OUT =   1 << 0,
+  DEFAULT_BEHAVIOR = 0,
+  DISABLE_ZOOM_OUT = 1 << 0,
   PAN_INTO_VIEW_ONLY = 1 << 1,
-  ONLY_ZOOM_TO_DEFAULT_SCALE  = 1 << 2
+  ONLY_ZOOM_TO_DEFAULT_SCALE = 1 << 2
 };
 
 class AsyncDragMetrics;
@@ -42,7 +44,7 @@ class AsyncDragMetrics;
 class IAPZCTreeManager {
   NS_INLINE_DECL_THREADSAFE_VIRTUAL_REFCOUNTING(IAPZCTreeManager)
 
-public:
+ public:
   /**
    * Set the keyboard shortcuts to use for translating keyboard events.
    */
@@ -54,10 +56,9 @@ public:
    * up. |aRect| must be given in CSS pixels, relative to the document.
    * |aFlags| is a combination of the ZoomToRectBehavior enum values.
    */
-  virtual void ZoomToRect(
-      const ScrollableLayerGuid& aGuid,
-      const CSSRect& aRect,
-      const uint32_t aFlags = DEFAULT_BEHAVIOR) = 0;
+  virtual void ZoomToRect(const SLGuidAndRenderRoot& aGuid,
+                          const CSSRect& aRect,
+                          const uint32_t aFlags = DEFAULT_BEHAVIOR) = 0;
 
   /**
    * If we have touch listeners, this should always be called when we know
@@ -66,9 +67,8 @@ public:
    * queue will be discarded. This function must be called on the controller
    * thread.
    */
-  virtual void ContentReceivedInputBlock(
-      uint64_t aInputBlockId,
-      bool aPreventDefault) = 0;
+  virtual void ContentReceivedInputBlock(uint64_t aInputBlockId,
+                                         bool aPreventDefault) = 0;
 
   /**
    * When the event regions code is enabled, this function should be invoked to
@@ -79,11 +79,10 @@ public:
    * The different elements in the array of targets correspond to the targets
    * for the different touch points. In the case where the touch point has no
    * target, or the target is not a scrollable frame, the target's |mScrollId|
-   * should be set to FrameMetrics::NULL_SCROLL_ID.
+   * should be set to ScrollableLayerGuid::NULL_SCROLL_ID.
    */
-  virtual void SetTargetAPZC(
-      uint64_t aInputBlockId,
-      const nsTArray<ScrollableLayerGuid>& aTargets) = 0;
+  virtual void SetTargetAPZC(uint64_t aInputBlockId,
+                             const nsTArray<SLGuidAndRenderRoot>& aTargets) = 0;
 
   /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
@@ -91,7 +90,7 @@ public:
    * the given |aGuid| are cleared.
    */
   virtual void UpdateZoomConstraints(
-      const ScrollableLayerGuid& aGuid,
+      const SLGuidAndRenderRoot& aGuid,
       const Maybe<ZoomConstraints>& aConstraints) = 0;
 
   virtual void SetDPI(float aDpiValue) = 0;
@@ -106,18 +105,15 @@ public:
    * This must be called on the controller thread.
    */
   virtual void SetAllowedTouchBehavior(
-      uint64_t aInputBlockId,
-      const nsTArray<TouchBehaviorFlags>& aValues) = 0;
+      uint64_t aInputBlockId, const nsTArray<TouchBehaviorFlags>& aValues) = 0;
 
-  virtual void StartScrollbarDrag(
-      const ScrollableLayerGuid& aGuid,
-      const AsyncDragMetrics& aDragMetrics) = 0;
+  virtual void StartScrollbarDrag(const SLGuidAndRenderRoot& aGuid,
+                                  const AsyncDragMetrics& aDragMetrics) = 0;
 
-  virtual bool StartAutoscroll(
-      const ScrollableLayerGuid& aGuid,
-      const ScreenPoint& aAnchorLocation) = 0;
+  virtual bool StartAutoscroll(const SLGuidAndRenderRoot& aGuid,
+                               const ScreenPoint& aAnchorLocation) = 0;
 
-  virtual void StopAutoscroll(const ScrollableLayerGuid& aGuid) = 0;
+  virtual void StopAutoscroll(const SLGuidAndRenderRoot& aGuid) = 0;
 
   /**
    * Function used to disable LongTap gestures.
@@ -136,14 +132,13 @@ public:
    */
   virtual APZInputBridge* InputBridge() = 0;
 
-protected:
-
+ protected:
   // Discourage destruction outside of decref
 
-  virtual ~IAPZCTreeManager() { }
+  virtual ~IAPZCTreeManager() = default;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif // mozilla_layers_IAPZCTreeManager_h
+#endif  // mozilla_layers_IAPZCTreeManager_h

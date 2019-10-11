@@ -10,9 +10,7 @@
 #include "nsLayoutUtils.h"
 #include "nsIContent.h"
 
-void
-nsGenConList::Clear()
-{
+void nsGenConList::Clear() {
   // Delete entire list.
   mNodes.Clear();
   while (nsGenConNode* node = mList.popFirst()) {
@@ -22,9 +20,7 @@ nsGenConList::Clear()
   mLastInserted = nullptr;
 }
 
-bool
-nsGenConList::DestroyNodesFor(nsIFrame* aFrame)
-{
+bool nsGenConList::DestroyNodesFor(nsIFrame* aFrame) {
   // This algorithm relies on the invariant that nodes of a frame are
   // put contiguously in the linked list. This is guaranteed because
   // each frame is mapped to only one (nsIContent, pseudoType) pair,
@@ -52,18 +48,21 @@ nsGenConList::DestroyNodesFor(nsIFrame* aFrame)
  * Compute the type of the pseudo and the content for the pseudo that
  * we'll use for comparison purposes.
  * @param aContent the content to use is stored here; it's the element
- * that generated the ::before or ::after content, or (if not for generated
- * content), the frame's own element
- * @return -1 for ::before, +1 for ::after, and 0 otherwise.
+ * that generated the pseudo, or (if not for generated content), the frame's
+ * own element
+ * @return -2 for ::marker, -1 for ::before, +1 for ::after, and 0 otherwise.
  */
-inline int32_t PseudoCompareType(nsIFrame* aFrame, nsIContent** aContent)
-{
-  nsAtom *pseudo = aFrame->Style()->GetPseudo();
-  if (pseudo == nsCSSPseudoElements::before) {
+inline int32_t PseudoCompareType(nsIFrame* aFrame, nsIContent** aContent) {
+  auto pseudo = aFrame->Style()->GetPseudoType();
+  if (pseudo == mozilla::PseudoStyleType::marker) {
+    *aContent = aFrame->GetContent()->GetParent();
+    return -2;
+  }
+  if (pseudo == mozilla::PseudoStyleType::before) {
     *aContent = aFrame->GetContent()->GetParent();
     return -1;
   }
-  if (pseudo == nsCSSPseudoElements::after) {
+  if (pseudo == mozilla::PseudoStyleType::after) {
     *aContent = aFrame->GetContent()->GetParent();
     return 1;
   }
@@ -71,9 +70,17 @@ inline int32_t PseudoCompareType(nsIFrame* aFrame, nsIContent** aContent)
   return 0;
 }
 
-/* static */ bool
-nsGenConList::NodeAfter(const nsGenConNode* aNode1, const nsGenConNode* aNode2)
-{
+#if defined(DEBUG) && defined(MOZ_XBL)
+static bool IsXBLInvolved(nsIContent* aContent1, nsIContent* aContent2) {
+  auto* ancestor = nsContentUtils::GetCommonAncestor(aContent1, aContent2);
+  return ancestor && ancestor->IsElement() &&
+         ancestor->AsElement()->GetXBLBinding();
+}
+#endif
+
+/* static */
+bool nsGenConList::NodeAfter(const nsGenConNode* aNode1,
+                             const nsGenConNode* aNode2) {
   nsIFrame* frame1 = aNode1->mPseudoFrame;
   nsIFrame* frame2 = aNode2->mPseudoFrame;
   if (frame1 == frame2) {
@@ -84,31 +91,32 @@ nsGenConList::NodeAfter(const nsGenConNode* aNode1, const nsGenConNode* aNode2)
   nsIContent* content2;
   int32_t pseudoType1 = PseudoCompareType(frame1, &content1);
   int32_t pseudoType2 = PseudoCompareType(frame2, &content2);
-  if (pseudoType1 == 0 || pseudoType2 == 0) {
-    if (content1 == content2) {
-      NS_ASSERTION(pseudoType1 != pseudoType2, "identical");
+  if (content1 == content2) {
+    NS_ASSERTION(pseudoType1 != pseudoType2, "identical");
+    if (pseudoType1 == 0 || pseudoType2 == 0) {
       return pseudoType2 == 0;
     }
-    // We want to treat an element as coming before its :before (preorder
-    // traversal), so treating both as :before now works.
-    if (pseudoType1 == 0) pseudoType1 = -1;
-    if (pseudoType2 == 0) pseudoType2 = -1;
-  } else {
-    if (content1 == content2) {
-      NS_ASSERTION(pseudoType1 != pseudoType2, "identical");
-      return pseudoType1 == 1;
-    }
+    return pseudoType1 > pseudoType2;
   }
 
-  int32_t cmp = nsLayoutUtils::DoCompareTreePosition(content1, content2,
-                                                     pseudoType1, -pseudoType2);
-  MOZ_ASSERT(cmp != 0, "same content, different frames");
+  // Two pseudo-elements of different elements, we want to treat them as if
+  // they were normal elements and just use tree order.
+  content1 = frame1->GetContent();
+  content2 = frame2->GetContent();
+
+  int32_t cmp = nsLayoutUtils::CompareTreePosition(content1, content2);
+  // DoCompareTreePosition doesn't know about XBL anonymous content, and we
+  // probably shouldn't bother teaching it about it.
+  MOZ_ASSERT(cmp != 0
+#ifdef MOZ_XBL
+                 || IsXBLInvolved(content1, content2)
+#endif
+                 ,
+             "same content, different frames");
   return cmp > 0;
 }
 
-void
-nsGenConList::Insert(nsGenConNode* aNode)
-{
+void nsGenConList::Insert(nsGenConNode* aNode) {
   // Check for append.
   if (mList.isEmpty() || NodeAfter(aNode, mList.getLast())) {
     mList.insertBack(aNode);
@@ -131,11 +139,9 @@ nsGenConList::Insert(nsGenConNode* aNode)
     while (first != last) {
       uint32_t test = (first + last) / 2;
       if (last == curIndex) {
-        for ( ; curIndex != test; --curIndex)
-          curNode = Prev(curNode);
+        for (; curIndex != test; --curIndex) curNode = Prev(curNode);
       } else {
-        for ( ; curIndex != test; ++curIndex)
-          curNode = Next(curNode);
+        for (; curIndex != test; ++curIndex) curNode = Next(curNode);
       }
 
       if (NodeAfter(aNode, curNode)) {
@@ -156,8 +162,7 @@ nsGenConList::Insert(nsGenConNode* aNode)
   // Set the mapping only if it is the first node of the frame.
   // The DEBUG blocks below are for ensuring the invariant required by
   // nsGenConList::DestroyNodesFor. See comment there.
-  if (IsFirst(aNode) ||
-      Prev(aNode)->mPseudoFrame != aNode->mPseudoFrame) {
+  if (IsFirst(aNode) || Prev(aNode)->mPseudoFrame != aNode->mPseudoFrame) {
 #ifdef DEBUG
     if (nsGenConNode* oldFrameFirstNode = mNodes.Get(aNode->mPseudoFrame)) {
       MOZ_ASSERT(Next(aNode) == oldFrameFirstNode,
@@ -183,8 +188,8 @@ nsGenConList::Insert(nsGenConNode* aNode)
 #ifdef DEBUG
     nsGenConNode* frameFirstNode = mNodes.Get(aNode->mPseudoFrame);
     MOZ_ASSERT(frameFirstNode, "There should exist node map for the frame.");
-    for (nsGenConNode* curNode = Prev(aNode);
-         curNode != frameFirstNode; curNode = Prev(curNode)) {
+    for (nsGenConNode* curNode = Prev(aNode); curNode != frameFirstNode;
+         curNode = Prev(curNode)) {
       MOZ_ASSERT(curNode->mPseudoFrame == aNode->mPseudoFrame,
                  "Every node between frameFirstNode and the new node inserted "
                  "should refer to the same frame.");
@@ -198,6 +203,5 @@ nsGenConList::Insert(nsGenConNode* aNode)
 
   NS_ASSERTION(IsFirst(aNode) || NodeAfter(aNode, Prev(aNode)),
                "sorting error");
-  NS_ASSERTION(IsLast(aNode) || NodeAfter(Next(aNode), aNode),
-               "sorting error");
+  NS_ASSERTION(IsLast(aNode) || NodeAfter(Next(aNode), aNode), "sorting error");
 }

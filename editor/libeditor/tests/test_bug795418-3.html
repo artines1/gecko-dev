@@ -6,8 +6,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=795418
 <head>
   <meta charset="utf-8">
   <title>Test #3 for Bug 772796</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -38,7 +38,6 @@ SimpleTest.waitForFocus(function() {
 
   function checkResult() {
     var iframe = document.querySelector("iframe");
-    var iframeWindow = iframe.contentWindow;
     var theEdit = iframe.contentDocument.body;
     theEdit.offsetHeight;
     is(theEdit.innerHTML,
@@ -51,7 +50,7 @@ SimpleTest.waitForFocus(function() {
     var iframe = document.querySelector("iframe");
     var iframeWindow = iframe.contentWindow;
     var theEdit = iframe.contentDocument.body;
-    iframe.contentDocument.designMode='on';
+    iframe.contentDocument.designMode = "on";
     iframe.contentDocument.body.offsetHeight;
     iframeWindow.focus();
     SimpleTest.waitForFocus(function() {

@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -34,16 +32,13 @@ define(function(require, exports, module) {
     }
 
     render() {
-      return (
-        div({className: "textPanelBox tab-panel-inner"},
-          TextToolbar({
-            actions: this.props.actions,
-            isValidJson: this.props.isValidJson
-          }),
-          div({className: "panelContent"},
-            LiveText({data: this.props.data})
-          )
-        )
+      return div(
+        { className: "textPanelBox tab-panel-inner" },
+        TextToolbar({
+          actions: this.props.actions,
+          isValidJson: this.props.isValidJson,
+        }),
+        div({ className: "panelContent" }, LiveText({ data: this.props.data }))
       );
     }
   }

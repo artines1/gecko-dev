@@ -16,10 +16,9 @@ class nsContentList;
 namespace mozilla {
 namespace dom {
 
-class HTMLMapElement final : public nsGenericHTMLElement
-{
-public:
-  explicit HTMLMapElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+class HTMLMapElement final : public nsGenericHTMLElement {
+ public:
+  explicit HTMLMapElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -29,25 +28,22 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED_NO_UNLINK(HTMLMapElement,
                                                      nsGenericHTMLElement)
 
-  void GetName(nsAString& aValue)
-  {
-    GetHTMLAttr(nsGkAtoms::name, aValue);
-  }
-  void SetName(const nsAString& aName, ErrorResult& aError)
-  {
+  void GetName(nsAString& aValue) { GetHTMLAttr(nsGkAtoms::name, aValue); }
+  void SetName(const nsAString& aName, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::name, aName, aError);
   }
   nsIHTMLCollection* Areas();
 
-  virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapNode(JSContext* aCx,
+                             JS::Handle<JSObject*> aGivenProto) override;
 
-protected:
+ protected:
   ~HTMLMapElement() {}
 
   RefPtr<nsContentList> mAreas;
 };
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla
 
-#endif // mozilla_dom_HTMLMapElement_h
+#endif  // mozilla_dom_HTMLMapElement_h

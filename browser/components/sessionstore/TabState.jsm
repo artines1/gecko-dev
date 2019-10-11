@@ -6,14 +6,21 @@
 
 var EXPORTED_SYMBOLS = ["TabState"];
 
-ChromeUtils.defineModuleGetter(this, "PrivacyFilter",
-  "resource://gre/modules/sessionstore/PrivacyFilter.jsm");
-ChromeUtils.defineModuleGetter(this, "TabStateCache",
-  "resource:///modules/sessionstore/TabStateCache.jsm");
-ChromeUtils.defineModuleGetter(this, "TabAttributes",
-  "resource:///modules/sessionstore/TabAttributes.jsm");
-ChromeUtils.defineModuleGetter(this, "Utils",
-  "resource://gre/modules/sessionstore/Utils.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "PrivacyFilter",
+  "resource://gre/modules/sessionstore/PrivacyFilter.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "TabStateCache",
+  "resource:///modules/sessionstore/TabStateCache.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "TabAttributes",
+  "resource:///modules/sessionstore/TabAttributes.jsm"
+);
 
 /**
  * Module that contains tab state collection methods.
@@ -40,7 +47,7 @@ var TabStateInternal = {
   /**
    * Processes a data update sent by the content script.
    */
-  update(browser, {data}) {
+  update(browser, { data }) {
     TabStateCache.update(browser, data);
   },
 
@@ -57,7 +64,7 @@ var TabStateInternal = {
    * collect(aTab), the same object is returned.
    */
   collect(tab, extData) {
-    return this._collectBaseTabData(tab, {extData});
+    return this._collectBaseTabData(tab, { extData });
   },
 
   /**
@@ -74,7 +81,7 @@ var TabStateInternal = {
    *                   up-to-date.
    */
   clone(tab, extData) {
-    return this._collectBaseTabData(tab, {extData, includePrivateData: true});
+    return this._collectBaseTabData(tab, { extData, includePrivateData: true });
   },
 
   /**
@@ -125,11 +132,6 @@ var TabStateInternal = {
       tabData.image = tabbrowser.getIcon(tab);
     }
 
-    // Store the serialized contentPrincipal of this tab to use for the icon.
-    if (!("iconLoadingPrincipal" in tabData)) {
-      tabData.iconLoadingPrincipal = Utils.serializePrincipal(browser.mIconLoadingPrincipal);
-    }
-
     // If there is a userTypedValue set, then either the user has typed something
     // in the URL bar, or a new tab was opened with a URI to load.
     // If so, we also track whether we were still in the process of loading something.
@@ -141,7 +143,9 @@ var TabStateInternal = {
       // the last time the user typed in the URL bar. Mimic this to keep the
       // session store representation in sync, even though we now represent this
       // more explicitly:
-      tabData.userTypedClear = browser.didStartLoadSinceLastUserTyping() ? 1 : 0;
+      tabData.userTypedClear = browser.didStartLoadSinceLastUserTyping()
+        ? 1
+        : 0;
     }
 
     return tabData;
@@ -191,9 +195,23 @@ var TabStateInternal = {
         if (value.hasOwnProperty("index")) {
           tabData.index = value.index;
         }
+
+        if (value.hasOwnProperty("requestedIndex")) {
+          tabData.requestedIndex = value.requestedIndex;
+        }
       } else {
         tabData[key] = value;
       }
     }
-  }
+
+    // [Bug 1554512]
+    // If the latest scroll position is on the top, we will delete scroll entry.
+    // When scroll entry is deleted in TabStateCache, it cannot be updated.
+    // To prevent losing the scroll position, we need to add a handing here.
+    if (tabData.scroll) {
+      if (!data.scroll) {
+        delete tabData.scroll;
+      }
+    }
+  },
 };

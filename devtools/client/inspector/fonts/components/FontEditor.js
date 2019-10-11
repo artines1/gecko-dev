@@ -4,15 +4,20 @@
 
 "use strict";
 
-const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  createFactory,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
-const FontMeta = createFactory(require("./FontMeta"));
-const FontPropertyValue = createFactory(require("./FontPropertyValue"));
+const FontAxis = createFactory(require("./FontAxis"));
+const FontName = createFactory(require("./FontName"));
 const FontSize = createFactory(require("./FontSize"));
 const FontStyle = createFactory(require("./FontStyle"));
 const FontWeight = createFactory(require("./FontWeight"));
+const LetterSpacing = createFactory(require("./LetterSpacing"));
+const LineHeight = createFactory(require("./LineHeight"));
 
 const { getStr } = require("../utils/l10n");
 const Types = require("../types");
@@ -32,193 +37,184 @@ class FontEditor extends PureComponent {
   }
 
   /**
-   * Naive implementation to get increment step for variable font axis that ensures
-   * a wide spectrum of precision based on range of values between min and max.
-   *
-   * @param  {Number|String} min
-   *         Minumum value for range.
-   * @param  {Number|String} max
-   *         Maximum value for range.
-   * @return {String}
-   *         Step value used in range input for font axis.
-   */
-  getAxisStep(min, max) {
-    let step = 1;
-    const delta = parseInt(max, 10) - parseInt(min, 10);
-
-    if (delta <= 1) {
-      step = 0.001;
-    } else if (delta <= 10) {
-      step = 0.01;
-    } else if (delta <= 100) {
-      step = 0.1;
-    }
-
-    return step.toString();
-  }
-
-  /**
-   * Get a container with the rendered FontPropertyValue components with editing controls
-   * for of the given variable font axes. If no axes were given, return null.
-   * If an axis has a value in the fontEditor store (i.e.: it was declared in CSS or
-   * it was changed using the font editor), use its value, otherwise use the font axis
-   * default.
+   * Get an array of FontAxis components with editing controls for of the given variable
+   * font axes. If no axes were given, return null.
+   * If an axis' value was declared on the font-variation-settings CSS property or was
+   * changed using the font editor, use that value, otherwise use the axis default.
    *
    * @param  {Array} fontAxes
    *         Array of font axis instances
    * @param  {Object} editedAxes
-   *         Object with axes and values edited by the user or predefined in the CSS
+   *         Object with axes and values edited by the user or defined in the CSS
    *         declaration for font-variation-settings.
-   * @return {DOMNode|null}
+   * @return {Array|null}
    */
   renderAxes(fontAxes = [], editedAxes) {
     if (!fontAxes.length) {
       return null;
     }
 
-    const controls = fontAxes.map(axis => {
-      return FontPropertyValue({
+    return fontAxes.map(axis => {
+      return FontAxis({
         key: axis.tag,
-        min: axis.minValue,
-        max: axis.maxValue,
-        value: editedAxes[axis.tag] || axis.defaultValue,
-        step: this.getAxisStep(axis.minValue, axis.maxValue),
-        label: axis.name,
-        name: axis.tag,
+        axis,
+        disabled: this.props.fontEditor.disabled,
         onChange: this.props.onPropertyChange,
-        unit: null
+        minLabel: true,
+        maxLabel: true,
+        value: editedAxes[axis.tag] || axis.defaultValue,
       });
     });
-
-    return dom.div(
-      {
-        className: "font-axes-controls"
-      },
-      controls
-    );
-  }
-
-  renderFamilesNotUsed(familiesNotUsed = []) {
-    if (!familiesNotUsed.length) {
-      return null;
-    }
-
-    const familiesList = familiesNotUsed.map(family => {
-      return dom.div(
-        {
-          className: "font-family-unused",
-        },
-        family
-      );
-    });
-
-    return dom.details(
-      {},
-      dom.summary(
-        {},
-        getStr("fontinspector.familiesUnusedLabel")
-      ),
-      familiesList
-    );
   }
 
   /**
-   * Render font family, font name, and metadata for all fonts used on selected node.
+   * Render fonts used on the selected node grouped by font-family.
    *
    * @param {Array} fonts
    *        Fonts used on selected node.
-   * @param {Array} families
-   *        Font familes declared on selected node.
    * @return {DOMNode}
    */
-  renderFontFamily(fonts, families) {
+  renderUsedFonts(fonts) {
     if (!fonts.length) {
       return null;
     }
 
-    const topUsedFontsList = this.renderFontList(fonts.slice(0, MAX_FONTS));
-    const moreUsedFontsList = this.renderFontList(fonts.slice(MAX_FONTS, fonts.length));
-    const moreUsedFonts = moreUsedFontsList === null
+    // Group fonts by family name.
+    const fontGroups = fonts.reduce((acc, font) => {
+      const family = font.CSSFamilyName.toString();
+      acc[family] = acc[family] || [];
+      acc[family].push(font);
+      return acc;
+    }, {});
+
+    const renderedFontGroups = Object.keys(fontGroups).map(family => {
+      return this.renderFontGroup(family, fontGroups[family]);
+    });
+
+    const topFontsList = renderedFontGroups.slice(0, MAX_FONTS);
+    const moreFontsList = renderedFontGroups.slice(
+      MAX_FONTS,
+      renderedFontGroups.length
+    );
+
+    const moreFonts = !moreFontsList.length
       ? null
-      : dom.details({},
-          dom.summary({},
-            dom.span({ className: "label-open" }, getStr("fontinspector.showMore")),
-            dom.span({ className: "label-close" }, getStr("fontinspector.showLess"))
+      : dom.details(
+          {},
+          dom.summary(
+            {},
+            dom.span(
+              { className: "label-open" },
+              getStr("fontinspector.showMore")
+            ),
+            dom.span(
+              { className: "label-close" },
+              getStr("fontinspector.showLess")
+            )
           ),
-          moreUsedFontsList
+          moreFontsList
         );
 
     return dom.label(
       {
-        className: "font-control font-control-family",
+        className: "font-control font-control-used-fonts",
       },
       dom.span(
         {
           className: "font-control-label",
         },
-        getStr("fontinspector.fontFamilyLabel")
+        getStr("fontinspector.fontsUsedLabel")
       ),
       dom.div(
         {
           className: "font-control-box",
         },
-        topUsedFontsList,
-        moreUsedFonts,
-        this.renderFamilesNotUsed(families.notUsed)
+        topFontsList,
+        moreFonts
       )
     );
   }
 
-  /**
-   * Given an array of fonts, get an unordered list with rendered FontMeta components.
-   * If the array of fonts is empty, return null.
-   *
-   * @param {Array} fonts
-   *        Array of objects with information about fonts used on the selected node.
-   * @return {DOMNode|null}
-   */
-  renderFontList(fonts = []) {
-    if (!fonts.length) {
-      return null;
-    }
+  renderFontGroup(family, fonts = []) {
+    const group = fonts.map(font => {
+      return FontName({
+        key: font.name,
+        font,
+        onToggleFontHighlight: this.props.onToggleFontHighlight,
+      });
+    });
 
-    return dom.ul(
+    return dom.div(
       {
-        className: "fonts-list"
+        key: family,
+        className: "font-group",
       },
-      fonts.map(font => {
-        return dom.li(
-          {},
-          FontMeta({
-            font,
-            key: font.name,
-            onToggleFontHighlight: this.props.onToggleFontHighlight
-          })
-        );
-      })
+      dom.div(
+        {
+          className: "font-family-name",
+        },
+        family
+      ),
+      group
     );
   }
 
   renderFontSize(value) {
-    return value && FontSize({
-      key: this.props.fontEditor.id,
-      onChange: this.props.onPropertyChange,
-      value,
-    });
+    return (
+      value !== null &&
+      FontSize({
+        key: `${this.props.fontEditor.id}:font-size`,
+        disabled: this.props.fontEditor.disabled,
+        onChange: this.props.onPropertyChange,
+        value,
+      })
+    );
+  }
+
+  renderLineHeight(value) {
+    return (
+      value !== null &&
+      LineHeight({
+        key: `${this.props.fontEditor.id}:line-height`,
+        disabled: this.props.fontEditor.disabled,
+        onChange: this.props.onPropertyChange,
+        value,
+      })
+    );
+  }
+
+  renderLetterSpacing(value) {
+    return (
+      value !== null &&
+      LetterSpacing({
+        key: `${this.props.fontEditor.id}:letter-spacing`,
+        disabled: this.props.fontEditor.disabled,
+        onChange: this.props.onPropertyChange,
+        value,
+      })
+    );
   }
 
   renderFontStyle(value) {
-    return value && FontStyle({
-      onChange: this.props.onPropertyChange,
-      value,
-    });
+    return (
+      value &&
+      FontStyle({
+        onChange: this.props.onPropertyChange,
+        disabled: this.props.fontEditor.disabled,
+        value,
+      })
+    );
   }
 
   renderFontWeight(value) {
-    return value && FontWeight({
-      onChange: this.props.onPropertyChange,
-      value,
-    });
+    return (
+      value !== null &&
+      FontWeight({
+        onChange: this.props.onPropertyChange,
+        disabled: this.props.fontEditor.disabled,
+        value,
+      })
+    );
   }
 
   /**
@@ -235,20 +231,20 @@ class FontEditor extends PureComponent {
    *        }
    * @return {DOMNode}
    */
-  renderInstances(fontInstances = [], selectedInstance) {
+  renderInstances(fontInstances = [], selectedInstance = {}) {
     // Append a "Custom" instance entry which represents the latest manual axes changes.
     const customInstance = {
       name: getStr("fontinspector.customInstanceName"),
-      values: this.props.fontEditor.customInstanceValues
+      values: this.props.fontEditor.customInstanceValues,
     };
-    fontInstances = [ ...fontInstances, customInstance ];
+    fontInstances = [...fontInstances, customInstance];
 
     // Generate the <option> elements for the dropdown.
     const instanceOptions = fontInstances.map(instance =>
       dom.option(
         {
+          key: instance.name,
           value: instance.name,
-          selected: instance.name === selectedInstance.name ? "selected" : null,
         },
         instance.name
       )
@@ -257,11 +253,15 @@ class FontEditor extends PureComponent {
     // Generate the dropdown.
     const instanceSelect = dom.select(
       {
-        className: "font-control-input",
-        onChange: (e) => {
-          const instance = fontInstances.find(inst => e.target.value === inst.name);
-          instance && this.props.onInstanceChange(instance.name, instance.values);
-        }
+        className: "font-control-input font-value-select",
+        value: selectedInstance.name || customInstance.name,
+        onChange: e => {
+          const instance = fontInstances.find(
+            inst => e.target.value === inst.name
+          );
+          instance &&
+            this.props.onInstanceChange(instance.name, instance.values);
+        },
       },
       instanceOptions
     );
@@ -283,11 +283,11 @@ class FontEditor extends PureComponent {
   renderWarning(warning) {
     return dom.div(
       {
-        id: "font-editor"
+        id: "font-editor",
       },
       dom.div(
         {
-          className: "devtools-sidepanel-no-result"
+          className: "devtools-sidepanel-no-result",
         },
         warning
       )
@@ -296,18 +296,22 @@ class FontEditor extends PureComponent {
 
   render() {
     const { fontEditor } = this.props;
-    const { fonts, families, axes, instance, properties, warning } = fontEditor;
+    const { fonts, axes, instance, properties, warning } = fontEditor;
     // Pick the first font to show editor controls regardless of how many fonts are used.
     const font = fonts[0];
     const hasFontAxes = font && font.variationAxes;
-    const hasFontInstances = font && font.variationInstances
-      && font.variationInstances.length > 0;
-    const hasSlantOrItalicAxis = hasFontAxes && font.variationAxes.find(axis => {
-      return axis.tag === "slnt" || axis.tag === "ital";
-    });
-    const hasWeightAxis = hasFontAxes && font.variationAxes.find(axis => {
-      return axis.tag === "wght";
-    });
+    const hasFontInstances =
+      font && font.variationInstances && font.variationInstances.length > 0;
+    const hasSlantOrItalicAxis =
+      hasFontAxes &&
+      font.variationAxes.find(axis => {
+        return axis.tag === "slnt" || axis.tag === "ital";
+      });
+    const hasWeightAxis =
+      hasFontAxes &&
+      font.variationAxes.find(axis => {
+        return axis.tag === "wght";
+      });
 
     // Show the empty state with a warning message when a used font was not found.
     if (!font) {
@@ -316,14 +320,19 @@ class FontEditor extends PureComponent {
 
     return dom.div(
       {
-        id: "font-editor"
+        id: "font-editor",
       },
-      // Always render UI for font family, format and font file URL.
-      this.renderFontFamily(fonts, families),
+      // Always render UI for used fonts.
+      this.renderUsedFonts(fonts),
       // Render UI for font variation instances if they are defined.
-      hasFontInstances && this.renderInstances(font.variationInstances, instance),
+      hasFontInstances &&
+        this.renderInstances(font.variationInstances, instance),
       // Always render UI for font size.
       this.renderFontSize(properties["font-size"]),
+      // Always render UI for line height.
+      this.renderLineHeight(properties["line-height"]),
+      // Always render UI for letter spacing.
+      this.renderLetterSpacing(properties["letter-spacing"]),
       // Render UI for font weight if no "wght" registered axis is defined.
       !hasWeightAxis && this.renderFontWeight(properties["font-weight"]),
       // Render UI for font style if no "slnt" or "ital" registered axis is defined.

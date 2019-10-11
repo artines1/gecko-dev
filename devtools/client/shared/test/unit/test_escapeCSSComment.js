@@ -3,26 +3,29 @@
 
 "use strict";
 
-const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-const {escapeCSSComment, _unescapeCSSComment} = require("devtools/shared/css/parsing-utils");
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
+const {
+  escapeCSSComment,
+  unescapeCSSComment,
+} = require("devtools/shared/css/parsing-utils");
 
 const TEST_DATA = [
   {
     input: "simple",
-    expected: "simple"
+    expected: "simple",
   },
   {
     input: "/* comment */",
-    expected: "/\\* comment *\\/"
+    expected: "/\\* comment *\\/",
   },
   {
     input: "/* two *//* comments */",
-    expected: "/\\* two *\\//\\* comments *\\/"
+    expected: "/\\* two *\\//\\* comments *\\/",
   },
   {
     input: "/* nested /\\* comment *\\/ */",
     expected: "/\\* nested /\\\\* comment *\\\\/ *\\/",
-  }
+  },
 ];
 
 function run_test() {
@@ -33,7 +36,7 @@ function run_test() {
 
     const escaped = escapeCSSComment(test.input);
     equal(escaped, test.expected);
-    const unescaped = _unescapeCSSComment(escaped);
+    const unescaped = unescapeCSSComment(escaped);
     equal(unescaped, test.input);
   }
 }

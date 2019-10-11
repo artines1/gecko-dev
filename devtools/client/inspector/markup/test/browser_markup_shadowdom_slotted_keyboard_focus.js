@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -23,8 +22,6 @@ const TEST_URL = `data:text/html;charset=utf-8,
   </script>`;
 
 add_task(async function() {
-  await enableWebComponents();
-
   const { inspector } = await openInspectorForURL(TEST_URL);
   const { markup } = inspector;
   const win = inspector.markup.doc.defaultView;
@@ -67,6 +64,8 @@ add_task(async function() {
   EventUtils.synthesizeKey("KEY_Tab", {}, win);
   await tagFocused;
 
-  ok(inspector.markup.doc.activeElement === tagSpan,
-    "Focus has gone back to first element");
+  ok(
+    inspector.markup.doc.activeElement === tagSpan,
+    "Focus has gone back to first element"
+  );
 });

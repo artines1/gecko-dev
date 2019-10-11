@@ -11,16 +11,19 @@
 
 #include "nsRubyContentFrame.h"
 
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
+
 /**
  * Factory function.
  * @return a newly allocated nsRubyBaseFrame (infallible)
  */
-nsContainerFrame* NS_NewRubyBaseFrame(nsIPresShell* aPresShell,
+nsContainerFrame* NS_NewRubyBaseFrame(mozilla::PresShell* aPresShell,
                                       mozilla::ComputedStyle* aStyle);
 
-class nsRubyBaseFrame final : public nsRubyContentFrame
-{
-public:
+class nsRubyBaseFrame final : public nsRubyContentFrame {
+ public:
   NS_DECL_FRAMEARENA_HELPERS(nsRubyBaseFrame)
   NS_DECL_QUERYFRAME
 
@@ -28,12 +31,11 @@ public:
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-protected:
-  friend nsContainerFrame* NS_NewRubyBaseFrame(nsIPresShell* aPresShell,
+ protected:
+  friend nsContainerFrame* NS_NewRubyBaseFrame(mozilla::PresShell* aPresShell,
                                                ComputedStyle* aStyle);
-  explicit nsRubyBaseFrame(ComputedStyle* aStyle)
-    : nsRubyContentFrame(aStyle, kClassID)
-  {}
+  explicit nsRubyBaseFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
+      : nsRubyContentFrame(aStyle, aPresContext, kClassID) {}
 };
 
 #endif /* nsRubyBaseFrame_h___ */

@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import os
 
@@ -20,6 +20,8 @@ here = os.path.abspath(os.path.dirname(__file__))
 build = MozbuildObject.from_environment(cwd=here)
 
 MAIN_DOC_PATH = os.path.join(build.topsrcdir, 'tools', 'docs')
+
+logger = sphinx.util.logging.getLogger(__name__)
 
 
 @memoize
@@ -82,12 +84,12 @@ class _SphinxManager(object):
         """Generate/stage documentation."""
         self.staging_dir = os.path.join(app.outdir, '_staging')
 
-        app.info('Reading Sphinx metadata from build configuration')
+        logger.info('Reading Sphinx metadata from build configuration')
         self.trees, self.python_package_dirs = read_build_config(app.srcdir)
 
-        app.info('Staging static documentation')
+        logger.info('Staging static documentation')
         self._synchronize_docs()
-        app.info('Generating Python API documentation')
+        logger.info('Generating Python API documentation')
         self._generate_python_api_docs()
 
     def _generate_python_api_docs(self):
@@ -130,7 +132,19 @@ class _SphinxManager(object):
         with open(self.index_path, 'rb') as fh:
             data = fh.read()
 
-        indexes = ['%s/index' % p for p in sorted(self.trees.keys())]
+        def is_toplevel(key):
+            """Whether the tree is nested under the toplevel index, or is
+            nested under another tree's index.
+            """
+            for k in self.trees:
+                if k == key:
+                    continue
+                if key.startswith(k):
+                    return False
+            return True
+
+        toplevel_trees = {k: v for k, v in self.trees.items() if is_toplevel(k)}
+        indexes = ['%s/index' % p for p in sorted(toplevel_trees.keys())]
         indexes = '\n   '.join(indexes)
 
         packages = [os.path.basename(p) for p in self.python_package_dirs]

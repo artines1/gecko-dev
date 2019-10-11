@@ -11,12 +11,18 @@
 "use strict";
 
 const Services = require("Services");
-const { TelemetryStopwatch } = require("resource://gre/modules/TelemetryStopwatch.jsm");
+const TelemetryStopwatch = require("TelemetryStopwatch");
 const { getNthPathExcluding } = require("devtools/shared/platform/stack");
+const {
+  TelemetryEnvironment,
+} = require("resource://gre/modules/TelemetryEnvironment.jsm");
+const WeakMapMap = require("devtools/client/shared/WeakMapMap");
+
+const CATEGORY = "devtools.main";
 
 // Object to be shared among all instances.
-const PENDING_EVENTS = new Map();
-const PENDING_EVENT_PROPERTIES = new Map();
+const PENDING_EVENT_PROPERTIES = new WeakMapMap();
+const PENDING_EVENTS = new WeakMapMap();
 
 class Telemetry {
   constructor() {
@@ -32,8 +38,25 @@ class Telemetry {
     this.setEventRecordingEnabled = this.setEventRecordingEnabled.bind(this);
     this.preparePendingEvent = this.preparePendingEvent.bind(this);
     this.addEventProperty = this.addEventProperty.bind(this);
+    this.addEventProperties = this.addEventProperties.bind(this);
     this.toolOpened = this.toolOpened.bind(this);
     this.toolClosed = this.toolClosed.bind(this);
+  }
+
+  get osNameAndVersion() {
+    const osInfo = TelemetryEnvironment.currentEnvironment.system.os;
+
+    if (!osInfo) {
+      return "Unknown OS";
+    }
+
+    let osVersion = `${osInfo.name} ${osInfo.version}`;
+
+    if (osInfo.windowsBuildNumber) {
+      osVersion += `.${osInfo.windowsBuildNumber}`;
+    }
+
+    return osVersion;
   }
 
   /**
@@ -60,18 +83,19 @@ class Telemetry {
    * @param {String} histogramId
    *        A string which must be a valid histogram name.
    * @param {Object} obj
-   *        Optional parameter. If specified, the timer is associated with this
-   *        object, meaning that multiple timers for the same histogram may be
-   *        run concurrently, as long as they are associated with different
-   *        objects.
-   *
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
+   * @param {Object}  [options.inSeconds=false]
+   *        Record elapsed time for this histogram in seconds instead of
+   *        milliseconds. Defaults to false.
    * @returns {Boolean}
    *          True if the timer was successfully started, false otherwise. If a
    *          timer already exists, it can't be started again, and the existing
    *          one will be cleared in order to avoid measurements errors.
    */
-  start(histogramId, obj) {
-    return TelemetryStopwatch.start(histogramId, obj);
+  start(histogramId, obj, { inSeconds } = {}) {
+    return TelemetryStopwatch.start(histogramId, obj, { inSeconds });
   }
 
   /**
@@ -86,18 +110,20 @@ class Telemetry {
    * @param {String} key
    *        A string which must be a valid histgram key.
    * @param {Object} obj
-   *        Optional parameter. If specified, the timer is associated with this
-   *        object, meaning that multiple timers for the same histogram may be
-   *        run concurrently,as long as they are associated with different
-   *        objects.
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
+   * @param {Object}  [options.inSeconds=false]
+   *        Record elapsed time for this histogram in seconds instead of
+   *        milliseconds. Defaults to false.
    *
    * @returns {Boolean}
    *          True if the timer was successfully started, false otherwise. If a
    *          timer already exists, it can't be started again, and the existing
    *          one will be cleared in order to avoid measurements errors.
    */
-  startKeyed(histogramId, key, obj) {
-    return TelemetryStopwatch.startKeyed(histogramId, key, obj);
+  startKeyed(histogramId, key, obj, { inSeconds } = {}) {
+    return TelemetryStopwatch.startKeyed(histogramId, key, obj, { inSeconds });
   }
 
   /**
@@ -108,8 +134,9 @@ class Telemetry {
    * @param {String} histogramId
    *        A string which must be a valid histogram name.
    * @param {Object} obj
-   *        Optional parameter which associates the histogram timer with the
-   *        given object.
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {Boolean} canceledOkay
    *        Optional parameter which will suppress any warnings that normally
    *        fire when a stopwatch is finished after being canceled.
@@ -133,8 +160,9 @@ class Telemetry {
    * @param {String} key
    *        A string which must be a valid histogram key.
    * @param {Object} obj
-   *        Optional parameter which associates the histogram timer with the
-   *        given object.
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {Boolean} canceledOkay
    *        Optional parameter which will suppress any warnings that normally
    *        fire when a stopwatch is finished after being canceled.
@@ -161,15 +189,19 @@ class Telemetry {
       try {
         histogram = Services.telemetry.getHistogramById(histogramId);
       } catch (e) {
-        dump(`Warning: An attempt was made to write to the ${histogramId} ` +
+        dump(
+          `Warning: An attempt was made to write to the ${histogramId} ` +
             `histogram, which is not defined in Histograms.json\n` +
-            `CALLER: ${getCaller()}`);
+            `CALLER: ${getCaller()}`
+        );
       }
     }
 
-    return histogram || {
-      add: () => {}
-    };
+    return (
+      histogram || {
+        add: () => {},
+      }
+    );
   }
 
   /**
@@ -185,14 +217,18 @@ class Telemetry {
       try {
         histogram = Services.telemetry.getKeyedHistogramById(histogramId);
       } catch (e) {
-        dump(`Warning: An attempt was made to write to the ${histogramId} ` +
-             `histogram, which is not defined in Histograms.json\n` +
-             `CALLER: ${getCaller()}`);
+        dump(
+          `Warning: An attempt was made to write to the ${histogramId} ` +
+            `histogram, which is not defined in Histograms.json\n` +
+            `CALLER: ${getCaller()}`
+        );
       }
     }
-    return histogram || {
-      add: () => {}
-    };
+    return (
+      histogram || {
+        add: () => {},
+      }
+    );
   }
 
   /**
@@ -210,18 +246,22 @@ class Telemetry {
 
     try {
       if (isNaN(value) && typeof value !== "boolean") {
-        dump(`Warning: An attempt was made to write a non-numeric and ` +
-             `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
-             `numeric and boolean values are allowed.\n` +
-             `CALLER: ${getCaller()}`);
+        dump(
+          `Warning: An attempt was made to write a non-numeric and ` +
+            `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
+            `numeric and boolean values are allowed.\n` +
+            `CALLER: ${getCaller()}`
+        );
 
         return;
       }
       Services.telemetry.scalarSet(scalarId, value);
     } catch (e) {
-      dump(`Warning: An attempt was made to write to the ${scalarId} ` +
-           `scalar, which is not defined in Scalars.yaml\n` +
-           `CALLER: ${getCaller()}`);
+      dump(
+        `Warning: An attempt was made to write to the ${scalarId} ` +
+          `scalar, which is not defined in Scalars.yaml\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
   }
 
@@ -240,18 +280,22 @@ class Telemetry {
 
     try {
       if (isNaN(value)) {
-        dump(`Warning: An attempt was made to write a non-numeric value ` +
-             `${value} to the ${scalarId} scalar. Only numeric values are ` +
-             `allowed.\n` +
-             `CALLER: ${getCaller()}`);
+        dump(
+          `Warning: An attempt was made to write a non-numeric value ` +
+            `${value} to the ${scalarId} scalar. Only numeric values are ` +
+            `allowed.\n` +
+            `CALLER: ${getCaller()}`
+        );
 
         return;
       }
       Services.telemetry.scalarAdd(scalarId, value);
     } catch (e) {
-      dump(`Warning: An attempt was made to write to the ${scalarId} ` +
-           `scalar, which is not defined in Scalars.yaml\n` +
-           `CALLER: ${getCaller()}`);
+      dump(
+        `Warning: An attempt was made to write to the ${scalarId} ` +
+          `scalar, which is not defined in Scalars.yaml\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
   }
 
@@ -272,18 +316,22 @@ class Telemetry {
 
     try {
       if (isNaN(value) && typeof value !== "boolean") {
-        dump(`Warning: An attempt was made to write a non-numeric and ` +
-             `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
-             `numeric and boolean values are allowed.\n` +
-             `CALLER: ${getCaller()}`);
+        dump(
+          `Warning: An attempt was made to write a non-numeric and ` +
+            `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
+            `numeric and boolean values are allowed.\n` +
+            `CALLER: ${getCaller()}`
+        );
 
         return;
       }
       Services.telemetry.keyedScalarSet(scalarId, key, value);
     } catch (e) {
-      dump(`Warning: An attempt was made to write to the ${scalarId} ` +
-           `scalar, which is not defined in Scalars.yaml\n` +
-           `CALLER: ${getCaller()}`);
+      dump(
+        `Warning: An attempt was made to write to the ${scalarId} ` +
+          `scalar, which is not defined in Scalars.yaml\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
   }
 
@@ -304,32 +352,34 @@ class Telemetry {
 
     try {
       if (isNaN(value)) {
-        dump(`Warning: An attempt was made to write a non-numeric value ` +
-             `${value} to the ${scalarId} scalar. Only numeric values are ` +
-             `allowed.\n` +
-             `CALLER: ${getCaller()}`);
+        dump(
+          `Warning: An attempt was made to write a non-numeric value ` +
+            `${value} to the ${scalarId} scalar. Only numeric values are ` +
+            `allowed.\n` +
+            `CALLER: ${getCaller()}`
+        );
 
         return;
       }
       Services.telemetry.keyedScalarAdd(scalarId, key, value);
     } catch (e) {
-      dump(`Warning: An attempt was made to write to the ${scalarId} ` +
-           `scalar, which is not defined in Scalars.yaml\n` +
-           `CALLER: ${getCaller()}`);
+      dump(
+        `Warning: An attempt was made to write to the ${scalarId} ` +
+          `scalar, which is not defined in Scalars.yaml\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
   }
 
   /**
-   * Event telemetry is disabled by default. Use this method to enable it for
-   * a particular category.
+   * Event telemetry is disabled by default. Use this method to enable or
+   * disable it.
    *
-   * @param {String} category
-   *        The telemetry event category e.g. "devtools.main"
    * @param {Boolean} enabled
    *        Enabled: true or false.
    */
-  setEventRecordingEnabled(category, enabled) {
-    return Services.telemetry.setEventRecordingEnabled(category, enabled);
+  setEventRecordingEnabled(enabled) {
+    return Services.telemetry.setEventRecordingEnabled(CATEGORY, enabled);
   }
 
   /**
@@ -342,9 +392,10 @@ class Telemetry {
    * properties have been received. Once they have all been received we send the
    * telemetry event.
    *
-   * @param {String} category
-   *        The telemetry event category (a group name for events and helps to
-   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {String} method
    *        The telemetry event method (describes the type of event that
    *        occurred e.g. "open")
@@ -362,26 +413,30 @@ class Telemetry {
    *          "width"
    *        ]
    */
-  preparePendingEvent(category, method, object, value, expected = []) {
-    const sig = `${category},${method},${object},${value}`;
+  preparePendingEvent(obj, method, object, value, expected = []) {
+    const sig = `${method},${object},${value}`;
 
     if (expected.length === 0) {
-      throw new Error(`preparePendingEvent() was called without any expected ` +
-                      `properties.\n` +
-                      `CALLER: ${getCaller()}`);
+      throw new Error(
+        `preparePendingEvent() was called without any expected ` +
+          `properties.\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
 
-    PENDING_EVENTS.set(sig, {
+    const data = {
       extra: {},
-      expected: new Set(expected)
-    });
+      expected: new Set(expected),
+    };
 
-    const props = PENDING_EVENT_PROPERTIES.get(sig);
+    PENDING_EVENTS.set(obj, sig, data);
+
+    const props = PENDING_EVENT_PROPERTIES.get(obj, sig);
     if (props) {
       for (const [name, val] of Object.entries(props)) {
-        this.addEventProperty(category, method, object, value, name, val);
+        this.addEventProperty(obj, method, object, value, name, val);
       }
-      PENDING_EVENT_PROPERTIES.delete(sig);
+      PENDING_EVENT_PROPERTIES.delete(obj, sig);
     }
   }
 
@@ -390,9 +445,10 @@ class Telemetry {
    * This means that if preparePendingEvent() is called before or after sending
    * the event properties they will automatically added to the event.
    *
-   * @param {String} category
-   *        The telemetry event category (a group name for events and helps to
-   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {String} method
    *        The telemetry event method (describes the type of event that
    *        occurred e.g. "open")
@@ -407,38 +463,48 @@ class Telemetry {
    * @param {String} pendingPropValue
    *        The pending property value
    */
-  addEventProperty(category, method, object, value, pendingPropName, pendingPropValue) {
-    const sig = `${category},${method},${object},${value}`;
+  addEventProperty(
+    obj,
+    method,
+    object,
+    value,
+    pendingPropName,
+    pendingPropValue
+  ) {
+    const sig = `${method},${object},${value}`;
+    const events = PENDING_EVENTS.get(obj, sig);
 
     // If the pending event has not been created add the property to the pending
     // list.
-    if (!PENDING_EVENTS.has(sig)) {
-      const props = PENDING_EVENT_PROPERTIES.get(sig);
+    if (!events) {
+      const props = PENDING_EVENT_PROPERTIES.get(obj, sig);
 
       if (props) {
         props[pendingPropName] = pendingPropValue;
       } else {
-        PENDING_EVENT_PROPERTIES.set(sig, {
-          [pendingPropName]: pendingPropValue
+        PENDING_EVENT_PROPERTIES.set(obj, sig, {
+          [pendingPropName]: pendingPropValue,
         });
       }
       return;
     }
 
-    const { expected, extra } = PENDING_EVENTS.get(sig);
+    const { expected, extra } = events;
 
     if (expected.has(pendingPropName)) {
       extra[pendingPropName] = pendingPropValue;
 
       if (expected.size === Object.keys(extra).length) {
-        this._sendPendingEvent(category, method, object, value);
+        this._sendPendingEvent(obj, method, object, value);
       }
     } else {
       // The property was not expected, warn and bail.
-      throw new Error(`An attempt was made to add the unexpected property ` +
-                      `"${pendingPropName}" to a telemetry event with the ` +
-                      `signature "${sig}"\n` +
-                      `CALLER: ${getCaller()}`);
+      throw new Error(
+        `An attempt was made to add the unexpected property ` +
+          `"${pendingPropName}" to a telemetry event with the ` +
+          `signature "${sig}"\n` +
+          `CALLER: ${getCaller()}`
+      );
     }
   }
 
@@ -447,9 +513,10 @@ class Telemetry {
    * This means that if preparePendingEvent() is called before or after sending
    * the event properties they will automatically added to the event.
    *
-   * @param {String} category
-   *        The telemetry event category (a group name for events and helps to
-   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {String} method
    *        The telemetry event method (describes the type of event that
    *        occurred e.g. "open")
@@ -463,9 +530,9 @@ class Telemetry {
    *        An object containing key, value pairs that should be added to the
    *        event as properties.
    */
-  addEventProperties(category, method, object, value, pendingObject) {
+  addEventProperties(obj, method, object, value, pendingObject) {
     for (const [key, val] of Object.entries(pendingObject)) {
-      this.addEventProperty(category, method, object, value, key, val);
+      this.addEventProperty(obj, method, object, value, key, val);
     }
   }
 
@@ -474,9 +541,10 @@ class Telemetry {
    * prepare a pending telemetry event for sending and then send it via
    * recordEvent().
    *
-   * @param {String} category
-   *        The telemetry event category (a group name for events and helps to
-   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    * @param {String} method
    *        The telemetry event method (describes the type of event that
    *        occurred e.g. "open")
@@ -487,21 +555,18 @@ class Telemetry {
    *        The telemetry event value (a user defined value, providing context
    *        for the event) e.g. "console"
    */
-  _sendPendingEvent(category, method, object, value) {
-    const sig = `${category},${method},${object},${value}`;
-    const { extra } = PENDING_EVENTS.get(sig);
+  _sendPendingEvent(obj, method, object, value) {
+    const sig = `${method},${object},${value}`;
+    const { extra } = PENDING_EVENTS.get(obj, sig);
 
-    PENDING_EVENTS.delete(sig);
-    PENDING_EVENT_PROPERTIES.delete(sig);
-    this.recordEvent(category, method, object, value, extra);
+    PENDING_EVENTS.delete(obj, sig);
+    PENDING_EVENT_PROPERTIES.delete(obj, sig);
+    this.recordEvent(method, object, value, extra);
   }
 
   /**
    * Send a telemetry event.
    *
-   * @param {String} category
-   *        The telemetry event category (a group name for events and helps to
-   *        avoid name conflicts) e.g. "devtools.main"
    * @param {String} method
    *        The telemetry event method (describes the type of event that
    *        occurred e.g. "open")
@@ -519,25 +584,30 @@ class Telemetry {
    *          width: "1024"
    *        }
    */
-  recordEvent(category, method, object, value = null, extra = null) {
+  recordEvent(method, object, value = null, extra = null) {
     // Only string values are allowed so cast all values to strings.
     if (extra) {
       for (let [name, val] of Object.entries(extra)) {
         val = val + "";
-        extra[name] = val;
 
         if (val.length > 80) {
-          const sig = `${category},${method},${object},${value}`;
+          const sig = `${method},${object},${value}`;
 
-          throw new Error(`The property "${name}" was added to a telemetry ` +
-                          `event with the signature ${sig} but it's value ` +
-                          `"${val}" is longer than the maximum allowed length ` +
-                          `of 80 characters\n` +
-                          `CALLER: ${getCaller()}`);
+          dump(
+            `Warning: The property "${name}" was added to a telemetry ` +
+              `event with the signature ${sig} but it's value "${val}" is ` +
+              `longer than the maximum allowed length of 80 characters.\n` +
+              `The property value has been trimmed to 80 characters before ` +
+              `sending.\nCALLER: ${getCaller()}`
+          );
+
+          val = val.substring(0, 80);
         }
+
+        extra[name] = val;
       }
     }
-    Services.telemetry.recordEvent(category, method, object, value, extra);
+    Services.telemetry.recordEvent(CATEGORY, method, object, value, extra);
   }
 
   /**
@@ -545,20 +615,46 @@ class Telemetry {
    *
    * @param {String} id
    *        The ID of the tool opened.
+   * @param {String} sessionId
+   *        Toolbox session id used when we need to ensure a tool really has a
+   *        timer before calculating a delta.
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    *
    * NOTE: This method is designed for tools that send multiple probes on open,
    *       one of those probes being a counter and the other a timer. If you
    *       only have one probe you should be using another method.
    */
-  toolOpened(id) {
+  toolOpened(id, sessionId, obj) {
+    if (typeof sessionId === "undefined") {
+      throw new Error(`toolOpened called without a sessionId parameter.`);
+    }
+
     const charts = getChartsFromToolId(id);
 
     if (!charts) {
       return;
     }
 
+    if (charts.useTimedEvent) {
+      this.preparePendingEvent(obj, "tool_timer", id, null, [
+        "os",
+        "time_open",
+        "session_id",
+      ]);
+      this.addEventProperty(
+        obj,
+        "tool_timer",
+        id,
+        null,
+        "time_open",
+        this.msSystemNow()
+      );
+    }
     if (charts.timerHist) {
-      this.start(charts.timerHist, this);
+      this.start(charts.timerHist, obj, { inSeconds: true });
     }
     if (charts.countHist) {
       this.getHistogramById(charts.countHist).add(true);
@@ -573,16 +669,42 @@ class Telemetry {
    *
    * @param {String} id
    *        The ID of the tool opened.
+   * @param {String} sessionId
+   *        Toolbox session id.
+   * @param {Object} obj
+   *        The telemetry event or ping is associated with this object, meaning
+   *        that multiple events or pings for the same histogram may be run
+   *        concurrently, as long as they are associated with different objects.
    *
    * NOTE: This method is designed for tools that send multiple probes on open,
    *       one of those probes being a counter and the other a timer. If you
    *       only have one probe you should be using another method.
    */
-  toolClosed(id) {
+  toolClosed(id, sessionId, obj) {
+    if (typeof sessionId === "undefined") {
+      throw new Error(`toolClosed called without a sessionId parameter.`);
+    }
+
     const charts = getChartsFromToolId(id);
 
-    if (charts && charts.timerHist) {
-      this.finish(charts.timerHist, this);
+    if (!charts) {
+      return;
+    }
+
+    if (charts.useTimedEvent) {
+      const sig = `tool_timer,${id},null`;
+      const event = PENDING_EVENTS.get(obj, sig);
+      const time = this.msSystemNow() - event.extra.time_open;
+
+      this.addEventProperties(obj, "tool_timer", id, null, {
+        time_open: time,
+        os: this.osNameAndVersion,
+        session_id: sessionId,
+      });
+    }
+
+    if (charts.timerHist) {
+      this.finish(charts.timerHist, obj, false);
     }
   }
 }
@@ -594,6 +716,7 @@ class Telemetry {
  *        The ID of the tool that has been opened.
  *
  */
+/* eslint-disable complexity */
 function getChartsFromToolId(id) {
   if (!id) {
     return null;
@@ -601,6 +724,7 @@ function getChartsFromToolId(id) {
 
   const lowerCaseId = id.toLowerCase();
 
+  let useTimedEvent = null;
   let timerHist = null;
   let countHist = null;
   let countScalar = null;
@@ -610,38 +734,25 @@ function getChartsFromToolId(id) {
   if (id === "PERFORMANCE") {
     id = "JSPROFILER";
   }
-  if (id === "NEWANIMATIONINSPECTOR") {
-    id = "ANIMATIONINSPECTOR";
-  }
 
   switch (id) {
     case "ABOUTDEBUGGING":
-    case "ANIMATIONINSPECTOR":
     case "BROWSERCONSOLE":
-    case "CANVASDEBUGGER":
-    case "COMPUTEDVIEW":
-    case "DEVELOPERTOOLBAR":
     case "DOM":
-    case "FONTINSPECTOR":
     case "INSPECTOR":
     case "JSBROWSERDEBUGGER":
     case "JSDEBUGGER":
     case "JSPROFILER":
-    case "LAYOUTVIEW":
     case "MEMORY":
     case "NETMONITOR":
     case "OPTIONS":
     case "PAINTFLASHING":
     case "RESPONSIVE":
-    case "RULEVIEW":
     case "SCRATCHPAD":
-    case "SHADEREDITOR":
     case "STORAGE":
     case "STYLEEDITOR":
     case "TOOLBOX":
-    case "WEBAUDIOEDITOR":
     case "WEBCONSOLE":
-    case "WEBIDE":
       timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
       countHist = `DEVTOOLS_${id}_OPENED_COUNT`;
       break;
@@ -654,22 +765,37 @@ function getChartsFromToolId(id) {
       timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
       countScalar = `devtools.accessibility.picker_used_count`;
       break;
+    case "CHANGESVIEW":
+      useTimedEvent = true;
+      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
+      countScalar = `devtools.${lowerCaseId}.opened_count`;
+      break;
+    case "ANIMATIONINSPECTOR":
+    case "COMPUTEDVIEW":
+    case "FONTINSPECTOR":
+    case "LAYOUTVIEW":
+    case "RULEVIEW":
+      useTimedEvent = true;
+      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
+      countHist = `DEVTOOLS_${id}_OPENED_COUNT`;
+      break;
+    case "FLEXBOX_HIGHLIGHTER":
+    case "GRID_HIGHLIGHTER":
+      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
+      break;
     default:
       timerHist = `DEVTOOLS_CUSTOM_TIME_ACTIVE_SECONDS`;
       countHist = `DEVTOOLS_CUSTOM_OPENED_COUNT`;
   }
 
-  if (!timerHist || (!countHist && !countScalar)) {
-    throw new Error(`getChartsFromToolId cannot be called without a timer ` +
-                    `histogram and either a count histogram or count scalar.`);
-  }
-
   return {
+    useTimedEvent: useTimedEvent,
     timerHist: timerHist,
     countHist: countHist,
-    countScalar: countScalar
+    countScalar: countScalar,
   };
 }
+/* eslint-enable complexity */
 
 /**
  * Displays the first caller and calling line outside of this file in the

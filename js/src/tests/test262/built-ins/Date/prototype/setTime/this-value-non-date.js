@@ -2,7 +2,6 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-date.prototype.settime
-es6id: 20.3.4.27
 description: >
   Behavior when "this" value is an Object without a [[DateValue]] internal slot
 info: |
@@ -41,6 +40,6 @@ assert.throws(TypeError, function() {
   setTime.call(args, arg);
 }, 'arguments exotic object');
 
-assert.sameValue(callCount, 0, 'validation preceeds input coercion');
+assert.sameValue(callCount, 0, 'validation precedes input coercion');
 
 reportCompare(0, 0);

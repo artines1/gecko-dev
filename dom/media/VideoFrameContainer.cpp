@@ -5,9 +5,12 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "VideoFrameContainer.h"
-#include "mozilla/Telemetry.h"
+
+#ifdef MOZ_WIDGET_ANDROID
+#include "GLImages.h"  // for SurfaceTextureImage
+#endif
 #include "MediaDecoderOwner.h"
-#include "Tracing.h"
+#include "mozilla/Telemetry.h"
 
 using namespace mozilla::layers;
 
@@ -18,66 +21,60 @@ static LazyLogModule gVideoFrameContainerLog("VideoFrameContainer");
 #define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
 
 namespace {
-template<Telemetry::HistogramID ID>
-class AutoTimer
-{
+template <Telemetry::HistogramID ID>
+class AutoTimer {
   // Set a threshold to reduce performance overhead
   // for we're measuring hot spots.
   static const uint32_t sThresholdMS = 1000;
-public:
-  ~AutoTimer()
-  {
+
+ public:
+  ~AutoTimer() {
     auto end = TimeStamp::Now();
     auto diff = uint32_t((end - mStart).ToMilliseconds());
     if (diff > sThresholdMS) {
       Telemetry::Accumulate(ID, diff);
     }
   }
-private:
+
+ private:
   const TimeStamp mStart = TimeStamp::Now();
 };
-}
+}  // namespace
 
 VideoFrameContainer::VideoFrameContainer(
-  MediaDecoderOwner* aOwner,
-  already_AddRefed<ImageContainer> aContainer)
-  : mOwner(aOwner)
-  , mImageContainer(aContainer)
-  , mMutex("nsVideoFrameContainer")
-  , mBlackImage(nullptr)
-  , mFrameID(0)
-  , mPendingPrincipalHandle(PRINCIPAL_HANDLE_NONE)
-  , mFrameIDForPendingPrincipalHandle(0)
-  , mMainThread(aOwner->AbstractMainThread())
-{
+    MediaDecoderOwner* aOwner, already_AddRefed<ImageContainer> aContainer)
+    : mOwner(aOwner),
+      mImageContainer(aContainer),
+      mMutex("nsVideoFrameContainer"),
+      mFrameID(0),
+      mPendingPrincipalHandle(PRINCIPAL_HANDLE_NONE),
+      mFrameIDForPendingPrincipalHandle(0),
+      mMainThread(aOwner->AbstractMainThread()) {
   NS_ASSERTION(aOwner, "aOwner must not be null");
   NS_ASSERTION(mImageContainer, "aContainer must not be null");
 }
 
-VideoFrameContainer::~VideoFrameContainer()
-{}
+VideoFrameContainer::~VideoFrameContainer() {}
 
-PrincipalHandle VideoFrameContainer::GetLastPrincipalHandle()
-{
+PrincipalHandle VideoFrameContainer::GetLastPrincipalHandle() {
   MutexAutoLock lock(mMutex);
   return GetLastPrincipalHandleLocked();
 }
 
-PrincipalHandle VideoFrameContainer::GetLastPrincipalHandleLocked()
-{
+PrincipalHandle VideoFrameContainer::GetLastPrincipalHandleLocked() {
   return mLastPrincipalHandle;
 }
 
-void VideoFrameContainer::UpdatePrincipalHandleForFrameID(const PrincipalHandle& aPrincipalHandle,
-                                                          const ImageContainer::FrameID& aFrameID)
-{
+void VideoFrameContainer::UpdatePrincipalHandleForFrameID(
+    const PrincipalHandle& aPrincipalHandle,
+    const ImageContainer::FrameID& aFrameID) {
   MutexAutoLock lock(mMutex);
   UpdatePrincipalHandleForFrameIDLocked(aPrincipalHandle, aFrameID);
 }
 
-void VideoFrameContainer::UpdatePrincipalHandleForFrameIDLocked(const PrincipalHandle& aPrincipalHandle,
-                                                                const ImageContainer::FrameID& aFrameID)
-{
+void VideoFrameContainer::UpdatePrincipalHandleForFrameIDLocked(
+    const PrincipalHandle& aPrincipalHandle,
+    const ImageContainer::FrameID& aFrameID) {
   if (mPendingPrincipalHandle == aPrincipalHandle) {
     return;
   }
@@ -85,138 +82,30 @@ void VideoFrameContainer::UpdatePrincipalHandleForFrameIDLocked(const PrincipalH
   mFrameIDForPendingPrincipalHandle = aFrameID;
 }
 
-static void
-SetImageToBlackPixel(PlanarYCbCrImage* aImage)
-{
-  uint8_t blackPixel[] = { 0x10, 0x80, 0x80 };
-
-  PlanarYCbCrData data;
-  data.mYChannel = blackPixel;
-  data.mCbChannel = blackPixel + 1;
-  data.mCrChannel = blackPixel + 2;
-  data.mYStride = data.mCbCrStride = 1;
-  data.mPicSize = data.mYSize = data.mCbCrSize = gfx::IntSize(1, 1);
-  aImage->CopyData(data);
-}
-
-class VideoFrameContainerInvalidateRunnable : public Runnable {
-public:
-  explicit VideoFrameContainerInvalidateRunnable(VideoFrameContainer* aVideoFrameContainer)
-    : Runnable("VideoFrameContainerInvalidateRunnable")
-    , mVideoFrameContainer(aVideoFrameContainer)
-  {}
-  NS_IMETHOD Run() override
-  {
-    MOZ_ASSERT(NS_IsMainThread());
-
-    mVideoFrameContainer->Invalidate();
-
-    return NS_OK;
-  }
-private:
-  RefPtr<VideoFrameContainer> mVideoFrameContainer;
-};
-
-void VideoFrameContainer::SetCurrentFrames(const VideoSegment& aSegment)
-{
-  TRACE();
-
-  if (aSegment.IsEmpty()) {
+#ifdef MOZ_WIDGET_ANDROID
+static void NotifySetCurrent(Image* aImage) {
+  if (aImage == nullptr) {
     return;
   }
 
-  MutexAutoLock lock(mMutex);
-  AutoTimer<Telemetry::VFC_SETVIDEOSEGMENT_LOCK_HOLD_MS> lockHold;
-
-  // Collect any new frames produced in this iteration.
-  AutoTArray<ImageContainer::NonOwningImage,4> newImages;
-  PrincipalHandle lastPrincipalHandle = PRINCIPAL_HANDLE_NONE;
-
-  VideoSegment::ConstChunkIterator iter(aSegment);
-  while (!iter.IsEnded()) {
-    VideoChunk chunk = *iter;
-
-    const VideoFrame* frame = &chunk.mFrame;
-    if (*frame == mLastPlayedVideoFrame) {
-      iter.Next();
-      continue;
-    }
-
-    Image* image = frame->GetImage();
-    CONTAINER_LOG(LogLevel::Verbose,
-                  ("VideoFrameContainer %p writing video frame %p (%d x %d)",
-                  this, image, frame->GetIntrinsicSize().width,
-                  frame->GetIntrinsicSize().height));
-
-    if (frame->GetForceBlack()) {
-      if (!mBlackImage) {
-        mBlackImage = GetImageContainer()->CreatePlanarYCbCrImage();
-        if (mBlackImage) {
-          // Sets the image to a single black pixel, which will be scaled to
-          // fill the rendered size.
-          SetImageToBlackPixel(mBlackImage->AsPlanarYCbCrImage());
-        }
-      }
-      if (mBlackImage) {
-        image = mBlackImage;
-      }
-    }
-    // Don't append null image to the newImages.
-    if (!image) {
-      iter.Next();
-      continue;
-    }
-    newImages.AppendElement(ImageContainer::NonOwningImage(image, chunk.mTimeStamp));
-
-    lastPrincipalHandle = chunk.GetPrincipalHandle();
-
-    mLastPlayedVideoFrame = *frame;
-    iter.Next();
-  }
-
-  // Don't update if there are no changes.
-  if (newImages.IsEmpty()) {
+  SurfaceTextureImage* image = aImage->AsSurfaceTextureImage();
+  if (image == nullptr) {
     return;
   }
 
-  AutoTArray<ImageContainer::NonOwningImage,4> images;
-
-  bool principalHandleChanged =
-     lastPrincipalHandle != PRINCIPAL_HANDLE_NONE &&
-     lastPrincipalHandle != GetLastPrincipalHandleLocked();
-
-  // Add the frames from this iteration.
-  for (auto& image : newImages) {
-    image.mFrameID = NewFrameID();
-    images.AppendElement(image);
-  }
-
-  if (principalHandleChanged) {
-    UpdatePrincipalHandleForFrameIDLocked(lastPrincipalHandle,
-                                          newImages.LastElement().mFrameID);
-  }
-
-  SetCurrentFramesLocked(mLastPlayedVideoFrame.GetIntrinsicSize(), images);
-  nsCOMPtr<nsIRunnable> event =
-    new VideoFrameContainerInvalidateRunnable(this);
-  mMainThread->Dispatch(event.forget());
-
-  images.ClearAndRetainStorage();
+  image->OnSetCurrent();
 }
-
-void VideoFrameContainer::ClearFrames()
-{
-  ClearFutureFrames();
-}
+#endif
 
 void VideoFrameContainer::SetCurrentFrame(const gfx::IntSize& aIntrinsicSize,
                                           Image* aImage,
-                                          const TimeStamp& aTargetTime)
-{
+                                          const TimeStamp& aTargetTime) {
+#ifdef MOZ_WIDGET_ANDROID
+    NotifySetCurrent(aImage);
+#endif
   if (aImage) {
     MutexAutoLock lock(mMutex);
-    AutoTimer<Telemetry::VFC_SETCURRENTFRAME_LOCK_HOLD_MS> lockHold;
-    AutoTArray<ImageContainer::NonOwningImage,1> imageList;
+    AutoTArray<ImageContainer::NonOwningImage, 1> imageList;
     imageList.AppendElement(
         ImageContainer::NonOwningImage(aImage, aTargetTime, ++mFrameID));
     SetCurrentFramesLocked(aIntrinsicSize, imageList);
@@ -225,27 +114,35 @@ void VideoFrameContainer::SetCurrentFrame(const gfx::IntSize& aIntrinsicSize,
   }
 }
 
-void VideoFrameContainer::SetCurrentFrames(const gfx::IntSize& aIntrinsicSize,
-                                           const nsTArray<ImageContainer::NonOwningImage>& aImages)
-{
+void VideoFrameContainer::SetCurrentFrames(
+    const gfx::IntSize& aIntrinsicSize,
+    const nsTArray<ImageContainer::NonOwningImage>& aImages) {
+#ifdef MOZ_WIDGET_ANDROID
+  // When there are multiple frames, only the last one is effective
+  // (see bug 1299068 comment 4). Here I just count on VideoSink and VideoOutput
+  // to send one frame at a time and warn if not.
+  Unused << NS_WARN_IF(aImages.Length() > 1);
+  for (auto& image : aImages) {
+    NotifySetCurrent(image.mImage);
+  }
+#endif
   MutexAutoLock lock(mMutex);
-  AutoTimer<Telemetry::VFC_SETIMAGES_LOCK_HOLD_MS> lockHold;
   SetCurrentFramesLocked(aIntrinsicSize, aImages);
 }
 
-void VideoFrameContainer::SetCurrentFramesLocked(const gfx::IntSize& aIntrinsicSize,
-                                                 const nsTArray<ImageContainer::NonOwningImage>& aImages)
-{
+void VideoFrameContainer::SetCurrentFramesLocked(
+    const gfx::IntSize& aIntrinsicSize,
+    const nsTArray<ImageContainer::NonOwningImage>& aImages) {
   mMutex.AssertCurrentThreadOwns();
 
   if (aIntrinsicSize != mIntrinsicSize) {
     mIntrinsicSize = aIntrinsicSize;
     RefPtr<VideoFrameContainer> self = this;
     mMainThread->Dispatch(NS_NewRunnableFunction(
-      "IntrinsicSizeChanged", [this, self, aIntrinsicSize]() {
-        mMainThreadState.mIntrinsicSize = aIntrinsicSize;
-        mMainThreadState.mIntrinsicSizeChanged = true;
-      }));
+        "IntrinsicSizeChanged", [this, self, aIntrinsicSize]() {
+          mMainThreadState.mIntrinsicSize = aIntrinsicSize;
+          mMainThreadState.mIntrinsicSizeChanged = true;
+        }));
   }
 
   gfx::IntSize oldFrameSize = mImageContainer->GetCurrentSize();
@@ -261,18 +158,17 @@ void VideoFrameContainer::SetCurrentFramesLocked(const gfx::IntSize& aIntrinsicS
 
   PrincipalHandle principalHandle = PRINCIPAL_HANDLE_NONE;
   ImageContainer::FrameID lastFrameIDForOldPrincipalHandle =
-    mFrameIDForPendingPrincipalHandle - 1;
+      mFrameIDForPendingPrincipalHandle - 1;
   if (mPendingPrincipalHandle != PRINCIPAL_HANDLE_NONE &&
-       ((!oldImages.IsEmpty() &&
-          oldImages.LastElement().mFrameID >= lastFrameIDForOldPrincipalHandle) ||
-        (!aImages.IsEmpty() &&
-          aImages[0].mFrameID > lastFrameIDForOldPrincipalHandle))) {
-    // We are releasing the last FrameID prior to `lastFrameIDForOldPrincipalHandle`
-    // OR
-    // there are no FrameIDs prior to `lastFrameIDForOldPrincipalHandle` in the new
-    // set of images.
-    // This means that the old principal handle has been flushed out and we can
-    // notify our video element about this change.
+      ((!oldImages.IsEmpty() &&
+        oldImages.LastElement().mFrameID >= lastFrameIDForOldPrincipalHandle) ||
+       (!aImages.IsEmpty() &&
+        aImages[0].mFrameID > lastFrameIDForOldPrincipalHandle))) {
+    // We are releasing the last FrameID prior to
+    // `lastFrameIDForOldPrincipalHandle` OR there are no FrameIDs prior to
+    // `lastFrameIDForOldPrincipalHandle` in the new set of images. This means
+    // that the old principal handle has been flushed out and we can notify our
+    // video element about this change.
     principalHandle = mPendingPrincipalHandle;
     mLastPrincipalHandle = mPendingPrincipalHandle;
     mPendingPrincipalHandle = PRINCIPAL_HANDLE_NONE;
@@ -290,21 +186,19 @@ void VideoFrameContainer::SetCurrentFramesLocked(const gfx::IntSize& aIntrinsicS
   if (principalHandle != PRINCIPAL_HANDLE_NONE || imageSizeChanged) {
     RefPtr<VideoFrameContainer> self = this;
     mMainThread->Dispatch(NS_NewRunnableFunction(
-      "PrincipalHandleOrImageSizeChanged",
-      [this, self, principalHandle, imageSizeChanged]() {
-        mMainThreadState.mImageSizeChanged = imageSizeChanged;
-        if (mOwner && principalHandle != PRINCIPAL_HANDLE_NONE) {
-          mOwner->PrincipalHandleChangedForVideoFrameContainer(this,
-                                                               principalHandle);
-        }
-      }));
+        "PrincipalHandleOrImageSizeChanged",
+        [this, self, principalHandle, imageSizeChanged]() {
+          mMainThreadState.mImageSizeChanged = imageSizeChanged;
+          if (mOwner && principalHandle != PRINCIPAL_HANDLE_NONE) {
+            mOwner->PrincipalHandleChangedForVideoFrameContainer(
+                this, principalHandle);
+          }
+        }));
   }
 }
 
-void VideoFrameContainer::ClearCurrentFrame()
-{
+void VideoFrameContainer::ClearCurrentFrame() {
   MutexAutoLock lock(mMutex);
-  AutoTimer<Telemetry::VFC_CLEARCURRENTFRAME_LOCK_HOLD_MS> lockHold;
 
   // See comment in SetCurrentFrame for the reasoning behind
   // using a kungFuDeathGrip here.
@@ -315,10 +209,8 @@ void VideoFrameContainer::ClearCurrentFrame()
   mImageContainer->ClearCachedResources();
 }
 
-void VideoFrameContainer::ClearFutureFrames()
-{
+void VideoFrameContainer::ClearFutureFrames() {
   MutexAutoLock lock(mMutex);
-  AutoTimer<Telemetry::VFC_CLEARFUTUREFRAMES_LOCK_HOLD_MS> lockHold;
 
   // See comment in SetCurrentFrame for the reasoning behind
   // using a kungFuDeathGrip here.
@@ -328,15 +220,13 @@ void VideoFrameContainer::ClearFutureFrames()
   if (!kungFuDeathGrip.IsEmpty()) {
     nsTArray<ImageContainer::NonOwningImage> currentFrame;
     const ImageContainer::OwningImage& img = kungFuDeathGrip[0];
-    currentFrame.AppendElement(ImageContainer::NonOwningImage(img.mImage,
-        img.mTimeStamp, img.mFrameID, img.mProducerID));
+    currentFrame.AppendElement(ImageContainer::NonOwningImage(
+        img.mImage, img.mTimeStamp, img.mFrameID, img.mProducerID));
     mImageContainer->SetCurrentImages(currentFrame);
   }
 }
 
-void
-VideoFrameContainer::ClearCachedResources()
-{
+void VideoFrameContainer::ClearCachedResources() {
   mImageContainer->ClearCachedResources();
 }
 
@@ -344,13 +234,11 @@ ImageContainer* VideoFrameContainer::GetImageContainer() {
   return mImageContainer;
 }
 
-double VideoFrameContainer::GetFrameDelay()
-{
+double VideoFrameContainer::GetFrameDelay() {
   return mImageContainer->GetPaintDelay().ToSeconds();
 }
 
-void VideoFrameContainer::InvalidateWithFlags(uint32_t aFlags)
-{
+void VideoFrameContainer::InvalidateWithFlags(uint32_t aFlags) {
   NS_ASSERTION(NS_IsMainThread(), "Must call on main thread");
 
   if (!mOwner) {
@@ -371,6 +259,6 @@ void VideoFrameContainer::InvalidateWithFlags(uint32_t aFlags)
   mOwner->Invalidate(imageSizeChanged, intrinsicSize, forceInvalidate);
 }
 
-} // namespace mozilla
+}  // namespace mozilla
 
 #undef NS_DispatchToMainThread

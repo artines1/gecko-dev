@@ -5,10 +5,8 @@
 <window title="Window Minimum and Maximum Size Tests" onload="nextTest()"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
 
 <panel id="panel" onpopupshown="doPanelTest(this)" onpopuphidden="nextPopupTest(this)"
        align="start" pack="start" style="-moz-appearance: none; margin: 0; border: 0; padding: 0;">
@@ -88,7 +86,7 @@ function nextTest()
     SimpleTest.waitForFocus(function () { nextPopupTest(document.getElementById("panel")) } );
   }
   else {
-    tests[gTestId].window = window.open(tests[gTestId].src, "_blank", "chrome,resizable=yes");
+    tests[gTestId].window = docShell.rootTreeItem.domWindow.open(tests[gTestId].src, "_blank", "chrome,resizable=yes");
     SimpleTest.waitForFocus(windowOpened, tests[gTestId].window);
   }
 }
@@ -171,7 +169,7 @@ function nextPopupTest(panel)
   if (++gTestId >= popupTests.length) {
     // Next, check a panel that has a titlebar to ensure that it is accounted for
     // properly in the size.
-    var titledPanelWindow = window.open("titledpanelwindow.xul", "_blank", "chrome,resizable=yes");
+    var titledPanelWindow = docShell.rootTreeItem.domWindow.open("titledpanelwindow.xul", "_blank", "chrome,resizable=yes");
     SimpleTest.waitForFocus(titledPanelWindowOpened, titledPanelWindow);
   }
   else {

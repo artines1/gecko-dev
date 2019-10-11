@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')) -- Atomics,SharedArrayBuffer is not enabled unconditionally
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')||!this.hasOwnProperty('SharedArrayBuffer')||(this.hasOwnProperty('getBuildConfiguration')&&getBuildConfiguration()['arm64-simulator'])) -- Atomics,SharedArrayBuffer is not enabled unconditionally, ARM64 Simulator cannot emulate atomics
 // Copyright (C) 2018 Amal Hussein. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -27,7 +27,6 @@ $262.agent.start(`
     let status1 = "";
     let status2 = "";
 
-    const start = $262.agent.monotonicNow();
     try {
       Atomics.wait(i32a, 0, 0, Symbol("1"));
     } catch (error) {
@@ -38,11 +37,9 @@ $262.agent.start(`
     } catch (error) {
       status2 = 'Symbol("2")';
     }
-    const duration = $262.agent.monotonicNow() - start;
 
     $262.agent.report(status1);
     $262.agent.report(status2);
-    $262.agent.report(duration);
     $262.agent.leaving();
   });
 `);
@@ -51,7 +48,7 @@ const i32a = new Int32Array(
   new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 4)
 );
 
-$262.agent.broadcast(i32a.buffer);
+$262.agent.safeBroadcast(i32a);
 $262.agent.waitUntil(i32a, RUNNING, 1);
 
 // Try to yield control to ensure the agent actually started to wait.
@@ -68,11 +65,6 @@ assert.sameValue(
   '$262.agent.getReport() returns "Symbol("2")"'
 );
 
-const lapse = $262.agent.getReport();
-
-assert(lapse >= 0, 'The result of `(lapse >= 0)` is true (timeout should be a min of 0ms)');
-assert(lapse <= $262.agent.MAX_TIME_EPSILON, 'The result of `(lapse <= $262.agent.MAX_TIME_EPSILON)` is true (timeout should be a max of $$262.agent.MAX_TIME_EPSILON)');
-
-assert.sameValue(Atomics.wake(i32a, 0), 0, 'Atomics.wake(i32a, 0) returns 0');
+assert.sameValue(Atomics.notify(i32a, 0), 0, 'Atomics.notify(i32a, 0) returns 0');
 
 reportCompare(0, 0);

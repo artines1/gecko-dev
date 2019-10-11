@@ -13,14 +13,20 @@ if (CONFIG['OS_TARGET'] in ('Android', 'Linux') and
     ]
 
 LOCAL_INCLUDES += [
+    '/toolkit/components/jsoncpp/include',
     '/tools/profiler/core',
     '/tools/profiler/gecko',
     '/tools/profiler/lul',
 ]
 
-UNIFIED_SOURCES += [
-    'GeckoProfiler.cpp',
-    'ThreadProfileTest.cpp',
+if CONFIG['OS_TARGET'] != 'Android':
+    UNIFIED_SOURCES += [
+        'GeckoProfiler.cpp',
+        'ThreadProfileTest.cpp',
+    ]
+
+USE_LIBS += [
+    'jsoncpp',
 ]
 
 FINAL_LIBRARY = 'xul-gtest'

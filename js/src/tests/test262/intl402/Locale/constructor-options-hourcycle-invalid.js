@@ -1,4 +1,3 @@
-// |reftest| skip -- Intl.Locale is not supported
 // Copyright 2018 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -37,10 +36,10 @@ const invalidHourCycleOptions = [
   "h12\0",
   "H12",
 ];
-for (const invalidHourCycleOption of invalidHourCycleOptions) {
+for (const hourCycle of invalidHourCycleOptions) {
   assert.throws(RangeError, function() {
-    new Intl.Locale("en", {hourCycle: invalidHourCycleOption});
-  }, `${invalidHourCycleOption} is an invalid hourCycle option value`);
+    new Intl.Locale("en", {hourCycle});
+  }, `new Intl.Locale("en", {hourCycle: "${hourCycle}"}) throws RangeError`);
 }
 
 reportCompare(0, 0);

@@ -1,10 +1,11 @@
+// |reftest| async
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-ref-self.case
 // - src/function-forms/error/async-arrow-function.template
 /*---
 description: Referencing a parameter from within its own initializer (async arrow function expression)
 esid: sec-async-arrow-function-definitions
-features: [default-parameters]
+features: [default-parameters, async-functions]
 flags: [generated, async]
 info: |
     14.7 Async Arrow Function Definitions

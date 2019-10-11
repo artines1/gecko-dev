@@ -10,53 +10,38 @@
 #include "nsCOMPtr.h"
 #include "mozilla/Mutex.h"
 
-namespace mozilla { namespace net {
+namespace mozilla {
+namespace net {
 
 // Like an nsAutoPtr for XPCOM streams (e.g. nsIAsyncInputStream) and other
 // refcounted classes that need to have the Close() method called explicitly
 // before they are destroyed.
 template <typename T>
-class AutoClose
-{
-public:
-  AutoClose() : mMutex("net::AutoClose.mMutex") { }
-  ~AutoClose(){
-    CloseAndRelease();
-  }
+class AutoClose {
+ public:
+  AutoClose() : mMutex("net::AutoClose.mMutex") {}
+  ~AutoClose() { CloseAndRelease(); }
 
-  explicit operator bool()
-  {
+  explicit operator bool() {
     MutexAutoLock lock(mMutex);
     return mPtr;
   }
 
-  already_AddRefed<T> forget()
-  {
+  already_AddRefed<T> forget() {
     MutexAutoLock lock(mMutex);
     return mPtr.forget();
   }
 
-  void takeOver(nsCOMPtr<T> & rhs)
-  {
-    already_AddRefed<T> other = rhs.forget();
-    TakeOverInternal(&other);
-  }
+  void takeOver(nsCOMPtr<T>& rhs) { TakeOverInternal(rhs.forget()); }
 
-  void CloseAndRelease()
-  {
-    TakeOverInternal(nullptr);
-  }
+  void CloseAndRelease() { TakeOverInternal(nullptr); }
 
-private:
-  void TakeOverInternal(already_AddRefed<T> *aOther)
-  {
-    nsCOMPtr<T> ptr;
+ private:
+  void TakeOverInternal(already_AddRefed<T>&& aOther) {
+    nsCOMPtr<T> ptr(std::move(aOther));
     {
       MutexAutoLock lock(mMutex);
       ptr.swap(mPtr);
-      if (aOther) {
-        mPtr = *aOther;
-      }
     }
 
     if (ptr) {
@@ -64,14 +49,14 @@ private:
     }
   }
 
-  void operator=(const AutoClose<T> &) = delete;
-  AutoClose(const AutoClose<T> &) = delete;
+  void operator=(const AutoClose<T>&) = delete;
+  AutoClose(const AutoClose<T>&) = delete;
 
   nsCOMPtr<T> mPtr;
   Mutex mMutex;
 };
 
-} // namespace net
-} // namespace mozilla
+}  // namespace net
+}  // namespace mozilla
 
-#endif // mozilla_net_AutoClose_h
+#endif  // mozilla_net_AutoClose_h

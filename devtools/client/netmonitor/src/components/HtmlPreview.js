@@ -15,20 +15,19 @@ const { div, iframe } = dom;
 function HTMLPreview({ responseContent }) {
   const htmlBody = responseContent ? responseContent.content.text : "";
 
-  return (
-    div({ className: "html-preview" },
-      iframe({
-        sandbox: "",
-        srcDoc: typeof htmlBody === "string" ? htmlBody : "",
-      })
-    )
+  return div(
+    { className: "html-preview" },
+    iframe({
+      sandbox: "",
+      srcDoc: typeof htmlBody === "string" ? htmlBody : "",
+    })
   );
 }
 
 HTMLPreview.displayName = "HTMLPreview";
 
 HTMLPreview.propTypes = {
-  requestContent: PropTypes.object.isRequired,
+  responseContent: PropTypes.object.isRequired,
 };
 
 module.exports = HTMLPreview;

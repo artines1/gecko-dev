@@ -14,33 +14,27 @@
 namespace mozilla {
 namespace dom {
 
-
-bool
-ServiceWorkerParentInterceptEnabled()
-{
+bool ServiceWorkerParentInterceptEnabled() {
   static Atomic<bool> sEnabled;
   static Atomic<bool> sInitialized;
   if (!sInitialized) {
     AssertIsOnMainThread();
     sInitialized = true;
-    sEnabled = Preferences::GetBool("dom.serviceWorkers.parent_intercept", false);
+    sEnabled =
+        Preferences::GetBool("dom.serviceWorkers.parent_intercept", false);
   }
   return sEnabled;
 }
 
-bool
-ServiceWorkerRegistrationDataIsValid(const ServiceWorkerRegistrationData& aData)
-{
-  return !aData.scope().IsEmpty() &&
-         !aData.currentWorkerURL().IsEmpty() &&
+bool ServiceWorkerRegistrationDataIsValid(
+    const ServiceWorkerRegistrationData& aData) {
+  return !aData.scope().IsEmpty() && !aData.currentWorkerURL().IsEmpty() &&
          !aData.cacheName().IsEmpty();
 }
 
 namespace {
 
-nsresult
-CheckForSlashEscapedCharsInPath(nsIURI* aURI)
-{
+nsresult CheckForSlashEscapedCharsInPath(nsIURI* aURI) {
   MOZ_ASSERT(aURI);
 
   // A URL that can't be downcast to a standard URL is an invalid URL and should
@@ -57,31 +51,26 @@ CheckForSlashEscapedCharsInPath(nsIURI* aURI)
   }
 
   ToLowerCase(path);
-  if (path.Find("%2f") != kNotFound ||
-      path.Find("%5c") != kNotFound) {
+  if (path.Find("%2f") != kNotFound || path.Find("%5c") != kNotFound) {
     return NS_ERROR_DOM_TYPE_ERR;
   }
 
   return NS_OK;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
-nsresult
-ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
-                                    nsIURI* aScopeURI,
-                                    nsIURI* aScriptURI)
-{
+nsresult ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
+                                             nsIURI* aScopeURI,
+                                             nsIURI* aScriptURI) {
   MOZ_DIAGNOSTIC_ASSERT(aScopeURI);
   MOZ_DIAGNOSTIC_ASSERT(aScriptURI);
 
   nsCOMPtr<nsIPrincipal> principal = aClientInfo.GetPrincipal();
   NS_ENSURE_TRUE(principal, NS_ERROR_DOM_INVALID_STATE_ERR);
 
-  bool isHttp = false;
-  bool isHttps = false;
-  Unused << aScriptURI->SchemeIs("http", &isHttp);
-  Unused << aScriptURI->SchemeIs("https", &isHttps);
+  bool isHttp = aScriptURI->SchemeIs("http");
+  bool isHttps = aScriptURI->SchemeIs("https");
   NS_ENSURE_TRUE(isHttp || isHttps, NS_ERROR_DOM_SECURITY_ERR);
 
   nsresult rv = CheckForSlashEscapedCharsInPath(aScopeURI);
@@ -108,5 +97,5 @@ ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
   return NS_OK;
 }
 
-} // namespace dom
-} // namespace mozilla
+}  // namespace dom
+}  // namespace mozilla

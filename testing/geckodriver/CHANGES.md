@@ -4,13 +4,360 @@ Change log
 All notable changes to this program is documented in this file.
 
 
-Unreleased
-----------
+0.26.0
+------
+
+Note that with this release the minimum recommended Firefox version
+has changed to Firefox ≥60.
 
 ### Added
 
-- Support for WebDriver web element, web frame, and web window
+- Support for Firefox on Android
+
+  Starting with this release geckodriver is able to connect to
+  Firefox on Android systems, and to control packages based on
+  [GeckoView].
+
+  Support for Android works by the geckodriver process running on
+  a host system and Firefox running within either an emulator or
+  on a physical device connected to the host system.  This requires
+  you to first [enable remote debugging on the Android device].
+
+  The WebDriver client must set the [`platformName` capability] to
+  "`android`" and the `androidPackage` capability within
+  [`moz:firefoxOptions`] to the Android package name of the Firefox
+  application.
+
+  The full list of new capabilities specific to Android, instructions
+  how to use them, and examples can be found in the [`moz:firefoxOptions`]
+  documentation on MDN.
+
+  When the session is created, the `platformName` capability will
+  return "`android`" instead of reporting the platform of the host
+  system.
+
+### Changed
+
+- Continued Marionette refactoring changes
+
+  0.25.0 came with a series of internal changes for how geckodriver
+  communicates with Firefox over the Marionette protocol.  This
+  release contains the second half of the refactoring work.
+
+### Fixed
+
+- Connection attempts to Firefox made more reliable
+
+  geckodriver now waits for the Marionette handshake before assuming
+  the session has been established.  This should improve reliability
+  in creating new WebDriver sessions.
+
+- Corrected error codes used during session creation
+
+  When a new session was being configured with invalid input data,
+  the error codes returned was not always consistent.  Attempting
+  to start a session with a malformed capabilities configuration
+  will now return the [`invalid argument`] error consistently.
+
+
+0.25.0 (2019-09-09, `bdb64cf16b68`)
+-----------------------------------
+
+__Note to Windows users!__
+With this release you must have the [Microsoft Visual Studio redistributable runtime]
+installed on your system for the binary to run.
+This is a [known bug](https://github.com/mozilla/geckodriver/issues/1617)
+with this particular release that we intend to release a fix for soon.
+
+### Added
+
+- Added support for HTTP `HEAD` requests to the HTTPD
+
+  geckodriver now responds correctly to HTTP `HEAD` requests,
+  which can be used for probing whether it supports a particular API.
+
+  Thanks to [Bastien Orivel] for this patch.
+
+- Added support for searching for Nightly’s default path on macOS
+
+  If the location of the Firefox binary is not given, geckodriver
+  will from now also look for the location of Firefox Nightly in
+  the default locations.  The ordered list of search paths on macOS
+  is as follows:
+
+    1. `/Applications/Firefox.app/Contents/MacOS/firefox-bin`
+    2. `$HOME/Applications/Firefox.app/Contents/MacOS/firefox-bin`
+    3. `/Applications/Firefox Nightly.app/Contents/MacOS/firefox-bin`
+    4. `$HOME/Applications/Firefox Nightly.app/Contents/MacOS/firefox-bin`
+
+  Thanks to [Kriti Singh] for this patch.
+
+- Support for application bundle paths on macOS
+
+  It is now possible to pass an application bundle path, such as
+  `/Applications/Firefox.app` as argument to the `binary` field in
+  [`moz:firefoxOptions`].  This will be automatically resolved to
+  the absolute path of the binary when Firefox is started.
+
+  Thanks to [Nupur Baghel] for this patch.
+
+- macOS and Windows builds are signed
+
+  With this release of geckodriver, executables for macOS and Windows
+  are signed using the same certificate key as Firefox.  This should
+  help in cases where geckodriver previously got misidentified as
+  a virus by antivirus software.
+
+### Removed
+
+- Dropped support for legacy Selenium web element references
+
+  The legacy way of serialising web elements, using `{"ELEMENT": <UUID>}`,
+  has been removed in this release.  This may break older Selenium
+  clients and clients which are otherwise not compatible with the
+  WebDriver standard.
+
+  Thanks to [Shivam Singhal] for this patch.
+
+- Removed `--webdriver-port` command-line option
+
+  `--webdriver-port <PORT>` was an undocumented alias for `--port`,
+  initially used for backwards compatibility with clients
+  prior to Selenium 3.0.0.
+
+### Changed
+
+- Refactored Marionette serialisation
+
+  Much of geckodriver’s internal plumbing for serialising WebDriver
+  requests to Marionette messages has been refactored to decrease
+  the amount of manual lifting.
+
+  This work should have no visible side-effects for users.
+
+  Thanks to [Nupur Baghel] for working on this throughout her
+  Outreachy internship at Mozilla.
+
+- Improved error messages for incorrect command-line usage
+
+### Fixed
+
+- Errors related to incorrect command-line usage no longer hidden
+
+  By mistake, earlier versions of geckodriver failed to print incorrect
+  flag use.  With this release problems are again written to stderr.
+
+- Search system path for Firefox binary on BSDs
+
+  geckodriver would previously only search the system path for the
+  `firefox` binary on Linux.  Now it supports different BSD flavours
+  as well.
+
+
+0.24.0 (2019-01-28, `917474f3473e`)
+-----------------------------------
+
+### Added
+
+- Introduces `strictFileInteractability` capability
+
+  The new capabilitiy indicates if strict interactability checks
+  should be applied to `<input type=file>` elements.  As strict
+  interactability checks are off by default, there is a change
+  in behaviour when using [Element Send Keys] with hidden file
+  upload controls.
+
+- Added new endpoint `GET /session/{session id}/moz/screenshot/full`
+  for taking full document screenshots, thanks to Greg Fraley.
+
+- Added new `--marionette-host <hostname>` flag for binding to a
+  particular interface/IP layer on the system.
+
+- Added new endpoint `POST /session/{session_id}/window/new`
+  for the [New Window] command to create a new top-level browsing
+  context, which can be either a window or a tab. The first version
+  of Firefox supporting this command is Firefox 66.0.
+
+- When using the preference `devtools.console.stdout.content` set to
+  `true` logging of console API calls like `info()`, `warn()`, and
+  `error()` can be routed to stdout.
+
+- geckodriver now sets the `app.update.disabledForTesting` preference
+  to prevent Firefox >= 65 from automatically updating whilst under
+  automation.
+
+### Removed
+
+- ARMv7 HF builds have been discontinued
+
+  We [announced](https://lists.mozilla.org/pipermail/tools-marionette/2018-September/000035.html)
+  back in September 2018 that we would stop building for ARM,
+  but builds can be self-serviced by building from source.
+
+  To cross-compile from another host system, you can use this command:
+
+  	% cargo build --target armv7-unknown-linux-gnueabihf
+
+### Changed
+
+- Allow file uploads to hidden `<input type=file>` elements
+
+  Through a series of changes to the WebDriver specification,
+  geckodriver is now aligned with chromedriver’s behaviour that
+  allows interaction with hidden `<input type=file>` elements.
+
+  This allows WebDriver to be used with various popular web
+  frameworks that—through indirection—hides the file upload control
+  and invokes it through other means.
+
+- Allow use of an indefinite script timeout for the [Set Timeouts]
+  command, thanks to reimu.
+
+### Fixed
+
+- Corrected `Content-Type` of response header to `utf-8` to fix
+  an HTTP/1.1 compatibility bug.
+
+- Relaxed the deserialization of timeouts parameters to allow unknown
+  fields for the [Set Timeouts] command.
+
+- Fixed a regression in the [Take Element Screenshot] to not screenshot
+  the viewport, but the requested element.
+
+
+0.23.0 (2018-10-03)
+-------------------
+
+This release contains a number of fixes for regressions introduced
+in 0.22.0, where we shipped a significant refactoring to the way
+geckodriver internally dealt with JSON serialisation.
+
+### Removed
+
+- The POST `/session/{session id}/element/{element id}/tap` endpoint
+  was removed, thanks to Kerem Kat.
+
+### Changed
+
+- [webdriver crate] upgraded to 0.38.0.
+
+### Fixed
+
+- `desiredCapabilities` and `requiredCapabilities` are again
+  recognised on session creation
+
+  A regression in 0.22.0 caused geckodriver to recognise `desired`
+  and `required` instead of the correct `desiredCapabilities`
+  and `requiredCapabilities`.  This will have caused significant
+  problems for users who relied on this legacy Selenium-style
+  session creation pattern.
+
+  Do however note that support for Selenium-styled new session
+  requests is temporary and that this will be removed sometime
+  before the 1.0 release.
+
+- `duration` field made optional on pause actions
+
+  A regression in 0.22.0 caused the pause action primitive to
+  require a `duration` field.  This has now been fixed so that
+  pauses in action chains can be achieved with the default duration.
+
+- Log level formatted to expected Marionette input
+
+  A regression in 0.22.0 caused the log level to be improperly
+  formatted when using Firefox pre-releases.  This is now fixed so
+  that the requested log level is correctly interpreted by Marionette.
+
+- `temporary` field on addon installation made optional
+
+  A regression in 0.22.0 caused the `temporary` field for POST
+  `/session/{session id}/moz/addon/install` to be mandatory.  This has
+  now been fixed so that an addon is installed permanently by default.
+
+- SHA1s in version information uses limited number of characters
+
+  The SHA1 used in `--version` when building geckodriver from a
+  git repository is now limited to 12 characters, as it is when
+  building from an hg checkout.  This ensures reproducible builds.
+
+
+0.22.0 (2018-09-15)
+-------------------
+
+This release marks an important milestone on the path towards
+a stable release of geckodriver.  Large portions of geckodriver
+and the [webdriver] library it is based on has been refactored to
+accommodate using [serde] for JSON serialization.
+
+We have also made great strides to improving [WebDriver conformance],
+to the extent that geckodriver is now _almost_ entirely conforming
+to the standard.
+
+### Added
+
+- Support for WebDriver web element-, web frame-, and web window
   identifiers from Firefox.
+
+- Added support for the non-configurable `setWindowRect` capability
+  from WebDriver.
+
+  This capability informs whether the attached browser supports
+  manipulating the window dimensions and position.
+
+- A new extension capability `moz:geckodriverVersion` is returned
+  upon session creation.
+
+### Changed
+
+- All JSON serialization and deserialisation has moved from
+  rustc_serialize to [serde].
+
+- The HTTP status codes used for [script timeout] and [timeout]
+  errors has changed from Request Timeout (408) to Internal Server
+  Error (500) in order to not break HTTP/1.1 `Keep-Alive` support,
+  as HTTP clients interpret the old status code to mean they should
+  duplicate the request.
+
+- The HTTP/1.1 `Keep-Alive` timeout for persistent connections  has
+  been increased to 90 seconds.
+
+- An [invalid session ID] error is now returned when there is no
+  active session.
+
+- An [invalid argument] error is now returned when [Add Cookie]
+  is given invalid parameters.
+
+- The handshake when geckodriver connects to Marionette has been
+  hardened by killing the Firefox process if it fails.
+
+- The handshake read timeout has been reduced to 10 seconds instead
+  of waiting forever.
+
+- The HTTP server geckodriver uses, [hyper], has been upgraded to
+  version 0.12, thanks to [Bastien Orivel].
+
+- geckodriver version number is no longer logged on startup, as
+  the log level is not configured until a session is created.
+
+  The version number is available through `--version`, and now
+  also through a new `moz:geckodriverVersion` field in the matched
+  capabilities.
+
+- [webdriver crate] upgraded to 0.37.0.
+
+### Fixed
+
+- Parsing [timeout object] values has been made WebDriver conforming,
+  by allowing floats as input.
+
+- Implicit downloads of OpenH264 and Widevine plugins has been disabled.
+
+- The commit hash and date displayed when invoking `--version`
+  is now well-formatted when built from an hg repository, thanks to
+  [Jeremy Lempereur].
+
+- Many documentation improvements, now published on
+  https://firefox-source-docs.mozilla.org/testing/geckodriver/.
 
 
 0.21.0 (2018-06-15)
@@ -906,6 +1253,14 @@ and greater.
 
 [README]: https://github.com/mozilla/geckodriver/blob/master/README.md
 [Browser Toolbox]: https://developer.mozilla.org/en-US/docs/Tools/Browser_Toolbox
+[WebDriver conformance]: https://wpt.fyi/results/webdriver/tests?label=experimental
+[`moz:firefoxOptions`]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities/firefoxOptions
+[Microsoft Visual Studio redistributable runtime]: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+[GeckoView]: https://wiki.mozilla.org/Mobile/GeckoView
+[Firefox Preview]: https://play.google.com/store/apps/details?id=org.mozilla.fenix
+[Firefox Reality]: https://play.google.com/store/apps/details?id=org.mozilla.vrbrowser
+[Capabilities]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Capabilities.html
+[enable remote debugging on the Android device]: https://developers.google.com/web/tools/chrome-devtools/remote-debugging
 
 [`CloseWindowResponse`]: https://docs.rs/webdriver/newest/webdriver/response/struct.CloseWindowResponse.html
 [`CookieResponse`]: https://docs.rs/webdriver/newest/webdriver/response/struct.CookieResponse.html
@@ -931,7 +1286,17 @@ and greater.
 [`UnknownError`]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html#variant.UnknownError
 [`WindowRectParameters`]: https://docs.rs/webdriver/newest/webdriver/command/struct.WindowRectParameters.html
 
+[Add Cookie]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Commands/AddCookie
+[invalid argument]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/InvalidArgument
+[invalid session id]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/InvalidSessionID
+[script timeout]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/ScriptTimeout
+[timeout]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Errors/Timeout
+[timeout object]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Timeouts
+[`platformName` capability]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities#platformName
+
+[hyper]: https://hyper.rs/
 [mozrunner crate]: https://crates.io/crates/mozrunner
+[serde]: https://serde.rs/
 [webdriver crate]: https://crates.io/crates/webdriver
 
 [Actions]: https://w3c.github.io/webdriver/webdriver-spec.html#actions
@@ -942,6 +1307,7 @@ and greater.
 [insecure certificate]: https://w3c.github.io/webdriver/webdriver-spec.html#dfn-insecure-certificate
 [Minimize Window]: https://w3c.github.io/webdriver/webdriver-spec.html#minimize-window
 [New Session]: https://w3c.github.io/webdriver/webdriver-spec.html#new-session
+[New Window]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Commands/New_Window
 [Send Alert Text]: https://w3c.github.io/webdriver/webdriver-spec.html#send-alert-text
 [Set Timeouts]: https://w3c.github.io/webdriver/webdriver-spec.html#set-timeouts
 [Set Window Rect]: https://w3c.github.io/webdriver/webdriver-spec.html#set-window-rect
@@ -949,9 +1315,14 @@ and greater.
 [Take Element Screenshot]: https://w3c.github.io/webdriver/webdriver-spec.html#take-element-screenshot
 [WebDriver errors]: https://w3c.github.io/webdriver/webdriver-spec.html#handling-errors
 
+[Bastien Orivel]: https://github.com/Eijebong
 [Jason Juang]: https://github.com/juangj
+[Jeremy Lempereur]: https://github.com/o0Ignition0o
 [Joshua Bruning]: https://github.com/joshbruning
 [Kalpesh Krishna]: https://github.com/martiansideofthemoon
+[Kriti Singh]: https://github.com/kritisingh1
 [Mike Pennisi]: https://github.com/jugglinmike
+[Nupur Baghel]: https://github.com/nupurbaghel
+[Shivam Singhal]: https://github.com/championshuttler
 [Sven Jost]: https://github/mythsunwind
 [Vlad Filippov]: https://github.com/vladikoff

@@ -1,14 +1,12 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
 
-const {Cc, Ci, Cr} = require("chrome");
+const { Cc, Ci, Cr } = require("chrome");
 const EventEmitter = require("devtools/shared/event-emitter");
-const { DebuggerServer } = require("devtools/server/main");
+const { DebuggerServer } = require("devtools/server/debugger-server");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
 const Services = require("Services");
 
@@ -100,8 +98,9 @@ var ConnectionManager = {
     return [...this._connections];
   },
   getFreeTCPPort: function() {
-    const serv = Cc["@mozilla.org/network/server-socket;1"]
-                 .createInstance(Ci.nsIServerSocket);
+    const serv = Cc["@mozilla.org/network/server-socket;1"].createInstance(
+      Ci.nsIServerSocket
+    );
     serv.init(-1, true, -1);
     const port = serv.port;
     serv.close();
@@ -143,7 +142,7 @@ Connection.Events = {
   STATUS_CHANGED: "status-changed",
   HOST_CHANGED: "host-changed",
   PORT_CHANGED: "port-changed",
-  NEW_LOG: "new_log"
+  NEW_LOG: "new_log",
 };
 
 Connection.prototype = {
@@ -231,7 +230,7 @@ Connection.prototype = {
       host: this.host,
       port: this.port,
       encryption: this.encryption,
-      authenticator: this.authenticator
+      authenticator: this.authenticator,
     });
     return settings;
   },
@@ -251,8 +250,10 @@ Connection.prototype = {
       return;
     }
     clearTimeout(this._timeoutID);
-    if (this.status == Connection.Status.CONNECTED ||
-        this.status == Connection.Status.CONNECTING) {
+    if (
+      this.status == Connection.Status.CONNECTED ||
+      this.status == Connection.Status.CONNECTING
+    ) {
       this.log("disconnecting");
       this._setStatus(Connection.Status.DISCONNECTING);
       if (this._client) {
@@ -309,26 +310,32 @@ Connection.prototype = {
   },
 
   _clientConnect: function() {
-    this._getTransport().then(transport => {
-      if (!transport) {
-        return;
+    this._getTransport().then(
+      transport => {
+        if (!transport) {
+          return;
+        }
+        this._client = new DebuggerClient(transport);
+        this._client.once("closed", this._onDisconnected);
+        this._client.connect().then(this._onConnected);
+      },
+      e => {
+        // If we're continuously trying to connect, we expect the connection to be
+        // rejected a couple times, so don't log these.
+        if (
+          !this.keepConnecting ||
+          e.result !== Cr.NS_ERROR_CONNECTION_REFUSED
+        ) {
+          console.error(e);
+        }
+        // In some cases, especially on Mac, the openOutputStream call in
+        // DebuggerClient.socketConnect may throw NS_ERROR_NOT_INITIALIZED.
+        // It occurs when we connect agressively to the simulator,
+        // and keep trying to open a socket to the server being started in
+        // the simulator.
+        this._onDisconnected();
       }
-      this._client = new DebuggerClient(transport);
-      this._client.addOneTimeListener("closed", this._onDisconnected);
-      this._client.connect().then(this._onConnected);
-    }, e => {
-      // If we're continuously trying to connect, we expect the connection to be
-      // rejected a couple times, so don't log these.
-      if (!this.keepConnecting || e.result !== Cr.NS_ERROR_CONNECTION_REFUSED) {
-        console.error(e);
-      }
-      // In some cases, especially on Mac, the openOutputStream call in
-      // DebuggerClient.socketConnect may throw NS_ERROR_NOT_INITIALIZED.
-      // It occurs when we connect agressively to the simulator,
-      // and keep trying to open a socket to the server being started in
-      // the simulator.
-      this._onDisconnected();
-    });
+    );
   },
 
   get status() {
@@ -360,9 +367,11 @@ Connection.prototype = {
         this.log("disconnected (unexpected)");
         break;
       case Connection.Status.CONNECTING:
-        this.log("connection error. Possible causes: USB port not connected, port not " +
-                 "forwarded (adb forward), wrong host or port, remote debugging not " +
-                 "enabled on the device.");
+        this.log(
+          "connection error. Possible causes: USB port not connected, port not " +
+            "forwarded (adb forward), wrong host or port, remote debugging not " +
+            "enabled on the device."
+        );
         break;
       default:
         this.log("disconnected");
@@ -377,7 +386,9 @@ Connection.prototype = {
   },
 
   _onTimeout: function() {
-    this.log("connection timeout. Possible causes: didn't click on 'accept' (prompt).");
+    this.log(
+      "connection timeout. Possible causes: didn't click on 'accept' (prompt)."
+    );
     this.emit(Connection.Events.TIMEOUT);
     this.disconnect();
   },

@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,12 +9,9 @@ var Services = require("Services");
 var defer = require("devtools/shared/defer");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
 var { dumpn, dumpv } = DevToolsUtils;
-loader.lazyRequireGetter(this, "prompt",
-  "devtools/shared/security/prompt");
-loader.lazyRequireGetter(this, "cert",
-  "devtools/shared/security/cert");
-loader.lazyRequireGetter(this, "asyncStorage",
-  "devtools/shared/async-storage");
+loader.lazyRequireGetter(this, "prompt", "devtools/shared/security/prompt");
+loader.lazyRequireGetter(this, "cert", "devtools/shared/security/cert");
+loader.lazyRequireGetter(this, "asyncStorage", "devtools/shared/async-storage");
 
 /**
  * A simple enum-like object with keys mirrored to values.
@@ -36,8 +31,7 @@ function createEnum(obj) {
  * centralize the common actions available, while still allowing embedders to
  * present their UI in whatever way they choose.
  */
-var AuthenticationResult = exports.AuthenticationResult = createEnum({
-
+var AuthenticationResult = (exports.AuthenticationResult = createEnum({
   /**
    * Close all listening sockets, and disable them from opening again.
    */
@@ -63,9 +57,8 @@ var AuthenticationResult = exports.AuthenticationResult = createEnum({
    * connections from the same client.  This requires a trustable mechanism to
    * identify the client in the future, such as the cert used during OOB_CERT.
    */
-  ALLOW_PERSIST: null
-
-});
+  ALLOW_PERSIST: null,
+}));
 
 /**
  * An |Authenticator| implements an authentication mechanism via various hooks
@@ -86,13 +79,12 @@ var Authenticators = {};
  * no cryptographic properties at work here, so it is up to the user to be sure
  * that the client can be trusted.
  */
-var Prompt = Authenticators.Prompt = {};
+var Prompt = (Authenticators.Prompt = {});
 
 Prompt.mode = "PROMPT";
 
 Prompt.Client = function() {};
 Prompt.Client.prototype = {
-
   mode: Prompt.mode,
 
   /**
@@ -140,12 +132,10 @@ Prompt.Client.prototype = {
    * @return A promise can be used if there is async behavior.
    */
   authenticate() {},
-
 };
 
 Prompt.Server = function() {};
 Prompt.Server.prototype = {
-
   mode: Prompt.mode,
 
   /**
@@ -207,7 +197,7 @@ Prompt.Server.prototype = {
     return this.allowConnection({
       authentication: this.mode,
       client,
-      server
+      server,
     });
   },
 
@@ -236,7 +226,6 @@ Prompt.Server.prototype = {
    *         A promise that will be resolved to the above is also allowed.
    */
   allowConnection: prompt.Server.defaultAllowConnection,
-
 };
 
 /**
@@ -257,13 +246,12 @@ Prompt.Server.prototype = {
  *
  * See docs/wifi.md for details of the authentication design.
  */
-var OOBCert = Authenticators.OOBCert = {};
+var OOBCert = (Authenticators.OOBCert = {});
 
 OOBCert.mode = "OOB_CERT";
 
 OOBCert.Client = function() {};
 OOBCert.Client.prototype = {
-
   mode: OOBCert.mode,
 
   /**
@@ -300,8 +288,9 @@ OOBCert.Client.prototype = {
     // Client verifies that Server's cert matches hash(ServerCert) from the
     // advertisement
     dumpv("Validate server cert hash");
-    const serverCert = socket.securityInfo.QueryInterface(Ci.nsITransportSecurityInfo)
-                           .SSLStatus.serverCert;
+    const serverCert = socket.securityInfo.QueryInterface(
+      Ci.nsITransportSecurityInfo
+    ).serverCert;
     const advertisedCert = cert;
     if (serverCert.sha256Fingerprint != advertisedCert.sha256) {
       dumpn("Server cert hash doesn't match advertisement");
@@ -344,7 +333,7 @@ OOBCert.Client.prototype = {
     };
 
     transport.hooks = {
-      onPacket: async (packet) => {
+      onPacket: async packet => {
         closeDialog();
         const { authResult } = packet;
         switch (authResult) {
@@ -357,7 +346,7 @@ OOBCert.Client.prototype = {
               port,
               cert,
               authResult,
-              oob: oobData
+              oob: oobData,
             });
             break;
           case AuthenticationResult.ALLOW:
@@ -389,7 +378,7 @@ OOBCert.Client.prototype = {
         // Transport died before auth completed
         transport.hooks = null;
         deferred.reject(reason);
-      }
+      },
     };
     transport.ready();
     return deferred.promise;
@@ -403,15 +392,16 @@ OOBCert.Client.prototype = {
     const clientCert = await cert.local.getOrCreate();
     return {
       sha256: clientCert.sha256Fingerprint,
-      k: this._createRandom()
+      k: this._createRandom(),
     };
   },
 
   _createRandom() {
     // 16 bytes / 128 bits
     const length = 16;
-    const rng = Cc["@mozilla.org/security/random-generator;1"]
-              .createInstance(Ci.nsIRandomGenerator);
+    const rng = Cc["@mozilla.org/security/random-generator;1"].createInstance(
+      Ci.nsIRandomGenerator
+    );
     const bytes = rng.generateRandomBytes(length);
     return bytes.map(byte => byte.toString(16)).join("");
   },
@@ -435,12 +425,10 @@ OOBCert.Client.prototype = {
    *         * close: Function to hide the notification
    */
   sendOOB: prompt.Client.defaultSendOOB,
-
 };
 
 OOBCert.Server = function() {};
 OOBCert.Server.prototype = {
-
   mode: OOBCert.mode,
 
   /**
@@ -531,7 +519,7 @@ OOBCert.Server.prototype = {
     // Server sees that ClientCert is from a unknown client
     // Tell client they are unknown and should display OOB client UX
     transport.send({
-      authResult: AuthenticationResult.PENDING
+      authResult: AuthenticationResult.PENDING,
     });
 
     // Step B.5
@@ -540,7 +528,7 @@ OOBCert.Server.prototype = {
     const authResult = await this.allowConnection({
       authentication: this.mode,
       client,
-      server
+      server,
     });
 
     switch (authResult) {
@@ -637,7 +625,6 @@ OOBCert.Server.prototype = {
    *         A promise that will be resolved to the above is also allowed.
    */
   receiveOOB: prompt.Server.defaultReceiveOOB,
-
 };
 
 exports.Authenticators = {
@@ -652,5 +639,5 @@ exports.Authenticators = {
       }
     }
     throw new Error("Unknown authenticator mode: " + mode);
-  }
+  },
 };

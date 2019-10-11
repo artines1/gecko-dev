@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -35,8 +34,9 @@ function createNew(ui, panelWindow) {
 
     waitForFocus(function() {
       // create a new style sheet
-      const newButton = panelWindow.document
-        .querySelector(".style-editor-newButton");
+      const newButton = panelWindow.document.querySelector(
+        ".style-editor-newButton"
+      );
       ok(newButton, "'new' button exists");
 
       EventUtils.synthesizeMouseAtCenter(newButton, {}, panelWindow);
@@ -65,6 +65,10 @@ async function testInitialState(editor) {
   ok(editor.sourceLoaded, "new editor is loaded when attached");
   ok(editor.isNew, "new editor has isNew flag");
 
+  if (!editor.sourceEditor.hasFocus()) {
+    info("Waiting for stylesheet editor to gain focus");
+    await editor.sourceEditor.once("focus");
+  }
   ok(editor.sourceEditor.hasFocus(), "new editor has focus");
 
   summary = editor.summary;
@@ -73,10 +77,13 @@ async function testInitialState(editor) {
 
   const color = await getComputedStyleProperty({
     selector: "body",
-    name: "background-color"
+    name: "background-color",
   });
-  is(color, "rgb(255, 255, 255)",
-     "content's background color is initially white");
+  is(
+    color,
+    "rgb(255, 255, 255)",
+    "content's background color is initially white"
+  );
 }
 
 function typeInEditor(editor, panelWindow) {
@@ -95,14 +102,15 @@ function typeInEditor(editor, panelWindow) {
 function testUpdated(editor, originalHref) {
   info("Testing the state of the new editor after editing it");
 
-  is(editor.sourceEditor.getText(), TESTCASE_CSS_SOURCE + "}",
-     "rule bracket has been auto-closed");
+  is(
+    editor.sourceEditor.getText(),
+    TESTCASE_CSS_SOURCE + "}",
+    "rule bracket has been auto-closed"
+  );
 
   const ruleCount = editor.summary.querySelector(".stylesheet-rule-count")
     .textContent;
-  is(parseInt(ruleCount, 10), 1,
-     "new editor shows 1 rule after modification");
+  is(parseInt(ruleCount, 10), 1, "new editor shows 1 rule after modification");
 
-  is(editor.styleSheet.href, originalHref,
-     "style sheet href did not change");
+  is(editor.styleSheet.href, originalHref, "style sheet href did not change");
 }

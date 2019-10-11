@@ -9,10 +9,11 @@ from distutils.spawn import find_executable
 import os
 import posixpath
 
-from mozdevice import ADBAndroid
+from mozdevice import ADBDevice
 from mozprofile import (
     Profile,
     ChromeProfile,
+    ChromiumProfile,
     FirefoxProfile,
     ThunderbirdProfile
 )
@@ -23,6 +24,7 @@ here = os.path.abspath(os.path.dirname(__file__))
 def get_app_context(appname):
     context_map = {
         'chrome': ChromeContext,
+        'chromium': ChromiumContext,
         'default': DefaultContext,
         'fennec': FennecContext,
         'firefox': FirefoxContext,
@@ -93,6 +95,9 @@ class RemoteContext(object):
         pass
 
 
+devices = {}
+
+
 class FennecContext(RemoteContext):
     _remote_profiles_ini = None
     _remote_test_root = None
@@ -102,7 +107,19 @@ class FennecContext(RemoteContext):
         self.avd_home = avd_home
         self.remote_process = app
         self.device_serial = device_serial
-        self.device = ADBAndroid(adb=self.adb, device=device_serial)
+        self.device = self.get_device(self.adb, device_serial)
+
+    def get_device(self, adb_path, device_serial):
+        # Create a mozdevice.ADBDevice object for the specified device_serial
+        # and cache it for future use. If the same device_serial is subsequently
+        # requested, retrieve it from the cache to avoid costly re-initialization.
+        global devices
+        if device_serial in devices:
+            device = devices[device_serial]
+        else:
+            device = ADBDevice(adb=adb_path, device=device_serial)
+            devices[device_serial] = device
+        return device
 
     def stop_application(self):
         self.device.stop_application(self.remote_process)
@@ -133,3 +150,7 @@ class ThunderbirdContext(object):
 
 class ChromeContext(object):
     profile_class = ChromeProfile
+
+
+class ChromiumContext(object):
+    profile_class = ChromiumProfile

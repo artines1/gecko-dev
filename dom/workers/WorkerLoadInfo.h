@@ -7,10 +7,11 @@
 #ifndef mozilla_dom_workers_WorkerLoadInfo_h
 #define mozilla_dom_workers_WorkerLoadInfo_h
 
+#include "mozilla/StorageAccess.h"
 #include "mozilla/dom/ChannelInfo.h"
 #include "mozilla/dom/ServiceWorkerRegistrationDescriptor.h"
 #include "mozilla/dom/WorkerCommon.h"
-#include "mozilla/net/ReferrerPolicy.h"
+
 #include "nsIInterfaceRequestor.h"
 #include "nsILoadContext.h"
 #include "nsIRequest.h"
@@ -19,11 +20,12 @@
 
 class nsIChannel;
 class nsIContentSecurityPolicy;
+class nsICookieSettings;
 class nsILoadGroup;
 class nsIPrincipal;
 class nsIRunnable;
 class nsIScriptContext;
-class nsITabChild;
+class nsIBrowserChild;
 class nsIURI;
 class nsPIDOMWindowInner;
 
@@ -31,15 +33,16 @@ namespace mozilla {
 
 namespace ipc {
 class PrincipalInfo;
-} // namespace ipc
+class CSPInfo;
+}  // namespace ipc
 
 namespace dom {
 
 class WorkerPrivate;
 
-struct WorkerLoadInfo
-{
-  // All of these should be released in WorkerPrivateParent::ForgetMainThreadObjects.
+struct WorkerLoadInfoData {
+  // All of these should be released in
+  // WorkerPrivateParent::ForgetMainThreadObjects.
   nsCOMPtr<nsIURI> mBaseURI;
   nsCOMPtr<nsIURI> mResolvedScriptURI;
 
@@ -49,100 +52,133 @@ struct WorkerLoadInfo
   // If we load a data: URL, mPrincipal will be a null principal.
   nsCOMPtr<nsIPrincipal> mLoadingPrincipal;
   nsCOMPtr<nsIPrincipal> mPrincipal;
+  nsCOMPtr<nsIPrincipal> mStoragePrincipal;
+
+  // Taken from the parent context.
+  nsCOMPtr<nsICookieSettings> mCookieSettings;
 
   nsCOMPtr<nsIScriptContext> mScriptContext;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   nsCOMPtr<nsIContentSecurityPolicy> mCSP;
+  // Thread boundaries require us to not only store a CSP object, but also a
+  // serialized version of the CSP. Reason being: Serializing a CSP to a CSPInfo
+  // needs to happen on the main thread, but storing the CSPInfo needs to happen
+  // on the worker thread. We move the CSPInfo into the Client within
+  // ScriptLoader::PreRun().
+  nsAutoPtr<mozilla::ipc::CSPInfo> mCSPInfo;
+
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
-  class InterfaceRequestor final : public nsIInterfaceRequestor
-  {
+  class InterfaceRequestor final : public nsIInterfaceRequestor {
     NS_DECL_ISUPPORTS
 
-  public:
+   public:
     InterfaceRequestor(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
-    void MaybeAddTabChild(nsILoadGroup* aLoadGroup);
+    void MaybeAddBrowserChild(nsILoadGroup* aLoadGroup);
     NS_IMETHOD GetInterface(const nsIID& aIID, void** aSink) override;
 
-  private:
-    ~InterfaceRequestor() { }
+    void SetOuterRequestor(nsIInterfaceRequestor* aOuterRequestor) {
+      MOZ_ASSERT(!mOuterRequestor);
+      MOZ_ASSERT(aOuterRequestor);
+      mOuterRequestor = aOuterRequestor;
+    }
 
-    already_AddRefed<nsITabChild> GetAnyLiveTabChild();
+   private:
+    ~InterfaceRequestor() {}
+
+    already_AddRefed<nsIBrowserChild> GetAnyLiveBrowserChild();
 
     nsCOMPtr<nsILoadContext> mLoadContext;
     nsCOMPtr<nsIInterfaceRequestor> mOuterRequestor;
 
-    // Array of weak references to nsITabChild.  We do not want to keep TabChild
-    // actors alive for long after their ActorDestroy() methods are called.
-    nsTArray<nsWeakPtr> mTabChildList;
+    // Array of weak references to nsIBrowserChild.  We do not want to keep
+    // BrowserChild actors alive for long after their ActorDestroy() methods are
+    // called.
+    nsTArray<nsWeakPtr> mBrowserChildList;
   };
 
   // Only set if we have a custom overriden load group
   RefPtr<InterfaceRequestor> mInterfaceRequestor;
 
   nsAutoPtr<mozilla::ipc::PrincipalInfo> mPrincipalInfo;
+  nsAutoPtr<mozilla::ipc::PrincipalInfo> mStoragePrincipalInfo;
   nsCString mDomain;
-  nsString mOrigin; // Derived from mPrincipal; can be used on worker thread.
+  nsString mOrigin;  // Derived from mPrincipal; can be used on worker thread.
 
   nsString mServiceWorkerCacheName;
   Maybe<ServiceWorkerDescriptor> mServiceWorkerDescriptor;
-  Maybe<ServiceWorkerRegistrationDescriptor> mServiceWorkerRegistrationDescriptor;
+  Maybe<ServiceWorkerRegistrationDescriptor>
+      mServiceWorkerRegistrationDescriptor;
 
   Maybe<ServiceWorkerDescriptor> mParentController;
+
+  nsID mAgentClusterId;
 
   ChannelInfo mChannelInfo;
   nsLoadFlags mLoadFlags;
 
   uint64_t mWindowID;
 
-  net::ReferrerPolicy mReferrerPolicy;
+  nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
   bool mFromWindow;
   bool mEvalAllowed;
   bool mReportCSPViolations;
   bool mXHRParamsAllowed;
   bool mPrincipalIsSystem;
-  bool mStorageAllowed;
+  bool mPrincipalIsAddonOrExpandedAddon;
+  bool mWatchedByDevtools;
+  StorageAccess mStorageAccess;
   bool mFirstPartyStorageAccessGranted;
   bool mServiceWorkersTestingInWindow;
   OriginAttributes mOriginAttributes;
 
-  WorkerLoadInfo();
-  ~WorkerLoadInfo();
+  enum {
+    eNotSet,
+    eInsecureContext,
+    eSecureContext,
+  } mSecureContext;
 
-  void StealFrom(WorkerLoadInfo& aOther);
+  WorkerLoadInfoData();
+  WorkerLoadInfoData(WorkerLoadInfoData&& aOther) = default;
 
-  nsresult
-  SetPrincipalOnMainThread(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
-
-  nsresult
-  GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
-                                      nsIPrincipal** aPrincipalOut,
-                                      nsILoadGroup** aLoadGroupOut);
-
-  nsresult
-  SetPrincipalFromChannel(nsIChannel* aChannel);
-
-  bool
-  FinalChannelPrincipalIsValid(nsIChannel* aChannel);
-
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
-  bool
-  PrincipalIsValid() const;
-
-  bool
-  PrincipalURIMatchesScriptURL();
-#endif
-
-  bool
-  ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate);
-
-  bool
-  ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
-                                nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel);
+  WorkerLoadInfoData& operator=(WorkerLoadInfoData&& aOther) = default;
 };
 
-} // dom namespace
-} // mozilla namespace
+struct WorkerLoadInfo : WorkerLoadInfoData {
+  WorkerLoadInfo();
+  WorkerLoadInfo(WorkerLoadInfo&& aOther) noexcept;
+  ~WorkerLoadInfo();
 
-#endif // mozilla_dom_workers_WorkerLoadInfo_h
+  WorkerLoadInfo& operator=(WorkerLoadInfo&& aOther) = default;
+
+  nsresult SetPrincipalsAndCSPOnMainThread(nsIPrincipal* aPrincipal,
+                                           nsIPrincipal* aStoragePrincipal,
+                                           nsILoadGroup* aLoadGroup,
+                                           nsIContentSecurityPolicy* aCSP);
+
+  nsresult GetPrincipalsAndLoadGroupFromChannel(
+      nsIChannel* aChannel, nsIPrincipal** aPrincipalOut,
+      nsIPrincipal** aStoragePrincipalOut, nsILoadGroup** aLoadGroupOut);
+
+  nsresult SetPrincipalsAndCSPFromChannel(nsIChannel* aChannel);
+
+  bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  bool PrincipalIsValid() const;
+
+  bool PrincipalURIMatchesScriptURL();
+#endif
+
+  bool ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate);
+
+  bool ProxyReleaseMainThreadObjects(
+      WorkerPrivate* aWorkerPrivate,
+      nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel);
+};
+
+}  // namespace dom
+}  // namespace mozilla
+
+#endif  // mozilla_dom_workers_WorkerLoadInfo_h

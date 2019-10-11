@@ -6,8 +6,14 @@
 
 const protocol = require("devtools/shared/protocol");
 
-const { registerActor, unregisterActor } = require("devtools/server/actors/utils/actor-registry-utils");
-const { actorActorSpec, actorRegistrySpec } = require("devtools/shared/specs/actor-registry");
+const {
+  registerActor,
+  unregisterActor,
+} = require("devtools/server/actors/utils/actor-registry-utils");
+const {
+  actorActorSpec,
+  actorRegistrySpec,
+} = require("devtools/shared/specs/actor-registry");
 
 /**
  * The ActorActor gives you a handle to an actor you've dynamically
@@ -22,7 +28,7 @@ const ActorActor = protocol.ActorClassWithSpec(actorActorSpec, {
 
   unregister: function() {
     unregisterActor(this.options);
-  }
+  },
 });
 
 /*
@@ -41,10 +47,10 @@ const ActorRegistryActor = protocol.ActorClassWithSpec(actorRegistrySpec, {
       return ActorActor(this.conn, {
         name: constructor,
         tab: type.tab,
-        global: type.global
+        global: type.global,
       });
     });
-  }
+  },
 });
 
 exports.ActorRegistryActor = ActorRegistryActor;

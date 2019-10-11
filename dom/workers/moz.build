@@ -7,16 +7,16 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Workers")
 
+DIRS += ['remoteworkers', 'sharedworkers']
+
 # Public stuff.
 EXPORTS.mozilla.dom += [
     'ChromeWorker.h',
-    'SharedWorker.h',
     'Worker.h',
     'WorkerCommon.h',
     'WorkerDebugger.h',
     'WorkerDebuggerManager.h',
-    'WorkerHolder.h',
-    'WorkerHolderToken.h',
+    'WorkerError.h',
     'WorkerLoadInfo.h',
     'WorkerLocation.h',
     'WorkerNavigator.h',
@@ -24,6 +24,7 @@ EXPORTS.mozilla.dom += [
     'WorkerRef.h',
     'WorkerRunnable.h',
     'WorkerScope.h',
+    'WorkerStatus.h',
 ]
 
 # Private stuff.
@@ -31,6 +32,7 @@ EXPORTS.mozilla.dom.workerinternals += [
     'JSSettings.h',
     'Queue.h',
     'RuntimeService.h',
+    'ScriptLoader.h',
 ]
 
 XPIDL_MODULE = 'dom_workers'
@@ -48,15 +50,12 @@ UNIFIED_SOURCES += [
     'RegisterBindings.cpp',
     'RuntimeService.cpp',
     'ScriptLoader.cpp',
-    'SharedWorker.cpp',
     'Worker.cpp',
     'WorkerCSPEventListener.cpp',
     'WorkerDebugger.cpp',
     'WorkerDebuggerManager.cpp',
     'WorkerError.cpp',
     'WorkerEventTarget.cpp',
-    'WorkerHolder.cpp',
-    'WorkerHolderToken.cpp',
     'WorkerLoadInfo.cpp',
     'WorkerLocation.cpp',
     'WorkerNavigator.cpp',
@@ -72,11 +71,18 @@ LOCAL_INCLUDES += [
     '/dom/base',
     '/dom/bindings',
     '/dom/system',
+    '/dom/workers/remoteworkers',
     '/js/xpconnect/loader',
     '/netwerk/base',
     '/xpcom/build',
     '/xpcom/threads',
 ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
+    LOCAL_INCLUDES += [
+        '/xpcom/base',
+    ]
+
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -96,6 +102,3 @@ BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
-
-if CONFIG['NIGHTLY_BUILD']:
-    DEFINES['ENABLE_WASM_GC'] = True

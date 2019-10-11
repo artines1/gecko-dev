@@ -9,59 +9,35 @@
  * scripts, so you can set breakpoints on deeply nested scripts
  */
 
-var gDebuggee;
-var gClient;
-var gThreadClient;
+add_task(
+  threadFrontTest(async ({ threadFront, debuggee }) => {
+    // Populate the `ScriptStore` so that we only test that the script
+    // is added through `onNewScript`
+    await getSources(threadFront);
 
-function run_test() {
-  run_test_with_server(DebuggerServer, function() {
-    run_test_with_server(WorkerDebuggerServer, do_test_finished);
-  });
-  do_test_pending();
-}
+    let packet = await executeOnNextTickAndWaitForPause(() => {
+      evalCode(debuggee);
+    }, threadFront);
+    const source = await getSourceById(threadFront, packet.frame.where.actor);
+    const location = {
+      sourceUrl: source.url,
+      line: debuggee.line0 + 8,
+    };
 
-function run_test_with_server(server, callback) {
-  initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-breakpoints", server);
-  gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function() {
-    attachTestTabAndResume(gClient,
-                           "test-breakpoints",
-                           function(response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test();
-                           });
-  });
-}
+    setBreakpoint(threadFront, location);
 
-const test = async function() {
-  // Populate the `ScriptStore` so that we only test that the script
-  // is added through `onNewScript`
-  await getSources(gThreadClient);
+    await resume(threadFront);
+    packet = await waitForPause(threadFront);
+    Assert.equal(packet.why.type, "breakpoint");
+    Assert.equal(packet.frame.where.actor, source.actor);
+    Assert.equal(packet.frame.where.line, location.line);
 
-  let packet = await executeOnNextTickAndWaitForPause(evalCode, gClient);
-  const source = gThreadClient.source(packet.frame.where.source);
-  const location = {
-    line: gDebuggee.line0 + 8
-  };
-
-  const [res, bpClient] = await setBreakpoint(source, location);
-  ok(!res.error);
-
-  await resume(gThreadClient);
-  packet = await waitForPause(gClient);
-  Assert.equal(packet.type, "paused");
-  Assert.equal(packet.why.type, "breakpoint");
-  Assert.equal(packet.why.actors[0], bpClient.actor);
-  Assert.equal(packet.frame.where.source.actor, source.actor);
-  Assert.equal(packet.frame.where.line, location.line);
-
-  await resume(gThreadClient);
-  finishClient(gClient);
-};
+    await resume(threadFront);
+  })
+);
 
 /* eslint-disable */
-function evalCode() {
+function evalCode(debuggee) {
   // Start a new script
   Cu.evalInSandbox(
     "var line0 = Error().lineNumber;\n(" + function () {
@@ -79,6 +55,6 @@ function evalCode() {
         })();
       })();
     } + ")()",
-    gDebuggee
+    debuggee
   );
 }

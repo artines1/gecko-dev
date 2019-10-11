@@ -6,7 +6,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=887541
 <head>
   <title>Test for event model in web components</title>
   <script type="text/javascript" src="head.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
@@ -17,7 +17,7 @@ var els = SpecialPowers.Cc["@mozilla.org/eventlistenerservice;1"]
             .getService(SpecialPowers.Ci.nsIEventListenerService);
 
 SimpleTest.waitForExplicitFinish();
-setShadowDOMPrefAndCreateIframe()
+createIframe()
   .then((aDocument) => {
     function eventListener(e) {
       eventChain.push(this);

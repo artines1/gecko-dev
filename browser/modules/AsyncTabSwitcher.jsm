@@ -7,21 +7,34 @@
 
 var EXPORTED_SYMBOLS = ["AsyncTabSwitcher"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   Services: "resource://gre/modules/Services.jsm",
-  TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
 });
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "gTabWarmingEnabled",
-  "browser.tabs.remote.warmup.enabled");
-XPCOMUtils.defineLazyPreferenceGetter(this, "gTabWarmingMax",
-  "browser.tabs.remote.warmup.maxTabs");
-XPCOMUtils.defineLazyPreferenceGetter(this, "gTabWarmingUnloadDelayMs",
-  "browser.tabs.remote.warmup.unloadDelayMs");
-XPCOMUtils.defineLazyPreferenceGetter(this, "gTabCacheSize",
-  "browser.tabs.remote.tabCacheSize");
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gTabWarmingEnabled",
+  "browser.tabs.remote.warmup.enabled"
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gTabWarmingMax",
+  "browser.tabs.remote.warmup.maxTabs"
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gTabWarmingUnloadDelayMs",
+  "browser.tabs.remote.warmup.unloadDelayMs"
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gTabCacheSize",
+  "browser.tabs.remote.tabCacheSize"
+);
 
 /**
  * The tab switcher is responsible for asynchronously switching
@@ -104,6 +117,12 @@ class AsyncTabSwitcher {
     // True if we're in the midst of switching tabs.
     this.switchInProgress = false;
 
+    // Transaction id for the composite that will show the requested
+    // tab for the first tab after a tab switch.
+    // Set to -1 when we're not waiting for notification of a
+    // completed switch.
+    this.switchPaintId = -1;
+
     // Set of tabs that might be visible right now. We maintain
     // this set because we can't be sure when a tab is actually
     // drawn. A tab is added to this set when we ask to make it
@@ -126,10 +145,11 @@ class AsyncTabSwitcher {
     // For telemetry, keeps track of what most recently cleared
     // the loadTimer, which can tell us something about the cause
     // of tab switch spinners.
-    this._loadTimerClearedBy = "none",
+    this._loadTimerClearedBy = "none";
 
     this._useDumpForLogging = false;
     this._logInit = false;
+    this._logFlags = [];
 
     this.window.addEventListener("MozAfterPaint", this);
     this.window.addEventListener("MozLayerTreeReady", this);
@@ -143,8 +163,9 @@ class AsyncTabSwitcher {
     let initialTab = this.requestedTab;
     let initialBrowser = initialTab.linkedBrowser;
 
-    let tabIsLoaded = !initialBrowser.isRemoteBrowser ||
-      initialBrowser.frameLoader.tabParent.hasLayers;
+    let tabIsLoaded =
+      !initialBrowser.isRemoteBrowser ||
+      initialBrowser.frameLoader.remoteTab.hasLayers;
 
     // If we minimized the window before the switcher was activated,
     // we might have set  the preserveLayers flag for the current
@@ -153,14 +174,15 @@ class AsyncTabSwitcher {
 
     if (!this.minimizedOrFullyOccluded) {
       this.log("Initial tab is loaded?: " + tabIsLoaded);
-      this.setTabState(initialTab, tabIsLoaded ? this.STATE_LOADED
-                                               : this.STATE_LOADING);
+      this.setTabState(
+        initialTab,
+        tabIsLoaded ? this.STATE_LOADED : this.STATE_LOADING
+      );
     }
 
     for (let ppBrowser of this.tabbrowser._printPreviewBrowsers) {
       let ppTab = this.tabbrowser.getTabForBrowser(ppBrowser);
-      let state = ppBrowser.hasLayers ? this.STATE_LOADED
-                                      : this.STATE_LOADING;
+      let state = ppBrowser.hasLayers ? this.STATE_LOADED : this.STATE_LOADING;
       this.setTabState(ppTab, state);
     }
   }
@@ -192,11 +214,10 @@ class AsyncTabSwitcher {
   // dialogs.
   setTimer(callback, timeout) {
     let event = {
-      notify: callback
+      notify: callback,
     };
 
-    var timer = Cc["@mozilla.org/timer;1"]
-      .createInstance(Ci.nsITimer);
+    var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     timer.initWithCallback(event, timeout, Ci.nsITimer.TYPE_ONE_SHOT);
     return timer;
   }
@@ -247,7 +268,7 @@ class AsyncTabSwitcher {
     this.setTabStateNoAction(tab, state);
 
     let browser = tab.linkedBrowser;
-    let { tabParent } = browser.frameLoader;
+    let { remoteTab } = browser.frameLoader;
     if (state == this.STATE_LOADING) {
       this.assert(!this.minimizedOrFullyOccluded);
 
@@ -257,7 +278,7 @@ class AsyncTabSwitcher {
         browser.docShellIsActive = true;
       }
 
-      if (tabParent) {
+      if (remoteTab) {
         browser.renderLayers = true;
       } else {
         this.onLayersReady(browser);
@@ -267,7 +288,7 @@ class AsyncTabSwitcher {
       // Setting the docShell to be inactive will also cause it
       // to stop rendering layers.
       browser.docShellIsActive = false;
-      if (!tabParent) {
+      if (!remoteTab) {
         this.onLayersCleared(browser);
       }
     } else if (state == this.STATE_LOADED) {
@@ -283,14 +304,18 @@ class AsyncTabSwitcher {
       // exits, a non-remote tab must be in STATE_LOADED or
       // STATE_UNLOADED, since the painting and the layer
       // upload happen synchronously.
-      this.assert(nonRemoteState == this.STATE_UNLOADED ||
-        nonRemoteState == this.STATE_LOADED);
+      this.assert(
+        nonRemoteState == this.STATE_UNLOADED ||
+          nonRemoteState == this.STATE_LOADED
+      );
     }
   }
 
   get minimizedOrFullyOccluded() {
-    return this.window.windowState == this.window.STATE_MINIMIZED ||
-           this.window.isFullyOccluded;
+    return (
+      this.window.windowState == this.window.STATE_MINIMIZED ||
+      this.window.isFullyOccluded
+    );
   }
 
   get tabLayerCache() {
@@ -307,8 +332,10 @@ class AsyncTabSwitcher {
     this.assert(!this.loadTimer);
     this.assert(!this.loadingTab);
     this.assert(this.lastVisibleTab === this.requestedTab);
-    this.assert(this.minimizedOrFullyOccluded ||
-      this.getTabState(this.requestedTab) == this.STATE_LOADED);
+    this.assert(
+      this.minimizedOrFullyOccluded ||
+        this.getTabState(this.requestedTab) == this.STATE_LOADED
+    );
 
     this.destroy();
 
@@ -316,7 +343,7 @@ class AsyncTabSwitcher {
 
     let event = new this.window.CustomEvent("TabSwitchDone", {
       bubbles: true,
-      cancelable: true
+      cancelable: true,
     });
     this.tabbrowser.dispatchEvent(event);
   }
@@ -331,7 +358,7 @@ class AsyncTabSwitcher {
     // the tab switch spinner - especially since the spinner is usually
     // preceded by a perceived lag of TAB_SWITCH_TIMEOUT ms in the
     // tab switch. We can hide this lag, and hide the time being spent
-    // constructing TabChild's, layer trees, etc, by showing a blank
+    // constructing BrowserChild's, layer trees, etc, by showing a blank
     // tab instead and focusing it immediately.
     let shouldBeBlank = false;
     if (requestedBrowser.isRemoteBrowser) {
@@ -339,29 +366,50 @@ class AsyncTabSwitcher {
       // blank tab instead of a spinner in the following cases:
       //
       // 1. The tab has just crashed, and we haven't started showing the
-      //    tab crashed page yet (in this case, the TabParent is null)
+      //    tab crashed page yet (in this case, the RemoteTab is null)
       // 2. The tab has never presented, and has not finished loading
       //    a non-local-about: page.
       //
       // For (2), "finished loading a non-local-about: page" is
       // determined by the busy state on the tab element and checking
       // if the loaded URI is local.
-      let hasSufficientlyLoaded = !this.requestedTab.hasAttribute("busy") &&
-        !this.tabbrowser._isLocalAboutURI(requestedBrowser.currentURI);
+      let isBusy = this.requestedTab.hasAttribute("busy");
+      let isLocalAbout = this.tabbrowser.isLocalAboutURI(
+        requestedBrowser.currentURI
+      );
+      let hasSufficientlyLoaded = !isBusy && !isLocalAbout;
 
       let fl = requestedBrowser.frameLoader;
-      shouldBeBlank = !this.minimizedOrFullyOccluded &&
-        (!fl.tabParent ||
-          (!hasSufficientlyLoaded && !fl.tabParent.hasPresented));
+      shouldBeBlank =
+        !this.minimizedOrFullyOccluded &&
+        (!fl.remoteTab ||
+          (!hasSufficientlyLoaded && !fl.remoteTab.hasPresented));
+
+      if (this.logging()) {
+        let flag = shouldBeBlank ? "blank" : "nonblank";
+        this.addLogFlag(
+          flag,
+          this.minimizedOrFullyOccluded,
+          fl.remoteTab,
+          isBusy,
+          isLocalAbout,
+          fl.remoteTab ? fl.remoteTab.hasPresented : 0
+        );
+      }
     }
 
-    this.log("Tab should be blank: " + shouldBeBlank);
-    this.log("Requested tab is remote?: " + requestedBrowser.isRemoteBrowser);
+    if (requestedBrowser.isRemoteBrowser) {
+      this.addLogFlag("isRemote");
+    }
 
     // Figure out which tab we actually want visible right now.
     let showTab = null;
-    if (requestedTabState != this.STATE_LOADED &&
-        this.lastVisibleTab && this.loadTimer && !shouldBeBlank) {
+    if (
+      requestedTabState != this.STATE_LOADED &&
+      this.lastVisibleTab &&
+      this.loadTimer &&
+      !shouldBeBlank
+    ) {
       // If we can't show the requestedTab, and lastVisibleTab is
       // available, show it.
       showTab = this.lastVisibleTab;
@@ -385,12 +433,14 @@ class AsyncTabSwitcher {
     }
 
     // Show or hide the spinner as needed.
-    let needSpinner = this.getTabState(showTab) != this.STATE_LOADED &&
-                      !this.minimizedOrFullyOccluded &&
-                      !shouldBeBlank;
+    let needSpinner =
+      this.getTabState(showTab) != this.STATE_LOADED &&
+      !this.minimizedOrFullyOccluded &&
+      !shouldBeBlank &&
+      !this.loadTimer;
 
     if (!needSpinner && this.spinnerTab) {
-      this.spinnerHidden();
+      this.noteSpinnerHidden();
       this.tabbrowser.tabpanels.removeAttribute("pendingpaint");
       this.spinnerTab.linkedBrowser.removeAttribute("pendingpaint");
       this.spinnerTab = null;
@@ -398,7 +448,7 @@ class AsyncTabSwitcher {
       if (this.spinnerTab) {
         this.spinnerTab.linkedBrowser.removeAttribute("pendingpaint");
       } else {
-        this.spinnerDisplayed();
+        this.noteSpinnerDisplayed();
       }
       this.spinnerTab = showTab;
       this.tabbrowser.tabpanels.setAttribute("pendingpaint", "true");
@@ -414,33 +464,29 @@ class AsyncTabSwitcher {
 
       let tabpanels = this.tabbrowser.tabpanels;
       let showPanel = this.tabbrowser.tabContainer.getRelatedElement(showTab);
-      let index = Array.indexOf(tabpanels.childNodes, showPanel);
+      let index = Array.prototype.indexOf.call(tabpanels.children, showPanel);
       if (index != -1) {
         this.log(`Switch to tab ${index} - ${this.tinfo(showTab)}`);
         tabpanels.setAttribute("selectedIndex", index);
         if (showTab === this.requestedTab) {
-          if (this._requestingTab) {
-            /*
-             * If _requestingTab is set, that means that we're switching the
-             * visibility of the tab synchronously, and we need to wait for
-             * the "select" event before shifting focus so that
-             * _adjustFocusAfterTabSwitch runs with the right information for
-             * the tab switch.
-             */
-            this.tabbrowser.addEventListener("select", () => {
-              this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
-            }, { once: true });
+          if (requestedTabState == this.STATE_LOADED) {
+            // The new tab will be made visible in the next paint, record the expected
+            // transaction id for that, and we'll mark when we get notified of its
+            // completion.
+            this.switchPaintId = this.window.windowUtils.lastTransactionId + 1;
           } else {
-            this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
+            this.noteMakingTabVisibleWithoutLayers();
           }
 
+          this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
           this.maybeActivateDocShell(this.requestedTab);
         }
       }
 
       // This doesn't necessarily exist if we're a new window and haven't switched tabs yet
-      if (this.lastVisibleTab)
+      if (this.lastVisibleTab) {
         this.lastVisibleTab._visuallySelected = false;
+      }
 
       this.visibleTab._visuallySelected = true;
       this.tabbrowser.tabContainer._setPositionalAttributes();
@@ -471,7 +517,6 @@ class AsyncTabSwitcher {
     }
   }
 
-
   // We've decided to try to load requestedTab.
   loadRequestedTab() {
     this.assert(!this.loadTimer);
@@ -482,7 +527,10 @@ class AsyncTabSwitcher {
     this.loadingTab = this.requestedTab;
     this.log("Loading tab " + this.tinfo(this.loadingTab));
 
-    this.loadTimer = this.setTimer(() => this.onLoadTimeout(), this.TAB_SWITCH_TIMEOUT);
+    this.loadTimer = this.setTimer(
+      () => this.handleEvent({ type: "loadTimeout" }),
+      this.TAB_SWITCH_TIMEOUT
+    );
     this.setTabState(this.requestedTab, this.STATE_LOADING);
   }
 
@@ -492,15 +540,20 @@ class AsyncTabSwitcher {
     // should activate it.
     let browser = tab.linkedBrowser;
     let state = this.getTabState(tab);
-    let canCheckDocShellState = !browser.mDestroyed &&
-      (browser.docShell || browser.frameLoader.tabParent);
-    if (tab == this.requestedTab &&
-        canCheckDocShellState &&
-        state == this.STATE_LOADED &&
-        !browser.docShellIsActive &&
-        !this.minimizedOrFullyOccluded) {
+    let canCheckDocShellState =
+      !browser.mDestroyed &&
+      (browser.docShell || browser.frameLoader.remoteTab);
+    if (
+      tab == this.requestedTab &&
+      canCheckDocShellState &&
+      state == this.STATE_LOADED &&
+      !browser.docShellIsActive &&
+      !this.minimizedOrFullyOccluded
+    ) {
       browser.docShellIsActive = true;
-      this.logState("Set requested tab docshell to active and preserveLayers to false");
+      this.logState(
+        "Set requested tab docshell to active and preserveLayers to false"
+      );
       // If we minimized the window before the switcher was activated,
       // we might have set the preserveLayers flag for the current
       // browser. Let's clear it.
@@ -523,7 +576,7 @@ class AsyncTabSwitcher {
       }
     }
 
-    for (let [tab, ] of this.tabState) {
+    for (let [tab] of this.tabState) {
       if (!tab.linkedBrowser) {
         this.tabState.delete(tab);
         this.unwarmTab(tab);
@@ -540,7 +593,7 @@ class AsyncTabSwitcher {
       this.blankTab = null;
     }
     if (this.spinnerTab && !this.spinnerTab.linkedBrowser) {
-      this.spinnerHidden();
+      this.noteSpinnerHidden();
       this.spinnerTab = null;
     }
     if (this.loadingTab && !this.loadingTab.linkedBrowser) {
@@ -552,11 +605,13 @@ class AsyncTabSwitcher {
   // tab. It's expected that we've already updated all the principal
   // state variables. This function takes care of updating any auxilliary
   // state.
-  postActions() {
+  postActions(eventString) {
     // Once we finish loading loadingTab, we null it out. So the state should
     // always be LOADING.
-    this.assert(!this.loadingTab ||
-      this.getTabState(this.loadingTab) == this.STATE_LOADING);
+    this.assert(
+      !this.loadingTab ||
+        this.getTabState(this.loadingTab) == this.STATE_LOADING
+    );
 
     // We guarantee that loadingTab is non-null iff loadTimer is non-null. So
     // the timer is set only when we're loading something.
@@ -573,10 +628,13 @@ class AsyncTabSwitcher {
 
     // If we're not loading anything, try loading the requested tab.
     let stateOfRequestedTab = this.getTabState(this.requestedTab);
-    if (!this.loadTimer && !this.minimizedOrFullyOccluded &&
-        (stateOfRequestedTab == this.STATE_UNLOADED ||
+    if (
+      !this.loadTimer &&
+      !this.minimizedOrFullyOccluded &&
+      (stateOfRequestedTab == this.STATE_UNLOADED ||
         stateOfRequestedTab == this.STATE_UNLOADING ||
-        this.warmingTabs.has(this.requestedTab))) {
+        this.warmingTabs.has(this.requestedTab))
+    ) {
       this.assert(stateOfRequestedTab != this.STATE_LOADED);
       this.loadRequestedTab();
     }
@@ -597,9 +655,11 @@ class AsyncTabSwitcher {
         continue;
       }
 
-      if (state == this.STATE_LOADED &&
-          tab !== this.requestedTab &&
-          !this.tabLayerCache.includes(tab)) {
+      if (
+        state == this.STATE_LOADED &&
+        tab !== this.requestedTab &&
+        !this.tabLayerCache.includes(tab)
+      ) {
         numPending++;
 
         if (tab !== this.visibleTab) {
@@ -638,18 +698,13 @@ class AsyncTabSwitcher {
       this.finish();
     }
 
-    this.logState("done");
+    this.logState("/" + eventString);
   }
 
   // Fires when we're ready to unload unused tabs.
   onUnloadTimeout() {
-    this.logState("onUnloadTimeout");
-    this.preActions();
     this.unloadTimer = null;
-
     this.unloadNonRequiredTabs();
-
-    this.postActions();
   }
 
   deactivateCachedBackgroundTabs() {
@@ -678,34 +733,38 @@ class AsyncTabSwitcher {
 
       let isInLayerCache = this.tabLayerCache.includes(tab);
 
-      if (state == this.STATE_LOADED &&
-          !this.maybeVisibleTabs.has(tab) &&
-          tab !== this.lastVisibleTab &&
-          tab !== this.loadingTab &&
-          tab !== this.requestedTab &&
-          !isInLayerCache) {
+      if (
+        state == this.STATE_LOADED &&
+        !this.maybeVisibleTabs.has(tab) &&
+        tab !== this.lastVisibleTab &&
+        tab !== this.loadingTab &&
+        tab !== this.requestedTab &&
+        !isInLayerCache
+      ) {
         this.setTabState(tab, this.STATE_UNLOADING);
       }
 
-      if (state != this.STATE_UNLOADED &&
-          tab !== this.requestedTab &&
-          !isInLayerCache) {
+      if (
+        state != this.STATE_UNLOADED &&
+        tab !== this.requestedTab &&
+        !isInLayerCache
+      ) {
         numPending++;
       }
     }
 
     if (numPending) {
       // Keep the timer going since there may be more tabs to unload.
-      this.unloadTimer = this.setTimer(() => this.onUnloadTimeout(), this.UNLOAD_DELAY);
+      this.unloadTimer = this.setTimer(
+        () => this.handleEvent({ type: "unloadTimeout" }),
+        this.UNLOAD_DELAY
+      );
     }
   }
 
   // Fires when an ongoing load has taken too long.
   onLoadTimeout() {
-    this.logState("onLoadTimeout");
-    this.preActions();
     this.maybeClearLoadTimer("onLoadTimeout");
-    this.postActions();
   }
 
   // Fires when the layers become available for a tab.
@@ -720,8 +779,10 @@ class AsyncTabSwitcher {
 
     this.logState(`onLayersReady(${tab._tPos}, ${browser.isRemoteBrowser})`);
 
-    this.assert(this.getTabState(tab) == this.STATE_LOADING ||
-      this.getTabState(tab) == this.STATE_LOADED);
+    this.assert(
+      this.getTabState(tab) == this.STATE_LOADING ||
+        this.getTabState(tab) == this.STATE_LOADED
+    );
     this.setTabState(tab, this.STATE_LOADED);
     this.unwarmTab(tab);
 
@@ -733,7 +794,13 @@ class AsyncTabSwitcher {
   // Fires when we paint the screen. Any tab switches we initiated
   // previously are done, so there's no need to keep the old layers
   // around.
-  onPaint() {
+  onPaint(event) {
+    this.addLogFlag(
+      "onPaint",
+      this.switchPaintId != -1,
+      event.transactionId >= this.switchPaintId
+    );
+    this.notePaint(event);
     this.maybeVisibleTabs.clear();
   }
 
@@ -742,8 +809,10 @@ class AsyncTabSwitcher {
     let tab = this.tabbrowser.getTabForBrowser(browser);
     if (tab) {
       this.logState(`onLayersCleared(${tab._tPos})`);
-      this.assert(this.getTabState(tab) == this.STATE_UNLOADING ||
-        this.getTabState(tab) == this.STATE_UNLOADED);
+      this.assert(
+        this.getTabState(tab) == this.STATE_UNLOADING ||
+          this.getTabState(tab) == this.STATE_UNLOADED
+      );
       this.setTabState(tab, this.STATE_UNLOADED);
     }
   }
@@ -752,7 +821,9 @@ class AsyncTabSwitcher {
   // a MozLayerTreeReady notification that we requested may never fire,
   // so we need to simulate it.
   onRemotenessChange(tab) {
-    this.logState(`onRemotenessChange(${tab._tPos}, ${tab.linkedBrowser.isRemoteBrowser})`);
+    this.logState(
+      `onRemotenessChange(${tab._tPos}, ${tab.linkedBrowser.isRemoteBrowser})`
+    );
     if (!tab.linkedBrowser.isRemoteBrowser) {
       if (this.getTabState(tab) == this.STATE_LOADING) {
         this.onLayersReady(tab.linkedBrowser);
@@ -767,17 +838,16 @@ class AsyncTabSwitcher {
     }
   }
 
-  // Called when a tab has been removed, and the browser node is
-  // about to be removed from the DOM.
   onTabRemoved(tab) {
     if (this.lastVisibleTab == tab) {
-      // The browser that was being presented to the user is
-      // going to be removed during this tick of the event loop.
-      // This will cause us to show a tab spinner instead.
-      this.preActions();
-      this.lastVisibleTab = null;
-      this.postActions();
+      this.handleEvent({ type: "tabRemoved", tab });
     }
+  }
+
+  // Called when a tab has been removed, and the browser node is
+  // about to be removed from the DOM.
+  onTabRemovedImpl(tab) {
+    this.lastVisibleTab = null;
   }
 
   onSizeModeOrOcclusionStateChange() {
@@ -812,7 +882,9 @@ class AsyncTabSwitcher {
       let otherSwitcher = otherTabbrowser._switcher;
       otherState = otherSwitcher.getTabState(otherTab);
     } else {
-      otherState = otherBrowser.docShellIsActive ? this.STATE_LOADED : this.STATE_UNLOADED;
+      otherState = otherBrowser.docShellIsActive
+        ? this.STATE_LOADED
+        : this.STATE_UNLOADED;
     }
     if (!this.swapMap) {
       this.swapMap = new WeakMap();
@@ -853,10 +925,11 @@ class AsyncTabSwitcher {
   activateBrowserForPrintPreview(browser) {
     let tab = this.tabbrowser.getTabForBrowser(browser);
     let state = this.getTabState(tab);
-    if (state != this.STATE_LOADING &&
-        state != this.STATE_LOADED) {
+    if (state != this.STATE_LOADING && state != this.STATE_LOADED) {
       this.setTabState(tab, this.STATE_LOADING);
-      this.logState("Activated browser " + this.tinfo(tab) + " for print preview");
+      this.logState(
+        "Activated browser " + this.tinfo(tab) + " for print preview"
+      );
     }
   }
 
@@ -872,11 +945,13 @@ class AsyncTabSwitcher {
     // If the tab is not yet inserted, closing, not remote,
     // crashed, already visible, or already requested, warming
     // up the tab makes no sense.
-    if (this.minimizedOrFullyOccluded ||
-        !tab.linkedPanel ||
-        tab.closing ||
-        !tab.linkedBrowser.isRemoteBrowser ||
-        !tab.linkedBrowser.frameLoader.tabParent) {
+    if (
+      this.minimizedOrFullyOccluded ||
+      !tab.linkedPanel ||
+      tab.closing ||
+      !tab.linkedBrowser.isRemoteBrowser ||
+      !tab.linkedBrowser.frameLoader.remoteTab
+    ) {
       return false;
     }
 
@@ -888,8 +963,7 @@ class AsyncTabSwitcher {
       // Tabs that are already in STATE_LOADING or STATE_LOADED
       // have no need to be warmed up.
       let state = this.getTabState(tab);
-      if (state === this.STATE_UNLOADING ||
-          state === this.STATE_UNLOADED) {
+      if (state === this.STATE_UNLOADING || state === this.STATE_UNLOADED) {
         return true;
       }
     }
@@ -928,9 +1002,11 @@ class AsyncTabSwitcher {
   }
 
   maybePromoteTabInLayerCache(tab) {
-    if (gTabCacheSize > 1 &&
-        tab.linkedBrowser.isRemoteBrowser &&
-        tab.linkedBrowser.currentURI.spec != "about:blank") {
+    if (
+      gTabCacheSize > 1 &&
+      tab.linkedBrowser.isRemoteBrowser &&
+      tab.linkedBrowser.currentURI.spec != "about:blank"
+    ) {
       let tabIndex = this.tabLayerCache.indexOf(tab);
 
       if (tabIndex != -1) {
@@ -952,40 +1028,16 @@ class AsyncTabSwitcher {
     }
 
     let tabState = this.getTabState(tab);
-    if (gTabWarmingEnabled) {
-      let warmingState = "disqualified";
+    this.noteTabRequested(tab, tabState);
 
-      if (this.canWarmTab(tab)) {
-        if (tabState == this.STATE_LOADING) {
-          warmingState = "stillLoading";
-        } else if (tabState == this.STATE_LOADED) {
-          warmingState = "loaded";
-        } else if (tabState == this.STATE_UNLOADING ||
-                   tabState == this.STATE_UNLOADED) {
-          // At this point, if the tab's browser was being inserted
-          // lazily, we never had a chance to warm it up, and unfortunately
-          // there's no great way to detect that case. Those cases will
-          // end up in the "notWarmed" bucket, along with legitimate cases
-          // where tabs could have been warmed but weren't.
-          warmingState = "notWarmed";
-        }
-      }
-
-      Services.telemetry
-        .getHistogramById("FX_TAB_SWITCH_REQUEST_TAB_WARMING_STATE")
-        .add(warmingState);
-    }
-
-    this._requestingTab = true;
     this.logState("requestTab " + this.tinfo(tab));
     this.startTabSwitch();
 
+    let oldBrowser = this.requestedTab.linkedBrowser;
+    oldBrowser.deprioritize();
     this.requestedTab = tab;
     if (tabState == this.STATE_LOADED) {
       this.maybeVisibleTabs.clear();
-      if (tab.linkedBrowser.isRemoteBrowser) {
-        tab.linkedBrowser.forceRepaint();
-      }
     }
 
     tab.linkedBrowser.setAttribute("primary", "true");
@@ -995,18 +1047,20 @@ class AsyncTabSwitcher {
     this.lastPrimaryTab = tab;
 
     this.queueUnload(this.UNLOAD_DELAY);
-    this._requestingTab = false;
   }
 
   queueUnload(unloadTimeout) {
-    this.preActions();
+    this.handleEvent({ type: "queueUnload", unloadTimeout });
+  }
 
+  onQueueUnload(unloadTimeout) {
     if (this.unloadTimer) {
       this.clearTimer(this.unloadTimer);
     }
-    this.unloadTimer = this.setTimer(() => this.onUnloadTimeout(), unloadTimeout);
-
-    this.postActions();
+    this.unloadTimer = this.setTimer(
+      () => this.handleEvent({ type: "unloadTimeout" }),
+      unloadTimeout
+    );
   }
 
   handleEvent(event, delayed = false) {
@@ -1020,35 +1074,50 @@ class AsyncTabSwitcher {
       return;
     }
     this._processing = true;
-    this.preActions();
+    try {
+      this.preActions();
 
-    switch (event.type) {
-      case "MozLayerTreeReady":
-        this.onLayersReady(event.originalTarget);
-        break;
-      case "MozAfterPaint":
-        this.onPaint();
-        break;
-      case "MozLayerTreeCleared":
-        this.onLayersCleared(event.originalTarget);
-        break;
-      case "TabRemotenessChange":
-        this.onRemotenessChange(event.target);
-        break;
-      case "sizemodechange":
-      case "occlusionstatechange":
-        this.onSizeModeOrOcclusionStateChange();
-        break;
-      case "SwapDocShells":
-        this.onSwapDocShells(event.originalTarget, event.detail);
-        break;
-      case "EndSwapDocShells":
-        this.onEndSwapDocShells(event.originalTarget, event.detail);
-        break;
+      switch (event.type) {
+        case "queueUnload":
+          this.onQueueUnload(event.unloadTimeout);
+          break;
+        case "unloadTimeout":
+          this.onUnloadTimeout();
+          break;
+        case "loadTimeout":
+          this.onLoadTimeout();
+          break;
+        case "tabRemoved":
+          this.onTabRemovedImpl(event.tab);
+          break;
+        case "MozLayerTreeReady":
+          this.onLayersReady(event.originalTarget);
+          break;
+        case "MozAfterPaint":
+          this.onPaint(event);
+          break;
+        case "MozLayerTreeCleared":
+          this.onLayersCleared(event.originalTarget);
+          break;
+        case "TabRemotenessChange":
+          this.onRemotenessChange(event.target);
+          break;
+        case "sizemodechange":
+        case "occlusionstatechange":
+          this.onSizeModeOrOcclusionStateChange();
+          break;
+        case "SwapDocShells":
+          this.onSwapDocShells(event.originalTarget, event.detail);
+          break;
+        case "EndSwapDocShells":
+          this.onEndSwapDocShells(event.originalTarget, event.detail);
+          break;
+      }
+
+      this.postActions(event.type);
+    } finally {
+      this._processing = false;
     }
-
-    this.postActions();
-    this._processing = false;
   }
 
   /*
@@ -1057,9 +1126,7 @@ class AsyncTabSwitcher {
    */
 
   startTabSwitch() {
-    TelemetryStopwatch.cancel("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
-    TelemetryStopwatch.start("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
-    this.addMarker("AsyncTabSwitch:Start");
+    this.noteStartTabSwitch();
     this.switchInProgress = true;
   }
 
@@ -1070,51 +1137,19 @@ class AsyncTabSwitcher {
    * satisfied, and then records the tab switch as finished.
    */
   maybeFinishTabSwitch() {
-    if (this.switchInProgress && this.requestedTab &&
-        (this.getTabState(this.requestedTab) == this.STATE_LOADED ||
-          this.requestedTab === this.blankTab)) {
+    if (
+      this.switchInProgress &&
+      this.requestedTab &&
+      (this.getTabState(this.requestedTab) == this.STATE_LOADED ||
+        this.requestedTab === this.blankTab)
+    ) {
       if (this.requestedTab !== this.blankTab) {
         this.maybePromoteTabInLayerCache(this.requestedTab);
       }
 
-      // After this point the tab has switched from the content thread's point of view.
-      // The changes will be visible after the next refresh driver tick + composite.
-      let time = TelemetryStopwatch.timeElapsed("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
-      if (time != -1) {
-        TelemetryStopwatch.finish("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
-        this.log("DEBUG: tab switch time = " + time);
-        this.addMarker("AsyncTabSwitch:Finish");
-      }
+      this.noteFinishTabSwitch();
       this.switchInProgress = false;
     }
-  }
-
-  spinnerDisplayed() {
-    this.assert(!this.spinnerTab);
-    let browser = this.requestedTab.linkedBrowser;
-    this.assert(browser.isRemoteBrowser);
-    TelemetryStopwatch.start("FX_TAB_SWITCH_SPINNER_VISIBLE_MS", this.window);
-    // We have a second, similar probe for capturing recordings of
-    // when the spinner is displayed for very long periods.
-    TelemetryStopwatch.start("FX_TAB_SWITCH_SPINNER_VISIBLE_LONG_MS", this.window);
-    this.addMarker("AsyncTabSwitch:SpinnerShown");
-    Services.telemetry
-      .getHistogramById("FX_TAB_SWITCH_SPINNER_VISIBLE_TRIGGER")
-      .add(this._loadTimerClearedBy);
-    if (AppConstants.NIGHTLY_BUILD) {
-      Services.obs.notifyObservers(null, "tabswitch-spinner");
-    }
-  }
-
-  spinnerHidden() {
-    this.assert(this.spinnerTab);
-    this.log("DEBUG: spinner time = " +
-      TelemetryStopwatch.timeElapsed("FX_TAB_SWITCH_SPINNER_VISIBLE_MS", this.window));
-    TelemetryStopwatch.finish("FX_TAB_SWITCH_SPINNER_VISIBLE_MS", this.window);
-    TelemetryStopwatch.finish("FX_TAB_SWITCH_SPINNER_VISIBLE_LONG_MS", this.window);
-    this.addMarker("AsyncTabSwitch:SpinnerHidden");
-    // we do not get a onPaint after displaying the spinner
-    this._loadTimerClearedBy = "none";
   }
 
   addMarker(marker) {
@@ -1127,11 +1162,16 @@ class AsyncTabSwitcher {
    * Debug related logging for switcher.
    */
   logging() {
-    if (this._useDumpForLogging)
+    if (this._useDumpForLogging) {
       return true;
-    if (this._logInit)
+    }
+    if (this._logInit) {
       return this._shouldLog;
-    let result = Services.prefs.getBoolPref("browser.tabs.remote.logSwitchTiming", false);
+    }
+    let result = Services.prefs.getBoolPref(
+      "browser.tabs.remote.logSwitchTiming",
+      false
+    );
     this._shouldLog = result;
     this._logInit = true;
     return this._shouldLog;
@@ -1145,8 +1185,9 @@ class AsyncTabSwitcher {
   }
 
   log(s) {
-    if (!this.logging())
+    if (!this.logging()) {
       return;
+    }
     if (this._useDumpForLogging) {
       dump(s + "\n");
     } else {
@@ -1154,13 +1195,23 @@ class AsyncTabSwitcher {
     }
   }
 
-  logState(prefix) {
-    if (!this.logging())
-      return;
+  addLogFlag(flag, ...subFlags) {
+    if (this.logging()) {
+      if (subFlags.length) {
+        flag += `(${subFlags.map(f => (f ? 1 : 0)).join("")})`;
+      }
+      this._logFlags.push(flag);
+    }
+  }
 
-    let accum = prefix + " ";
-    for (let i = 0; i < this.tabbrowser.tabs.length; i++) {
-      let tab = this.tabbrowser.tabs[i];
+  logState(suffix) {
+    if (!this.logging()) {
+      return;
+    }
+
+    let getTabString = tab => {
+      let tabString = "";
+
       let state = this.getTabState(tab);
       let isWarming = this.warmingTabs.has(tab);
       let isCached = this.tabLayerCache.includes(tab);
@@ -1169,36 +1220,250 @@ class AsyncTabSwitcher {
       let isActive = linkedBrowser && linkedBrowser.docShellIsActive;
       let isRendered = linkedBrowser && linkedBrowser.renderLayers;
 
-      accum += i + ":";
-      if (tab === this.lastVisibleTab) accum += "V";
-      if (tab === this.loadingTab) accum += "L";
-      if (tab === this.requestedTab) accum += "R";
-      if (tab === this.blankTab) accum += "B";
-
-      let extraStates = "";
-      if (isWarming) extraStates += "W";
-      if (isCached) extraStates += "C";
-      if (isClosing) extraStates += "X";
-      if (isActive) extraStates += "A";
-      if (isRendered) extraStates += "R";
-      if (extraStates != "") {
-        accum += `(${extraStates})`;
+      if (tab === this.lastVisibleTab) {
+        tabString += "V";
+      }
+      if (tab === this.loadingTab) {
+        tabString += "L";
+      }
+      if (tab === this.requestedTab) {
+        tabString += "R";
+      }
+      if (tab === this.blankTab) {
+        tabString += "B";
+      }
+      if (this.maybeVisibleTabs.has(tab)) {
+        tabString += "M";
       }
 
-      if (state == this.STATE_LOADED) accum += "(+)";
-      if (state == this.STATE_LOADING) accum += "(+?)";
-      if (state == this.STATE_UNLOADED) accum += "(-)";
-      if (state == this.STATE_UNLOADING) accum += "(-?)";
-      accum += " ";
+      let extraStates = "";
+      if (isWarming) {
+        extraStates += "W";
+      }
+      if (isCached) {
+        extraStates += "C";
+      }
+      if (isClosing) {
+        extraStates += "X";
+      }
+      if (isActive) {
+        extraStates += "A";
+      }
+      if (isRendered) {
+        extraStates += "R";
+      }
+      if (extraStates != "") {
+        tabString += `(${extraStates})`;
+      }
+
+      switch (state) {
+        case this.STATE_LOADED: {
+          tabString += "(loaded)";
+          break;
+        }
+        case this.STATE_LOADING: {
+          tabString += "(loading)";
+          break;
+        }
+        case this.STATE_UNLOADING: {
+          tabString += "(unloading)";
+          break;
+        }
+        case this.STATE_UNLOADED: {
+          tabString += "(unloaded)";
+          break;
+        }
+      }
+
+      return tabString;
+    };
+
+    let accum = "";
+
+    // This is a bit tricky to read, but what we're doing here is collapsing
+    // identical tab states down to make the overal string shorter and easier
+    // to read, and we move all simply unloaded tabs to the back of the list.
+    // I.e., we turn
+    //   "0:(unloaded) 1:(unloaded) 2:(unloaded) 3:(loaded)""
+    // into
+    //   "3:(loaded) 0...2:(unloaded)"
+    let tabStrings = this.tabbrowser.tabs.map(t => getTabString(t));
+    let lastMatch = -1;
+    let unloadedTabsStrings = [];
+    for (let i = 0; i <= tabStrings.length; i++) {
+      if (i > 0) {
+        if (i < tabStrings.length && tabStrings[i] == tabStrings[lastMatch]) {
+          continue;
+        }
+
+        if (tabStrings[lastMatch] == "(unloaded)") {
+          if (lastMatch == i - 1) {
+            unloadedTabsStrings.push(lastMatch.toString());
+          } else {
+            unloadedTabsStrings.push(`${lastMatch}...${i - 1}`);
+          }
+        } else if (lastMatch == i - 1) {
+          accum += `${lastMatch}:${tabStrings[lastMatch]} `;
+        } else {
+          accum += `${lastMatch}...${i - 1}:${tabStrings[lastMatch]} `;
+        }
+      }
+
+      lastMatch = i;
     }
 
-    accum += "cached: " + this.tabLayerCache.length;
+    if (unloadedTabsStrings.length) {
+      accum += `${unloadedTabsStrings.join(",")}:(unloaded) `;
+    }
+
+    accum += "cached: " + this.tabLayerCache.length + " ";
+
+    if (this._logFlags.length) {
+      accum += `[${this._logFlags.join(",")}] `;
+      this._logFlags = [];
+    }
+
+    // It can be annoying to read through the entirety of a log string just
+    // to check if something changed or not. So if we can tell that nothing
+    // changed, just write "unchanged" to save the reader's time.
+    let logString;
+    if (this._lastLogString == accum) {
+      accum = "unchanged";
+    } else {
+      this._lastLogString = accum;
+    }
+    logString = `ATS: ${accum}{${suffix}}`;
 
     if (this._useDumpForLogging) {
-      dump(accum + "\n");
+      dump(logString + "\n");
     } else {
-      Services.console.logStringMessage(accum);
+      Services.console.logStringMessage(logString);
     }
   }
-}
 
+  noteMakingTabVisibleWithoutLayers() {
+    // We're making the tab visible even though we haven't yet got layers for it.
+    // It's hard to know which composite the layers will first be available in (and
+    // the parent process might not even get MozAfterPaint delivered for it), so just
+    // give up measuring this for now. :(
+    TelemetryStopwatch.cancel("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+  }
+
+  notePaint(event) {
+    if (this.switchPaintId != -1 && event.transactionId >= this.switchPaintId) {
+      if (
+        TelemetryStopwatch.running(
+          "FX_TAB_SWITCH_COMPOSITE_E10S_MS",
+          this.window
+        )
+      ) {
+        let time = TelemetryStopwatch.timeElapsed(
+          "FX_TAB_SWITCH_COMPOSITE_E10S_MS",
+          this.window
+        );
+        if (time != -1) {
+          TelemetryStopwatch.finish(
+            "FX_TAB_SWITCH_COMPOSITE_E10S_MS",
+            this.window
+          );
+        }
+      }
+      this.addMarker("AsyncTabSwitch:Composited");
+      this.switchPaintId = -1;
+    }
+  }
+
+  noteTabRequested(tab, tabState) {
+    if (gTabWarmingEnabled) {
+      let warmingState = "disqualified";
+
+      if (this.canWarmTab(tab)) {
+        if (tabState == this.STATE_LOADING) {
+          warmingState = "stillLoading";
+        } else if (tabState == this.STATE_LOADED) {
+          warmingState = "loaded";
+        } else if (
+          tabState == this.STATE_UNLOADING ||
+          tabState == this.STATE_UNLOADED
+        ) {
+          // At this point, if the tab's browser was being inserted
+          // lazily, we never had a chance to warm it up, and unfortunately
+          // there's no great way to detect that case. Those cases will
+          // end up in the "notWarmed" bucket, along with legitimate cases
+          // where tabs could have been warmed but weren't.
+          warmingState = "notWarmed";
+        }
+      }
+
+      Services.telemetry
+        .getHistogramById("FX_TAB_SWITCH_REQUEST_TAB_WARMING_STATE")
+        .add(warmingState);
+    }
+  }
+
+  noteStartTabSwitch() {
+    TelemetryStopwatch.cancel("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
+    TelemetryStopwatch.start("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
+
+    if (
+      TelemetryStopwatch.running("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window)
+    ) {
+      TelemetryStopwatch.cancel("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+    }
+    TelemetryStopwatch.start("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+    this.addMarker("AsyncTabSwitch:Start");
+  }
+
+  noteFinishTabSwitch() {
+    // After this point the tab has switched from the content thread's point of view.
+    // The changes will be visible after the next refresh driver tick + composite.
+    let time = TelemetryStopwatch.timeElapsed(
+      "FX_TAB_SWITCH_TOTAL_E10S_MS",
+      this.window
+    );
+    if (time != -1) {
+      TelemetryStopwatch.finish("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
+      this.log("DEBUG: tab switch time = " + time);
+      this.addMarker("AsyncTabSwitch:Finish");
+    }
+  }
+
+  noteSpinnerDisplayed() {
+    this.assert(!this.spinnerTab);
+    let browser = this.requestedTab.linkedBrowser;
+    this.assert(browser.isRemoteBrowser);
+    TelemetryStopwatch.start("FX_TAB_SWITCH_SPINNER_VISIBLE_MS", this.window);
+    // We have a second, similar probe for capturing recordings of
+    // when the spinner is displayed for very long periods.
+    TelemetryStopwatch.start(
+      "FX_TAB_SWITCH_SPINNER_VISIBLE_LONG_MS",
+      this.window
+    );
+    this.addMarker("AsyncTabSwitch:SpinnerShown");
+    Services.telemetry
+      .getHistogramById("FX_TAB_SWITCH_SPINNER_VISIBLE_TRIGGER")
+      .add(this._loadTimerClearedBy);
+    if (AppConstants.NIGHTLY_BUILD) {
+      Services.obs.notifyObservers(null, "tabswitch-spinner");
+    }
+  }
+
+  noteSpinnerHidden() {
+    this.assert(this.spinnerTab);
+    this.log(
+      "DEBUG: spinner time = " +
+        TelemetryStopwatch.timeElapsed(
+          "FX_TAB_SWITCH_SPINNER_VISIBLE_MS",
+          this.window
+        )
+    );
+    TelemetryStopwatch.finish("FX_TAB_SWITCH_SPINNER_VISIBLE_MS", this.window);
+    TelemetryStopwatch.finish(
+      "FX_TAB_SWITCH_SPINNER_VISIBLE_LONG_MS",
+      this.window
+    );
+    this.addMarker("AsyncTabSwitch:SpinnerHidden");
+    // we do not get a onPaint after displaying the spinner
+    this._loadTimerClearedBy = "none";
+  }
+}

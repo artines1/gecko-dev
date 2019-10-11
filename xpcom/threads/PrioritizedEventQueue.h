@@ -8,7 +8,7 @@
 #define mozilla_PrioritizedEventQueue_h
 
 #include "mozilla/AbstractEventQueue.h"
-#include "LabeledEventQueue.h"
+#include "mozilla/EventQueue.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/UniquePtr.h"
@@ -18,10 +18,13 @@
 class nsIRunnable;
 
 namespace mozilla {
+namespace ipc {
+class IdleSchedulerChild;
+}
 
-// This AbstractEventQueue implementation has one queue for each EventPriority.
-// The type of queue used for each priority is determined by the template
-// parameter.
+// This AbstractEventQueue implementation has one queue for each
+// EventQueuePriority. The type of queue used for each priority is determined by
+// the template parameter.
 //
 // When an event is pushed, its priority is determined by QIing the runnable to
 // nsIRunnablePriority, or by falling back to the aPriority parameter if the QI
@@ -36,27 +39,25 @@ namespace mozilla {
 //   normal and high queues.
 // - We do not select events from the idle queue if the current idle period
 //   is almost over.
-template<class InnerQueueT>
-class PrioritizedEventQueue final : public AbstractEventQueue
-{
-public:
+class PrioritizedEventQueue final : public AbstractEventQueue {
+ public:
   static const bool SupportsPrioritization = true;
 
-  PrioritizedEventQueue(UniquePtr<InnerQueueT> aHighQueue,
-                        UniquePtr<InnerQueueT> aInputQueue,
-                        UniquePtr<InnerQueueT> aNormalQueue,
-                        UniquePtr<InnerQueueT> aIdleQueue,
-                        already_AddRefed<nsIIdlePeriod> aIdlePeriod);
+  explicit PrioritizedEventQueue(already_AddRefed<nsIIdlePeriod> aIdlePeriod);
+
+  virtual ~PrioritizedEventQueue();
 
   void PutEvent(already_AddRefed<nsIRunnable>&& aEvent,
-                EventPriority aPriority,
+                EventQueuePriority aPriority,
                 const MutexAutoLock& aProofOfLock) final;
-  already_AddRefed<nsIRunnable> GetEvent(EventPriority* aPriority,
-                                         const MutexAutoLock& aProofOfLock) final;
+  already_AddRefed<nsIRunnable> GetEvent(
+      EventQueuePriority* aPriority, const MutexAutoLock& aProofOfLock) final;
+  void DidRunEvent(const MutexAutoLock& aProofOfLock);
 
   bool IsEmpty(const MutexAutoLock& aProofOfLock) final;
   size_t Count(const MutexAutoLock& aProofOfLock) const final;
   bool HasReadyEvent(const MutexAutoLock& aProofOfLock) final;
+  bool HasPendingHighPriorityEvents(const MutexAutoLock& aProofOfLock) final;
 
   // When checking the idle deadline, we need to drop whatever mutex protects
   // this queue. This method allows that mutex to be stored so that we can drop
@@ -68,7 +69,9 @@ public:
   // nsThread.cpp sends telemetry containing the most recently computed idle
   // deadline. We store a reference to a field in nsThread where this deadline
   // will be stored so that it can be fetched quickly for telemetry.
-  void SetNextIdleDeadlineRef(TimeStamp& aDeadline) { mNextIdleDeadline = &aDeadline; }
+  void SetNextIdleDeadlineRef(TimeStamp& aDeadline) {
+    mNextIdleDeadline = &aDeadline;
+  }
 #endif
 
   void EnableInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
@@ -76,13 +79,15 @@ public:
   void SuspendInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
   void ResumeInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
 
-  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const override
-  {
+  size_t SizeOfExcludingThis(
+      mozilla::MallocSizeOf aMallocSizeOf) const override {
     size_t n = 0;
 
     n += mHighQueue->SizeOfIncludingThis(aMallocSizeOf);
     n += mInputQueue->SizeOfIncludingThis(aMallocSizeOf);
+    n += mMediumHighQueue->SizeOfIncludingThis(aMallocSizeOf);
     n += mNormalQueue->SizeOfIncludingThis(aMallocSizeOf);
+    n += mDeferredTimersQueue->SizeOfIncludingThis(aMallocSizeOf);
     n += mIdleQueue->SizeOfIncludingThis(aMallocSizeOf);
 
     if (mIdlePeriod) {
@@ -92,16 +97,57 @@ public:
     return n;
   }
 
-private:
-  EventPriority SelectQueue(bool aUpdateState, const MutexAutoLock& aProofOfLock);
+  void SetIdleToken(uint64_t aId, TimeDuration aDuration);
+
+  bool IsActive() { return mActive; }
+
+  void EnsureIsActive() {
+    if (!mActive) {
+      SetActive();
+    }
+  }
+
+  void EnsureIsPaused() {
+    if (mActive) {
+      SetPaused();
+    }
+  }
+
+ private:
+  EventQueuePriority SelectQueue(bool aUpdateState,
+                                 const MutexAutoLock& aProofOfLock);
 
   // Returns a null TimeStamp if we're not in the idle period.
-  mozilla::TimeStamp GetIdleDeadline();
+  mozilla::TimeStamp GetLocalIdleDeadline(bool& aShuttingDown);
 
-  UniquePtr<InnerQueueT> mHighQueue;
-  UniquePtr<InnerQueueT> mInputQueue;
-  UniquePtr<InnerQueueT> mNormalQueue;
-  UniquePtr<InnerQueueT> mIdleQueue;
+  // SetActive should be called when the event queue is running any type of
+  // tasks.
+  void SetActive();
+  // SetPaused should be called once the event queue doesn't have more
+  // tasks to process, or is waiting for the idle token.
+  void SetPaused();
+
+  // Gets the idle token, which is the end time of the idle period.
+  TimeStamp GetIdleToken(TimeStamp aLocalIdlePeriodHint);
+
+  // In case of child processes, requests idle time from the cross-process
+  // idle scheduler.
+  void RequestIdleToken(TimeStamp aLocalIdlePeriodHint);
+
+  // Returns true if the event queue either is waiting for an idle token
+  // from the idle scheduler or has one.
+  bool HasIdleRequest() { return mIdleRequestId != 0; }
+
+  // Mark that the event queue doesn't have idle time to use, nor is expecting
+  // to get idle token from the idle scheduler.
+  void ClearIdleToken();
+
+  UniquePtr<EventQueue> mHighQueue;
+  UniquePtr<EventQueue> mInputQueue;
+  UniquePtr<EventQueue> mMediumHighQueue;
+  UniquePtr<EventQueue> mNormalQueue;
+  UniquePtr<EventQueue> mDeferredTimersQueue;
+  UniquePtr<EventQueue> mIdleQueue;
 
   // We need to drop the queue mutex when checking the idle deadline, so we keep
   // a pointer to it here.
@@ -132,20 +178,30 @@ private:
 
   TimeStamp mInputHandlingStartTime;
 
-  enum InputEventQueueState
-  {
+  enum InputEventQueueState {
     STATE_DISABLED,
     STATE_FLUSHING,
     STATE_SUSPEND,
     STATE_ENABLED
   };
   InputEventQueueState mInputQueueState = STATE_DISABLED;
+
+  // If non-null, tells the end time of the idle period.
+  // Idle period starts when we get idle token from the parent process and
+  // ends when either there are no runnables in the event queues or
+  // mIdleToken < TimeStamp::Now()
+  TimeStamp mIdleToken;
+
+  // The id of the last idle request to the cross-process idle scheduler.
+  uint64_t mIdleRequestId = 0;
+
+  RefPtr<ipc::IdleSchedulerChild> mIdleScheduler;
+  bool mIdleSchedulerInitialized = false;
+
+  // mActive tells whether the event queue is running non-idle tasks.
+  bool mActive = true;
 };
 
-class EventQueue;
-extern template class PrioritizedEventQueue<EventQueue>;
-extern template class PrioritizedEventQueue<LabeledEventQueue>;
+}  // namespace mozilla
 
-} // namespace mozilla
-
-#endif // mozilla_PrioritizedEventQueue_h
+#endif  // mozilla_PrioritizedEventQueue_h

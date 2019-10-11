@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
@@ -20,7 +19,7 @@ const expectedText = `
   `;
 
 async function closeAndReopenToolbox() {
-  const target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = await TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
   const { ui: newui } = await openStyleEditor();
   return newui;
@@ -63,10 +62,13 @@ add_task(async function() {
 
   // For the time being, the actor does not update the style's owning
   // node's textContent.  See bug 1205380.
-  const textContent = await ContentTask.spawn(gBrowser.selectedBrowser, null,
+  const textContent = await ContentTask.spawn(
+    gBrowser.selectedBrowser,
+    null,
     async function() {
       return content.document.querySelector("style").textContent;
-    });
+    }
+  );
 
   isnot(textContent, expectedText, "changes not written back to style node");
 });

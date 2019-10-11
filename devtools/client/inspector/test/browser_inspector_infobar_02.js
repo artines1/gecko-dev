@@ -21,16 +21,16 @@ const XHTML = `
 const TEST_URI = "data:application/xhtml+xml;charset=utf-8," + encodeURI(XHTML);
 
 add_task(async function() {
-  const {inspector, testActor} = await openInspectorForURL(TEST_URI);
+  const { inspector, testActor } = await openInspectorForURL(TEST_URI);
 
   const testData = [
     {
       selector: "svg",
-      tag: "svg:svg"
+      tag: "svg:svg",
     },
     {
       selector: "circle",
-      tag: "svg:circle"
+      tag: "svg:circle",
     },
   ];
 
@@ -45,6 +45,7 @@ async function testNode(test, inspector, testActor) {
   await selectAndHighlightNode(test.selector, inspector);
 
   const tag = await testActor.getHighlighterNodeTextContent(
-    "box-model-infobar-tagname");
+    "box-model-infobar-tagname"
+  );
   is(tag, test.tag, "node " + test.selector + ": tagName matches.");
 }

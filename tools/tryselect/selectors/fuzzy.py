@@ -10,20 +10,38 @@ import re
 import subprocess
 import sys
 from distutils.spawn import find_executable
+from datetime import datetime, timedelta
+import requests
+import json
 
+from mozbuild.base import MozbuildObject
 from mozboot.util import get_state_dir
 from mozterm import Terminal
-from moztest.resolve import TestResolver, get_suite_definition
-from six import string_types
 
-from .. import preset as pset
 from ..cli import BaseTryParser
-from ..tasks import generate_tasks
-from ..push import check_working_directory, push_to_try, vcs
+from ..tasks import generate_tasks, filter_tasks_by_paths
+from ..push import check_working_directory, push_to_try, generate_try_task_config
 
 terminal = Terminal()
 
 here = os.path.abspath(os.path.dirname(__file__))
+build = MozbuildObject.from_environment(cwd=here)
+
+PREVIEW_SCRIPT = os.path.join(build.topsrcdir, 'tools/tryselect/formatters/preview.py')
+TASK_DURATION_URL = 'https://storage.googleapis.com/mozilla-mach-data/task_duration_history.json'
+TASK_DURATION_CACHE = os.path.join(get_state_dir(
+    srcdir=True), 'cache', 'task_duration_history.json')
+TASK_DURATION_TAG_FILE = os.path.join(get_state_dir(
+    srcdir=True), 'cache', 'task_duration_tag.json')
+
+# Some tasks show up in the target task set, but are either special cases
+# or uncommon enough that they should only be selectable with --full.
+TARGET_TASK_FILTERS = (
+    '.*-ccov\/.*',
+    'windows10-aarch64/opt.*',
+    'android-hw.*'
+)
+
 
 FZF_NOT_FOUND = """
 Could not find the `fzf` binary.
@@ -66,14 +84,80 @@ fzf_shortcuts = {
     '?': 'toggle-preview',
 }
 
-fzf_header_shortcuts = {
-    'cursor-up': 'ctrl-k',
-    'cursor-down': 'ctrl-j',
-    'toggle-select': 'tab',
-    'select-all': 'ctrl-a',
-    'accept': 'enter',
-    'cancel': 'ctrl-c',
-}
+fzf_header_shortcuts = [
+    ('select', 'tab'),
+    ('accept', 'enter'),
+    ('cancel', 'ctrl-c'),
+    ('select-all', 'ctrl-a'),
+    ('cursor-up', 'up'),
+    ('cursor-down', 'down'),
+]
+
+
+def check_downloaded_history():
+    if not os.path.isfile(TASK_DURATION_TAG_FILE):
+        return False
+
+    try:
+        with open(TASK_DURATION_TAG_FILE) as f:
+            duration_tags = json.load(f)
+        download_date = datetime.strptime(duration_tags.get('download_date'), '%Y-%M-%d')
+        if download_date < datetime.now() - timedelta(days=30):
+            return False
+    except (IOError, ValueError):
+        return False
+
+    if not os.path.isfile(TASK_DURATION_CACHE):
+        return False
+
+    return True
+
+
+def download_task_history_data():
+    """Fetch task duration data exported from BigQuery."""
+
+    if check_downloaded_history():
+        return
+
+    try:
+        os.unlink(TASK_DURATION_TAG_FILE)
+        os.unlink(TASK_DURATION_CACHE)
+    except OSError:
+        print("No existing task history to clean up.")
+
+    try:
+        r = requests.get(TASK_DURATION_URL, stream=True)
+    except:  # noqa
+        # This is fine, the results just won't be in the preview window.
+        return
+
+    # The data retrieved from google storage is a newline-separated
+    # list of json entries, which Python's json module can't parse.
+    duration_data = list()
+    for line in r.content.splitlines():
+        duration_data.append(json.loads(line))
+
+    with open(TASK_DURATION_CACHE, 'w') as f:
+        json.dump(duration_data, f, indent=4)
+    with open(TASK_DURATION_TAG_FILE, 'w') as f:
+        json.dump({
+            'download_date': datetime.now().strftime('%Y-%m-%d')
+            }, f, indent=4)
+
+
+def make_trimmed_taskgraph_cache(graph_cache, dep_cache):
+    """Trim the taskgraph cache used for dependencies.
+
+    Speeds up the fzf preview window to less human-perceptible
+    ranges."""
+    if not os.path.isfile(graph_cache):
+        return
+
+    with open(graph_cache) as f:
+        graph = json.load(f)
+    graph = {name: list(defn['dependencies'].values()) for name, defn in graph.items()}
+    with open(dep_cache, 'w') as f:
+        json.dump(graph, f, indent=4)
 
 
 class FuzzyParser(BaseTryParser):
@@ -82,22 +166,60 @@ class FuzzyParser(BaseTryParser):
         [['-q', '--query'],
          {'metavar': 'STR',
           'action': 'append',
+          'default': [],
           'help': "Use the given query instead of entering the selection "
                   "interface. Equivalent to typing <query><ctrl-a><enter> "
                   "from the interface. Specifying multiple times schedules "
                   "the union of computed tasks.",
+          }],
+        [['-i', '--interactive'],
+         {'action': 'store_true',
+          'default': False,
+          'help': "Force running fzf interactively even when using presets or "
+                  "queries with -q/--query."
+          }],
+        [['-x', '--and'],
+         {'dest': 'intersection',
+          'action': 'store_true',
+          'default': False,
+          'help': "When specifying queries on the command line with -q/--query, "
+                  "use the intersection of tasks rather than the union. This is "
+                  "especially useful for post filtering presets.",
+          }],
+        [['-e', '--exact'],
+         {'action': 'store_true',
+          'default': False,
+          'help': "Enable exact match mode. Terms will use an exact match "
+                  "by default, and terms prefixed with ' will become fuzzy."
           }],
         [['-u', '--update'],
          {'action': 'store_true',
           'default': False,
           'help': "Update fzf before running.",
           }],
+        [['-s', '--show-estimates'],
+         {'action': 'store_true',
+          'default': False,
+          'help': "Show task duration estimates.",
+          }],
+
     ]
     common_groups = ['push', 'task', 'preset']
-    templates = ['artifact', 'path', 'env', 'rebuild', 'chemspill-prio', 'talos-profile']
+    templates = [
+        'artifact',
+        'browsertime',
+        'chemspill-prio',
+        'debian-buster',
+        'disable-pgo',
+        'env',
+        'gecko-profile',
+        'path',
+        'rebuild',
+        'visual-metrics-jobs',
+    ]
 
 
-def run(cmd, cwd=None):
+def run_cmd(cmd, cwd=None):
     is_win = platform.system() == 'Windows'
     return subprocess.call(cmd, cwd=cwd, shell=True if is_win else False)
 
@@ -108,7 +230,7 @@ def run_fzf_install_script(fzf_path):
     else:
         cmd = ['./install', '--bin']
 
-    if run(cmd, cwd=fzf_path):
+    if run_cmd(cmd, cwd=fzf_path):
         print(FZF_INSTALL_FAILED)
         sys.exit(1)
 
@@ -124,7 +246,7 @@ def fzf_bootstrap(update=False):
     if fzf_bin and not update:
         return fzf_bin
 
-    fzf_path = os.path.join(get_state_dir()[0], 'fzf')
+    fzf_path = os.path.join(get_state_dir(), 'fzf')
     if update and not os.path.isdir(fzf_path):
         print("fzf installed somewhere other than {}, please update manually".format(fzf_path))
         sys.exit(1)
@@ -133,7 +255,7 @@ def fzf_bootstrap(update=False):
         return find_executable('fzf', os.path.join(fzf_path, 'bin'))
 
     if update:
-        ret = run(['git', 'pull'], cwd=fzf_path)
+        ret = run_cmd(['git', 'pull'], cwd=fzf_path)
         if ret:
             print("Update fzf failed.")
             sys.exit(1)
@@ -170,31 +292,10 @@ def fzf_bootstrap(update=False):
 
 def format_header():
     shortcuts = []
-    for action, key in sorted(fzf_header_shortcuts.iteritems()):
+    for action, key in fzf_header_shortcuts:
         shortcuts.append('{t.white}{action}{t.normal}: {t.yellow}<{key}>{t.normal}'.format(
                          t=terminal, action=action, key=key))
     return FZF_HEADER.format(shortcuts=', '.join(shortcuts), t=terminal)
-
-
-def filter_by_paths(tasks, paths):
-    resolver = TestResolver.from_environment(cwd=here)
-    run_suites, run_tests = resolver.resolve_metadata(paths)
-    flavors = set([(t['flavor'], t.get('subsuite')) for t in run_tests])
-
-    task_regexes = set()
-    for flavor, subsuite in flavors:
-        suite = get_suite_definition(flavor, subsuite, strict=True)
-        if 'task_regex' not in suite:
-            print("warning: no tasks could be resolved from flavor '{}'{}".format(
-                    flavor, " and subsuite '{}'".format(subsuite) if subsuite else ""))
-            continue
-
-        task_regexes.update(suite['task_regex'])
-
-    def match_task(task):
-        return any(re.search(pattern, task) for pattern in task_regexes)
-
-    return filter(match_task, tasks)
 
 
 def run_fzf(cmd, tasks):
@@ -209,12 +310,13 @@ def run_fzf(cmd, tasks):
     return query, selected
 
 
-def run_fuzzy_try(update=False, query=None, templates=None, full=False, parameters=None,
-                  save=False, preset=None, mod_presets=False, push=True, message='{msg}',
-                  paths=None, **kwargs):
-    if mod_presets:
-        return getattr(pset, mod_presets)(section='fuzzy')
+def filter_target_task(task):
+    return not any(re.search(pattern, task) for pattern in TARGET_TASK_FILTERS)
 
+
+def run(update=False, query=None, intersect_query=None, try_config=None, full=False,
+        parameters=None, save_query=False, push=True, message='{msg}',
+        test_paths=None, exact=False, closed_tree=False, show_estimates=False):
     fzf = fzf_bootstrap(update)
 
     if not fzf:
@@ -222,10 +324,22 @@ def run_fuzzy_try(update=False, query=None, templates=None, full=False, paramete
         return 1
 
     check_working_directory(push)
-    all_tasks = generate_tasks(parameters, full, root=vcs.path)
+    tg = generate_tasks(parameters, full)
+    all_tasks = sorted(tg.tasks.keys())
 
-    if paths:
-        all_tasks = filter_by_paths(all_tasks, paths)
+    cache_dir = os.path.join(get_state_dir(srcdir=True), 'cache', 'taskgraph')
+    graph_cache = os.path.join(cache_dir, 'target_task_graph')
+    dep_cache = os.path.join(cache_dir, 'target_task_dependencies')
+
+    if show_estimates:
+        download_task_history_data()
+        make_trimmed_taskgraph_cache(graph_cache, dep_cache)
+
+    if not full:
+        all_tasks = filter(filter_target_task, all_tasks)
+
+    if test_paths:
+        all_tasks = filter_tasks_by_paths(all_tasks, test_paths)
         if not all_tasks:
             return 1
 
@@ -234,50 +348,63 @@ def run_fuzzy_try(update=False, query=None, templates=None, full=False, paramete
         fzf, '-m',
         '--bind', ','.join(key_shortcuts),
         '--header', format_header(),
-        # Using python to split the preview string is a bit convoluted,
-        # but is guaranteed to be available on all platforms.
-        '--preview', 'python -c "print(\\"\\n\\".join(sorted([s.strip(\\"\'\\") for s in \\"{+}\\".split()])))"',  # noqa
-        '--preview-window=right:20%',
+        '--preview-window=right:30%',
         '--print-query',
     ]
 
-    query = query or []
-    if isinstance(query, string_types):
-        query = [query]
-
-    if preset:
-        query.append(pset.load(preset, section='fuzzy')[0])
-
-    commands = []
-    if query:
-        for q in query:
-            commands.append(base_cmd + ['-f', q])
+    if show_estimates and os.path.isfile(TASK_DURATION_CACHE):
+        base_cmd.extend([
+            '--preview', 'python {} -g {} -d {} "{{+}}"'.format(
+                PREVIEW_SCRIPT, dep_cache, TASK_DURATION_CACHE),
+        ])
     else:
-        commands.append(base_cmd)
+        base_cmd.extend([
+            '--preview', 'python {} "{{+}}"'.format(PREVIEW_SCRIPT),
+        ])
 
-    queries = []
+    if exact:
+        base_cmd.append('--exact')
+
     selected = set()
-    for command in commands:
-        query, tasks = run_fzf(command, all_tasks)
-        if tasks:
-            queries.append(query)
-            selected.update(tasks)
+    queries = []
+
+    def get_tasks(query_arg=None, candidate_tasks=all_tasks):
+        cmd = base_cmd[:]
+        if query_arg and query_arg != 'INTERACTIVE':
+            cmd.extend(['-f', query_arg])
+
+        query_str, tasks = run_fzf(cmd, sorted(candidate_tasks))
+        queries.append(query_str)
+        return set(tasks)
+
+    for q in query or []:
+        selected |= get_tasks(q)
+
+    for q in intersect_query or []:
+        if not selected:
+            tasks = get_tasks(q)
+            selected |= tasks
+        else:
+            tasks = get_tasks(q, selected)
+            selected &= tasks
+
+    if not queries:
+        selected = get_tasks()
 
     if not selected:
         print("no tasks selected")
         return
 
-    if save:
-        pset.save('fuzzy', save, queries[0])
+    if save_query:
+        return queries
 
     # build commit message
     msg = "Fuzzy"
-    args = []
-    if paths:
-        args.append("paths={}".format(':'.join(paths)))
-    if query:
-        args.extend(["query={}".format(q) for q in queries])
+    args = ["query={}".format(q) for q in queries]
+    if test_paths:
+        args.append("paths={}".format(':'.join(test_paths)))
     if args:
         msg = "{} {}".format(msg, '&'.join(args))
-    return push_to_try('fuzzy', message.format(msg=msg), selected, templates, push=push,
-                       closed_tree=kwargs["closed_tree"])
+    return push_to_try('fuzzy', message.format(msg=msg),
+                       try_task_config=generate_try_task_config('fuzzy', selected, try_config),
+                       push=push, closed_tree=closed_tree)

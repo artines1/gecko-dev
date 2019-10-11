@@ -67,7 +67,7 @@ def parse_pref_value(value):
 
 
 class ServoBaseProtocolPart(BaseProtocolPart):
-    def execute_script(self, script, async=False):
+    def execute_script(self, script, asynchronous=False):
         pass
 
     def set_timeout(self, timeout):
@@ -177,6 +177,8 @@ def timeout_func(timeout):
 
 
 class ServoWebDriverTestharnessExecutor(TestharnessExecutor):
+    supports_testdriver = True
+
     def __init__(self, browser, server_config, timeout_multiplier=1,
                  close_after_done=True, capabilities=None, debug_info=None,
                  **kwargs):
@@ -257,6 +259,9 @@ class ServoWebDriverRefTestExecutor(RefTestExecutor):
         self.timeout = None
         with open(os.path.join(here, "reftest-wait_webdriver.js")) as f:
             self.wait_script = f.read()
+
+    def reset(self):
+        self.implementation.reset()
 
     def is_alive(self):
         return self.protocol.is_alive()

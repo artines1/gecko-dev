@@ -1,4 +1,3 @@
-/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -15,8 +14,9 @@ function run_test() {
   equal(isSet("I swear I'm a Set"), false);
   equal(isSet(5), false);
 
-  const systemPrincipal = Cc["@mozilla.org/systemprincipal;1"]
-        .createInstance(Ci.nsIPrincipal);
+  const systemPrincipal = Cc["@mozilla.org/systemprincipal;1"].createInstance(
+    Ci.nsIPrincipal
+  );
   const sandbox = new Cu.Sandbox(systemPrincipal);
 
   equal(isSet(Cu.evalInSandbox("new Set()", sandbox)), true);

@@ -15,21 +15,24 @@ config = {
         # 'test',  # can't run android tests on linux hosts
         'package',
         'dump-symbols',
-        'upload',
     ],
 
     'tooltool_manifest_file': "android.manifest",
     'tooltool_cache': "/builds/tooltool_cache",
     'exes': {
         'gittool.py': [os.path.join(external_tools_path, 'gittool.py')],
-        'python2.7': "/tools/python27/bin/python2.7",
+        'python2.7': "python2.7",
     },
     'dump_syms_binary': 'dump_syms',
     'arch': 'aarch64',
-    # https://dxr.mozilla.org/mozilla-central/rev/5322c03f4c8587fe526172d3f87160031faa6d75/mobile/android/config/mozconfigs/android-aarch64/nightly#6
     'min_sdk': 21,
     'operating_system': 'android',
     'partial_env': {
-        'PATH': '%(abs_work_dir)s/android-sdk-linux/tools:%(PATH)s',
+        'CXXFLAGS': '-stdlib=libstdc++',
+        'LDFLAGS': '-stdlib=libstdc++',
+        'PATH': ('{MOZ_FETCHES_DIR}/android-sdk-linux/tools:'
+                 '{MOZ_FETCHES_DIR}/clang/bin:'
+                 '{MOZ_FETCHES_DIR}/nasm:%(PATH)s'
+                 .format(MOZ_FETCHES_DIR=os.environ['MOZ_FETCHES_DIR'])),
     },
 }

@@ -15,6 +15,9 @@ def add_common_arguments(parser):
     parser.add_argument("--verbose",
                         action="store_true", dest="verbose", default=False,
                         help="always print stdout and stderr from tests")
+    parser.add_argument('--verbose-if-fails',
+                        action='store_true', dest="verboseIfFails", default=False,
+                        help='Output the log if a test fails, even when run in parallel')
     parser.add_argument("--keep-going",
                         action="store_true", dest="keepGoing", default=False,
                         help="continue running tests after test killed with control-C (SIGINT)")
@@ -124,6 +127,9 @@ def add_common_arguments(parser):
                         help="override the number of jobs (threads) when running tests "
                              "in parallel, the default is CPU x 1.5 when running via mach "
                              "and CPU x 4 when running in automation")
+    parser.add_argument("--setpref",
+                        action="append", dest="extraPrefs", metavar="PREF=VALUE",
+                        help="Defines an extra user preference (can be passed multiple times.")
     parser.add_argument("testPaths", nargs="*", default=None,
                         help="Paths of tests to run.")
     parser.add_argument("--verify",
@@ -134,35 +140,38 @@ def add_common_arguments(parser):
                         dest="verifyMaxTime",
                         type=int, default=3600,
                         help="Maximum time, in seconds, to run in --verify mode.")
+    parser.add_argument("--enable-webrender",
+                        action="store_true", default=False,
+                        dest="enable_webrender",
+                        help="Enable the WebRender compositor in Gecko.")
 
 
 def add_remote_arguments(parser):
     parser.add_argument("--objdir", action="store", type=str, dest="objdir",
-                        help="local objdir, containing xpcshell binaries")
+                        help="Local objdir, containing xpcshell binaries.")
 
     parser.add_argument("--apk", action="store", type=str, dest="localAPK",
-                        help="local path to Fennec APK")
+                        help="Local path to Firefox for Android APK.")
 
     parser.add_argument("--deviceSerial", action="store", type=str, dest="deviceSerial",
-                        help="serial ID of device")
+                        help="adb serial number of remote device. This is required "
+                             "when more than one device is connected to the host. "
+                             "Use 'adb devices' to see connected devices.")
 
     parser.add_argument("--adbPath", action="store", type=str, dest="adbPath",
                         default=None,
-                        help="Path to adb")
+                        help="Path to adb binary.")
 
     parser.add_argument("--noSetup", action="store_false", dest="setup", default=True,
-                        help="do not copy any files to device (to be used only if "
-                             "device is already setup)")
-
-    parser.add_argument("--local-lib-dir", action="store", type=str, dest="localLib",
-                        help="local path to library directory")
+                        help="Do not copy any files to device (to be used only if "
+                             "device is already setup).")
 
     parser.add_argument("--local-bin-dir", action="store", type=str, dest="localBin",
-                        help="local path to bin directory")
+                        help="Local path to bin directory.")
 
     parser.add_argument("--remoteTestRoot", action="store", type=str, dest="remoteTestRoot",
-                        help="remote directory to use as test root "
-                             "(eg. /mnt/sdcard/tests or /data/local/tests)")
+                        help="Remote directory to use as test root "
+                             "(eg. /mnt/sdcard/tests or /data/local/tests).")
 
 
 def parser_desktop():

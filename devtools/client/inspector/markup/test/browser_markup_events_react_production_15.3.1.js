@@ -1,4 +1,3 @@
-/* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  http://creativecommons.org/publicdomain/zero/1.0/ */
 /* import-globals-from helper_events_test_runner.js */
@@ -27,7 +26,7 @@ const TEST_DATA = [
           "Bubbling",
           "DOM2"
         ],
-        handler: "function() {}"
+        handler: `function() {}`
       },
       {
         type: "onClick",
@@ -36,10 +35,10 @@ const TEST_DATA = [
           "Bubbling",
           "React"
         ],
-        handler:
-`function() {
-  alert("inlineFunction");
-}`
+        handler: `
+          function() {
+            alert("inlineFunction");
+          }`
       }
     ]
   },
@@ -53,7 +52,7 @@ const TEST_DATA = [
           "Bubbling",
           "DOM2"
         ],
-        handler: "function() {}"
+        handler: `function() {}`
       },
       {
         type: "onClick",
@@ -62,10 +61,10 @@ const TEST_DATA = [
           "Bubbling",
           "React"
         ],
-        handler:
-`function externalFunction() {
-  alert("externalFunction");
-}`
+        handler: `
+          function externalFunction() {
+            alert("externalFunction");
+          }`
       }
     ]
   },
@@ -79,7 +78,7 @@ const TEST_DATA = [
           "Bubbling",
           "DOM2"
         ],
-        handler: "function() {}"
+        handler: `function() {}`
       },
       {
         type: "onClick",
@@ -88,10 +87,10 @@ const TEST_DATA = [
           "Bubbling",
           "React"
         ],
-        handler:
-`function externalFunction() {
-  alert("externalFunction");
-}`
+        handler: `
+          function externalFunction() {
+            alert("externalFunction");
+          }`
       },
       {
         type: "onMouseUp",
@@ -100,10 +99,10 @@ const TEST_DATA = [
           "Bubbling",
           "React"
         ],
-        handler:
-`function() {
-  alert("inlineFunction");
-}`
+        handler: `
+          function() {
+            alert("inlineFunction");
+          }`
       }
     ]
   },
@@ -117,10 +116,10 @@ const TEST_DATA = [
           "Capturing",
           "React"
         ],
-        handler:
-`function externalCapturingFunction() {
-  alert("externalCapturingFunction");
-}`
+        handler: `
+          function externalCapturingFunction() {
+            alert("externalCapturingFunction");
+          }`
       }
     ]
   }
@@ -128,7 +127,9 @@ const TEST_DATA = [
 /* eslint-enable */
 
 add_task(async function() {
-  info("Switch to 2 pane inspector to avoid sidebar width issues with opening events");
+  info(
+    "Switch to 2 pane inspector to avoid sidebar width issues with opening events"
+  );
   await pushPref("devtools.inspector.three-pane-enabled", false);
   await pushPref("devtools.toolsidebar-width.inspector", 350);
   await runEventPopupTests(TEST_URL, TEST_DATA);

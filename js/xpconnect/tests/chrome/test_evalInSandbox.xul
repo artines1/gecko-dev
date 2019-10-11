@@ -7,8 +7,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=533596
 -->
 <window title="Mozilla Bug 533596"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
 
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml">
@@ -77,10 +76,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=533596
 
         ok(Cu.evalInSandbox("('foo' in this.document);", sandbox),
            "can see expandos");
-        ok(("foo" in Cu.evalInSandbox("this.document", sandbox)),
-           "must see expandos in wrappers returned from the sandbox");
+        ok(!("foo" in Cu.evalInSandbox("this.document", sandbox)),
+           "must not see expandos in wrappers returned from the sandbox");
+        ok(("foo" in Cu.waiveXrays(Cu.evalInSandbox("this.document", sandbox))),
+           "must see expandos in waived wrappers returned from the sandbox");
 
-        ok(("foo" in sandbox.document),
+        ok(!("foo" in sandbox.document),
+           "must not see expandos in wrappers obtained from the sandbox");
+        ok("foo" in Cu.waiveXrays(sandbox.document),
            "must see expandos in wrappers obtained from the sandbox");
 
         testDone();
@@ -174,12 +177,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=533596
       outerSB.sop = this;
       Cu.evalInSandbox('checkExplicitVersions();', outerSB);
 
-      ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
+      const {addDebuggerToGlobal} = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
       addDebuggerToGlobal(this);
 
       try {
         let dbg = new Debugger();
-        let sandbox = new Cu.Sandbox(this, { invisibleToDebugger: false });
+        let sandbox = new Cu.Sandbox(this, {
+          invisibleToDebugger: false,
+          freshCompartment: true,
+        });
         dbg.addDebuggee(sandbox);
         ok(true, "debugger added visible value");
       } catch(e) {

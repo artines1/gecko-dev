@@ -10,25 +10,27 @@
   <label value="CPOWs"/>
 
   <script type="application/javascript"><![CDATA[
+    const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+
     var test_state = "remote";
     var test_node = null;
     var reentered = false;
     var savedMM = null;
 
     function info(message) {
-      return opener.wrappedJSObject.info(message);
+      return window.arguments[0].info(message);
     }
 
     function ok(condition, message) {
-      return opener.wrappedJSObject.ok(condition, message);
+      return window.arguments[0].ok(condition, message);
     }
 
     function is(v1, v2, message) {
-      return opener.wrappedJSObject.is(v1, v2, message);
+      return window.arguments[0].is(v1, v2, message);
     }
 
     function todo_is(v1, v2, message) {
-      return opener.wrappedJSObject.todo_is(v1, v2, message);
+      return window.arguments[0].todo_is(v1, v2, message);
     }
 
     // Make sure that an error in this file actually causes the test to fail.
@@ -254,7 +256,7 @@
                          .createInstance(Ci.nsISecureBrowserUI);
 
         try {
-          secureUI.setDocShell(docshell);
+          secureUI.init(docshell);
           ok(false, "expected exception passing CPOW to C++");
         } catch (e) {
           is(e.result, Cr.NS_ERROR_XPC_CANT_PASS_CPOW_TO_NATIVE,
@@ -400,7 +402,7 @@
       let failed = false;
 
       const PREF_UNSAFE_FORBIDDEN = "dom.ipc.cpows.forbid-unsafe-from-browser";
-      opener.wrappedJSObject.SpecialPowers.setBoolPref(PREF_UNSAFE_FORBIDDEN, true);
+      Services.prefs.setBoolPref(PREF_UNSAFE_FORBIDDEN, true);
       try {
         msg.objects.f();
       } catch (e) {
@@ -409,14 +411,14 @@
         }
         failed = true;
       }
-      opener.wrappedJSObject.SpecialPowers.clearUserPref(PREF_UNSAFE_FORBIDDEN);
+      window.arguments[0].SpecialPowers.clearUserPref(PREF_UNSAFE_FORBIDDEN);
       ok(failed, "CPOW should fail when unsafe");
       msg.target.messageManager.sendAsyncMessage("cpows:unsafe_done");
     }
 
     function recvSafe(msg) {
       const PREF_UNSAFE_FORBIDDEN = "dom.ipc.cpows.forbid-unsafe-from-browser";
-      opener.wrappedJSObject.SpecialPowers.setBoolPref(PREF_UNSAFE_FORBIDDEN, true);
+      Services.prefs.setBoolPref(PREF_UNSAFE_FORBIDDEN, true);
       try {
         msg.objects.f();
       } catch (e) {
@@ -425,7 +427,7 @@
         }
         ok(false, "cpow failed");
       }
-      opener.wrappedJSObject.SpecialPowers.clearUserPref(PREF_UNSAFE_FORBIDDEN);
+      window.arguments[0].SpecialPowers.clearUserPref(PREF_UNSAFE_FORBIDDEN);
       msg.target.messageManager.sendAsyncMessage("cpows:safe_done");
     }
 
@@ -445,6 +447,11 @@
         }
         msg.target.messageManager.sendAsyncMessage("cpows:dead_done");
       }, 0);
+    }
+
+    function recvLocalStorage(msg) {
+      msg.objects.f();
+      msg.target.messageManager.sendAsyncMessage("cpows:localStorage_done");
     }
 
     function run_tests(type) {
@@ -489,16 +496,23 @@
       mm.addMessageListener("cpows:unsafe", recvUnsafe);
       mm.addMessageListener("cpows:safe", recvSafe);
       mm.addMessageListener("cpows:dead", recvDead);
+      mm.addMessageListener("cpows:localStorage", recvLocalStorage);
       mm.loadFrameScript("chrome://mochitests/content/chrome/dom/base/test/chrome/cpows_child.js", true);
     }
 
-    function start() {
+    async function start() {
+      const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+
+      let browser = document.getElementById("cpowbrowser_remote");
+      BrowserTestUtils.loadURI(browser, "http://mochi.test:8888/tests/dom/base/test/chrome/cpows_child.html");
+      await BrowserTestUtils.browserLoaded(browser);
+
       run_tests('remote');
     }
 
     function finish() {
       ok(gReceivedErrorProbe, "Should have reported error probe");
-      opener.setTimeout("done()", 0);
+      window.arguments[0].setTimeout(function() { this.done(); }, 0);
       window.close();
     }
   ]]></script>

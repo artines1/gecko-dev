@@ -5,8 +5,7 @@
   <link rel="stylesheet" type="text/css"
         href="chrome://mochikit/content/tests/SimpleTest/test.css" />
 
-  <script type="application/javascript"
-          src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script type="application/javascript"
           src="../common.js"></script>
   <script type="application/javascript"
@@ -17,7 +16,7 @@
   <script type="application/javascript">
     function insertBefore(aId, aEl, aTextBefore, aTextAfter, aStartIdx, aEndIdx) {
       this.eventSeq = [
-        new invokerChecker(EVENT_REORDER, aId)
+        new invokerChecker(EVENT_REORDER, aId),
       ];
 
       this.invoke = function insertBefore_invoke() {

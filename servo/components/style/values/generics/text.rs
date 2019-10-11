@@ -1,19 +1,27 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! Generic types for text properties.
 
-use app_units::Au;
+use crate::parser::ParserContext;
+use crate::values::animated::ToAnimatedZero;
 use cssparser::Parser;
-use parser::ParserContext;
 use style_traits::ParseError;
-use values::animated::{Animate, Procedure, ToAnimatedZero};
-use values::distance::{ComputeSquaredDistance, SquaredDistance};
 
 /// A generic value for the `initial-letter` property.
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
 pub enum InitialLetter<Number, Integer> {
     /// `normal`
     Normal,
@@ -30,8 +38,7 @@ impl<N, I> InitialLetter<N, I> {
 }
 
 /// A generic spacing value for the `letter-spacing` and `word-spacing` properties.
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
-         ToComputedValue, ToCss)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
 pub enum Spacing<Value> {
     /// `normal`
     Normal,
@@ -61,70 +68,45 @@ impl<Value> Spacing<Value> {
         }
         parse(context, input).map(Spacing::Value)
     }
-
-    /// Returns the spacing value, if not `normal`.
-    #[inline]
-    pub fn value(&self) -> Option<&Value> {
-        match *self {
-            Spacing::Normal => None,
-            Spacing::Value(ref value) => Some(value),
-        }
-    }
 }
 
-impl<Value> Animate for Spacing<Value>
-where
-    Value: Animate + From<Au>,
-{
-    #[inline]
-    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
-        if let (&Spacing::Normal, &Spacing::Normal) = (self, other) {
-            return Ok(Spacing::Normal);
-        }
-        let zero = Value::from(Au(0));
-        let this = self.value().unwrap_or(&zero);
-        let other = other.value().unwrap_or(&zero);
-        Ok(Spacing::Value(this.animate(other, procedure)?))
-    }
-}
-
-impl<V> ComputeSquaredDistance for Spacing<V>
-where
-    V: ComputeSquaredDistance + From<Au>,
-{
-    #[inline]
-    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        let zero = V::from(Au(0));
-        let this = self.value().unwrap_or(&zero);
-        let other = other.value().unwrap_or(&zero);
-        this.compute_squared_distance(other)
-    }
-}
-
-impl<V> ToAnimatedZero for Spacing<V>
-where
-    V: From<Au>,
-{
-    #[inline]
-    fn to_animated_zero(&self) -> Result<Self, ()> {
-        Err(())
-    }
+#[cfg(feature = "gecko")]
+fn line_height_moz_block_height_enabled(context: &ParserContext) -> bool {
+    context.in_ua_sheet() ||
+        static_prefs::pref!("layout.css.line-height-moz-block-height.content.enabled")
 }
 
 /// A generic value for the `line-height` property.
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
-         PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToCss)]
-pub enum LineHeight<Number, LengthOrPercentage> {
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToCss,
+    ToShmem,
+    ToResolvedValue,
+    Parse,
+)]
+#[repr(C, u8)]
+pub enum GenericLineHeight<N, L> {
     /// `normal`
     Normal,
     /// `-moz-block-height`
     #[cfg(feature = "gecko")]
+    #[parse(condition = "line_height_moz_block_height_enabled")]
     MozBlockHeight,
     /// `<number>`
-    Number(Number),
-    /// `<length-or-percentage>`
-    Length(LengthOrPercentage),
+    Number(N),
+    /// `<length-percentage>`
+    Length(L),
 }
+
+pub use self::GenericLineHeight as LineHeight;
 
 impl<N, L> ToAnimatedZero for LineHeight<N, L> {
     #[inline]
@@ -141,13 +123,32 @@ impl<N, L> LineHeight<N, L> {
     }
 }
 
-/// A generic value for the `-moz-tab-size` property.
-#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
-         PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero,
-         ToComputedValue, ToCss)]
-pub enum MozTabSize<Number, Length> {
-    /// A number.
-    Number(Number),
-    /// A length.
-    Length(Length),
+/// Implements type for text-underline-offset and text-decoration-thickness
+/// which take the grammar of auto | from-font | <length>
+///
+/// https://drafts.csswg.org/css-text-decor-4/
+#[repr(C, u8)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(
+    Animate,
+    Clone,
+    Copy,
+    ComputeSquaredDistance,
+    ToAnimatedZero,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[allow(missing_docs)]
+pub enum GenericTextDecorationLength<L> {
+    Length(L),
+    Auto,
+    FromFont,
 }

@@ -5,8 +5,7 @@ Bug 1201597 - Sanity test that we can take a heap snapshot in an e10s child proc
 <html>
 <head>
   <title>saveHeapSnapshot in e10s child processes</title>
-  <script type="application/javascript"
-          src="/tests/SimpleTest/SimpleTest.js">
+  <script src="/tests/SimpleTest/SimpleTest.js">
   </script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -43,8 +42,9 @@ Bug 1201597 - Sanity test that we can take a heap snapshot in an e10s child proc
          "set": [
              ["dom.ipc.browser_frames.oop_by_default", true],
              ["dom.mozBrowserFramesEnabled", true],
-             ["browser.pagethumbnails.capturing_disabled", true]
-         ]
+             ["browser.pagethumbnails.capturing_disabled", true],
+             ["network.disable.ipc.security", true],
+         ],
       }, function() {
         const iframe = document.createElement("iframe");
         SpecialPowers.wrap(iframe).mozbrowser = true;

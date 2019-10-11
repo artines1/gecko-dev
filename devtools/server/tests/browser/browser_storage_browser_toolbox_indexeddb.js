@@ -1,4 +1,3 @@
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -6,28 +5,25 @@
 
 "use strict";
 
-const { StorageFront } = require("devtools/shared/fronts/storage");
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js",
-  this);
+  this
+);
 
 add_task(async function() {
   await pushPref("devtools.chrome.enabled", true);
   await pushPref("devtools.debugger.remote-enabled", true);
-  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-updates.html");
+  const { target, front } = await openTabAndSetupStorage(
+    MAIN_DOMAIN + "storage-updates.html"
+  );
   await createIndexedDB();
-
-  initDebuggerServer();
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
-  const form = await connectDebuggerClient(client);
-  const front = StorageFront(client, form);
 
   await testInternalDBs(front);
   await clearStorage();
 
   // Forcing GC/CC to get rid of docshells and windows created by this test.
   forceCollections();
-  await client.close();
+  await target.destroy();
   forceCollections();
   DebuggerServer.destroy();
   forceCollections();
@@ -38,7 +34,7 @@ async function createIndexedDB() {
 
   request.onupgradeneeded = function() {
     const db = request.result;
-    const store = db.createObjectStore("MyObjectStore", {keyPath: "id"});
+    const store = db.createObjectStore("MyObjectStore", { keyPath: "id" });
     store.createIndex("NameIndex", ["name.last", "name.first"]);
   };
 

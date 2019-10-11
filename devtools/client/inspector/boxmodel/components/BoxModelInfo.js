@@ -37,12 +37,7 @@ class BoxModelInfo extends PureComponent {
   render() {
     const { boxModel } = this.props;
     const { geometryEditorEnabled, layout } = boxModel;
-    const {
-      height = "-",
-      isPositionEditable,
-      position,
-      width = "-",
-    } = layout;
+    const { height = "-", isPositionEditable, position, width = "-" } = layout;
 
     let buttonClass = "layout-geometry-editor devtools-button";
     if (geometryEditorEnabled) {
@@ -50,33 +45,21 @@ class BoxModelInfo extends PureComponent {
     }
 
     return dom.div(
-      {
-        className: "boxmodel-info",
-      },
+      { className: "boxmodel-info" },
       dom.span(
-        {
-          className: "boxmodel-element-size",
-        },
+        { className: "boxmodel-element-size" },
         SHARED_L10N.getFormatStr("dimensions", width, height)
       ),
       dom.section(
-        {
-          className: "boxmodel-position-group",
-        },
-        isPositionEditable ?
-          dom.button({
-            className: buttonClass,
-            title: BOXMODEL_L10N.getStr("boxmodel.geometryButton.tooltip"),
-            onClick: this.onToggleGeometryEditor,
-          })
-          :
-          null,
-        dom.span(
-          {
-            className: "boxmodel-element-position",
-          },
-          position
-        )
+        { className: "boxmodel-position-group" },
+        isPositionEditable
+          ? dom.button({
+              className: buttonClass,
+              title: BOXMODEL_L10N.getStr("boxmodel.geometryButton.tooltip"),
+              onClick: this.onToggleGeometryEditor,
+            })
+          : null,
+        dom.span({ className: "boxmodel-element-position" }, position)
       )
     );
   }

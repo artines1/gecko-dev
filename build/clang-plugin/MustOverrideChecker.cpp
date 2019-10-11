@@ -9,7 +9,7 @@ void MustOverrideChecker::registerMatchers(MatchFinder *AstMatcher) {
   AstMatcher->addMatcher(cxxRecordDecl(isDefinition()).bind("class"), this);
 }
 
-void MustOverrideChecker::registerPPCallbacks(CompilerInstance &CI) {
+void MustOverrideChecker::registerCompilerInstance(CompilerInstance &CI) {
   this->CI = &CI;
 }
 
@@ -34,7 +34,7 @@ void MustOverrideChecker::check(const MatchFinder::MatchResult &Result) {
     }
     Parent = Parent->getDefinition();
     for (const auto &M : Parent->methods()) {
-      if (hasCustomAnnotation(M, "moz_must_override"))
+      if (hasCustomAttribute<moz_must_override>(M))
         MustOverrides.push_back(M);
     }
   }

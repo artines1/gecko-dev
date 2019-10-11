@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {AddonManager} = require("resource://gre/modules/AddonManager.jsm");
+const { AddonManager } = require("resource://gre/modules/AddonManager.jsm");
 
 startupAddonsManager();
 
@@ -14,7 +14,7 @@ function promiseAddonEvent(event) {
       [event]: function(...args) {
         AddonManager.removeAddonListener(listener);
         resolve(args);
-      }
+      },
     };
 
     AddonManager.addAddonListener(listener);
@@ -22,7 +22,9 @@ function promiseAddonEvent(event) {
 }
 
 function promiseWebExtensionStartup() {
-  const {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
+  const { Management } = ChromeUtils.import(
+    "resource://gre/modules/Extension.jsm"
+  );
 
   return new Promise(resolve => {
     const listener = (evt, extension) => {
@@ -34,17 +36,10 @@ function promiseWebExtensionStartup() {
   });
 }
 
-async function findAddonInRootList(client, addonId) {
-  const result = await client.listAddons();
-  const addonTargetActor = result.addons.filter(addon => addon.id === addonId)[0];
-  ok(addonTargetActor, `Found add-on actor for ${addonId}`);
-  return addonTargetActor;
-}
-
-async function reloadAddon(client, addonTargetActor) {
+async function reloadAddon(addonFront) {
   // The add-on will be re-installed after a successful reload.
   const onInstalled = promiseAddonEvent("onInstalled");
-  await client.request({to: addonTargetActor.actor, type: "reload"});
+  await addonFront.reload();
   await onInstalled;
 }
 
@@ -54,9 +49,11 @@ function getSupportFile(path) {
 }
 
 add_task(async function testReloadExitedAddon() {
-  const client = await new Promise(resolve => {
-    get_parent_process_actors(client => resolve(client));
-  });
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
+
+  const client = new DebuggerClient(DebuggerServer.connectPipe());
+  await client.connect();
 
   // Install our main add-on to trigger reloads on.
   const addonFile = getSupportFile("addons/web-extension");
@@ -72,12 +69,9 @@ add_task(async function testReloadExitedAddon() {
     promiseWebExtensionStartup(),
   ]);
 
-  const addonTargetActor = await findAddonInRootList(client, installedAddon.id);
+  const addonFront = await client.mainRoot.getAddon({ id: installedAddon.id });
 
-  await Promise.all([
-    reloadAddon(client, addonTargetActor),
-    promiseWebExtensionStartup(),
-  ]);
+  await Promise.all([reloadAddon(addonFront), promiseWebExtensionStartup()]);
 
   // Uninstall the decoy add-on, which should cause its actor to exit.
   const onUninstalled = promiseAddonEvent("onUninstalled");
@@ -86,18 +80,15 @@ add_task(async function testReloadExitedAddon() {
 
   // Try to re-list all add-ons after a reload.
   // This was throwing an exception because of the exited actor.
-  const newAddonActor = await findAddonInRootList(client, installedAddon.id);
-  equal(newAddonActor.id, addonTargetActor.id);
-
-  // The actor id should be the same after the reload
-  equal(newAddonActor.actor, addonTargetActor.actor);
-
-  const onAddonListChanged = new Promise((resolve) => {
-    client.addListener("addonListChanged", function listener() {
-      client.removeListener("addonListChanged", listener);
-      resolve();
-    });
+  const newAddonFront = await client.mainRoot.getAddon({
+    id: installedAddon.id,
   });
+  equal(newAddonFront.id, addonFront.id);
+
+  // The fronts should be the same after the reload
+  equal(newAddonFront, addonFront);
+
+  const onAddonListChanged = client.mainRoot.once("addonListChanged");
 
   // Install an upgrade version of the first add-on.
   const addonUpgradeFile = getSupportFile("addons/web-extension-upgrade");
@@ -110,13 +101,15 @@ add_task(async function testReloadExitedAddon() {
   await onAddonListChanged;
 
   // re-list all add-ons after an upgrade.
-  const upgradedAddonActor = await findAddonInRootList(client, upgradedAddon.id);
-  equal(upgradedAddonActor.id, addonTargetActor.id);
-  // The actor id should be the same after the upgrade.
-  equal(upgradedAddonActor.actor, addonTargetActor.actor);
+  const upgradedAddonFront = await client.mainRoot.getAddon({
+    id: upgradedAddon.id,
+  });
+  equal(upgradedAddonFront.id, addonFront.id);
+  // The fronts should be the same after the upgrade.
+  equal(upgradedAddonFront, addonFront);
 
   // The addon metadata has been updated.
-  equal(upgradedAddonActor.name, "Test Addons Actor Upgrade");
+  equal(upgradedAddonFront.name, "Test Addons Actor Upgrade");
 
   await close(client);
 });

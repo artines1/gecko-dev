@@ -1,4 +1,3 @@
-// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright (C) 2017 Josh Wolfe. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -10,6 +9,8 @@ info: |
   1. Let bits be ? ToIndex(bits).
 features: [BigInt, computed-property-names, Symbol, Symbol.toPrimitive]
 ---*/
+assert.sameValue(typeof BigInt, 'function');
+assert.sameValue(typeof BigInt.asIntN, 'function');
 
 function err() {
   throw new Test262Error();

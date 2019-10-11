@@ -18,32 +18,23 @@ namespace mozilla {
 
 class PresShell;
 
-class PointerCaptureInfo final
-{
-public:
+class PointerCaptureInfo final {
+ public:
   nsCOMPtr<nsIContent> mPendingContent;
   nsCOMPtr<nsIContent> mOverrideContent;
 
   explicit PointerCaptureInfo(nsIContent* aPendingContent)
-    : mPendingContent(aPendingContent)
-  {
+      : mPendingContent(aPendingContent) {
     MOZ_COUNT_CTOR(PointerCaptureInfo);
   }
 
-  ~PointerCaptureInfo()
-  {
-    MOZ_COUNT_DTOR(PointerCaptureInfo);
-  }
+  ~PointerCaptureInfo() { MOZ_COUNT_DTOR(PointerCaptureInfo); }
 
-  bool Empty()
-  {
-    return !(mPendingContent || mOverrideContent);
-  }
+  bool Empty() { return !(mPendingContent || mOverrideContent); }
 };
 
-class PointerEventHandler final
-{
-public:
+class PointerEventHandler final {
+ public:
   // Called in PresShell::Initialize to initialize pointer event related
   // preferences.
   static void Initialize();
@@ -52,9 +43,6 @@ public:
   // related static variables.
   static void InitializeStatics();
   static void ReleaseStatics();
-
-  // Return the preference value of pointer event enabled.
-  static bool IsPointerEventEnabled();
 
   // Return the preference value of implicit capture.
   static bool IsPointerEventImplicitCaptureForTouchEnabled();
@@ -79,13 +67,18 @@ public:
 
   // CheckPointerCaptureState checks cases, when got/lostpointercapture events
   // should be fired.
+  MOZ_CAN_RUN_SCRIPT
   static void MaybeProcessPointerCapture(WidgetGUIEvent* aEvent);
+  MOZ_CAN_RUN_SCRIPT
   static void ProcessPointerCaptureForMouse(WidgetMouseEvent* aEvent);
+  MOZ_CAN_RUN_SCRIPT
   static void ProcessPointerCaptureForTouch(WidgetTouchEvent* aEvent);
+  MOZ_CAN_RUN_SCRIPT
   static void CheckPointerCaptureState(WidgetPointerEvent* aEvent);
 
   // Implicitly get and release capture of current pointer for touch.
   static void ImplicitlyCapturePointer(nsIFrame* aFrame, WidgetEvent* aEvent);
+  MOZ_CAN_RUN_SCRIPT
   static void ImplicitlyReleasePointerCapture(WidgetEvent* aEvent);
 
   /**
@@ -121,8 +114,7 @@ public:
    *       handlers because they may implement default behaviors
    */
   static void PreHandlePointerEventsPreventDefault(
-                WidgetPointerEvent* aPointerEvent,
-                WidgetGUIEvent* aMouseOrTouchEvent);
+      WidgetPointerEvent* aPointerEvent, WidgetGUIEvent* aMouseOrTouchEvent);
 
   /*
    * This function handles the preventDefault behavior of pointerdown. When user
@@ -135,17 +127,13 @@ public:
    * content preventDefault on pointerdown
    */
   static void PostHandlePointerEventsPreventDefault(
-                WidgetPointerEvent* aPointerEvent,
-                WidgetGUIEvent* aMouseOrTouchEvent);
+      WidgetPointerEvent* aPointerEvent, WidgetGUIEvent* aMouseOrTouchEvent);
 
   MOZ_CAN_RUN_SCRIPT
-  static void DispatchPointerFromMouseOrTouch(PresShell* aShell,
-                                              nsIFrame* aFrame,
-                                              nsIContent* aContent,
-                                              WidgetGUIEvent* aEvent,
-                                              bool aDontRetargetEvents,
-                                              nsEventStatus* aStatus,
-                                              nsIContent** aTargetContent);
+  static void DispatchPointerFromMouseOrTouch(
+      PresShell* aShell, nsIFrame* aFrame, nsIContent* aContent,
+      WidgetGUIEvent* aEvent, bool aDontRetargetEvents, nsEventStatus* aStatus,
+      nsIContent** aTargetContent);
 
   static void InitPointerEventFromMouse(WidgetPointerEvent* aPointerEvent,
                                         WidgetMouseEvent* aMouseEvent,
@@ -156,20 +144,22 @@ public:
                                         mozilla::dom::Touch* aTouch,
                                         bool aIsPrimary);
 
-  static bool ShouldGeneratePointerEventFromMouse(WidgetGUIEvent* aEvent)
-  {
+  static bool ShouldGeneratePointerEventFromMouse(WidgetGUIEvent* aEvent) {
     return aEvent->mMessage == eMouseDown || aEvent->mMessage == eMouseUp ||
            aEvent->mMessage == eMouseMove;
   }
 
-  static bool ShouldGeneratePointerEventFromTouch(WidgetGUIEvent* aEvent)
-  {
+  static bool ShouldGeneratePointerEventFromTouch(WidgetGUIEvent* aEvent) {
     return aEvent->mMessage == eTouchStart || aEvent->mMessage == eTouchMove ||
            aEvent->mMessage == eTouchEnd || aEvent->mMessage == eTouchCancel ||
            aEvent->mMessage == eTouchPointerCancel;
   }
 
-private:
+  static MOZ_ALWAYS_INLINE int32_t GetSpoofedPointerIdForRFP() {
+    return sSpoofedPointerId.valueOr(0);
+  }
+
+ private:
   // GetPointerType returns pointer type like mouse, pen or touch for pointer
   // event with pointerId. The return value must be one of
   // MouseEvent_Binding::MOZ_SOURCE_*
@@ -179,12 +169,23 @@ private:
   // event with pointerId
   static bool GetPointerPrimaryState(uint32_t aPointerId);
 
+  MOZ_CAN_RUN_SCRIPT
   static void DispatchGotOrLostPointerCaptureEvent(
-                bool aIsGotCapture,
-                const WidgetPointerEvent* aPointerEvent,
-                nsIContent* aCaptureTarget);
+      bool aIsGotCapture, const WidgetPointerEvent* aPointerEvent,
+      nsIContent* aCaptureTarget);
+
+  // The cached spoofed pointer ID for fingerprinting resistance. We will use a
+  // mouse pointer id for desktop. For mobile, we should use the touch pointer
+  // id as the spoofed one, and this work will be addressed in Bug 1492775.
+  static Maybe<int32_t> sSpoofedPointerId;
+
+  // A helper function to cache the pointer id of the spoofed interface, we
+  // would only cache the pointer id once. After that, we would always stick to
+  // that pointer id for fingerprinting resistance.
+  static void MaybeCacheSpoofedPointerID(uint16_t aInputSource,
+                                         uint32_t aPointerId);
 };
 
-} // namespace mozilla
+}  // namespace mozilla
 
-#endif // mozilla_PointerEventHandler_h
+#endif  // mozilla_PointerEventHandler_h

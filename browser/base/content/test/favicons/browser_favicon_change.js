@@ -3,14 +3,18 @@
 
 "use strict";
 
-const TEST_ROOT = "http://mochi.test:8888/browser/browser/base/content/test/favicons/";
+const TEST_ROOT =
+  "http://mochi.test:8888/browser/browser/base/content/test/favicons/";
 const TEST_URL = TEST_ROOT + "file_favicon_change.html";
 
 add_task(async function() {
-  let extraTab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  let haveChanged = waitForFavicon(extraTab.linkedBrowser, TEST_ROOT + "file_bug970276_favicon1.ico");
+  let extraTab = (gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser));
+  let haveChanged = waitForFavicon(
+    extraTab.linkedBrowser,
+    TEST_ROOT + "file_bug970276_favicon1.ico"
+  );
 
-  extraTab.linkedBrowser.loadURI(TEST_URL);
+  BrowserTestUtils.loadURI(extraTab.linkedBrowser, TEST_URL);
   await BrowserTestUtils.browserLoaded(extraTab.linkedBrowser);
   await haveChanged;
 
@@ -27,4 +31,3 @@ add_task(async function() {
 
   gBrowser.removeTab(extraTab);
 });
-

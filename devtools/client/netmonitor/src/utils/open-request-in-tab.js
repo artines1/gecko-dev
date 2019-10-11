@@ -14,23 +14,30 @@
 
 "use strict";
 
-loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(
+  this,
+  "openContentLink",
+  "devtools/client/shared/link",
+  true
+);
 
 /**
  * Opens given request in a new tab.
+ *
+ * For POST request supports application/x-www-form-urlencoded content-type only.
  */
-function openRequestInTab(url, requestPostData) {
+function openRequestInTab(url, requestHeaders, requestPostData) {
   if (!requestPostData) {
-    openContentLink(url, {relatedToCurrent: true});
+    openContentLink(url, { relatedToCurrent: true });
   } else {
     openPostRequestInTabHelper({
       url,
-      data: requestPostData.postData
+      data: requestPostData.postData,
     });
   }
 }
 
-function openPostRequestInTabHelper({url, data}) {
+function openPostRequestInTabHelper({ url, data }) {
   const form = document.createElement("form");
   form.target = "_blank";
   form.action = url;

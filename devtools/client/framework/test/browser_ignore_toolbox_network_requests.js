@@ -1,5 +1,3 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
-/* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
@@ -15,7 +13,7 @@ add_task(async function() {
   await pushPref("devtools.testing", false);
 
   let tab = await addTab(URL_ROOT + "doc_viewsource.html");
-  let target = TargetFactory.forTab(tab);
+  let target = await TargetFactory.forTab(tab);
   let toolbox = await gDevTools.showToolbox(target, "styleeditor");
   let panel = toolbox.getPanel("styleeditor");
 
@@ -24,9 +22,13 @@ add_task(async function() {
   const monitor = await toolbox.selectTool("netmonitor");
   const { store } = monitor.panelWin;
 
-  is(store.getState().requests.requests.size, 0, "No network requests appear in the network panel");
+  is(
+    store.getState().requests.requests.size,
+    0,
+    "No network requests appear in the network panel"
+  );
 
-  await gDevTools.closeToolbox(target);
+  await toolbox.destroy();
   tab = target = toolbox = panel = null;
   gBrowser.removeCurrentTab();
 });

@@ -4,7 +4,7 @@
 
 "use strict";
 
-const Editor = require("devtools/client/sourceeditor/editor");
+const Editor = require("devtools/client/shared/sourceeditor/editor");
 const Services = require("Services");
 const EventEmitter = require("devtools/shared/event-emitter");
 
@@ -38,15 +38,14 @@ function HTMLEditor(htmlDocument) {
 
   EventEmitter.decorate(this);
 
-  this.doc.defaultView.addEventListener("resize",
-    this.refresh, true);
+  this.doc.defaultView.addEventListener("resize", this.refresh, true);
 
   const config = {
     mode: Editor.modes.html,
     lineWrapping: true,
     styleActiveLine: false,
     extraKeys: {},
-    theme: "mozilla markup-view"
+    theme: "mozilla markup-view",
   };
 
   config.extraKeys[ctrl("Enter")] = this.hide;
@@ -62,7 +61,6 @@ function HTMLEditor(htmlDocument) {
 }
 
 HTMLEditor.prototype = {
-
   /**
    * Need to refresh position by manually setting CSS values, so this will
    * need to be called on resizes and other sizing changes.
@@ -159,15 +157,14 @@ HTMLEditor.prototype = {
    * Destroy this object and unbind all event handlers
    */
   destroy: function() {
-    this.doc.defaultView.removeEventListener("resize",
-      this.refresh, true);
+    this.doc.defaultView.removeEventListener("resize", this.refresh, true);
     this.container.removeEventListener("click", this.hide);
     this.editorInner.removeEventListener("click", stopPropagation);
 
     this.hide(false);
     this.container.remove();
     this.editor.destroy();
-  }
+  },
 };
 
 function ctrl(k) {

@@ -1,8 +1,12 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 this.runtime = class extends ExtensionAPI {
   getAPI(context) {
-    let {extension} = context;
+    let { extension } = context;
 
     return {
       runtime: {
@@ -10,16 +14,24 @@ this.runtime = class extends ExtensionAPI {
 
         onMessage: context.messenger.onMessage("runtime.onMessage"),
 
-        onConnectExternal: context.messenger.onConnectExternal("runtime.onConnectExternal"),
+        onConnectExternal: context.messenger.onConnectExternal(
+          "runtime.onConnectExternal"
+        ),
 
-        onMessageExternal: context.messenger.onMessageExternal("runtime.onMessageExternal"),
+        onMessageExternal: context.messenger.onMessageExternal(
+          "runtime.onMessageExternal"
+        ),
 
         connect: function(extensionId, connectInfo) {
           let name = (connectInfo !== null && connectInfo.name) || "";
           extensionId = extensionId || extension.id;
-          let recipient = {extensionId};
+          let recipient = { extensionId };
 
-          return context.messenger.connect(context.messageManager, name, recipient);
+          return context.messenger.connect(
+            context.messageManager,
+            name,
+            recipient
+          );
         },
 
         sendMessage(...args) {
@@ -30,28 +42,24 @@ this.runtime = class extends ExtensionAPI {
           }
 
           function checkOptions(options) {
-            let toProxyScript = false;
             if (typeof options !== "object") {
-              return [false, "runtime.sendMessage's options argument is invalid"];
+              return [
+                false,
+                "runtime.sendMessage's options argument is invalid",
+              ];
             }
 
             for (let key of Object.keys(options)) {
-              if (key === "toProxyScript") {
-                let value = options[key];
-                if (typeof value !== "boolean") {
-                  return [false, "runtime.sendMessage's options.toProxyScript argument is invalid"];
-                }
-                toProxyScript = value;
-              } else {
-                return [false, `Unexpected property ${key}`];
-              }
+              return [false, `Unexpected property ${key}`];
             }
 
-            return [true, {toProxyScript}];
+            return [true, {}];
           }
 
           if (!args.length) {
-            return Promise.reject({message: "runtime.sendMessage's message argument is missing"});
+            return Promise.reject({
+              message: "runtime.sendMessage's message argument is missing",
+            });
           } else if (args.length === 1) {
             message = args[0];
           } else if (args.length === 2) {
@@ -67,30 +75,44 @@ this.runtime = class extends ExtensionAPI {
             } else {
               [extensionId, message] = args;
             }
-          } else if (args.length === 3 || (args.length === 4 && args[3] == null)) {
+          } else if (
+            args.length === 3 ||
+            (args.length === 4 && args[3] == null)
+          ) {
             [extensionId, message, options] = args;
           } else if (args.length === 4 && !responseCallback) {
-            return Promise.reject({message: "runtime.sendMessage's last argument is not a function"});
+            return Promise.reject({
+              message: "runtime.sendMessage's last argument is not a function",
+            });
           } else {
-            return Promise.reject({message: "runtime.sendMessage received too many arguments"});
+            return Promise.reject({
+              message: "runtime.sendMessage received too many arguments",
+            });
           }
 
           if (extensionId != null && typeof extensionId !== "string") {
-            return Promise.reject({message: "runtime.sendMessage's extensionId argument is invalid"});
+            return Promise.reject({
+              message: "runtime.sendMessage's extensionId argument is invalid",
+            });
           }
 
           extensionId = extensionId || extension.id;
-          let recipient = {extensionId};
+          let recipient = { extensionId };
 
           if (options != null) {
             let [valid, arg] = checkOptions(options);
             if (!valid) {
-              return Promise.reject({message: arg});
+              return Promise.reject({ message: arg });
             }
             Object.assign(recipient, arg);
           }
 
-          return context.messenger.sendMessage(context.messageManager, message, recipient, responseCallback);
+          return context.messenger.sendMessage(
+            context.messageManager,
+            message,
+            recipient,
+            responseCallback
+          );
         },
 
         connectNative(application) {
@@ -99,7 +121,11 @@ this.runtime = class extends ExtensionAPI {
             toNativeApp: application,
           };
 
-          return context.messenger.connectNative(context.messageManager, "", recipient);
+          return context.messenger.connectNative(
+            context.messageManager,
+            "",
+            recipient
+          );
         },
 
         sendNativeMessage(application, message) {
@@ -107,7 +133,11 @@ this.runtime = class extends ExtensionAPI {
             childId: context.childManager.id,
             toNativeApp: application,
           };
-          return context.messenger.sendNativeMessage(context.messageManager, message, recipient);
+          return context.messenger.sendNativeMessage(
+            context.messageManager,
+            message,
+            recipient
+          );
         },
 
         get lastError() {

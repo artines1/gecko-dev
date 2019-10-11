@@ -7,6 +7,7 @@
 #ifndef mozilla_ipc_CrashReporterClient_h
 #define mozilla_ipc_CrashReporterClient_h
 
+#include "mozilla/Assertions.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Unused.h"
@@ -17,36 +18,34 @@ namespace ipc {
 
 class CrashReporterMetadataShmem;
 
-class CrashReporterClient
-{
-public:
+class CrashReporterClient {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CrashReporterClient);
 
   // |aTopLevelProtocol| must be a top-level protocol instance, as sub-actors
   // do not have AllocUnsafeShmem. It must also have a child-to-parent message:
   //
-  //   async SetCrashReporterClient(Shmem shmem);
+  //   async InitCrashReporter(Shmem shmem, NativeThreadId threadId);
   //
   // The parent-side receive function of this message should save the shmem
   // somewhere, and when the top-level actor's ActorDestroy runs (or when the
   // crash reporter needs metadata), the shmem should be parsed.
   template <typename T>
-  static bool InitSingleton(T* aToplevelProtocol) {
+  static void InitSingleton(T* aToplevelProtocol) {
     // The crash reporter is not enabled in recording/replaying processes.
     if (recordreplay::IsRecordingOrReplaying()) {
-      return true;
+      return;
     }
 
     Shmem shmem;
     if (!AllocShmem(aToplevelProtocol, &shmem)) {
-      return false;
+      MOZ_DIAGNOSTIC_ASSERT(false, "failed to allocate crash reporter shmem");
+      return;
     }
 
     InitSingletonWithShmem(shmem);
     Unused << aToplevelProtocol->SendInitCrashReporter(
-      shmem,
-      CrashReporter::CurrentThreadId());
-    return true;
+        std::move(shmem), CrashReporter::CurrentThreadId());
   }
 
   template <typename T>
@@ -55,9 +54,7 @@ public:
     static const size_t kShmemSize = 16 * 1024;
 
     return aToplevelProtocol->AllocUnsafeShmem(
-      kShmemSize,
-      SharedMemory::TYPE_BASIC,
-      aOutShmem);
+        kShmemSize, SharedMemory::TYPE_BASIC, aOutShmem);
   }
 
   static void InitSingletonWithShmem(const Shmem& aShmem);
@@ -65,23 +62,23 @@ public:
   static void DestroySingleton();
   static RefPtr<CrashReporterClient> GetSingleton();
 
-  void AnnotateCrashReport(const nsCString& aKey, const nsCString& aData);
-  void AppendAppNotes(const nsCString& aData);
+  void AnnotateCrashReport(CrashReporter::Annotation aKey,
+                           const nsACString& aData);
+  void AppendAppNotes(const nsACString& aData);
 
-private:
+ private:
   explicit CrashReporterClient(const Shmem& aShmem);
   ~CrashReporterClient();
 
-private:
+ private:
   static StaticMutex sLock;
   static StaticRefPtr<CrashReporterClient> sClientSingleton;
 
-private:
+ private:
   UniquePtr<CrashReporterMetadataShmem> mMetadata;
 };
 
-} // namespace ipc
-} // namespace mozilla
+}  // namespace ipc
+}  // namespace mozilla
 
-#endif // mozilla_ipc_CrashReporterClient_h
-
+#endif  // mozilla_ipc_CrashReporterClient_h

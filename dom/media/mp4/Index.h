@@ -5,18 +5,19 @@
 #ifndef INDEX_H_
 #define INDEX_H_
 
+#include "ByteStream.h"
 #include "MediaData.h"
 #include "MediaResource.h"
-#include "TimeUnits.h"
 #include "MoofParser.h"
+#include "mozilla/Result.h"
 #include "MP4Interval.h"
-#include "ByteStream.h"
 #include "nsISupportsImpl.h"
+#include "TimeUnits.h"
 
-template<class T> class nsAutoPtr;
+template <class T>
+class nsAutoPtr;
 
-namespace mozilla
-{
+namespace mozilla {
 class IndiceWrapper;
 struct Sample;
 struct CencSampleEncryptionInfoEntry;
@@ -25,18 +26,29 @@ class Index;
 
 typedef int64_t Microseconds;
 
-class SampleIterator
-{
-public:
+class SampleIterator {
+ public:
   explicit SampleIterator(Index* aIndex);
   ~SampleIterator();
   already_AddRefed<mozilla::MediaRawData> GetNext();
   void Seek(Microseconds aTime);
   Microseconds GetNextKeyframeTime();
-private:
+
+ private:
   Sample* Get();
 
+  // Gets the sample description entry for the current moof, or nullptr if
+  // called without a valid current moof.
+  SampleDescriptionEntry* GetSampleDescriptionEntry();
   CencSampleEncryptionInfoEntry* GetSampleEncryptionEntry();
+
+  // Determines the encryption scheme in use for the current sample. If the
+  // the scheme cannot be unambiguously determined, will return an error with
+  // the reason.
+  //
+  // Returns: Ok(CryptoScheme) if a crypto scheme, including None, can be
+  // determined, or Err(nsCString) if there is an issue determining the scheme.
+  Result<CryptoScheme, const nsCString> GetEncryptionScheme();
 
   void Next();
   RefPtr<Index> mIndex;
@@ -45,13 +57,11 @@ private:
   size_t mCurrentSample;
 };
 
-class Index
-{
-public:
+class Index {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Index)
 
-  struct Indice
-  {
+  struct Indice {
     uint64_t start_offset;
     uint64_t end_offset;
     uint64_t start_composition;
@@ -60,13 +70,9 @@ public:
     bool sync;
   };
 
-  struct MP4DataOffset
-  {
+  struct MP4DataOffset {
     MP4DataOffset(uint32_t aIndex, int64_t aStartOffset)
-      : mIndex(aIndex)
-      , mStartOffset(aStartOffset)
-      , mEndOffset(0)
-    {}
+        : mIndex(aIndex), mStartOffset(aStartOffset), mEndOffset(0) {}
 
     bool operator==(int64_t aStartOffset) const {
       return mStartOffset == aStartOffset;
@@ -96,24 +102,22 @@ public:
     MP4Interval<Microseconds> mTime;
   };
 
-  Index(const mozilla::IndiceWrapper& aIndices,
-        ByteStream* aSource,
-        uint32_t aTrackId,
-        bool aIsAudio);
+  Index(const mozilla::IndiceWrapper& aIndices, ByteStream* aSource,
+        uint32_t aTrackId, bool aIsAudio);
 
   void UpdateMoofIndex(const mozilla::MediaByteRangeSet& aByteRanges,
                        bool aCanEvict);
   void UpdateMoofIndex(const mozilla::MediaByteRangeSet& aByteRanges);
   Microseconds GetEndCompositionIfBuffered(
-    const mozilla::MediaByteRangeSet& aByteRanges);
+      const mozilla::MediaByteRangeSet& aByteRanges);
   mozilla::media::TimeIntervals ConvertByteRangesToTimeRanges(
-    const mozilla::MediaByteRangeSet& aByteRanges);
+      const mozilla::MediaByteRangeSet& aByteRanges);
   uint64_t GetEvictionOffset(Microseconds aTime);
   bool IsFragmented() { return mMoofParser; }
 
   friend class SampleIterator;
 
-private:
+ private:
   ~Index();
   void RegisterIterator(SampleIterator* aIterator);
   void UnregisterIterator(SampleIterator* aIterator);
@@ -129,6 +133,6 @@ private:
   mozilla::media::TimeIntervals mLastBufferedRanges;
   bool mIsAudio;
 };
-}
+}  // namespace mozilla
 
 #endif

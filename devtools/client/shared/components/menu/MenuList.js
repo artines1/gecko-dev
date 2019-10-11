@@ -10,7 +10,10 @@
 // This component provides keyboard navigation amongst any focusable
 // children.
 
-const { Children, PureComponent } = require("devtools/client/shared/vendor/react");
+const {
+  Children,
+  PureComponent,
+} = require("devtools/client/shared/vendor/react");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { div } = dom;
@@ -24,6 +27,11 @@ class MenuList extends PureComponent {
 
       // Children of the list.
       children: PropTypes.any,
+
+      // Called whenever there is a change to the hovered or selected child.
+      // The callback is passed the ID of the highlighted child or null if no
+      // child is highlighted.
+      onHighlightedChildChange: PropTypes.func,
     };
   }
 
@@ -31,10 +39,32 @@ class MenuList extends PureComponent {
     super(props);
 
     this.onKeyDown = this.onKeyDown.bind(this);
+    this.onMouseOverOrFocus = this.onMouseOverOrFocus.bind(this);
+    this.onMouseOutOrBlur = this.onMouseOutOrBlur.bind(this);
+    this.notifyHighlightedChildChange = this.notifyHighlightedChildChange.bind(
+      this
+    );
 
     this.setWrapperRef = element => {
       this.wrapperRef = element;
     };
+  }
+
+  onMouseOverOrFocus(e) {
+    this.notifyHighlightedChildChange(e.target.id);
+  }
+
+  onMouseOutOrBlur(e) {
+    const hoveredElem = this.wrapperRef.querySelector(":hover");
+    if (!hoveredElem) {
+      this.notifyHighlightedChildChange(null);
+    }
+  }
+
+  notifyHighlightedChildChange(id) {
+    if (this.props.onHighlightedChildChange) {
+      this.props.onHighlightedChildChange(id);
+    }
   }
 
   onKeyDown(e) {
@@ -46,11 +76,11 @@ class MenuList extends PureComponent {
       return;
     }
 
-    const getTabList = () => Array.from(
-      this.wrapperRef.querySelectorAll(focusableSelector)
-    );
+    const getTabList = () =>
+      Array.from(this.wrapperRef.querySelectorAll(focusableSelector));
 
     switch (e.key) {
+      case "Tab":
       case "ArrowUp":
       case "ArrowDown":
         {
@@ -59,16 +89,12 @@ class MenuList extends PureComponent {
           const currentIndex = tabList.indexOf(currentElement);
           if (currentIndex !== -1) {
             let nextIndex;
-            if (e.key === "ArrowDown") {
+            if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
               nextIndex =
-                currentIndex === tabList.length - 1
-                ? 0
-                : currentIndex + 1;
+                currentIndex === tabList.length - 1 ? 0 : currentIndex + 1;
             } else {
               nextIndex =
-                currentIndex === 0
-                ? tabList.length - 1
-                : currentIndex - 1;
+                currentIndex === 0 ? tabList.length - 1 : currentIndex - 1;
             }
             tabList[nextIndex].focus();
             e.preventDefault();
@@ -103,6 +129,11 @@ class MenuList extends PureComponent {
       role: "menu",
       ref: this.setWrapperRef,
       onKeyDown: this.onKeyDown,
+      onMouseOver: this.onMouseOverOrFocus,
+      onMouseOut: this.onMouseOutOrBlur,
+      onFocus: this.onMouseOverOrFocus,
+      onBlur: this.onMouseOutOrBlur,
+      className: "menu-standard-padding",
     };
 
     if (this.props.id) {
@@ -117,7 +148,7 @@ class MenuList extends PureComponent {
       }
     });
     if (hasCheckbox) {
-      attr.className = "checkbox-container";
+      attr.className = "checkbox-container menu-standard-padding";
     }
 
     return div(attr, this.props.children);

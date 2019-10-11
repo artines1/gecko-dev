@@ -9,8 +9,11 @@ var EXPORTED_SYMBOLS = ["SessionMigration"];
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
-ChromeUtils.defineModuleGetter(this, "Utils",
-  "resource://gre/modules/sessionstore/Utils.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "E10SUtils",
+  "resource://gre/modules/E10SUtils.jsm"
+);
 
 // An encoder to UTF-8.
 XPCOMUtils.defineLazyGetter(this, "gEncoder", function() {
@@ -40,17 +43,19 @@ var SessionMigrationInternal = {
   convertState(aStateObj) {
     let state = {
       selectedWindow: aStateObj.selectedWindow,
-      _closedWindows: []
+      _closedWindows: [],
     };
     state.windows = aStateObj.windows.map(function(oldWin) {
-      var win = {extData: {}};
+      var win = { extData: {} };
       win.tabs = oldWin.tabs.map(function(oldTab) {
         var tab = {};
         // Keep only titles, urls and triggeringPrincipals for history entries
         tab.entries = oldTab.entries.map(function(entry) {
-          return { url: entry.url,
-                   triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
-                   title: entry.title };
+          return {
+            url: entry.url,
+            triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
+            title: entry.title,
+          };
         });
         tab.index = oldTab.index;
         tab.hidden = oldTab.hidden;
@@ -62,16 +67,19 @@ var SessionMigrationInternal = {
       return win;
     });
     let url = "about:welcomeback";
-    let formdata = {id: {sessionData: state}, url};
-    let entry = { url, triggeringPrincipal_base64: Utils.SERIALIZED_SYSTEMPRINCIPAL };
-    return { windows: [{ tabs: [{ entries: [ entry ], formdata}]}]};
+    let formdata = { id: { sessionData: state }, url };
+    let entry = {
+      url,
+      triggeringPrincipal_base64: E10SUtils.SERIALIZED_SYSTEMPRINCIPAL,
+    };
+    return { windows: [{ tabs: [{ entries: [entry], formdata }] }] };
   },
   /**
    * Asynchronously read session restore state (JSON) from a path
    */
   readState(aPath) {
     return (async function() {
-      let bytes = await OS.File.read(aPath, {compression: "lz4"});
+      let bytes = await OS.File.read(aPath, { compression: "lz4" });
       let text = gDecoder.decode(bytes);
       let state = JSON.parse(text);
       return state;
@@ -82,8 +90,11 @@ var SessionMigrationInternal = {
    */
   writeState(aPath, aState) {
     let bytes = gEncoder.encode(JSON.stringify(aState));
-    return OS.File.writeAtomic(aPath, bytes, {tmpPath: aPath + ".tmp", compression: "lz4"});
-  }
+    return OS.File.writeAtomic(aPath, bytes, {
+      tmpPath: aPath + ".tmp",
+      compression: "lz4",
+    });
+  },
 };
 
 var SessionMigration = {
@@ -100,5 +111,5 @@ var SessionMigration = {
       // that's true.
       await SessionMigrationInternal.writeState(aToPath, outState);
     })();
-  }
+  },
 };

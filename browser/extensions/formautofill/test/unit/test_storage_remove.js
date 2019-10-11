@@ -4,7 +4,13 @@
 
 "use strict";
 
-const {FormAutofillStorage} = ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm", {});
+let FormAutofillStorage;
+add_task(async function setup() {
+  ({ FormAutofillStorage } = ChromeUtils.import(
+    "resource://formautofill/FormAutofillStorage.jsm",
+    null
+  ));
+});
 
 const TEST_STORE_FILE_NAME = "test-tombstones.json";
 
@@ -50,8 +56,10 @@ function add_storage_task(test_function) {
     let address_records = [TEST_ADDRESS_1, TEST_ADDRESS_2];
     let cc_records = [TEST_CREDIT_CARD_1, TEST_CREDIT_CARD_2];
 
-    for (let [storage, record] of [[profileStorage.addresses, address_records],
-                                   [profileStorage.creditCards, cc_records]]) {
+    for (let [storage, record] of [
+      [profileStorage.addresses, address_records],
+      [profileStorage.creditCards, cc_records],
+    ]) {
       await test_function(storage, record);
     }
   });
@@ -60,22 +68,22 @@ function add_storage_task(test_function) {
 add_storage_task(async function test_remove_everything(storage, records) {
   info("check simple tombstone semantics");
 
-  let guid = storage.add(records[0]);
-  Assert.equal(storage.getAll().length, 1);
+  let guid = await storage.add(records[0]);
+  Assert.equal((await storage.getAll()).length, 1);
 
   storage.pullSyncChanges(); // force sync metadata, which triggers tombstone behaviour.
 
   storage.remove(guid);
 
-  storage.add(records[1]);
+  await storage.add(records[1]);
   // getAll() is still 1 as we deleted the first.
-  Assert.equal(storage.getAll().length, 1);
+  Assert.equal((await storage.getAll()).length, 1);
 
   // check we have the tombstone.
-  Assert.equal(storage.getAll({includeDeleted: true}).length, 2);
+  Assert.equal((await storage.getAll({ includeDeleted: true })).length, 2);
 
   storage.removeAll();
 
   // should have deleted both the existing and deleted records.
-  Assert.equal(storage.getAll({includeDeleted: true}).length, 0);
+  Assert.equal((await storage.getAll({ includeDeleted: true })).length, 0);
 });

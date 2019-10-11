@@ -34,6 +34,12 @@
 #include "JSONFormatter.h"
 #include "StringOperations.h"
 
+#if CLANG_VERSION_MAJOR < 8
+// Starting with Clang 8.0 some basic functions have been renamed
+#define getBeginLoc getLocStart
+#define getEndLoc getLocEnd
+#endif
+
 using namespace clang;
 
 const std::string GENERATED("__GENERATED__" PATHSEP_STRING);
@@ -96,6 +102,7 @@ struct FileInfo {
       // We use the escape character to indicate the objdir nature.
       // Note that output also has the `/' already placed
       Interesting = true;
+      Generated = true;
       Realname.replace(0, Objdir.length(), GENERATED);
       return;
     }
@@ -105,6 +112,7 @@ struct FileInfo {
     // Srcdir or anything outside Srcdir.
     Interesting = (Rname.length() > Srcdir.length()) &&
                   (Rname.compare(0, Srcdir.length(), Srcdir) == 0);
+    Generated = false;
     if (Interesting) {
       // Remove the trailing `/' as well.
       Realname.erase(0, Srcdir.length() + 1);
@@ -113,6 +121,7 @@ struct FileInfo {
   std::string Realname;
   std::vector<std::string> Output;
   bool Interesting;
+  bool Generated;
 };
 
 class IndexConsumer;
@@ -128,13 +137,8 @@ public:
 
   virtual void MacroExpands(const Token &Tok, const MacroDefinition &Md,
                             SourceRange Range, const MacroArgs *Ma) override;
-#if CLANG_VERSION_MAJOR >= 5
   virtual void MacroUndefined(const Token &Tok, const MacroDefinition &Md,
                               const MacroDirective *Undef) override;
-#else
-  virtual void MacroUndefined(const Token &Tok,
-                              const MacroDefinition &Md) override;
-#endif
   virtual void Defined(const Token &Tok, const MacroDefinition &Md,
                        SourceRange Range) override;
   virtual void Ifdef(SourceLocation Loc, const Token &Tok,
@@ -149,6 +153,7 @@ class IndexConsumer : public ASTConsumer,
 private:
   CompilerInstance &CI;
   SourceManager &SM;
+  LangOptions &LO;
   std::map<FileID, std::unique_ptr<FileInfo>> FileMap;
   MangleContext *CurMangleContext;
   ASTContext *AstContext;
@@ -209,6 +214,9 @@ private:
     return getFileInfo(Loc)->Interesting;
   }
 
+  // Convert location to "line:column" or "line:column-column" given length.
+  // In resulting string rep, line is 1-based and zero-padded to 5 digits, while
+  // column is 0-based and unpadded.
   std::string locationToString(SourceLocation Loc, size_t Length = 0) {
     std::pair<FileID, unsigned> Pair = SM.getDecomposedLoc(Loc);
 
@@ -229,6 +237,8 @@ private:
     }
   }
 
+  // Convert SourceRange to "line-line".
+  // In the resulting string rep, line is 1-based.
   std::string lineRangeToString(SourceRange Range) {
     std::pair<FileID, unsigned> Begin = SM.getDecomposedLoc(Range.getBegin());
     std::pair<FileID, unsigned> End = SM.getDecomposedLoc(Range.getEnd());
@@ -244,6 +254,33 @@ private:
     }
 
     return stringFormat("%d-%d", Line1, Line2);
+  }
+
+  // Convert SourceRange to "line:column-line:column".
+  // In the resulting string rep, line is 1-based, column is 0-based.
+  std::string fullRangeToString(SourceRange Range) {
+    std::pair<FileID, unsigned> Begin = SM.getDecomposedLoc(Range.getBegin());
+    std::pair<FileID, unsigned> End = SM.getDecomposedLoc(Range.getEnd());
+
+    bool IsInvalid;
+    unsigned Line1 = SM.getLineNumber(Begin.first, Begin.second, &IsInvalid);
+    if (IsInvalid) {
+      return "";
+    }
+    unsigned Column1 = SM.getColumnNumber(Begin.first, Begin.second, &IsInvalid);
+    if (IsInvalid) {
+      return "";
+    }
+    unsigned Line2 = SM.getLineNumber(End.first, End.second, &IsInvalid);
+    if (IsInvalid) {
+      return "";
+    }
+    unsigned Column2 = SM.getColumnNumber(End.first, End.second, &IsInvalid);
+    if (IsInvalid) {
+      return "";
+    }
+
+    return stringFormat("%d:%d-%d:%d", Line1, Column1 - 1, Line2, Column2 - 1);
   }
 
   // Returns the qualified name of `d` without considering template parameters.
@@ -273,18 +310,8 @@ private:
           std::string Backing;
           llvm::raw_string_ostream Stream(Backing);
           const TemplateArgumentList &TemplateArgs = Spec->getTemplateArgs();
-#if CLANG_VERSION_MAJOR > 5
           printTemplateArgumentList(
               Stream, TemplateArgs.asArray(), PrintingPolicy(CI.getLangOpts()));
-#elif CLANG_VERSION_MAJOR > 3 ||                                                 \
-    (CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR >= 9)
-          TemplateSpecializationType::PrintTemplateArgumentList(
-              Stream, TemplateArgs.asArray(), PrintingPolicy(CI.getLangOpts()));
-#else
-          TemplateSpecializationType::PrintTemplateArgumentList(
-              stream, templateArgs.data(), templateArgs.size(),
-              PrintingPolicy(CI.getLangOpts()));
-#endif
           Result += Stream.str();
         }
       } else if (const auto *Nd = dyn_cast<NamespaceDecl>(DC)) {
@@ -329,6 +356,14 @@ private:
     std::string Filename = F->Realname;
     if (Filename.length() == 0 && Backup.length() != 0) {
       return Backup;
+    }
+    if (F->Generated) {
+      // Since generated files may be different on different platforms,
+      // we need to include a platform-specific thing in the hash. Otherwise
+      // we can end up with hash collisions where different symbols from
+      // different platforms map to the same thing.
+      char* Platform = getenv("MOZSEARCH_PLATFORM");
+      Filename = std::string(Platform ? Platform : "") + std::string("@") + Filename;
     }
     return hash(Filename + std::string("@") + locationToString(Loc));
   }
@@ -387,7 +422,7 @@ private:
     } else if (const FieldDecl *D2 = dyn_cast<FieldDecl>(Decl)) {
       const RecordDecl *Record = D2->getParent();
       return std::string("F_<") + getMangledName(Ctx, Record) + ">_" +
-             toString(D2->getFieldIndex());
+             D2->getNameAsString();
     } else if (const EnumConstantDecl *D2 = dyn_cast<EnumConstantDecl>(Decl)) {
       const DeclContext *DC = Decl->getDeclContext();
       if (const NamedDecl *Named = dyn_cast<NamedDecl>(DC)) {
@@ -414,7 +449,7 @@ private:
 
 public:
   IndexConsumer(CompilerInstance &CI)
-      : CI(CI), SM(CI.getSourceManager()), CurMangleContext(nullptr),
+      : CI(CI), SM(CI.getSourceManager()), LO(CI.getLangOpts()), CurMangleContext(nullptr),
         AstContext(nullptr), CurDeclContext(nullptr), TemplateStack(nullptr) {
     CI.getPreprocessor().addPPCallbacks(
         llvm::make_unique<PreprocessorHook>(this));
@@ -468,7 +503,8 @@ public:
       AutoLockFile Lock(Filename);
 
       if (!Lock.success()) {
-        continue;
+        fprintf(stderr, "Unable to lock file %s\n", Filename.c_str());
+        exit(1);
       }
 
       std::vector<std::string> Lines;
@@ -478,7 +514,7 @@ public:
       // there. This ensures that header files that are included multiple times
       // in different ways are analyzed completely.
       char Buffer[65536];
-      FILE *Fp = Lock.openFile("r");
+      FILE *Fp = Lock.openFile("rb");
       if (!Fp) {
         fprintf(stderr, "Unable to open input file %s\n", Filename.c_str());
         exit(1);
@@ -498,7 +534,7 @@ public:
 
       // Overwrite the output file with the merged data. Since we have the lock,
       // this will happen atomically.
-      Fp = Lock.openFile("w");
+      Fp = Lock.openFile("wb");
       if (!Fp) {
         fprintf(stderr, "Unable to open output file %s\n", Filename.c_str());
         exit(1);
@@ -708,10 +744,16 @@ public:
   // ignores all source locations except for the ones where we found dependent
   // scoped member expressions before. For these locations, we generate a
   // separate JSON result for each instantiation.
+  //
+  // We inherit our parent's mode if it is exists.  This is because if our
+  // parent is in analyze mode, it means we've already lived a full life in
+  // gather mode and we must not restart in gather mode or we'll cause the
+  // indexer to visit EVERY identifier, which is way too much data.
   struct AutoTemplateContext {
     AutoTemplateContext(IndexConsumer *Self)
-        : Self(Self), CurMode(Mode::GatherDependent),
-          Parent(Self->TemplateStack) {
+        : Self(Self)
+        , CurMode(Self->TemplateStack ? Self->TemplateStack->CurMode : Mode::GatherDependent)
+        , Parent(Self->TemplateStack) {
       Self->TemplateStack = this;
     }
 
@@ -740,6 +782,10 @@ public:
       if (Parent) {
         Parent->visitDependent(Loc);
       }
+    }
+
+    bool inGatherMode() {
+      return CurMode == Mode::GatherDependent;
     }
 
     // Do we need to perform the extra AnalyzeDependent passes (one per
@@ -831,7 +877,9 @@ public:
 
   bool TraverseFunctionTemplateDecl(FunctionTemplateDecl *D) {
     AutoTemplateContext Atc(this);
-    Super::TraverseFunctionTemplateDecl(D);
+    if (Atc.inGatherMode()) {
+      Super::TraverseFunctionTemplateDecl(D);
+    }
 
     if (!Atc.needsAnalysis()) {
       return true;
@@ -870,7 +918,8 @@ public:
                        std::string QualName, SourceLocation Loc,
                        const std::vector<std::string> &Symbols,
                        Context TokenContext = Context(), int Flags = 0,
-                       SourceRange PeekRange = SourceRange()) {
+                       SourceRange PeekRange = SourceRange(),
+                       SourceRange NestingRange = SourceRange()) {
     if (!shouldVisit(Loc)) {
       return;
     }
@@ -953,6 +1002,13 @@ public:
     Fmt.add("loc", RangeStr);
     Fmt.add("source", 1);
 
+    if (NestingRange.isValid()) {
+      std::string NestingRangeStr = fullRangeToString(NestingRange);
+      if (!NestingRangeStr.empty()) {
+        Fmt.add("nestingRange", NestingRangeStr);
+      }
+    }
+
     std::string Syntax;
     if (Flags & NoCrossref) {
       Fmt.add("syntax", "");
@@ -982,19 +1038,42 @@ public:
   void visitIdentifier(const char *Kind, const char *SyntaxKind,
                        std::string QualName, SourceLocation Loc, std::string Symbol,
                        Context TokenContext = Context(), int Flags = 0,
-                       SourceRange PeekRange = SourceRange()) {
+                       SourceRange PeekRange = SourceRange(),
+                       SourceRange NestingRange = SourceRange()) {
     std::vector<std::string> V = {Symbol};
-    visitIdentifier(Kind, SyntaxKind, QualName, Loc, V, TokenContext, Flags, PeekRange);
+    visitIdentifier(Kind, SyntaxKind, QualName, Loc, V, TokenContext, Flags,
+                    PeekRange, NestingRange);
   }
 
   void normalizeLocation(SourceLocation *Loc) {
     *Loc = SM.getSpellingLoc(*Loc);
   }
 
+  // For cases where the left-brace is not directly accessible from the AST,
+  // helper to use the lexer to find the brace.  Make sure you're picking the
+  // start location appropriately!
+  SourceLocation findLeftBraceFromLoc(SourceLocation Loc) {
+    return Lexer::findLocationAfterToken(Loc, tok::l_brace, SM, LO, false);
+  }
+
+  // If the provided statement is compound, return its range.
+  SourceRange getCompoundStmtRange(Stmt* D) {
+    if (!D) {
+      return SourceRange();
+    }
+
+    CompoundStmt *D2 = dyn_cast<CompoundStmt>(D);
+    if (D2) {
+      return D2->getSourceRange();
+    }
+
+    return SourceRange();
+  }
+
   SourceRange getFunctionPeekRange(FunctionDecl* D) {
     // We always start at the start of the function decl, which may include the
     // return type on a separate line.
-    SourceLocation Start = D->getLocStart();
+    SourceLocation Start = D->getBeginLoc();
 
     // By default, we end at the line containing the function's name.
     SourceLocation End = D->getLocation();
@@ -1009,7 +1088,7 @@ public:
       // the parameters in that case.
       if (ParamLoc.first == FuncLoc.first) {
         // Assume parameters are in order, so we always take the last one.
-        End = Param->getLocEnd();
+        End = Param->getEndLoc();
       }
     }
 
@@ -1017,7 +1096,7 @@ public:
   }
 
   SourceRange getTagPeekRange(TagDecl* D) {
-    SourceLocation Start = D->getLocStart();
+    SourceLocation Start = D->getBeginLoc();
 
     // By default, we end at the line containing the name.
     SourceLocation End = D->getLocation();
@@ -1027,13 +1106,13 @@ public:
     if (CXXRecordDecl* D2 = dyn_cast<CXXRecordDecl>(D)) {
       // But if there are parameters, we want to include those as well.
       for (CXXBaseSpecifier& Base : D2->bases()) {
-        std::pair<FileID, unsigned> Loc = SM.getDecomposedLoc(Base.getLocEnd());
+        std::pair<FileID, unsigned> Loc = SM.getDecomposedLoc(Base.getEndLoc());
 
         // It's possible there are macros involved or something. We don't include
         // the parameters in that case.
         if (Loc.first == FuncLoc.first) {
           // Assume parameters are in order, so we always take the last one.
-          End = Base.getLocEnd();
+          End = Base.getEndLoc();
         }
       }
     }
@@ -1051,6 +1130,8 @@ public:
     return RC->getSourceRange();
   }
 
+  // Sanity checks that all ranges are in the same file, returning the first if
+  // they're in different files.  Unions the ranges based on which is first.
   SourceRange combineRanges(SourceRange Range1, SourceRange Range2) {
     if (Range1.isInvalid()) {
       return Range2;
@@ -1078,6 +1159,10 @@ public:
     }
   }
 
+  // Given a location and a range, returns the range if:
+  // - The location and the range live in the same file.
+  // - The range is well ordered (end is not before begin).
+  // Returns an empty range otherwise.
   SourceRange validateRange(SourceLocation Loc, SourceRange Range) {
     std::pair<FileID, unsigned> Decomposed = SM.getDecomposedLoc(Loc);
     std::pair<FileID, unsigned> Begin = SM.getDecomposedLoc(Range.getBegin());
@@ -1099,6 +1184,7 @@ public:
 
     // If the token is from a macro expansion and the expansion location
     // is interesting, use that instead as it tends to be more useful.
+    SourceLocation expandedLoc = Loc;
     if (SM.isMacroBodyExpansion(Loc)) {
       Loc = SM.getFileLoc(Loc);
     }
@@ -1116,7 +1202,10 @@ public:
     int Flags = 0;
     const char *Kind = "def";
     const char *PrettyKind = "?";
-    SourceRange PeekRange(D->getLocStart(), D->getLocEnd());
+    SourceRange PeekRange(D->getBeginLoc(), D->getEndLoc());
+    // The nesting range identifies the left brace and right brace, which
+    // heavily depends on the AST node type.
+    SourceRange NestingRange;
     if (FunctionDecl *D2 = dyn_cast<FunctionDecl>(D)) {
       if (D2->isTemplateInstantiation()) {
         D = D2->getTemplateInstantiationPattern();
@@ -1124,12 +1213,32 @@ public:
       Kind = D2->isThisDeclarationADefinition() ? "def" : "decl";
       PrettyKind = "function";
       PeekRange = getFunctionPeekRange(D2);
+
+      // Only emit the nesting range if:
+      // - This is a definition AND
+      // - This isn't a template instantiation.  Function templates'
+      //   instantiations can end up as a definition with a Loc at their point
+      //   of declaration but with the CompoundStmt of the template's
+      //   point of definition.  This really messes up the nesting range logic.
+      //   At the time of writing this, the test repo's `big_header.h`'s
+      //   `WhatsYourVector_impl::forwardDeclaredTemplateThingInlinedBelow` as
+      //   instantiated by `big_cpp.cpp` triggers this phenomenon.
+      //
+      // Note: As covered elsewhere, template processing is tricky and it's
+      // conceivable that we may change traversal patterns in the future,
+      // mooting this guard.
+      if (D2->isThisDeclarationADefinition() &&
+          !D2->isTemplateInstantiation()) {
+        // The CompoundStmt range is the brace range.
+        NestingRange = getCompoundStmtRange(D2->getBody());
+      }
     } else if (TagDecl *D2 = dyn_cast<TagDecl>(D)) {
       Kind = D2->isThisDeclarationADefinition() ? "def" : "decl";
       PrettyKind = "type";
 
       if (D2->isThisDeclarationADefinition() && D2->getDefinition() == D2) {
         PeekRange = getTagPeekRange(D2);
+        NestingRange = D2->getBraceRange();
       } else {
         PeekRange = SourceRange();
       }
@@ -1150,6 +1259,13 @@ public:
       Kind = "def";
       PrettyKind = "namespace";
       PeekRange = SourceRange(Loc, Loc);
+      NamespaceDecl *D2 = dyn_cast<NamespaceDecl>(D);
+      if (D2) {
+        // There's no exposure of the left brace so we have to find it.
+        NestingRange = SourceRange(
+          findLeftBraceFromLoc(D2->isAnonymousNamespace() ? D2->getBeginLoc() : Loc),
+          D2->getRBraceLoc());
+      }
     } else if (isa<FieldDecl>(D)) {
       Kind = "def";
       PrettyKind = "field";
@@ -1163,6 +1279,7 @@ public:
     SourceRange CommentRange = getCommentRange(D);
     PeekRange = combineRanges(PeekRange, CommentRange);
     PeekRange = validateRange(Loc, PeekRange);
+    NestingRange = validateRange(Loc, NestingRange);
 
     std::vector<std::string> Symbols = {getMangledName(CurMangleContext, D)};
     if (CXXMethodDecl::classof(D)) {
@@ -1170,32 +1287,46 @@ public:
       findOverriddenMethods(dyn_cast<CXXMethodDecl>(D), Symbols);
     }
 
-    // For destructors, loc points to the ~ character. We want to skip to the
-    // class name.
+    // In the case of destructors, Loc might point to the ~ character. In that
+    // case we want to skip to the name of the class. However, Loc might also
+    // point to other places that generate destructors, such as the use site of
+    // a macro that expands to generate a destructor, or a lambda (apparently
+    // clang 8 creates a destructor declaration for at least some lambdas). In
+    // the former case we'll use the macro use site as the location, and in the
+    // latter we'll just drop the declaration.
     if (isa<CXXDestructorDecl>(D)) {
-      const char *P = SM.getCharacterData(Loc);
-      assert(*p == '~');
-      P++;
-
-      unsigned Skipped = 1;
-      while (*P == ' ' || *P == '\t' || *P == '\r' || *P == '\n') {
-        P++;
-        Skipped++;
-      }
-
-      Loc = Loc.getLocWithOffset(Skipped);
-
       PrettyKind = "destructor";
+      const char *P = SM.getCharacterData(Loc);
+      if (*P == '~') {
+        // Advance Loc to the class name
+        P++;
+
+        unsigned Skipped = 1;
+        while (*P == ' ' || *P == '\t' || *P == '\r' || *P == '\n') {
+          P++;
+          Skipped++;
+        }
+
+        Loc = Loc.getLocWithOffset(Skipped);
+      } else {
+        // See if the destructor is coming from a macro expansion
+        P = SM.getCharacterData(expandedLoc);
+        if (*P != '~') {
+          // It's not
+          return true;
+        }
+        // It is, so just use Loc as-is
+      }
     }
 
     visitIdentifier(Kind, PrettyKind, getQualifiedName(D), Loc, Symbols,
-                    getContext(D), Flags, PeekRange);
+                    getContext(D), Flags, PeekRange, NestingRange);
 
     return true;
   }
 
   bool VisitCXXConstructExpr(CXXConstructExpr *E) {
-    SourceLocation Loc = E->getLocStart();
+    SourceLocation Loc = E->getBeginLoc();
     normalizeLocation(&Loc);
     if (!isInterestingLocation(Loc)) {
       return true;
@@ -1473,14 +1604,9 @@ void PreprocessorHook::MacroExpands(const Token &Tok, const MacroDefinition &Md,
   Indexer->macroUsed(Tok, Md.getMacroInfo());
 }
 
-#if CLANG_VERSION_MAJOR >= 5
 void PreprocessorHook::MacroUndefined(const Token &Tok,
                                       const MacroDefinition &Md,
                                       const MacroDirective *Undef)
-#else
-void PreprocessorHook::MacroUndefined(const Token &Tok,
-                                      const MacroDefinition &Md)
-#endif
 {
   Indexer->macroUsed(Tok, Md.getMacroInfo());
 }

@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 //! The struct that takes care of encapsulating all the logic on where and how
 //! element styles need to be invalidated.
 
-use context::StackLimitChecker;
-use dom::{TElement, TNode, TShadowRoot};
-use selector_parser::SelectorImpl;
-use selectors::matching::{CompoundSelectorMatchingResult, MatchingContext};
+use crate::context::StackLimitChecker;
+use crate::dom::{TElement, TNode, TShadowRoot};
+use crate::selector_parser::SelectorImpl;
 use selectors::matching::matches_compound_selector_from;
+use selectors::matching::{CompoundSelectorMatchingResult, MatchingContext};
 use selectors::parser::{Combinator, Component, Selector};
 use smallvec::SmallVec;
 use std::fmt;
@@ -72,11 +72,15 @@ pub struct DescendantInvalidationLists<'a> {
     pub dom_descendants: InvalidationVector<'a>,
     /// Invalidations for slotted children of an element.
     pub slotted_descendants: InvalidationVector<'a>,
+    /// Invalidations for ::part()s of an element.
+    pub parts: InvalidationVector<'a>,
 }
 
 impl<'a> DescendantInvalidationLists<'a> {
     fn is_empty(&self) -> bool {
-        self.dom_descendants.is_empty() && self.slotted_descendants.is_empty()
+        self.dom_descendants.is_empty() &&
+            self.slotted_descendants.is_empty() &&
+            self.parts.is_empty()
     }
 }
 
@@ -104,6 +108,8 @@ enum DescendantInvalidationKind {
     Dom,
     /// A ::slotted() descendant invalidation.
     Slotted,
+    /// A ::part() descendant invalidation.
+    Part,
 }
 
 /// The kind of invalidation we're processing.
@@ -158,7 +164,10 @@ impl<'a> Invalidation<'a> {
         // We should be able to do better here!
         match self.selector.combinator_at_parse_order(self.offset - 1) {
             Combinator::Descendant | Combinator::LaterSibling | Combinator::PseudoElement => true,
-            Combinator::SlotAssignment | Combinator::NextSibling | Combinator::Child => false,
+            Combinator::Part |
+            Combinator::SlotAssignment |
+            Combinator::NextSibling |
+            Combinator::Child => false,
         }
     }
 
@@ -171,6 +180,7 @@ impl<'a> Invalidation<'a> {
             Combinator::Child | Combinator::Descendant | Combinator::PseudoElement => {
                 InvalidationKind::Descendant(DescendantInvalidationKind::Dom)
             },
+            Combinator::Part => InvalidationKind::Descendant(DescendantInvalidationKind::Part),
             Combinator::SlotAssignment => {
                 InvalidationKind::Descendant(DescendantInvalidationKind::Slotted)
             },
@@ -466,30 +476,68 @@ where
         any_descendant
     }
 
+    fn invalidate_parts(&mut self, invalidations: &[Invalidation<'b>]) -> bool {
+        if invalidations.is_empty() {
+            return false;
+        }
+
+        let shadow = match self.element.shadow_root() {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let mut any = false;
+        let mut sibling_invalidations = InvalidationVector::new();
+        for element in shadow.parts() {
+            any |= self.invalidate_child(
+                *element,
+                invalidations,
+                &mut sibling_invalidations,
+                DescendantInvalidationKind::Part,
+            );
+            debug_assert!(
+                sibling_invalidations.is_empty(),
+                "::part() shouldn't have sibling combinators to the right, \
+                 this makes no sense! {:?}",
+                sibling_invalidations
+            );
+        }
+        any
+    }
+
     fn invalidate_slotted_elements(&mut self, invalidations: &[Invalidation<'b>]) -> bool {
         if invalidations.is_empty() {
             return false;
         }
 
+        let slot = self.element;
+        self.invalidate_slotted_elements_in_slot(slot, invalidations)
+    }
+
+    fn invalidate_slotted_elements_in_slot(
+        &mut self,
+        slot: E,
+        invalidations: &[Invalidation<'b>],
+    ) -> bool {
         let mut any = false;
 
         let mut sibling_invalidations = InvalidationVector::new();
-        let element = self.element;
-        for node in element.slotted_nodes() {
+        for node in slot.slotted_nodes() {
             let element = match node.as_element() {
                 Some(e) => e,
                 None => continue,
             };
 
-            any |= self.invalidate_child(
-                element,
-                invalidations,
-                &mut sibling_invalidations,
-                DescendantInvalidationKind::Slotted,
-            );
-
-            // FIXME(emilio): Need to handle nested slotted nodes if `element`
-            // is itself a <slot>.
+            if element.is_html_slot_element() {
+                any |= self.invalidate_slotted_elements_in_slot(element, invalidations);
+            } else {
+                any |= self.invalidate_child(
+                    element,
+                    invalidations,
+                    &mut sibling_invalidations,
+                    DescendantInvalidationKind::Slotted,
+                );
+            }
 
             debug_assert!(
                 sibling_invalidations.is_empty(),
@@ -531,6 +579,10 @@ where
         // broken anyway, since we should be looking at XBL rules too.
         if let Some(anon_content) = self.element.xbl_binding_anonymous_content() {
             any_descendant |= self.invalidate_dom_descendants_of(anon_content, invalidations);
+        }
+
+        if let Some(marker) = self.element.marker_pseudo_element() {
+            any_descendant |= self.invalidate_pseudo_element_or_nac(marker, invalidations);
         }
 
         if let Some(before) = self.element.before_pseudo_element() {
@@ -579,6 +631,7 @@ where
 
         any_descendant |= self.invalidate_non_slotted_descendants(&invalidations.dom_descendants);
         any_descendant |= self.invalidate_slotted_elements(&invalidations.slotted_descendants);
+        any_descendant |= self.invalidate_parts(&invalidations.parts);
 
         any_descendant
     }
@@ -653,7 +706,7 @@ where
                 debug_assert_eq!(
                     descendant_invalidation_kind,
                     DescendantInvalidationKind::Dom,
-                    "Slotted invalidations don't propagate."
+                    "Slotted or part invalidations don't propagate."
                 );
                 descendant_invalidations.dom_descendants.push(invalidation);
             }
@@ -737,8 +790,32 @@ where
                     //
                     // Note that we'll also restyle the pseudo-element because
                     // it would match this invalidation.
-                    if self.processor.invalidates_on_eager_pseudo_element() && pseudo.is_eager() {
-                        invalidated_self = true;
+                    if self.processor.invalidates_on_eager_pseudo_element() {
+                        if pseudo.is_eager() {
+                            invalidated_self = true;
+                        }
+                        // If we start or stop matching some marker rules, and
+                        // don't have a marker, then we need to restyle the
+                        // element to potentially create one.
+                        //
+                        // Same caveats as for other eager pseudos apply, this
+                        // could be more fine-grained.
+                        if pseudo.is_marker() && self.element.marker_pseudo_element().is_none() {
+                            invalidated_self = true;
+                        }
+
+                        // FIXME: ::selection doesn't generate elements, so the
+                        // regular invalidation doesn't work for it. We store
+                        // the cached selection style holding off the originating
+                        // element, so we need to restyle it in order to invalidate
+                        // it. This is still not quite correct, since nothing
+                        // triggers a repaint necessarily, but matches old Gecko
+                        // behavior, and the ::selection implementation needs to
+                        // change significantly anyway to implement
+                        // https://github.com/w3c/csswg-drafts/issues/2474.
+                        if pseudo.is_selection() {
+                            invalidated_self = true;
+                        }
                     }
                 }
 
@@ -829,6 +906,9 @@ where
                             descendant_invalidations
                                 .dom_descendants
                                 .push(next_invalidation);
+                        },
+                        InvalidationKind::Descendant(DescendantInvalidationKind::Part) => {
+                            descendant_invalidations.parts.push(next_invalidation);
                         },
                         InvalidationKind::Descendant(DescendantInvalidationKind::Slotted) => {
                             descendant_invalidations

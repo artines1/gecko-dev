@@ -13,14 +13,16 @@
 #include <vector>
 
 #ifdef MOZ_LOGGING
-#include "mozilla/Logging.h"
+#  include "mozilla/Logging.h"
 #endif
 #include "mozilla/Tuple.h"
 
 #if defined(MOZ_WIDGET_ANDROID)
-#include "nsDebug.h"
+#  include "nsDebug.h"
 #endif
 #include "2D.h"
+#include "mozilla/Atomics.h"
+#include "mozilla/StaticPrefs_gfx.h"
 #include "Point.h"
 #include "BaseRect.h"
 #include "Matrix.h"
@@ -36,31 +38,20 @@ namespace gfx {
 #if defined(MOZ_LOGGING)
 inline mozilla::LogLevel PRLogLevelForLevel(int aLevel) {
   switch (aLevel) {
-  case LOG_CRITICAL:
-    return LogLevel::Error;
-  case LOG_WARNING:
-    return LogLevel::Warning;
-  case LOG_DEBUG:
-    return LogLevel::Debug;
-  case LOG_DEBUG_PRLOG:
-    return LogLevel::Debug;
-  case LOG_EVERYTHING:
-    return LogLevel::Error;
+    case LOG_CRITICAL:
+      return LogLevel::Error;
+    case LOG_WARNING:
+      return LogLevel::Warning;
+    case LOG_DEBUG:
+      return LogLevel::Debug;
+    case LOG_DEBUG_PRLOG:
+      return LogLevel::Debug;
+    case LOG_EVERYTHING:
+      return LogLevel::Error;
   }
   return LogLevel::Debug;
 }
 #endif
-
-class LoggingPrefs
-{
-public:
-  // Used to choose the level of logging we get.  The higher the number,
-  // the more logging we get.  Value of zero will give you no logging,
-  // 1 just errors, 2 adds warnings and 3 or 4 add debug logging.
-  // In addition to setting the value to 4, you will need to set the
-  // environment variable MOZ_LOG to gfx:4. See mozilla/Logging.h for details.
-  static int32_t sGfxLogLevel;
-};
 
 /// Graphics logging is available in both debug and release builds and is
 /// controlled with a gfx.logging.level preference. If not set, the default
@@ -105,7 +96,7 @@ enum class LogReason : int {
   D2D1NoWriteMap,
   JobStatusError,
   FilterInputError,
-  FilterInputData, // 10
+  FilterInputData,  // 10
   FilterInputRect,
   FilterInputSet,
   FilterInputFormat,
@@ -115,7 +106,7 @@ enum class LogReason : int {
   GlyphAllocFailedCairo,
   GlyphAllocFailedCG,
   InvalidRect,
-  CannotDraw3D, // 20
+  CannotDraw3D,  // 20
   IncompatibleBasicTexturedEffect,
   InvalidFont,
   PAllocTextureBackendMismatch,
@@ -125,7 +116,7 @@ enum class LogReason : int {
   TextureAliveAfterShutdown,
   InvalidContext,
   InvalidCommandList,
-  AsyncTransactionTimeout, // 30
+  AsyncTransactionTimeout,  // 30
   TextureCreation,
   InvalidCacheSurface,
   AlphaWithBasicClient,
@@ -134,28 +125,30 @@ enum class LogReason : int {
   InvalidDrawTarget,
   NativeFontResourceNotFound,
   UnscaledFontNotFound,
-  InvalidLayerType,
+  ScaledFontNotFound,
+  InvalidLayerType,  // 40
+  PlayEventFailed,
+  InvalidConstrainedValueRead,
   // End
   MustBeLessThanThis = 101,
 };
 
-struct BasicLogger
-{
+struct BasicLogger {
   // For efficiency, this method exists and copies the logic of the
   // OutputMessage below.  If making any changes here, also make it
   // in the appropriate places in that method.
   static bool ShouldOutputMessage(int aLevel) {
-    if (LoggingPrefs::sGfxLogLevel >= aLevel) {
+    if (StaticPrefs::gfx_logging_level() >= aLevel) {
 #if defined(MOZ_WIDGET_ANDROID)
       return true;
 #else
-#if defined(MOZ_LOGGING)
+#  if defined(MOZ_LOGGING)
       if (MOZ_LOG_TEST(GetGFX2DLog(), PRLogLevelForLevel(aLevel))) {
         return true;
       } else
-#endif
-      if ((LoggingPrefs::sGfxLogLevel >= LOG_DEBUG_PRLOG) ||
-                 (aLevel < LOG_DEBUG)) {
+#  endif
+          if ((StaticPrefs::gfx_logging_level() >= LOG_DEBUG_PRLOG) ||
+              (aLevel < LOG_DEBUG)) {
         return true;
       }
 #endif
@@ -166,29 +159,28 @@ struct BasicLogger
   // Only for really critical errors.
   static void CrashAction(LogReason aReason) {}
 
-  static void OutputMessage(const std::string &aString,
-                            int aLevel,
+  static void OutputMessage(const std::string& aString, int aLevel,
                             bool aNoNewline) {
     // This behavior (the higher the preference, the more we log)
     // is consistent with what prlog does in general.  Note that if prlog
     // is in the build, but disabled, we will printf if the preferences
-    // requires us to log something (see sGfxLogLevel for the special
-    // treatment of LOG_DEBUG and LOG_DEBUG_PRLOG)
+    // requires us to log something.
     //
     // If making any logic changes to this method, you should probably
     // make the corresponding change in the ShouldOutputMessage method
     // above.
-    if (LoggingPrefs::sGfxLogLevel >= aLevel) {
+    if (StaticPrefs::gfx_logging_level() >= aLevel) {
 #if defined(MOZ_WIDGET_ANDROID)
       printf_stderr("%s%s", aString.c_str(), aNoNewline ? "" : "\n");
 #else
-#if defined(MOZ_LOGGING)
+#  if defined(MOZ_LOGGING)
       if (MOZ_LOG_TEST(GetGFX2DLog(), PRLogLevelForLevel(aLevel))) {
-        MOZ_LOG(GetGFX2DLog(), PRLogLevelForLevel(aLevel), ("%s%s", aString.c_str(), aNoNewline ? "" : "\n"));
+        MOZ_LOG(GetGFX2DLog(), PRLogLevelForLevel(aLevel),
+                ("%s%s", aString.c_str(), aNoNewline ? "" : "\n"));
       } else
-#endif
-      if ((LoggingPrefs::sGfxLogLevel >= LOG_DEBUG_PRLOG) ||
-                 (aLevel < LOG_DEBUG)) {
+#  endif
+          if ((StaticPrefs::gfx_logging_level() >= LOG_DEBUG_PRLOG) ||
+              (aLevel < LOG_DEBUG)) {
         printf("%s%s", aString.c_str(), aNoNewline ? "" : "\n");
       }
 #endif
@@ -197,23 +189,24 @@ struct BasicLogger
 };
 
 struct CriticalLogger {
-  static void OutputMessage(const std::string &aString, int aLevel, bool aNoNewline);
+  static void OutputMessage(const std::string& aString, int aLevel,
+                            bool aNoNewline);
   static void CrashAction(LogReason aReason);
 };
 
-// The int is the index of the Log call; if the number of logs exceeds some preset
-// capacity we may not get all of them, so the indices help figure out which
-// ones we did save.  The double is expected to be the "TimeDuration", 
+// The int is the index of the Log call; if the number of logs exceeds some
+// preset capacity we may not get all of them, so the indices help figure out
+// which ones we did save.  The double is expected to be the "TimeDuration",
 // time in seconds since the process creation.
-typedef mozilla::Tuple<int32_t,std::string,double> LoggingRecordEntry;
+typedef mozilla::Tuple<int32_t, std::string, double> LoggingRecordEntry;
 
 // Implement this interface and init the Factory with an instance to
 // forward critical logs.
 typedef std::vector<LoggingRecordEntry> LoggingRecord;
 class LogForwarder {
-public:
-  virtual ~LogForwarder() {}
-  virtual void Log(const std::string &aString) = 0;
+ public:
+  virtual ~LogForwarder() = default;
+  virtual void Log(const std::string& aString) = 0;
   virtual void CrashAction(LogReason aReason) = 0;
   virtual bool UpdateStringsVector(const std::string& aString) = 0;
 
@@ -221,17 +214,18 @@ public:
   virtual LoggingRecord LoggingRecordCopy() = 0;
 };
 
-class NoLog
-{
-public:
+class NoLog {
+ public:
   NoLog() {}
   ~NoLog() {}
 
   // No-op
   MOZ_IMPLICIT NoLog(const NoLog&) {}
 
-  template<typename T>
-  NoLog &operator <<(const T &aLogText) { return *this; }
+  template <typename T>
+  NoLog& operator<<(const T& aLogText) {
+    return *this;
+  }
 };
 
 enum class LogOptions : int {
@@ -241,18 +235,23 @@ enum class LogOptions : int {
   CrashAction = 0x08,
 };
 
-template<typename T>
+template <typename T>
 struct Hexa {
   explicit Hexa(T aVal) : mVal(aVal) {}
   T mVal;
 };
-template<typename T>
-Hexa<T> hexa(T val) { return Hexa<T>(val); }
+template <typename T>
+Hexa<T> hexa(T val) {
+  return Hexa<T>(val);
+}
 
-template<int L, typename Logger = BasicLogger>
-class Log
-{
-public:
+#ifdef WIN32
+void LogWStr(const wchar_t* aStr, std::stringstream& aOut);
+#endif
+
+template <int L, typename Logger = BasicLogger>
+class Log final {
+ public:
   // The default is to have the prefix, have the new line, and for critical
   // logs assert on each call.
   static int DefaultOptions(bool aWithAssert = true) {
@@ -266,15 +265,11 @@ public:
   // change BasicLogger::ShouldOutputMessage to Logger::ShouldOutputMessage.
   explicit Log(int aOptions = Log::DefaultOptions(L == LOG_CRITICAL),
                LogReason aReason = LogReason::MustBeMoreThanThis)
-  : mOptions(0)
-  , mLogIt(false)
-  {
+      : mOptions(0), mLogIt(false) {
     Init(aOptions, BasicLogger::ShouldOutputMessage(L), aReason);
   }
 
-  ~Log() {
-    Flush();
-  }
+  ~Log() { Flush(); }
 
   void Flush() {
     if (MOZ_LIKELY(!LogIt())) return;
@@ -286,152 +281,163 @@ public:
     mMessage.str("");
   }
 
-  Log &operator <<(char aChar) {
+  Log& operator<<(char aChar) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aChar;
     }
     return *this;
   }
-  Log &operator <<(const std::string &aLogText) { 
+  Log& operator<<(const std::string& aLogText) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aLogText;
     }
     return *this;
   }
-  Log &operator <<(const char aStr[]) {
+  Log& operator<<(const char aStr[]) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << static_cast<const char*>(aStr);
     }
     return *this;
   }
-  Log &operator <<(bool aBool) {
+#ifdef WIN32
+  Log& operator<<(const wchar_t aWStr[]) {
+    if (MOZ_UNLIKELY(LogIt())) {
+      LogWStr(aWStr, mMessage);
+    }
+    return *this;
+  }
+#endif
+  Log& operator<<(bool aBool) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << (aBool ? "true" : "false");
     }
     return *this;
   }
-  Log &operator <<(int aInt) {
+  Log& operator<<(int aInt) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aInt;
     }
     return *this;
   }
-  Log &operator <<(unsigned int aInt) {
+  Log& operator<<(unsigned int aInt) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aInt;
     }
     return *this;
   }
-  Log &operator <<(long aLong) {
+  Log& operator<<(long aLong) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aLong;
     }
     return *this;
   }
-  Log &operator <<(unsigned long aLong) {
+  Log& operator<<(unsigned long aLong) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aLong;
     }
     return *this;
   }
-  Log &operator <<(long long aLong) {
+  Log& operator<<(long long aLong) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aLong;
     }
     return *this;
   }
-  Log &operator <<(unsigned long long aLong) {
+  Log& operator<<(unsigned long long aLong) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aLong;
     }
     return *this;
   }
-  Log &operator <<(Float aFloat) {
+  Log& operator<<(Float aFloat) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aFloat;
     }
     return *this;
   }
-  Log &operator <<(double aDouble) {
+  Log& operator<<(double aDouble) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << aDouble;
     }
     return *this;
   }
-  Log &operator <<(const Color& aColor) {
+  Log& operator<<(const Color& aColor) {
     if (MOZ_UNLIKELY(LogIt())) {
-      mMessage << "Color(" << aColor.r << ", " << aColor.g << ", " << aColor.b << ", " << aColor.a << ")";
+      mMessage << "Color(" << aColor.r << ", " << aColor.g << ", " << aColor.b
+               << ", " << aColor.a << ")";
     }
     return *this;
   }
   template <typename T, typename Sub, typename Coord>
-  Log &operator <<(const BasePoint<T, Sub, Coord>& aPoint) {
+  Log& operator<<(const BasePoint<T, Sub, Coord>& aPoint) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "Point" << aPoint;
     }
     return *this;
   }
   template <typename T, typename Sub>
-  Log &operator <<(const BaseSize<T, Sub>& aSize) {
+  Log& operator<<(const BaseSize<T, Sub>& aSize) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "Size(" << aSize.width << "," << aSize.height << ")";
     }
     return *this;
   }
-  template <typename T, typename Sub, typename Point, typename SizeT, typename Margin>
-  Log &operator <<(const BaseRect<T, Sub, Point, SizeT, Margin>& aRect) {
+  template <typename T, typename Sub, typename Point, typename SizeT,
+            typename Margin>
+  Log& operator<<(const BaseRect<T, Sub, Point, SizeT, Margin>& aRect) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "Rect" << aRect;
     }
     return *this;
   }
-  Log &operator<<(const Matrix& aMatrix) {
+  Log& operator<<(const Matrix& aMatrix) {
     if (MOZ_UNLIKELY(LogIt())) {
-      mMessage << "Matrix(" << aMatrix._11 << " " << aMatrix._12 << " ; " << aMatrix._21 << " " << aMatrix._22 << " ; " << aMatrix._31 << " " << aMatrix._32 << ")";
+      mMessage << "Matrix(" << aMatrix._11 << " " << aMatrix._12 << " ; "
+               << aMatrix._21 << " " << aMatrix._22 << " ; " << aMatrix._31
+               << " " << aMatrix._32 << ")";
     }
     return *this;
   }
-  template<typename T>
-  Log &operator<<(Hexa<T> aHex) {
+  template <typename T>
+  Log& operator<<(Hexa<T> aHex) {
     if (MOZ_UNLIKELY(LogIt())) {
-      mMessage << std::showbase << std::hex
-               << aHex.mVal
-               << std::noshowbase << std::dec;
+      mMessage << std::showbase << std::hex << aHex.mVal << std::noshowbase
+               << std::dec;
     }
     return *this;
   }
 
-  Log &operator<<(const SourceSurface* aSurface) {
+  Log& operator<<(const SourceSurface* aSurface) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "SourceSurface(" << (void*)(aSurface) << ")";
     }
     return *this;
   }
-  Log &operator<<(const Path* aPath) {
+  Log& operator<<(const Path* aPath) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "Path(" << (void*)(aPath) << ")";
     }
     return *this;
   }
-  Log &operator<<(const Pattern* aPattern) {
+  Log& operator<<(const Pattern* aPattern) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "Pattern(" << (void*)(aPattern) << ")";
     }
     return *this;
   }
-  Log &operator<<(const ScaledFont* aFont) {
+  Log& operator<<(const ScaledFont* aFont) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "ScaledFont(" << (void*)(aFont) << ")";
     }
     return *this;
   }
-  Log &operator<<(const FilterNode* aFilter) {
+  Log& operator<<(const FilterNode* aFilter) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "FilterNode(" << (void*)(aFilter) << ")";
     }
     return *this;
   }
-  Log &operator<<(const DrawOptions& aOptions) {
+  Log& operator<<(const DrawOptions& aOptions) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "DrawOptions(" << aOptions.mAlpha << ", ";
       (*this) << aOptions.mCompositionOp;
@@ -441,7 +447,7 @@ public:
     }
     return *this;
   }
-  Log &operator<<(const DrawSurfaceOptions& aOptions) {
+  Log& operator<<(const DrawSurfaceOptions& aOptions) {
     if (MOZ_UNLIKELY(LogIt())) {
       mMessage << "DrawSurfaceOptions(";
       (*this) << aOptions.mSamplingFilter;
@@ -454,7 +460,7 @@ public:
 
   Log& operator<<(SamplingBounds aBounds) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aBounds) {
+      switch (aBounds) {
         case SamplingBounds::UNBOUNDED:
           mMessage << "SamplingBounds::UNBOUNDED";
           break;
@@ -470,7 +476,7 @@ public:
   }
   Log& operator<<(SamplingFilter aFilter) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aFilter) {
+      switch (aFilter) {
         case SamplingFilter::GOOD:
           mMessage << "SamplingFilter::GOOD";
           break;
@@ -489,7 +495,7 @@ public:
   }
   Log& operator<<(AntialiasMode aMode) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aMode) {
+      switch (aMode) {
         case AntialiasMode::NONE:
           mMessage << "AntialiasMode::NONE";
           break;
@@ -511,7 +517,7 @@ public:
   }
   Log& operator<<(CompositionOp aOp) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aOp) {
+      switch (aOp) {
         case CompositionOp::OP_OVER:
           mMessage << "CompositionOp::OP_OVER";
           break;
@@ -602,7 +608,7 @@ public:
   }
   Log& operator<<(SurfaceFormat aFormat) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aFormat) {
+      switch (aFormat) {
         case SurfaceFormat::B8G8R8A8:
           mMessage << "SurfaceFormat::B8G8R8A8";
           break;
@@ -637,7 +643,7 @@ public:
 
   Log& operator<<(SurfaceType aType) {
     if (MOZ_UNLIKELY(LogIt())) {
-      switch(aType) {
+      switch (aType) {
         case SurfaceType::DATA:
           mMessage << "SurfaceType::DATA";
           break;
@@ -686,15 +692,22 @@ public:
   }
 
   inline bool LogIt() const { return mLogIt; }
-  inline bool NoNewline() const { return mOptions & int(LogOptions::NoNewline); }
-  inline bool AutoPrefix() const { return mOptions & int(LogOptions::AutoPrefix); }
-  inline bool ValidReason() const { return (int)mReason > (int)LogReason::MustBeMoreThanThis && (int)mReason < (int)LogReason::MustBeLessThanThis; }
+  inline bool NoNewline() const {
+    return mOptions & int(LogOptions::NoNewline);
+  }
+  inline bool AutoPrefix() const {
+    return mOptions & int(LogOptions::AutoPrefix);
+  }
+  inline bool ValidReason() const {
+    return (int)mReason > (int)LogReason::MustBeMoreThanThis &&
+           (int)mReason < (int)LogReason::MustBeLessThanThis;
+  }
 
   // We do not want this version to do any work, and stringstream can't be
   // copied anyway.  It does come in handy for the "Once" macro defined below.
   MOZ_IMPLICIT Log(const Log& log) { Init(log.mOptions, false, log.mReason); }
 
-private:
+ private:
   // Initialization common to two constructors
   void Init(int aOptions, bool aLogIt, LogReason aReason) {
     mOptions = aOptions;
@@ -717,7 +730,7 @@ private:
     }
   }
 
-  void WriteLog(const std::string &aString) {
+  void WriteLog(const std::string& aString) {
     if (MOZ_UNLIKELY(LogIt())) {
       Logger::OutputMessage(aString, L, NoNewline());
       // Assert if required.  We don't have a three parameter MOZ_ASSERT
@@ -746,44 +759,58 @@ typedef Log<LOG_CRITICAL, CriticalLogger> CriticalLog;
 
 // Macro to glue names to get us less chance of name clashing.
 #if defined GFX_LOGGING_GLUE1 || defined GFX_LOGGING_GLUE
-#error "Clash of the macro GFX_LOGGING_GLUE1 or GFX_LOGGING_GLUE"
+#  error "Clash of the macro GFX_LOGGING_GLUE1 or GFX_LOGGING_GLUE"
 #endif
-#define GFX_LOGGING_GLUE1(x, y)  x##y
-#define GFX_LOGGING_GLUE(x, y)   GFX_LOGGING_GLUE1(x, y)
+#define GFX_LOGGING_GLUE1(x, y) x##y
+#define GFX_LOGGING_GLUE(x, y) GFX_LOGGING_GLUE1(x, y)
 
 // This log goes into crash reports, use with care.
 #define gfxCriticalError mozilla::gfx::CriticalLog
-#define gfxCriticalErrorOnce static gfxCriticalError GFX_LOGGING_GLUE(sOnceAtLine,__LINE__) = gfxCriticalError
+#define gfxCriticalErrorOnce                                        \
+  static gfxCriticalError GFX_LOGGING_GLUE(sOnceAtLine, __LINE__) = \
+      gfxCriticalError
 
 // This is a shortcut for errors we want logged in crash reports/about support
 // but we do not want asserting.  These are available in all builds, so it is
-// not worth trying to do magic to avoid matching the syntax of gfxCriticalError.
+// not worth trying to do magic to avoid matching the syntax of
+// gfxCriticalError.
 // So, this one is used as
 // gfxCriticalNote << "Something to report and not assert";
 // while the critical error is
 // gfxCriticalError() << "Something to report and assert";
-#define gfxCriticalNote gfxCriticalError(gfxCriticalError::DefaultOptions(false))
-#define gfxCriticalNoteOnce static gfxCriticalError GFX_LOGGING_GLUE(sOnceAtLine,__LINE__) = gfxCriticalNote
+#define gfxCriticalNote \
+  gfxCriticalError(gfxCriticalError::DefaultOptions(false))
+#define gfxCriticalNoteOnce                                         \
+  static gfxCriticalError GFX_LOGGING_GLUE(sOnceAtLine, __LINE__) = \
+      gfxCriticalNote
 
-// The "once" versions will only trigger the first time through. You can do this:
-// gfxCriticalErrorOnce() << "This message only shows up once;
-// instead of the usual:
-// static bool firstTime = true;
-// if (firstTime) {
+// The "once" versions will only trigger the first time through. You can do
+// this: gfxCriticalErrorOnce() << "This message only shows up once; instead of
+// the usual: static bool firstTime = true; if (firstTime) {
 //   firstTime = false;
 //   gfxCriticalError() << "This message only shows up once;
 // }
 #if defined(DEBUG)
-#define gfxDebug mozilla::gfx::DebugLog
-#define gfxDebugOnce static gfxDebug GFX_LOGGING_GLUE(sOnceAtLine,__LINE__) = gfxDebug
+#  define gfxDebug mozilla::gfx::DebugLog
+#  define gfxDebugOnce \
+    static gfxDebug GFX_LOGGING_GLUE(sOnceAtLine, __LINE__) = gfxDebug
 #else
-#define gfxDebug if (1) ; else mozilla::gfx::NoLog
-#define gfxDebugOnce if (1) ; else mozilla::gfx::NoLog
+#  define gfxDebug \
+    if (1)         \
+      ;            \
+    else           \
+      mozilla::gfx::NoLog
+#  define gfxDebugOnce \
+    if (1)             \
+      ;                \
+    else               \
+      mozilla::gfx::NoLog
 #endif
 
 // Have gfxWarning available (behind a runtime preference)
 #define gfxWarning mozilla::gfx::WarningLog
-#define gfxWarningOnce static gfxWarning GFX_LOGGING_GLUE(sOnceAtLine,__LINE__) = gfxWarning
+#define gfxWarningOnce \
+  static gfxWarning GFX_LOGGING_GLUE(sOnceAtLine, __LINE__) = gfxWarning
 
 // In the debug build, this is equivalent to the default gfxCriticalError.
 // In the non-debug build, on nightly and dev edition, it will MOZ_CRASH.
@@ -791,51 +818,53 @@ typedef Log<LOG_CRITICAL, CriticalLogger> CriticalLog;
 //
 // You should create a (new) enum in the LogReason and use it for the reason
 // parameter to ensure uniqueness.
-#define gfxDevCrash(reason) gfxCriticalError(int(gfx::LogOptions::AutoPrefix) | int(gfx::LogOptions::AssertOnCall) | int(gfx::LogOptions::CrashAction), (reason))
+#define gfxDevCrash(reason)                                 \
+  gfxCriticalError(int(gfx::LogOptions::AutoPrefix) |       \
+                       int(gfx::LogOptions::AssertOnCall) | \
+                       int(gfx::LogOptions::CrashAction),   \
+                   (reason))
 
 // See nsDebug.h and the NS_WARN_IF macro
 
 #ifdef __cplusplus
- // For now, have MOZ2D_ERROR_IF available in debug and non-debug builds
+// For now, have MOZ2D_ERROR_IF available in debug and non-debug builds
 inline bool MOZ2D_error_if_impl(bool aCondition, const char* aExpr,
-                                const char* aFile, int32_t aLine)
-{
+                                const char* aFile, int32_t aLine) {
   if (MOZ_UNLIKELY(aCondition)) {
     gfxCriticalError() << aExpr << " at " << aFile << ":" << aLine;
   }
   return aCondition;
 }
-#define MOZ2D_ERROR_IF(condition) \
-  MOZ2D_error_if_impl(condition, #condition, __FILE__, __LINE__)
+#  define MOZ2D_ERROR_IF(condition) \
+    MOZ2D_error_if_impl(condition, #condition, __FILE__, __LINE__)
 
-#ifdef DEBUG
+#  ifdef DEBUG
 inline bool MOZ2D_warn_if_impl(bool aCondition, const char* aExpr,
-                               const char* aFile, int32_t aLine)
-{
+                               const char* aFile, int32_t aLine) {
   if (MOZ_UNLIKELY(aCondition)) {
     gfxWarning() << aExpr << " at " << aFile << ":" << aLine;
   }
   return aCondition;
 }
-#define MOZ2D_WARN_IF(condition) \
-  MOZ2D_warn_if_impl(condition, #condition, __FILE__, __LINE__)
-#else
-#define MOZ2D_WARN_IF(condition) (bool)(condition)
-#endif
+#    define MOZ2D_WARN_IF(condition) \
+      MOZ2D_warn_if_impl(condition, #condition, __FILE__, __LINE__)
+#  else
+#    define MOZ2D_WARN_IF(condition) (bool)(condition)
+#  endif
 #endif
 
 const int INDENT_PER_LEVEL = 2;
 
-class TreeLog
-{
-public:
+template <int Level = LOG_DEBUG>
+class TreeLog {
+ public:
   explicit TreeLog(const std::string& aPrefix = "")
-        : mLog(int(LogOptions::NoNewline)),
-          mPrefix(aPrefix),
-          mDepth(0),
-          mStartOfLine(true),
-          mConditionedOnPref(false),
-          mPrefFunction(nullptr) {}
+      : mLog(int(LogOptions::NoNewline)),
+        mPrefix(aPrefix),
+        mDepth(0),
+        mStartOfLine(true),
+        mConditionedOnPref(false),
+        mPrefFunction(nullptr) {}
 
   template <typename T>
   TreeLog& operator<<(const T& aObject) {
@@ -865,12 +894,13 @@ public:
     --mDepth;
   }
 
-  void ConditionOnPrefFunction(bool(*aPrefFunction)()) {
+  void ConditionOnPrefFunction(bool (*aPrefFunction)()) {
     mConditionedOnPref = true;
     mPrefFunction = aPrefFunction;
   }
-private:
-  Log<LOG_DEBUG> mLog;
+
+ private:
+  Log<Level> mLog;
   std::string mPrefix;
   uint32_t mDepth;
   bool mStartOfLine;
@@ -886,37 +916,34 @@ private:
     return !aString.empty() && aString[aString.length() - 1] == '\n';
   }
 
-  static bool EndsInNewline(char aChar) {
-    return aChar == '\n';
-  }
+  static bool EndsInNewline(char aChar) { return aChar == '\n'; }
 
   static bool EndsInNewline(const char* aString) {
     return EndsInNewline(std::string(aString));
   }
 };
 
-class TreeAutoIndent
-{
-public:
-  explicit TreeAutoIndent(TreeLog& aTreeLog) : mTreeLog(aTreeLog) {
+template <int Level = LOG_DEBUG>
+class TreeAutoIndent final {
+ public:
+  explicit TreeAutoIndent(TreeLog<Level>& aTreeLog) : mTreeLog(aTreeLog) {
     mTreeLog.IncreaseIndent();
   }
 
-  TreeAutoIndent(const TreeAutoIndent& aTreeAutoIndent) :
-      mTreeLog(aTreeAutoIndent.mTreeLog) {
+  TreeAutoIndent(const TreeAutoIndent& aTreeAutoIndent)
+      : mTreeLog(aTreeAutoIndent.mTreeLog) {
     mTreeLog.IncreaseIndent();
   }
 
   TreeAutoIndent& operator=(const TreeAutoIndent& aTreeAutoIndent) = delete;
 
-  ~TreeAutoIndent() {
-    mTreeLog.DecreaseIndent();
-  }
-private:
-  TreeLog& mTreeLog;
+  ~TreeAutoIndent() { mTreeLog.DecreaseIndent(); }
+
+ private:
+  TreeLog<Level>& mTreeLog;
 };
 
-} // namespace gfx
-} // namespace mozilla
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif /* MOZILLA_GFX_LOGGING_H_ */
